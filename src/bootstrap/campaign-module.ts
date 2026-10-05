@@ -504,6 +504,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
           }
           case "withdraw": return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatWithdraw", combatantId: characterId })).then(mapPlayResult);
           case "dash": return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatDash", combatantId: characterId })).then(mapPlayResult);
+          case "disengage": return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatDisengage", combatantId: characterId })).then(mapPlayResult);
           case "feature": {
             const featureId = textValue(action.featureId);
             if (featureId === null) return { kind: "refused", reason: "invalidAction" };

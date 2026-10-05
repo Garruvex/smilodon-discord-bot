@@ -4,6 +4,7 @@ import { iconForClass, iconImage, liveEnemies, liveParty, setArtwork } from "./d
 import { renderCharacterWorkspace } from "./hero.js";
 import { performAction } from "./actions.js";
 import { classText, t } from "./i18n.js";
+import { fightTags, turnOrderBar } from "./fight-status.js";
 
 export function enemyRankIcon(rank) { return rank === "boss" ? "crowned-skull" : rank === "elite" ? "evil-minion" : rank === "minion" ? "minions" : "attack"; }
 
@@ -59,6 +60,8 @@ function combatCard(entry, { side, rank = "standard", owner = null }) {
   hp.textContent = health;
   meta.append(bar, hp);
   copy.append(nameLine, kindLine, placeLine, meta);
+  const tags = fightTags(entry);
+  if (tags !== null) copy.append(tags);
   card.append(copy);
   return card;
 }
@@ -70,7 +73,7 @@ function makeAlly(ally) { return combatCard(ally, { side: "party", owner: ally.o
 export function renderEnemies(enemies, allies = app.currentSnapshot?.allies ?? []) {
   const heading = (text, extra = "") => Object.assign(document.createElement("span"), { className: `live-enemies-heading${extra}`, textContent: text });
   liveEnemies.replaceChildren(...(enemies.length
-    ? [heading(t("activity.scene.encounter")), ...enemies.map(makeEnemy), ...(allies.length ? [heading(t("activity.ally.heading"), " live-allies-heading"), ...allies.map(makeAlly)] : [])]
+    ? [...[turnOrderBar(app.currentSnapshot)].filter(Boolean), heading(t("activity.scene.encounter")), ...enemies.map(makeEnemy), ...(allies.length ? [heading(t("activity.ally.heading"), " live-allies-heading"), ...allies.map(makeAlly)] : [])]
     : []));
 }
 
@@ -208,6 +211,8 @@ export function renderParty(members) {
       meta.append(presence);
     }
     copy.append(meta);
+    const tags = fightTags(hero);
+    if (tags !== null) copy.append(tags);
     card.append(sigil, copy);
     if (selectTarget) card.append(selectTarget);
     if (hero.seatUserId !== undefined) card.append(freeSeatButton(hero.seatUserId));

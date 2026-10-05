@@ -6,6 +6,7 @@ import { classText, t } from "./i18n.js";
 import { loadTable } from "./poll.js";
 import { actionGuide, spellGuide } from "./rules-book.js";
 import { openReplacement } from "./replacement.js";
+import { turnStrip } from "./fight-status.js";
 import { renderGame } from "./render.js";
 
 // Where each kind of action is shown: urgent decisions on top, the round composer, a category list, or the closing button.
@@ -96,7 +97,7 @@ function pickerCard(config) {
 
 export const actionPlacement = { acceptInvite: "top", joinHero: "top", reaction: "top", smite: "top", opportunityAttack: "top", ready: "top", begin: "top", continue: "top", toggleMoveObjection: "top", moveVote: "top", submit: "composer", pass: "composer", endTurn: "bottom" };
 
-export const actionCategoryOf = { attack: "attack", combatSpell: "spells", exploreSpell: "spells", healSpell: "spells", reviveSpell: "spells", summonCompanion: "spells", move: "move", moveScene: "move", teleport: "move", engage: "move", withdraw: "move", dash: "move", useItem: "items", combatItem: "items", shield: "items", shop: "items", askNpc: "talk", pressNpc: "talk", feature: "other", wildShape: "other", combatDodge: "other", spendHitDice: "other" };
+export const actionCategoryOf = { attack: "attack", combatSpell: "spells", exploreSpell: "spells", healSpell: "spells", reviveSpell: "spells", summonCompanion: "spells", move: "move", moveScene: "move", teleport: "move", engage: "move", withdraw: "move", dash: "move", disengage: "move", useItem: "items", combatItem: "items", shield: "items", shop: "items", askNpc: "talk", pressNpc: "talk", feature: "other", wildShape: "other", combatDodge: "other", spendHitDice: "other" };
 
 export const actionCategoryOrder = ["attack", "spells", "move", "items", "talk", "other"];
 
@@ -317,7 +318,7 @@ export function buildTableActions(game, liveActions, log) {
     for (const form of game.turn.wildShapeChoices) addAction(t("activity.action.wildShape", { name: form.name }), { kind: "wildShape", monsterId: form.id });
     if (game.turn.canRevertShape) addAction(t("activity.action.returnForm"), { kind: "wildShape", monsterId: null });
     if (game.turn.canWithdraw) addAction(t("activity.action.withdrawSafely"), { kind: "withdraw" });
-    if (game.turn.canDashOrDisengage) addAction(t("activity.action.dash"), { kind: "dash" });
+    if (game.turn.canDashOrDisengage) { addAction(t("activity.action.dash"), { kind: "dash" }); addAction(t("activity.action.disengage"), { kind: "disengage" }); }
     if (game.turn.canDodge) addAction(t("activity.action.dodge"), { kind: "combatDodge" });
     addAction(t("activity.action.endTurn"), { kind: "endTurn" });
   } else if (game.mode === "collecting" && [null, "action", "pass"].includes(game.submission) && game.myHero !== null) {
@@ -425,6 +426,8 @@ export function buildTableActions(game, liveActions, log) {
     element.append(...nodes);
     return element;
   };
+  const strip = game.mode === "combat" ? turnStrip(game.turn) : null;
+  if (strip !== null) liveActions.append(strip);
   if (top.length) liveActions.append(row("action-row action-urgent", top));
   for (const panel of panels) liveActions.append(panel);
   if (composer.length) liveActions.append(row("action-composer", composer));

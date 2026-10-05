@@ -7,6 +7,7 @@ import type { SealedContent, Glossary } from "../../domain/campaign/rules/conten
 import type { CheckTest } from "../../domain/campaign/character/character-sheet.js";
 import { findScene } from "../../domain/campaign/adventure/adventure-bible.js";
 import { levelingMode, resolveHouseRules } from "../../domain/campaign/rules/house-rules.js";
+import type { CombatView, DeathSavesView } from "./views/campaign-views.js";
 import { buildPanelView, buildPartyView, buildHeroView, buildReactionView, buildSmiteView, buildOpportunityAttackView } from "./views/campaign-views.js";
 import { buildExploreView, buildShopView, type ExploreView, type ShopView } from "./views/explore-view.js";
 import { buildTurnView, type AttackChoice, type SpellChoice, type TurnView } from "./views/turn-view.js";
@@ -59,6 +60,8 @@ export interface ActivityTableView {
   readonly joinEntrance: string | null;
   readonly activeName: string | null;
   readonly upcomingNames: readonly string[];
+  // Everyone in the fight in turn order, starting with whoever is up. Empty outside a fight.
+  readonly order: NonNullable<NonNullable<ActivityPanelCombat>["order"]>;
   // How many heroes the table was opened for, so the party panel can show the seats still open.
   readonly partySeats: number;
   readonly party: readonly {
@@ -80,6 +83,10 @@ export interface ActivityTableView {
     readonly seatUserId?: string;
     // Where the hero stands in a fight (the zone's name), otherwise null.
     readonly zone: string | null;
+    // In a fight: the spell they hold their concentration on, their death saves when down, and the conditions and lasting spells on them.
+    readonly concentration: string | null;
+    readonly deathSaves: DeathSavesView | null;
+    readonly statuses: readonly string[];
     // The action they sent for this round, when they have sent one.
     readonly intent: string | null;
     readonly tableStatus: "acting" | "submitted" | "passed" | "missed" | "away" | "waiting";
@@ -98,7 +105,7 @@ export interface ActivityTableView {
   // The rules book's lines for every spell this hero can see, by the name shown on the page.
   readonly spellFacts: Readonly<Record<string, SpellFacts>>;
   // Summons and companions fighting for the party, each with the hero or creature it belongs to.
-  readonly allies: readonly { readonly name: string; readonly hp: number; readonly maxHp: number; readonly condition: string; readonly zone: string; readonly active: boolean; readonly ownerName: string | null }[];
+  readonly allies: readonly { readonly name: string; readonly hp: number; readonly maxHp: number; readonly condition: string; readonly zone: string; readonly active: boolean; readonly ownerName: string | null; readonly concentration: string | null; readonly statuses: readonly string[] }[];
   readonly foes: readonly {
     readonly name: string;
     readonly rank?: "boss" | "elite" | "minion" | "standard";
@@ -107,6 +114,7 @@ export interface ActivityTableView {
     readonly band: string;
     readonly zone: string;
     readonly active: boolean;
+    readonly statuses: readonly string[];
   }[];
   readonly offers: readonly { readonly id: string; readonly fromCharacterId: string; readonly toCharacterId: string; readonly fromName: string; readonly toName: string; readonly itemName: string; readonly direction: "incoming" | "outgoing" }[];
   // Full inventory/resource details are disclosed for the requesting player's hero only.
@@ -159,6 +167,8 @@ export interface ActivityTableView {
   readonly opportunityAttack: ReturnType<typeof buildOpportunityAttackView>;
   readonly opportunityAttackIsYours: boolean;
 }
+
+type ActivityPanelCombat = CombatView | undefined;
 
 // A turn menu with every choice named in the game's language, so the page never has to make a label from a content id.
 export type ActivityTurnView = Omit<TurnView, "attacks" | "spells" | "features" | "potions" | "teleports"> & {
@@ -305,6 +315,9 @@ export function buildActivityTableView(
       isYou: hero.ownerUserId === userId,
       ...(record.organizerId === userId && hero.ownerUserId !== userId && state.members[hero.ownerUserId]?.availability === "away" && (state.encounter === null || state.encounter.status === "ended") ? { seatUserId: hero.ownerUserId } : {}),
       zone: panel.combat?.party.find((combatant) => combatant.name === hero.name)?.zone ?? null,
+      concentration: panel.combat?.party.find((combatant) => combatant.name === hero.name)?.concentration ?? null,
+      deathSaves: panel.combat?.party.find((combatant) => combatant.name === hero.name)?.deathSaves ?? null,
+      statuses: panel.combat?.party.find((combatant) => combatant.name === hero.name)?.statuses ?? [],
       // What they said they would do this round: the Adventure channel posts it for everyone when it is sent.
       intent: ((): string | null => { const sent = state.round?.submissions[hero.characterId]; return sent?.kind === "action" ? sent.text.slice(0, 240) : null; })(),
       tableStatus: panel.combat?.party.some((combatant) => combatant.name === hero.name && combatant.active) === true
@@ -440,10 +453,11 @@ export function buildActivityTableView(
     joinEntrance: inviteCurrent ? joinRequest.entrance ?? null : null,
     activeName: panel.combat?.activeName ?? null,
     upcomingNames: panel.combat?.upcoming ?? [],
+    order: panel.combat?.order ?? [],
     partySeats: Math.max(record.lobby.maxPlayers, publicParty.length),
     party: publicParty,
-    foes: panel.combat?.foes ?? [],
-    allies: panel.combat?.allies ?? [],
+    foes: (panel.combat?.foes ?? []).map((foe) => ({ ...foe, statuses: foe.statuses ?? [] })),
+    allies: (panel.combat?.allies ?? []).map((ally) => ({ ...ally, concentration: ally.concentration ?? null, statuses: ally.statuses ?? [] })),
     replacement: ((): ActivityTableView["replacement"] => {
       if (sheet === undefined || !isFallen(state, sheet.id) || record.lifecycle === "archived") return null;
       const living = Object.values(state.characters).filter((hero) => !isFallen(state, hero.id));

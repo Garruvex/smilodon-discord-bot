@@ -64,7 +64,7 @@ export function finishBusy(message, failed) {
 }
 
 
-export const actionIcon = { attack: "attack", combatSpell: "spell", exploreSpell: "spell", healSpell: "heal", reviveSpell: "heal", useItem: "potion", combatItem: "potion", move: "move", moveScene: "move", dash: "dash", combatDodge: "dodge", withdraw: "withdraw", shield: "shield", wildShape: "shape", roll: "roll", ready: "play", begin: "play", continue: "play", details: "notice", submit: "attack", pass: "pause", shop: "coins", askNpc: "clue", feature: "shape", reaction: "shield", smite: "attack", opportunityAttack: "attack", teleport: "move", summonCompanion: "shape", acceptInvite: "play", joinHero: "play", chooseHero: "play", startLobby: "play" };
+export const actionIcon = { attack: "attack", combatSpell: "spell", exploreSpell: "spell", healSpell: "heal", reviveSpell: "heal", useItem: "potion", combatItem: "potion", move: "move", moveScene: "move", dash: "dash", disengage: "withdraw", combatDodge: "dodge", withdraw: "withdraw", shield: "shield", wildShape: "shape", roll: "roll", ready: "play", begin: "play", continue: "play", details: "notice", submit: "attack", pass: "pause", shop: "coins", askNpc: "clue", feature: "shape", reaction: "shield", smite: "attack", opportunityAttack: "attack", teleport: "move", summonCompanion: "shape", acceptInvite: "play", joinHero: "play", chooseHero: "play", startLobby: "play" };
 
 export const classIcon = { wizard: "spell", sorcerer: "spell", warlock: "spell", cleric: "heal", druid: "shape", paladin: "shield", ranger: "ranged", rogue: "withdraw", fighter: "attack", barbarian: "attack", monk: "dodge", bard: "clue" };
 

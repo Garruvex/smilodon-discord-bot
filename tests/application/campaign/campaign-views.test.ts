@@ -199,6 +199,38 @@ it("previews initiative across the round boundary and skips creatures out of com
   expect(buildPanelView(record(lobbyOf()), removed, starter.bible, enSrd51Glossary).combat?.upcoming).toEqual(["Mira"]);
 });
 
+it("shows the whole turn order, concentration, death saves and conditions in a fight", () => {
+  const fight = startedFight();
+  const encounter = fight.state.encounter!;
+  const foes = Object.values(encounter.combatants).filter((creature) => creature.side === "foes");
+  const mira = encounter.combatants["c-mira"]!;
+  const borin = encounter.combatants["c-borin"]!;
+  const state = {
+    ...fight.state,
+    encounter: {
+      ...encounter,
+      order: ["c-mira", foes[0]!.id, "c-borin", foes[1]!.id],
+      turnIndex: 2,
+      combatants: {
+        ...encounter.combatants,
+        "c-mira": { ...mira, concentration: { resolutionId: "r1", spellId: "spell:bless" as const } },
+        "c-borin": { ...borin, hp: 0, condition: "unconscious" as const, deathSaves: { successes: 1, failures: 2 } },
+        [foes[0]!.id]: { ...foes[0]!, effects: [appliedCondition("condition:prone")], concentration: { resolutionId: "r2", spellId: "spell:bless" as const } },
+      },
+    },
+  };
+  const combat = buildPanelView(record(lobbyOf()), state, starter.bible, enSrd51Glossary).combat!;
+  expect(combat.order?.[0]).toMatchObject({ name: "Borin", active: true, down: true });
+  expect(combat.order).toHaveLength(4);
+  expect(combat.party.find((hero) => hero.name === "Mira")?.concentration).toBe("Bless");
+  expect(combat.party.find((hero) => hero.name === "Borin")?.deathSaves).toEqual({ successes: 1, failures: 2, stable: false });
+  expect(combat.party.find((hero) => hero.name === "Mira")?.deathSaves).toBeNull();
+  const prone = combat.foes.find((foe) => foe.statuses?.length === 1);
+  expect(prone?.statuses).toEqual(["Prone"]);
+  // A foe's concentration stays hidden from the table.
+  expect(JSON.stringify(combat.foes)).not.toContain("Bless");
+});
+
 describe("buildReactionView", () => {
   // Elspeth, made a wizard for this test, has Shield prepared. Goblin A shoots
   // her with a natural 15 (+4 to hit against armor class 18, but not 23), so
