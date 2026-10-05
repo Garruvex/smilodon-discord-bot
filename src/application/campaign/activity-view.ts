@@ -49,6 +49,8 @@ export interface ActivityTableView {
   readonly hitDice: { readonly left: number; readonly die: number | null; readonly canSpend: boolean; readonly rolling: boolean } | null;
   readonly yourTurn: boolean;
   readonly canBegin: boolean;
+  readonly canRequestJoin: boolean;
+  readonly joinEntrance: string | null;
   readonly activeName: string | null;
   readonly upcomingNames: readonly string[];
   // How many heroes the table was opened for, so the party panel can show the seats still open.
@@ -74,13 +76,13 @@ export interface ActivityTableView {
     readonly zone: string | null;
     readonly tableStatus: "acting" | "submitted" | "passed" | "missed" | "away" | "waiting";
   }[];
-  // Summons and companions fighting for the party, each with the hero or creature it belongs to.
-  readonly allies: readonly { readonly name: string; readonly hp: number; readonly maxHp: number; readonly condition: string; readonly zone: string; readonly active: boolean; readonly ownerName: string | null }[];
   // Your own hero's full sheet, and what you may choose when you level up. Null without a hero.
   readonly heroSheet: HeroSheetView | null;
   readonly levelUp: LevelUpView | null;
   // The rules book's lines for every spell this hero can see, by the name shown on the page.
   readonly spellFacts: Readonly<Record<string, SpellFacts>>;
+  // Summons and companions fighting for the party, each with the hero or creature it belongs to.
+  readonly allies: readonly { readonly name: string; readonly hp: number; readonly maxHp: number; readonly condition: string; readonly zone: string; readonly active: boolean; readonly ownerName: string | null }[];
   readonly foes: readonly {
     readonly name: string;
     readonly rank?: "boss" | "elite" | "minion" | "standard";
@@ -162,6 +164,9 @@ export interface ActivityLobbyView {
   readonly playerCount: number;
   readonly maxPlayers: number;
   readonly canStart: boolean;
+  readonly isOrganizer: boolean;
+  readonly isMember: boolean;
+  readonly canJoin: boolean;
   readonly startBlockReason: "notEnoughPlayers" | "notReady" | null;
   readonly selectedHeroId: string | null;
   readonly selectedHeroName: string | null;
@@ -173,13 +178,16 @@ export interface ActivityLobbyView {
 
 export type ActivityGameView = ActivityLobbyView | ActivityTableView;
 
-export function buildActivityLobbyView(record: CampaignRecord, bible: AdventureBible, userId: UserId, heroes: readonly { readonly id: string; readonly name: string; readonly class: string }[], savedHeroChoices: readonly { readonly id: string; readonly name: string; readonly className: string }[] = []): ActivityLobbyView {
+export function buildActivityLobbyView(record: CampaignRecord, bible: AdventureBible, userId: UserId, heroes: readonly { readonly id: string; readonly name: string; readonly class: string }[], savedHeroChoices: readonly { readonly id: string; readonly name: string; readonly className: string }[] = [], now = Date.now()): ActivityLobbyView {
   const ownMember = record.lobby.members.find((member) => member.userId === userId && member.status !== "withdrawn");
   const takenIds = new Set(record.lobby.members.flatMap((member) => member.status !== "withdrawn" && member.heroId !== null && member.userId !== userId ? [member.heroId] : []));
   const selectedPreset = heroes.find((hero) => hero.id === ownMember?.heroId);
   const selectedName = ownMember?.label?.name ?? selectedPreset?.name ?? null;
   const selectedClass = ownMember?.label?.className ?? selectedPreset?.class ?? null;
   const startProblem = readyToStart(record.lobby);
+  const members = record.lobby.members.filter((member) => member.status !== "withdrawn");
+  const reservations = Object.entries(record.joinRequests ?? {}).filter(([id, request]) => !members.some((member) => member.userId === id) && request.expiresAt > now && (request.status === "invited" || request.status === "approved" || request.status === "queued"));
+  const ownReservation = reservations.some(([id]) => id === userId);
   return {
     kind: "lobby",
     language: record.language,
@@ -190,6 +198,9 @@ export function buildActivityLobbyView(record: CampaignRecord, bible: AdventureB
     playerCount: record.lobby.members.filter((member) => member.status !== "withdrawn").length,
     maxPlayers: record.lobby.maxPlayers,
     canStart: record.organizerId === userId && startProblem === null,
+    isOrganizer: record.organizerId === userId,
+    isMember: ownMember !== undefined,
+    canJoin: ownMember === undefined && record.lobby.status === "open" && (record.visibility !== "membersOnly" || record.organizerId === userId || ownReservation) && (ownReservation || members.length + reservations.length < record.lobby.maxPlayers),
     startBlockReason: startProblem === "notEnoughPlayers" || startProblem === "notReady" ? startProblem : null,
     selectedHeroId: ownMember?.heroId ?? null,
     selectedHeroName: selectedName,
@@ -277,13 +288,13 @@ export function buildActivityTableView(
       imageUrl: partySheet?.origin === undefined && !hasPicture(record.images?.[`hero:${hero.characterId}`]) ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/characters/${encodeURIComponent(hero.characterId)}`,
       isYou: hero.ownerUserId === userId,
       ...(record.organizerId === userId && hero.ownerUserId !== userId && state.members[hero.ownerUserId]?.availability === "away" && (state.encounter === null || state.encounter.status === "ended") ? { seatUserId: hero.ownerUserId } : {}),
+      zone: panel.combat?.party.find((combatant) => combatant.name === hero.name)?.zone ?? null,
       tableStatus: panel.combat?.party.some((combatant) => combatant.name === hero.name && combatant.active) === true
         ? "acting"
         : state.round?.submissions[hero.characterId]?.kind === "action" ? "submitted"
           : state.round?.submissions[hero.characterId]?.kind === "pass" ? "passed"
             : state.round?.submissions[hero.characterId]?.kind === "missed" ? "missed"
               : state.members[hero.ownerUserId]?.availability === "away" ? "away" : "waiting",
-      zone: panel.combat?.party.find((combatant) => combatant.name === hero.name)?.zone ?? null,
     };
   });
   const fullHero = heroView === null ? null : {
@@ -397,6 +408,9 @@ export function buildActivityTableView(
     })(),
     yourTurn: turn !== null,
     canBegin: record.organizerId === userId,
+    canRequestJoin: ownCharacterId === null && record.organizerId !== userId && record.visibility !== "membersOnly"
+      && Object.keys(state.members).length + Object.entries(record.joinRequests ?? {}).filter(([id, request]) => state.members[id] === undefined && request.expiresAt > now && (request.status === "invited" || request.status === "approved" || request.status === "queued")).length < record.lobby.maxPlayers,
+    joinEntrance: inviteCurrent ? joinRequest.entrance ?? null : null,
     activeName: panel.combat?.activeName ?? null,
     upcomingNames: panel.combat?.upcoming ?? [],
     partySeats: Math.max(record.lobby.maxPlayers, publicParty.length),

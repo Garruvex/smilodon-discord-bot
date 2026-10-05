@@ -83,6 +83,7 @@ export interface ActivityCampaignListingItem {
   readonly lifecycle: "lobby" | "active" | "paused";
   readonly playerCount: number;
   readonly maxPlayers: number;
+  readonly canWatch: boolean;
   readonly action: "join" | "continue" | "request" | "requested" | "queued" | "invited" | "expired" | "full" | "resume";
 }
 
@@ -216,9 +217,10 @@ export class CampaignLobbyService {
         // player already belongs to it or has an unexpired invitation.
         // A private game stays hidden unless there is an invitation, or there was one that has since run out, which the player is told about.
         const expired = request !== undefined && !requestIsCurrent;
-        if (privateGame && !participant && !invited && !expired) continue;
-        if (record.lifecycle === "lobby" && !participant && privateGame) continue;
-        if (record.lifecycle !== "lobby" && !participant && !invited && !expired && privateGame) continue;
+        const pending = requestIsCurrent && request.status === "requested";
+        if (privateGame && !participant && !invited && !expired && !pending) continue;
+        if (record.lifecycle === "lobby" && !participant && !invited && privateGame) continue;
+        if (record.lifecycle !== "lobby" && !participant && !invited && !expired && !pending && privateGame) continue;
 
         const adventureTitle = this.options.adventures.documentAt(record.adventure.adventureId, record.adventure.version, record.language)?.bible.title
           ?? record.adventure.adventureId;
@@ -231,7 +233,8 @@ export class CampaignLobbyService {
             lifecycle: record.lifecycle,
             playerCount,
             maxPlayers: record.lobby.maxPlayers,
-            action: participant ? "continue" : playerCount >= record.lobby.maxPlayers ? "full" : "join",
+            canWatch: !privateGame || participant || invited,
+            action: participant ? "continue" : invited ? "join" : this.reservedSeats(record) >= record.lobby.maxPlayers ? "full" : "join",
           });
           continue;
         }
@@ -247,7 +250,7 @@ export class CampaignLobbyService {
               ? "requested"
               : expired
                 ? "expired"
-                : "request";
+                : this.reservedSeats(record) >= record.lobby.maxPlayers ? "full" : "request";
         games.push({
           campaignId: record.key.campaignId,
           name: record.name,
@@ -255,6 +258,7 @@ export class CampaignLobbyService {
           lifecycle: record.lifecycle,
           playerCount,
           maxPlayers: record.lobby.maxPlayers,
+          canWatch: !privateGame || participant || invited,
           action,
         });
       }
@@ -266,19 +270,52 @@ export class CampaignLobbyService {
   }
 
   public async joinFromActivity(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>> {
-    const stored = await this.get(key);
-    if (stored === undefined) return refused("notFound");
-    const existing = stored.record.lobby.members.some((member) => member.userId === userId && member.status !== "withdrawn");
-    const invitation = stored.record.joinRequests?.[userId];
-    const hasInvitation = invitation !== undefined
-      && invitation.expiresAt > this.options.clock.now()
-      && (invitation.status === "invited" || invitation.status === "approved");
-    if (stored.record.visibility === "membersOnly" && stored.record.organizerId !== userId && !existing && !hasInvitation) return refused("privateInviteOnly");
-    return this.join(key, userId);
+    return this.queue.run(queueKey(key), () => this.options.unitOfWork.transaction(async (tx) => {
+      const stored = await tx.loadRecord(key);
+      if (stored === undefined) return refused("notFound");
+      const { record } = stored;
+      if (record.lifecycle !== "lobby") return refused("notLobby");
+      const existing = lobbyRules.activeMembers(record.lobby).some((member) => member.userId === userId);
+      const invitation = record.joinRequests?.[userId];
+      const hasInvitation = invitation !== undefined && invitation.expiresAt > this.options.clock.now()
+        && (invitation.status === "invited" || invitation.status === "approved");
+      if (record.visibility === "membersOnly" && record.organizerId !== userId && !existing && !hasInvitation) return refused("privateInviteOnly");
+      if (!existing && !hasInvitation && this.reservedSeats(record) >= record.lobby.maxPlayers) return refused("full");
+      const result = lobbyRules.join(record.lobby, userId);
+      if (!result.ok) return refused(result.reason);
+      const joinRequests = { ...(record.joinRequests ?? {}) };
+      delete joinRequests[userId];
+      const next = { ...record, lobby: result.lobby, joinRequests };
+      await tx.saveRecord(next, stored.revision);
+      return ok(next);
+    }));
+  }
+
+  public inviteLobby(key: CampaignKey, actorId: UserId, userId: UserId): Promise<ServiceResult<CampaignRecord>> {
+    return this.queue.run(queueKey(key), () => this.options.unitOfWork.transaction(async (tx) => {
+      const stored = await tx.loadRecord(key);
+      if (stored === undefined) return refused("notFound");
+      const { record } = stored;
+      if (record.organizerId !== actorId) return refused("notOrganizer");
+      if (record.lifecycle !== "lobby" || record.lobby.status !== "open") return refused("notLobby");
+      if (lobbyRules.activeMembers(record.lobby).some((member) => member.userId === userId)) return refused("joinAlreadyPlaying");
+      const current = record.joinRequests?.[userId];
+      const reserved = current?.status === "invited" && current.expiresAt > this.options.clock.now();
+      if (!reserved && this.reservedSeats(record) >= record.lobby.maxPlayers) return refused("gameFull");
+      const next: CampaignRecord = { ...record, joinRequests: { ...(record.joinRequests ?? {}), [userId]: { status: "invited", expiresAt: this.options.clock.now() + 7 * 24 * 60 * 60 * 1000 } } };
+      await tx.saveRecord(next, stored.revision);
+      return ok(next);
+    }));
   }
 
   public join(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>> {
-    return this.change(key, (lobby) => lobbyRules.join(lobby, userId));
+    return this.change(key, (lobby, record) => {
+      const alreadySeated = lobbyRules.activeMembers(lobby).some((member) => member.userId === userId);
+      const invite = record.joinRequests?.[userId];
+      const reserved = invite !== undefined && invite.expiresAt > this.options.clock.now() && (invite.status === "invited" || invite.status === "approved");
+      if (!alreadySeated && !reserved && this.reservedSeats(record) >= lobby.maxPlayers) return { ok: false, reason: "full" };
+      return lobbyRules.join(lobby, userId);
+    });
   }
 
   // A running public game accepts applications. A private game can only be
@@ -290,6 +327,7 @@ export class CampaignLobbyService {
       if (record.visibility === "membersOnly" && current === undefined) return "privateInviteOnly";
       if (playing) return "joinAlreadyPlaying";
       if (current !== undefined && current.expiresAt > this.options.clock.now()) return current;
+      if (this.reservedSeats(record) >= record.lobby.maxPlayers) return "gameFull";
       return { status: "requested", expiresAt: this.options.clock.now() + 7 * 24 * 60 * 60 * 1000 };
     });
   }
@@ -512,7 +550,8 @@ export class CampaignLobbyService {
   }
 
   private reservedSeats(record: CampaignRecord): number {
-    return record.lobby.members.length + Object.entries(record.joinRequests ?? {}).filter(([userId, request]) => !record.lobby.members.some((member) => member.userId === userId) && (request.status === "invited" || request.status === "approved" || request.status === "queued") && request.expiresAt > this.options.clock.now()).length;
+    const members = lobbyRules.activeMembers(record.lobby);
+    return members.length + Object.entries(record.joinRequests ?? {}).filter(([userId, request]) => !members.some((member) => member.userId === userId) && (request.status === "invited" || request.status === "approved" || request.status === "queued") && request.expiresAt > this.options.clock.now()).length;
   }
 
   private changeJoinRequest(key: CampaignKey, userId: UserId, decide: (record: CampaignRecord, playing: boolean, reserved: boolean) => NonNullable<CampaignRecord["joinRequests"]>[string] | ServiceRefusal | null): Promise<ServiceResult<CampaignRecord>> {
@@ -523,7 +562,8 @@ export class CampaignLobbyService {
       const { record } = stored;
       if (record.lifecycle !== "active" && record.lifecycle !== "paused") return refused("closed");
       const playing = campaign.state.members[userId]?.characterId != null;
-      const reserved = record.joinRequests?.[userId]?.status === "invited" || record.joinRequests?.[userId]?.status === "approved" || record.joinRequests?.[userId]?.status === "queued";
+      const request = record.joinRequests?.[userId];
+      const reserved = request !== undefined && request.expiresAt > this.options.clock.now() && (request.status === "invited" || request.status === "approved" || request.status === "queued");
       const result = decide(record, playing, reserved);
       if (typeof result === "string") return refused(result);
       const joinRequests = { ...(record.joinRequests ?? {}) };
@@ -625,7 +665,7 @@ export class CampaignLobbyService {
         if (record.lifecycle === "archived") return refused("closed");
         if (actorId !== null && record.organizerId !== actorId) return refused("notOrganizer");
         const campaign = await tx.loadCampaign(key);
-        const seated = Math.max(lobbyRules.activeMembers(record.lobby).length, Object.keys(campaign?.state.members ?? {}).length);
+        const seated = Math.max(this.reservedSeats(record), Object.keys(campaign?.state.members ?? {}).length);
         const resized = lobbyRules.resize(record.lobby, maxPlayers, seated);
         if (!resized.ok) return refused(resized.reason);
         if (resized.lobby === record.lobby) return ok(record);

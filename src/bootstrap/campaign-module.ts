@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import { ActivityTableService } from "../infrastructure/activity/activity-table-service.js";
 import { dirname, resolve } from "node:path";
 
 import Database from "better-sqlite3";
@@ -93,6 +94,7 @@ export interface CampaignModule {
   // Whether one of these channels (a message's own and, in a thread, its parent) is a game's Party or Adventure post.
   isGameChannel(guildId: string, channelIds: readonly string[]): Promise<boolean>;
   readonly activity: {
+    readonly tables: ActivityTableService;
     characterCatalog(): unknown;
     listCharacters(userId: UserId): Promise<unknown>;
     getCharacter(userId: UserId, characterId: string): Promise<unknown | null>;
@@ -258,6 +260,28 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
 
   const authority = new CampaignAuthority(input.accessPolicyService, unitOfWork);
   const creator = new CampaignGameCreator({ lobby, setup, defaultAdventureId: starterAdventureId, modelConfigured: model !== null, adventures });
+  const tables = new ActivityTableService({
+    unitOfWork, lobby, creator, adventures, now: (): number => clock.now(), refresh: (key): void => cards.refresh(key),
+    isAdmin: async (guildId, userId): Promise<boolean> => {
+      const guild = await client.guilds.fetch(guildId);
+      const member = await guild.members.fetch({ user: userId, force: true });
+      const settings = await unitOfWork.transaction((tx) => tx.loadGuildSettings(guildId));
+      return authority.isActivityAdmin({ guildId, userId, channelId: settings?.hubChannelId ?? guildId, roleIds: [...member.roles.cache.keys()], memberPermissions: member.permissions.bitfield, botPermissions: guild.members.me?.permissions.bitfield ?? null });
+    },
+    isMember: async (guildId, userId): Promise<boolean> => {
+      const guild = await client.guilds.fetch(guildId);
+      return guild.members.fetch({ user: userId, force: true }).then((member) => !member.user.bot, () => false);
+    },
+    searchMembers: async (guildId, query): Promise<readonly { userId: string; displayName: string }[]> => {
+      const guild = await client.guilds.fetch(guildId);
+      const members = await guild.members.search({ query, limit: 10 });
+      return [...members.values()].filter((member) => !member.user.bot).map((member) => ({ userId: member.id, displayName: member.displayName }));
+    },
+    memberName: async (guildId, userId): Promise<string> => {
+      const guild = await client.guilds.fetch(guildId);
+      return guild.members.fetch(userId).then((member) => member.displayName, () => userId);
+    },
+  });
   const libraryHandler = new CharacterLibraryComponentHandler({
     library,
     content,
@@ -322,6 +346,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     settings: new CampaignSettingsAccess({ unitOfWork, lobby, setup, cards, modelConfigured: model !== null }),
     isGameChannel: async (guildId, channelIds) => (await lobby.findByChannel(guildId, channelIds)) !== undefined,
     activity: {
+      tables,
       characterCatalog: () => ({ races: selectableBuildRaces, skills, classes: buildClasses.map((id) => ({ id, skillChoices: classTemplates[id].skillChoices, skillCount: classTemplates[id].skillCount, expertiseCount: classTemplates[id].expertiseCount, kits: classTemplates[id].kits.map((kit) => kit.id), suggestedAbilities: suggestedAbilities(id) })) }),
       listCharacters: async (userId) => (await library.list(userId)).flatMap((entry) => entry.snapshots.filter((snapshot) => snapshot.branch === "main").sort((a, b) => a.revision - b.revision).slice(-1).map((snapshot) => ({ id: entry.character.id, snapshotId: snapshot.id, name: entry.character.name, className: entry.character.className, race: snapshot.build.race ?? null, versionCount: entry.snapshots.filter((version) => version.branch === "main").length }))),
       getCharacter: async (userId, characterId) => {
@@ -359,7 +384,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
         const adventure = adventures.documentAt(storedRecord.record.adventure.adventureId, storedRecord.record.adventure.version, storedRecord.record.language);
         if (adventure === undefined) return { kind: "refused", reason: "notFound" } as const;
         if (storedRecord.record.lifecycle === "lobby") {
-          return { kind: "ok", value: buildActivityLobbyView(storedRecord.record, adventure.bible, userId, adventure.heroes, savedHeroChoices), token } as const;
+          return { kind: "ok", value: buildActivityLobbyView(storedRecord.record, adventure.bible, userId, adventure.heroes, savedHeroChoices, clock.now()), token } as const;
         }
         if ((storedRecord.record.lifecycle !== "active" && storedRecord.record.lifecycle !== "paused") || storedCampaign === undefined) {
           return { kind: "refused", reason: "notActive" } as const;
@@ -405,6 +430,9 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
             if (heroId === null) return { kind: "refused", reason: "invalidAction" };
             return lobby.chooseHero(key, userId, heroId).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
           }
+          case "joinLobby": return lobby.joinFromActivity(key, userId).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
+          case "leaveLobby": return lobby.leave(key, userId).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
+          case "requestJoin": return lobby.requestOngoingJoin(key, userId).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
           case "chooseSaved": {
             const snapshotId = textValue(action.snapshotId);
             if (snapshotId === null) return { kind: "refused", reason: "invalidAction" };

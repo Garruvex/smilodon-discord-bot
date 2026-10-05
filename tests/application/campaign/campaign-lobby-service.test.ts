@@ -106,6 +106,33 @@ describe("creating a campaign", () => {
 });
 
 describe("the lobby", () => {
+  it("requires an invitation for private Activity seats and consumes that reservation", async () => {
+    const { service } = setup();
+    const { key } = value(await service.create(input({ visibility: "membersOnly", maxPlayers: 1 })));
+    expect(refusal(await service.joinFromActivity(key, "u-b"))).toBe("privateInviteOnly");
+    expect(await service.activityGames(guildId, "u-b")).toEqual([]);
+    expect(refusal(await service.inviteLobby(key, "u-b", "u-c"))).toBe("notOrganizer");
+    value(await service.inviteLobby(key, "u-org", "u-b"));
+    expect((await service.activityGames(guildId, "u-b"))[0]).toMatchObject({ action: "join", canWatch: true });
+    expect(refusal(await service.joinFromActivity(key, "u-org"))).toBe("full");
+    value(await service.joinFromActivity(key, "u-b"));
+    expect((await service.get(key))?.record.joinRequests?.["u-b"]).toBeUndefined();
+    expect(refusal(await service.joinFromActivity(key, "u-c"))).toBe("privateInviteOnly");
+  });
+
+  it("reserves invitations against public joining and resizing, releasing withdrawn seats", async () => {
+    const { service } = setup();
+    const { key } = value(await service.create(input({ maxPlayers: 2 })));
+    value(await service.joinFromActivity(key, "u-org"));
+    value(await service.inviteLobby(key, "u-org", "u-b"));
+    expect(refusal(await service.joinFromActivity(key, "u-c"))).toBe("full");
+    expect((await service.activityGames(guildId, "u-c"))[0]?.action).toBe("full");
+    expect((await service.setPartySize(key, "u-org", 1)).kind).toBe("refused");
+    value(await service.leave(key, "u-org"));
+    value(await service.joinFromActivity(key, "u-c"));
+    value(await service.joinFromActivity(key, "u-b"));
+    expect((await service.get(key))?.record.lobby.members.filter((member) => member.status !== "withdrawn")).toHaveLength(2);
+  });
   it("seats players, lets them pick preset heroes, and lists them in order", async () => {
     const { service } = setup();
     const { key } = value(await service.create(input()));
@@ -226,6 +253,7 @@ describe("joining an ongoing campaign", () => {
     const { service, store, key } = await running();
     expect(refusal(await service.joinOngoingHero(key, "u-b", heroIds[1] ?? "", "before"))).toBe("joinNotApproved");
     value(await service.requestOngoingJoin(key, "u-b"));
+    expect((await service.activityGames(guildId, "u-b")).find((game) => game.campaignId === key.campaignId)?.action).toBe("requested");
     expect((await service.get(key))?.record.joinRequests?.["u-b"]?.status).toBe("requested");
     value(await service.decideOngoingJoin(key, "u-org", "u-b", true, "The party meets them at the inn."));
     value(await service.joinOngoingHero(key, "u-b", heroIds[1] ?? "", "joining"));

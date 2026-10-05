@@ -34,7 +34,11 @@ export const artIconPrefix = "/art-icons";
 
 export function setMessage(message) { messageElement.textContent = message; }
 
-export function setLiveMessage(message) { document.querySelector("#live-message").textContent = message; }
+export function setLiveMessage(message) {
+  document.querySelector("#live-message").textContent = message;
+  const lobby = document.querySelector("#table-lobby-message");
+  if (lobby) lobby.textContent = message;
+}
 
 // The pill that says an action is on its way. It sits at the bottom of the screen, where the small status line cannot be missed,
 // says so again if the answer is slow, and ends with what happened.

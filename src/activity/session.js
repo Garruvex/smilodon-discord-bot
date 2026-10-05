@@ -7,6 +7,7 @@ import { loadGames, showError } from "./lobby.js";
 import { resetDrawers } from "./drawers.js";
 import { openGame } from "./poll.js";
 import { resetPaint } from "./render.js";
+import { returnToTables } from "./table-lifecycle.js";
 
 document.querySelector("#back-to-lobby").addEventListener("click", () => {
   clearInterval(app.tableTimer);
@@ -17,7 +18,7 @@ document.querySelector("#back-to-lobby").addEventListener("click", () => {
   app.currentSnapshot = null;
   liveScreen.hidden = true;
   lobbyScreen.hidden = false;
-  void setLanguage(app.discordLanguage).then(() => loadGames()).catch((error) => showError(error instanceof Error ? error.message : t("activity.status.couldNotLoad")));
+  void setLanguage(app.discordLanguage).then(() => returnToTables()).catch((error) => showError(error instanceof Error ? error.message : t("activity.status.couldNotLoad")));
 });
 
 document.querySelector("#lobby-retry").addEventListener("click", () => {
@@ -94,6 +95,7 @@ export async function authenticate() {
   app.sessionToken = session.session_token;
   if (typeof session.access_token !== "string" || typeof app.sessionToken !== "string") throw new Error(t("activity.connection.invalidSession"));
   const identity = await app.discordSdk.commands.authenticate({ access_token: session.access_token });
+  app.discordUserId = identity.user.id;
   userElement.textContent = identity.user.global_name || identity.user.username;
   serverElement.textContent = t("activity.connection.thisServer");
   app.connectionStage = "Loading games";

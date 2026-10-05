@@ -5,6 +5,7 @@ import { iconForClass, iconImage, liveScreen, setArtwork, setLiveMessage } from 
 import { renderCharacterWorkspace, renderEquipment } from "./hero.js";
 import { classText, t } from "./i18n.js";
 import { renderLobby } from "./lobby.js";
+import { renderJoiningPanel } from "./table-lifecycle.js";
 import { renderMap } from "./map.js";
 import { renderEnemies, renderParty } from "./party.js";
 import { renderMoveNotice, renderPresenceToggle, syncAwayLock } from "./vote.js";
@@ -41,6 +42,15 @@ export function renderGame(game) {
 
 export function paintGame(game) {
   app.classNames = game.classNames ?? {};
+  document.querySelector("#table-lobby-screen").hidden = game.kind !== "lobby";
+  liveScreen.hidden = game.kind === "lobby";
+  document.querySelector("#table-manage").hidden = game.kind !== "table" || !game.canBegin;
+  if (game.kind === "lobby") {
+    renderLobby(game);
+    syncDrawers(game);
+    return;
+  }
+  renderJoiningPanel(game);
   liveScreen.dataset.mode = game.kind === "lobby" ? "lobby" : game.mode;
   document.querySelector("#live-campaign").textContent = game.campaignName;
   document.querySelector("#live-adventure").textContent = game.adventureTitle.toLocaleUpperCase();

@@ -3,6 +3,7 @@ import type { CampaignRecord } from "../../../application/campaign/ports/campaig
 import type { CampaignUnitOfWork } from "../../../application/campaign/ports/campaign-store.js";
 import { CommandModule } from "../../../application/commands/command.js";
 import { publicAccessPolicy, RoleMatchMode, type CommandAccessPolicy } from "../../../domain/access/access-policy.js";
+import type { AccessSubject } from "../../../domain/access/access-rule.js";
 
 export type AuthorityInteraction = Parameters<AccessPolicyService["evaluate"]>[2];
 
@@ -40,5 +41,13 @@ export class CampaignAuthority {
 
   public async canManage(interaction: AuthorityInteraction, record: CampaignRecord): Promise<boolean> {
     return record.organizerId === interaction.user.id || (await this.isAdmin(interaction));
+  }
+
+  public async isActivityAdmin(member: Omit<AccessSubject, "isOwner">): Promise<boolean> {
+    // Apply server/module restrictions before checking the D&D role.
+    if (!this.access.evaluateMember(publicAccessPolicy, CommandModule.Campaign, member).allowed) return false;
+    if (this.access.evaluateMember(botAdministratorPolicy, CommandModule.Campaign, member).allowed) return true;
+    const settings = await this.unitOfWork.transaction((tx) => tx.loadGuildSettings(member.guildId));
+    return settings?.adminRoleId != null && member.roleIds.includes(settings.adminRoleId);
   }
 }

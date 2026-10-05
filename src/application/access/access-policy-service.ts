@@ -25,6 +25,12 @@ export class AccessPolicyService {
     return this.guildConfigurationProvider.find(guildId)?.language ?? null;
   }
 
+  // Activity callers supply a member resolved by the server, never roles from
+  // the browser. Owner status still comes from the bot configuration.
+  public evaluateMember(policy: CommandAccessPolicy, commandModule: CommandModule, member: Omit<AccessSubject, "isOwner">): AccessDecision {
+    return this.engine.evaluate({ ...member, isOwner: this.configuration.ownerUserIds.has(member.userId) }, policy, commandModule, this.guildConfigurationProvider.find(member.guildId));
+  }
+
   public evaluate(
     policy: CommandAccessPolicy,
     commandModule: CommandModule,

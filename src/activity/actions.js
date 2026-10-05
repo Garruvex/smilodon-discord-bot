@@ -168,38 +168,6 @@ export function renderTableActions(game) {
 
 export function buildTableActions(game, liveActions, log) {
   liveActions.replaceChildren();
-  if (game.joinRequestStatus === "requested") {
-    const note = document.createElement("span");
-    note.className = "live-action-note status-note join-queue-note";
-    note.textContent = t("activity.join.waitingApproval");
-    liveActions.append(note);
-    const withdraw = { kind: "withdrawJoin" };
-    log.push(JSON.stringify(withdraw));
-    liveActions.append(makeButton(t("activity.action.withdrawJoin"), () => void performAction(withdraw), false, "pause"));
-  } else if (game.joinRequestStatus === "approved") {
-    const note = document.createElement("span");
-    note.className = "live-action-note status-note join-queue-note";
-    note.textContent = t("activity.join.approvedChooseHero");
-    liveActions.append(note);
-  } else if (game.joinRequestStatus === "invited") {
-    const note = document.createElement("span");
-    note.className = "live-action-note status-note join-queue-note";
-    note.textContent = t("activity.join.invited");
-    liveActions.append(note);
-  }
-  if (game.queuedJoin) {
-    const note = document.createElement("span");
-    note.className = "live-action-note status-note join-queue-note";
-    note.textContent = game.queuedJoin.nextEncounter
-      ? t("activity.join.waitingNextEncounter", { name: game.queuedJoin.heroName })
-      : game.queuedJoin.encounterRound === null
-        ? t("activity.join.waitingEncounter", { name: game.queuedJoin.heroName })
-        : t("activity.join.waitingEncounterRound", { name: game.queuedJoin.heroName, round: game.queuedJoin.encounterRound });
-    liveActions.append(note);
-    const cancelJoin = { kind: "withdrawJoin" };
-    log.push(JSON.stringify(cancelJoin));
-    liveActions.append(makeButton(t("activity.action.cancelQueuedJoin"), () => void performAction(cancelJoin), false, "pause"));
-  }
   // A prompt the player closed, or one they have not met yet, can always be brought back from here.
   if (game.pendingRoll && !["paused", "safety", "recovery"].includes(game.mode)) {
     const row = document.createElement("div");
@@ -259,11 +227,6 @@ export function buildTableActions(game, liveActions, log) {
     const voteSpeech = speechRow(game);
     if (voteSpeech) liveActions.append(voteSpeech);
     return;
-  }
-  if (game.canAcceptInvite) addAction(t("activity.action.acceptInvite"), { kind: "acceptInvite" }, true);
-  if (game.joinRequestStatus !== "queued") {
-    for (const hero of game.joinChoices) addAction(t("activity.action.joinAs", { name: hero.name, class: classText(hero.className) }), { kind: "joinHero", heroRef: hero.id }, true);
-    for (const hero of game.savedHeroChoices ?? []) addAction(t("activity.action.joinWith", { name: hero.name, class: classText(hero.className) }), { kind: "joinHero", heroRef: hero.id }, true);
   }
   if (game.reactionIsYours && game.reaction) {
     addAction(t("activity.action.declineReaction", { name: game.reaction.attackerName }), { kind: "reaction", spellId: null, slotLevel: null }, true);
@@ -440,8 +403,6 @@ export function buildTableActions(game, liveActions, log) {
     for (const place of game.explore.places) addAction(t("activity.action.travel", { name: place.title }), { kind: "moveScene", sceneId: place.id });
   }
 
-      if (category === "spells") list.append(spellGuide(game.spellFacts));
-      if (category === "attack" && game.mode === "combat") list.append(actionGuide());
   const row = (className, nodes) => {
     const element = document.createElement("div");
     element.className = className;
@@ -479,6 +440,8 @@ export function buildTableActions(game, liveActions, log) {
       chips.append(chip);
       const list = row("action-list", groups.get(category));
       list.setAttribute("role", "tabpanel");
+      if (category === "spells") list.append(spellGuide(game.spellFacts));
+      if (category === "attack" && game.mode === "combat") list.append(actionGuide());
       lists.set(category, list);
     }
     liveActions.append(chips, ...lists.values());

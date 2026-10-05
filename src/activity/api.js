@@ -3,6 +3,7 @@ import { t } from "./i18n.js";
 import { renewSession } from "./session.js";
 
 export const apiErrorKeys = {
+  ...Object.fromEntries(["notOrganizer", "notSetup", "noModel", "invalidTable", "invalidLimits", "nameTaken", "invalidEntrance", "closed", "invalidName", "languageUnavailable", "unknownAdventure", "joinAlreadyPlaying", "provisioningFailed"].map((code) => [code, `activity.tables.${code}`])),
   ...Object.fromEntries(["actionTooLong", "emptyAction", "invalidAction", "heroFallen", "moveDecisionPending", "roundNotCollecting", "memberAway", "campaignWaiting", "staleRound"].map((code) => [code, `activity.error.${code}`])),
   noOpenRound: "activity.error.roundNotCollecting",
   activityAuthNotConfigured: "activity.connection.signInConfig", discordAuthorizationFailed: "activity.connection.discordAuthorize",

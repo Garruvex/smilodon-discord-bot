@@ -17,6 +17,7 @@ import { z } from "zod";
 import { abilities } from "../../domain/campaign/rules/effects.js";
 import { buildClasses, selectableBuildRaces, type BuildChoices } from "../../domain/campaign/character/character-build.js";
 import { skills } from "../../domain/campaign/rules/skills.js";
+import type { ActivityTableService } from "./activity-table-service.js";
 
 const activityDirectory = resolve(process.cwd(), "assets", "activity");
 const campaignIconDirectory = resolve(process.cwd(), "assets", "emojis", "dnd");
@@ -36,6 +37,7 @@ export interface ActivityServer {
 }
 
 export interface ActivityCampaignApi {
+  readonly tables: ActivityTableService;
   characterCatalog(): unknown;
   listCharacters(userId: UserId): Promise<unknown>;
   getCharacter(userId: UserId, characterId: string): Promise<unknown | null>;
@@ -63,6 +65,19 @@ const characterBuildSchema = z.object({
   name: z.string().max(80), appearance: z.string().max(400), backstory: z.string().max(400),
   raceAbilityChoices: z.array(z.enum(abilities)).optional(), raceSkillChoices: z.array(z.enum(skills as [typeof skills[number], ...typeof skills[number][]])).optional(),
 });
+
+const tableInputSchema = z.object({
+  name: z.string().trim().min(2).max(60), language: z.enum(["en", "zh-TW"]),
+  adventureId: z.string().min(1).max(256), pacing: z.enum(["live", "playByPost"]),
+  players: z.number().int().min(1).max(6), visibility: z.enum(["open", "membersOnly"]),
+  joinAsPlayer: z.boolean(), lootGold: z.enum(["pooled", "split"]).optional(),
+});
+const tableManagementSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("invite"), userId: z.string().regex(/^\d{17,20}$/), entrance: z.string().trim().max(500).default("") }),
+  z.object({ kind: z.literal("decide"), userId: z.string().regex(/^\d{17,20}$/), approve: z.boolean(), entrance: z.string().trim().max(500).default("") }),
+  z.object({ kind: z.literal("resize"), maxPlayers: z.number().int().min(1).max(6) }),
+  z.object({ kind: z.literal("remove"), userId: z.string().regex(/^\d{17,20}$/) }),
+]);
 
 interface ActivitySession {
   readonly userId: UserId;
@@ -167,6 +182,48 @@ async function respond(
     const session = requireSession(request, sessions);
     if (session === null) return writeJson(response, 401, { error: "unauthorized" }, headers);
     return writeJson(response, 200, { user: { username: session.username, displayName: session.displayName }, games: await campaigns.listGames(session.guildId, session.userId) }, headers);
+  }
+  if (url.pathname === "/api/activity/table-options" && request.method === "GET") {
+    const session = requireSession(request, sessions);
+    if (session === null) return writeJson(response, 401, { error: "unauthorized" }, headers);
+    return writeJson(response, 200, await campaigns.tables.catalog(session.guildId, session.userId), headers);
+  }
+  if (url.pathname === "/api/activity/games" && request.method === "POST") {
+    const session = requireSession(request, sessions);
+    if (session === null) return writeJson(response, 401, { error: "unauthorized" }, headers);
+    const parsed = tableInputSchema.safeParse(await readJsonBody(request).catch(() => null));
+    if (!parsed.success) return writeJson(response, 400, { error: "invalidTable" }, headers);
+    const { lootGold, ...tableInput } = parsed.data;
+    const result = await campaigns.tables.create(session.guildId, session.userId, { ...tableInput, ...(lootGold === undefined ? {} : { lootGold }) });
+    if (result.kind === "refused") return writeJson(response, result.reason === "notOrganizer" ? 403 : 409, { error: result.reason }, headers);
+    return writeJson(response, 201, result.value, headers);
+  }
+  const manageMatch = url.pathname.match(/^\/api\/activity\/games\/([0-9a-f-]{1,64})\/(manage|invite-members)$/i);
+  if (manageMatch !== null && manageMatch[1] !== undefined) {
+    const session = requireSession(request, sessions);
+    if (session === null) return writeJson(response, 401, { error: "unauthorized" }, headers);
+    const key = { guildId: session.guildId, campaignId: manageMatch[1] };
+    if (manageMatch[2] === "invite-members" && request.method === "GET") {
+      const query = url.searchParams.get("q")?.trim() ?? "";
+      if (query.length < 2 || query.length > 80) return writeJson(response, 400, { error: "invalidRequest" }, headers);
+      const result = await campaigns.tables.membersForInvite(key, session.userId, query);
+      return result.kind === "refused" ? writeJson(response, result.reason === "notFound" ? 404 : 403, { error: result.reason }, headers) : writeJson(response, 200, { members: result.value }, headers);
+    }
+    if (manageMatch[2] === "manage" && request.method === "GET") {
+      const result = await campaigns.tables.management(key, session.userId);
+      return result.kind === "refused" ? writeJson(response, result.reason === "notFound" ? 404 : 403, { error: result.reason }, headers) : writeJson(response, 200, result.value, headers);
+    }
+    if (manageMatch[2] === "manage" && request.method === "POST") {
+      const parsed = tableManagementSchema.safeParse(await readJsonBody(request).catch(() => null));
+      if (!parsed.success) return writeJson(response, 400, { error: "invalidRequest" }, headers);
+      const action = parsed.data;
+      const result = action.kind === "invite" ? await campaigns.tables.invite(key, session.userId, action.userId, action.entrance)
+        : action.kind === "decide" ? await campaigns.tables.decide(key, session.userId, action.userId, action.approve, action.entrance)
+        : action.kind === "resize" ? await campaigns.tables.resize(key, session.userId, action.maxPlayers)
+        : await campaigns.tables.remove(key, session.userId, action.userId);
+      if (result.kind === "refused") return writeJson(response, result.reason === "notOrganizer" ? 403 : 409, { error: result.reason }, headers);
+      return writeJson(response, 200, { updated: true }, headers);
+    }
   }
   if (url.pathname === "/api/activity/characters") {
     const session = requireSession(request, sessions);

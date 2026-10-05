@@ -13,8 +13,10 @@ import { designPreviewSnapshot, previewStoryNext } from "./preview.js";
 import { renderGame } from "./render.js";
 import { mountDrawers } from "./drawers.js";
 import { authenticate } from "./session.js";
+import { wireTableLifecycle } from "./table-lifecycle.js";
 
 bindMapControls();
+wireTableLifecycle();
 mountDrawers();
 wireCharacterScreen();
 wireArtworkViewer();
@@ -46,7 +48,7 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
     app.currentGameId = "local-preview";
     Object.assign(preview, {
       kind: "lobby", campaignName: previewLanguage === "zh-TW" ? "提燈旅團" : "The Lantern Company", adventureTitle: previewLanguage === "zh-TW" ? "月下遺跡" : "Moonlit Ruins", language: previewLanguage,
-      playerCount: 3, maxPlayers: 6, canStart: false, startBlockReason: "notReady", selectedHeroId: null,
+      playerCount: 3, maxPlayers: 6, canStart: false, isOrganizer: true, isMember: true, canJoin: false, startBlockReason: "notReady", selectedHeroId: null,
       selectedHeroName: null, selectedHeroClass: null,
       members: [
         { heroName: previewLanguage === "zh-TW" ? "索恩・橡盾" : "Thorne Oakshield", className: "Paladin", ready: true, isYou: false },
@@ -81,6 +83,8 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
           : hero);
   }
   if (new URLSearchParams(window.location.search).has("join-preview")) {
+    preview.myHero = null;
+    preview.canBegin = false;
     preview.joinRequestStatus = "queued";
     preview.queuedJoin = { heroName: previewLanguage === "zh-TW" ? "新加入的冒險者" : "New Adventurer", encounterRound: 4, nextEncounter: false };
   }
