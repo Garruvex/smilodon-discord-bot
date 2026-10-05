@@ -66,6 +66,8 @@ function fillNode(node, entry) {
     const total = document.createElement("i");
     total.textContent = String(entry.total);
     node.replaceChildren(who, ` ${rollLabel(entry.test)} `, total, ` ${t("activity.dice.versusDc", { dc: entry.dc })} ${entry.success ? "✓" : "✗"}`);
+  } else if (entry.kind === "clue") {
+    node.textContent = `🔍 ${entry.text}`;
   } else if (entry.kind === "action" || entry.kind === "speech") {
     const who = document.createElement("b");
     who.textContent = entry.who;
