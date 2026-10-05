@@ -486,6 +486,7 @@ export const campaignEn = {
   "activity.run.clear": "No weather",
   "activity.run.apply": "Set the clock",
   "activity.run.now": "Now: day {day}, {time}",
+  "activity.world.day": "Day {day}",
   "activity.world.time.dawn": "dawn",
   "activity.world.time.morning": "morning",
   "activity.world.time.midday": "midday",

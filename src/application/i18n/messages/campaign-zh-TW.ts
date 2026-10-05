@@ -509,6 +509,7 @@ export const campaignZhTW = {
   "activity.run.clear": "無天氣",
   "activity.run.apply": "調整時間",
   "activity.run.now": "目前：第 {day} 天，{time}",
+  "activity.world.day": "第 {day} 天",
   "activity.world.time.dawn": "黎明",
   "activity.world.time.morning": "上午",
   "activity.world.time.midday": "正午",

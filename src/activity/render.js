@@ -33,6 +33,20 @@ export function paintSection(name, inputs, paint) {
 }
 
 
+// The story's clock beside the round: "Day 3 · dusk · rain". Nothing is shown for an adventure that keeps no clock.
+function renderWorld(world) {
+  let line = document.querySelector("#live-world");
+  if (line === null) {
+    line = document.createElement("span");
+    line.id = "live-world";
+    line.className = "live-world ui-status";
+    document.querySelector(".live-header-status").append(line);
+  }
+  line.hidden = world === null || world === undefined;
+  if (line.hidden) return;
+  line.textContent = [t("activity.world.day", { day: world.day }), t("activity.world.time." + world.time), world.weather === null ? null : t("activity.world.weather." + world.weather)].filter(Boolean).join(" · ");
+}
+
 export function renderGame(game) {
   const signature = JSON.stringify([app.uiLanguage, game, app.selectedPartyCharacterId, app.selectedEnemyName, app.selectedWorkspaceTab, app.mapPick]);
   if (signature === app.lastGameSignature) return;
@@ -89,6 +103,7 @@ export function renderTable(game) {
   const phase = game.pendingMove ? t("activity.status.moveVoting") : t(phaseKeys[game.mode] ?? "activity.phase.adventure");
   document.querySelector("#live-phase").textContent = phase;
   document.querySelector("#live-round").textContent = game.roundNumber === null ? "" : t("activity.status.round", { round: game.roundNumber });
+  renderWorld(game.world);
   document.querySelector(".live-phase").dataset.mode = game.mode;
   document.querySelector("#live-screen").dataset.mode = game.mode;
   renderCombatTurn(game);

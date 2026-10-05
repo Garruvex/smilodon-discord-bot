@@ -39,6 +39,8 @@ export interface ActivityTableView {
   readonly ownPresence: "present" | "away";
   readonly canTogglePresence: boolean;
   readonly roundNumber: number | null;
+  // The story's day, time of day and weather, when the adventure keeps a clock.
+  readonly world: null | { readonly day: number; readonly time: string; readonly weather: string | null };
   // fallbackImageUrl: the scene's own picture, when imageUrl is a fight's picture that may not be there yet.
   readonly scene: { readonly title: string; readonly description: string; readonly imageUrl: string | null; readonly fallbackImageUrl?: string | null };
   // present and needed: how many players vote, and how many Stay votes keep the party where it is. closesAt: when the window closes (epoch ms), or null.
@@ -416,6 +418,7 @@ export function buildActivityTableView(
     ownPresence: state.members[userId]?.availability ?? "away",
     canTogglePresence: state.members[userId] !== undefined,
     roundNumber: panel.roundNumber,
+    world: state.world === undefined ? null : { day: state.world.day, time: state.world.time, weather: state.world.weather ?? null },
     mapText: texts[record.language].campaign.map,
     // Show the encounter illustration during combat when it is ready; otherwise
     // keep the scene art visible. When combat ends, this naturally returns to scene art.

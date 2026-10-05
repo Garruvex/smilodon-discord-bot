@@ -160,7 +160,8 @@ export function infoChip(label, { spell, entry }) {
 export function actionGuide() {
   const row = document.createElement("div");
   row.className = "action-guide";
-  for (const id of ["attack", "cast", "dodge", "dash", "disengage", "help", "hide", "ready"]) {
+  // Help, Hide and Ready have pages in the book but no button in the Activity, so they are not offered here.
+  for (const id of ["attack", "cast", "dodge", "dash", "disengage"]) {
     const item = entries.find((entry) => entry[0] === id);
     row.append(infoChip(zh() ? item[4] : item[2], { entry: id }));
   }
