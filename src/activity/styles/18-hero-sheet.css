@@ -88,3 +88,16 @@
 .turn-strip { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 10px; }
 .turn-pip.is-spent { opacity: .5; text-decoration: line-through; background: transparent; }
 .turn-melee { flex: 1 1 100%; color: var(--ui-muted, #7a6244); font-size: 12px; }
+
+/* Phone header: the brand, then the status chips, then the buttons on their own wrapping row, so the added buttons never sit on top of the round and mode chips. */
+@media (max-width: 700px) {
+  .live-header { grid-template-areas: "brand brand" "status status" "actions actions"; }
+  .live-header-status { flex-wrap: wrap; justify-self: stretch; }
+  .live-heading-right { flex-wrap: wrap; justify-self: stretch; justify-content: flex-start; gap: 6px; }
+  .live-heading-right > .ui-control { min-height: 36px; padding-inline: 10px; font-size: 12px; white-space: nowrap; }
+}
+.live-world { white-space: nowrap; }
+.live-world { color: #e8d8b8; font-size: 12px; }
+#rest-vote { flex-wrap: wrap; }
+#rest-vote > span { flex: 1 1 220px; }
+#rest-vote .ui-control { white-space: nowrap; }
