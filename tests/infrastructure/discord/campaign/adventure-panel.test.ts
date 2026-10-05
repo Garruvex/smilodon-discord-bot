@@ -218,6 +218,27 @@ describe("the adventure panel", () => {
     expect(card.text).not.toContain(":R>");
   });
 
+  it("shows held spells, death saves, conditions and who a summon belongs to", () => {
+    const view: PanelView = {
+      ...collecting, mode: "combat", roundNumber: 1,
+      combat: {
+        encounterId: "encounter:test",
+        round: 1, activeName: "Mira", activeUserId: "1", playersControl: true, zones: ["Hall"],
+        party: [
+          { name: "Mira", hp: 10, maxHp: 10, tempHp: 0, condition: "active", zone: "Hall", active: true, concentration: "Bless", statuses: ["Poisoned"] },
+          { name: "Borin", hp: 0, maxHp: 12, tempHp: 0, condition: "unconscious", zone: "Hall", active: false, deathSaves: { successes: 1, failures: 2, stable: false } },
+        ],
+        allies: [{ name: "Giant Badger", hp: 9, maxHp: 22, tempHp: 0, condition: "active", zone: "Hall", active: false, ownerName: "Mira", concentration: null, statuses: [] }],
+        foes: [{ name: "Husk", hp: 4, maxHp: 22, band: "bloodied", zone: "Hall", active: false, statuses: ["Prone"] }],
+      },
+    };
+    const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
+    expect(card.text).toContain("◎ Bless · Poisoned");
+    expect(card.text).toContain("☠ saves 1✓ 2✗");
+    expect(card.text).toContain("### Allies (1)\n• **Giant Badger** · belongs to Mira");
+    expect(card.text).toContain("Prone");
+  });
+
   it("keeps a crowded fight within message limits with the active enemy visible", () => {
     const view: PanelView = {
       ...collecting, mode: "combat",

@@ -127,12 +127,27 @@ function combatLines(view: PanelView, text: Texts): string {
   const location = (zone: string): string => combat.zones.length > 1 ? ` · 📍 ${displayName(zone)}` : "";
   const party = [...combat.party].sort((a, b) => Number(b.active) - Number(a.active)).map((hero) => {
     const condition = hero.condition === "dead" ? t.hero.fallen : hero.condition === "fled" ? t.panel.combatFled : hero.condition === "stable" ? t.panel.combatStable : hero.hp <= 0 ? t.hero.down : "";
-    return `${hero.active ? "▶" : "•"} **${displayName(hero.name)}** · ${hpBar(hero.hp, hero.maxHp)} ${t.panel.combatHp({ hp: Math.max(0, hero.hp), max: hero.maxHp })}${hero.tempHp > 0 ? ` · ${t.panel.combatTempHp({ hp: hero.tempHp })}` : ""}${condition === "" ? "" : ` · ${condition}`}${location(hero.zone)}`;
+    return `${hero.active ? "▶" : "•"} **${displayName(hero.name)}** · ${hpBar(hero.hp, hero.maxHp)} ${t.panel.combatHp({ hp: Math.max(0, hero.hp), max: hero.maxHp })}${hero.tempHp > 0 ? ` · ${t.panel.combatTempHp({ hp: hero.tempHp })}` : ""}${condition === "" ? "" : ` · ${condition}`}${location(hero.zone)}${marks(hero, text)}`;
   });
   const foes = [...combat.foes].sort((a, b) => Number(b.active) - Number(a.active)).map((foe) =>
-    `${foe.active ? "▶" : "•"} **${displayName(foe.name)}** · ${hpBar(foe.hp, foe.maxHp)} ${t.panel.combatHp({ hp: Math.max(0, foe.hp), max: foe.maxHp })} · ${t.band[foe.band]}${location(foe.zone)}`,
+    `${foe.active ? "▶" : "•"} **${displayName(foe.name)}** · ${hpBar(foe.hp, foe.maxHp)} ${t.panel.combatHp({ hp: Math.max(0, foe.hp), max: foe.maxHp })} · ${t.band[foe.band]}${location(foe.zone)}${marks(foe, text)}`,
   );
-  return [boundedRoster(t.panel.combatParty({ count: party.length }), party, text), boundedRoster(t.panel.combatFoes({ count: foes.length }), foes, text)].filter(Boolean).join("\n\n");
+  // Summons and companions on the party's side, each with whose it is.
+  const allies = (combat.allies ?? []).map((ally) =>
+    `${ally.active ? "▶" : "•"} **${displayName(ally.name)}**${ally.ownerName === null ? "" : ` · ${t.panel.combatOwner({ name: displayName(ally.ownerName) })}`} · ${hpBar(ally.hp, ally.maxHp)} ${t.panel.combatHp({ hp: Math.max(0, ally.hp), max: ally.maxHp })}${location(ally.zone)}${marks(ally, text)}`,
+  );
+  return [boundedRoster(t.panel.combatParty({ count: party.length }), party, text), boundedRoster(t.panel.combatAllies({ count: allies.length }), allies, text), boundedRoster(t.panel.combatFoes({ count: foes.length }), foes, text)].filter(Boolean).join("\n\n");
+}
+
+// What is on a creature beyond its health: the spell it holds, its death saves when down, and its conditions and lasting spells.
+function marks(entry: { readonly concentration?: string | null; readonly deathSaves?: { readonly successes: number; readonly failures: number; readonly stable: boolean } | null; readonly statuses?: readonly string[] }, text: Texts): string {
+  const t = text.campaign.panel;
+  const parts = [
+    ...(entry.deathSaves === null || entry.deathSaves === undefined || entry.deathSaves.stable ? [] : [t.combatSaves({ successes: entry.deathSaves.successes, failures: entry.deathSaves.failures })]),
+    ...(entry.concentration === null || entry.concentration === undefined ? [] : [t.combatConcentrating({ spell: displayName(entry.concentration) })]),
+    ...(entry.statuses ?? []).map((status) => displayName(status)),
+  ];
+  return parts.length === 0 ? "" : ` · ${parts.join(" · ")}`;
 }
 
 function boundedRoster(heading: string, lines: readonly string[], text: Texts): string {

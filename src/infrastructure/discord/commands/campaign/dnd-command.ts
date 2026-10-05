@@ -124,7 +124,7 @@ export class DndCommand implements BotCommand {
       { name: "close-round", description: "Closes the current round without waiting (organizer)." },
       {
         name: "rest",
-        description: "Has the party take a rest between fights (organizer).",
+        description: "Take a rest between fights. Players propose it and the table votes.",
         options: [
           {
             type: "string",
@@ -138,6 +138,23 @@ export class DndCommand implements BotCommand {
           },
         ],
       },
+      {
+        name: "rest-vote",
+        description: "Answer a rest a player has proposed.",
+        options: [
+          {
+            type: "string",
+            name: "answer",
+            description: "Do you agree to rest?",
+            required: true,
+            choices: [
+              { name: "Agree", value: "agree" },
+              { name: "Not now", value: "decline" },
+            ],
+          },
+        ],
+      },
+      { name: "companions-away", description: "Send all your companions away (between fights)." },
       {
         name: "hit-dice",
         description: "Spend Hit Dice to heal after a short rest (your own hero).",
@@ -323,8 +340,16 @@ export class DndCommand implements BotCommand {
       }
       case "rest": {
         const long = interaction.options.getString("type", true) === "long";
+        // A player who is not the organizer proposes the rest; the table answers with /dnd rest-vote.
+        if (!manager && found.record.organizerId !== userId) return done(await this.deps.play.proposeRest(key, userId, long ? "long" : "short", id), text.campaign.cmd.restProposed);
         return done(await control(long ? "longRest" : "shortRest", () => this.deps.play.queueRest(key, userId, long ? "long" : "short", id)), long ? text.campaign.cmd.rested : text.campaign.cmd.shortRested);
       }
+      case "rest-vote": {
+        const agree = interaction.options.getString("answer", true) === "agree";
+        return done(await this.deps.play.answerRestVote(key, userId, agree, id), agree ? text.campaign.cmd.restAgreed : text.campaign.cmd.restNotNow);
+      }
+      case "companions-away":
+        return done(await this.deps.play.dismissCompanions(key, userId, id), text.campaign.cmd.companionsAway);
       case "hit-dice": {
         const count = interaction.options.getInteger("count", true);
         return done(await this.deps.play.spendHitDice(key, userId, count, id), text.campaign.cmd.hitDiceAsked);

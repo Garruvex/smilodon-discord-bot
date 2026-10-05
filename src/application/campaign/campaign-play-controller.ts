@@ -1,3 +1,4 @@
+import { companionsOf } from "../../domain/campaign/companions/companion-roster.js";
 import { longRestEffects, withArrival, type AdventureBible, type NpcId } from "../../domain/campaign/adventure/adventure-bible.js";
 import { reachableScenes } from "./dm/interactions.js";
 import type { Skill } from "../../domain/campaign/character/character-sheet.js";
@@ -403,6 +404,20 @@ export class CampaignPlayController {
 
   public answerRestVote(key: CampaignKey, userId: UserId, agree: boolean, interactionId: string): Promise<PlayResult> {
     return this.perform(key, userId, interactionId, () => ({ kind: "answerRestVote", agree }));
+  }
+
+  // Send all of the player's companions away (between fights). Each goes as its own command, so a repeat of the same press changes nothing.
+  public async dismissCompanions(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {
+    const loaded = await this.options.unitOfWork.transaction((tx) => tx.loadCampaign(key));
+    const heroId = loaded?.state.members[userId]?.characterId;
+    const ids = heroId === null || heroId === undefined || loaded === undefined ? [] : companionsOf(loaded.state.companions, heroId).map((companion) => companion.id);
+    if (ids.length === 0) return { kind: "refused", reason: "invalidTarget" };
+    let result: PlayResult = { kind: "ok" };
+    for (const companionId of ids) {
+      result = await this.dismissCompanion(key, userId, companionId, `${interactionId}:${companionId}`);
+      if (result.kind === "refused") return result;
+    }
+    return result;
   }
 
   public async rest(key: CampaignKey, userId: UserId, rest: "short" | "long", interactionId: string): Promise<PlayResult> {

@@ -186,7 +186,10 @@ export const zhTWCommandDescriptions = {
   "dnd/close-round": "不再等待，直接結束這一回合的收件（主辦人）", // Closes the current round without waiting (organizer).
   "dnd/move": "決定隊伍等待中的場景轉換（主辦人）", // Settles a scene change the party is waiting on (organizer).
   "dnd/move:decision": "立刻讓隊伍出發，或讓隊伍留在原地", // Send the party now, or keep it where it is.
-  "dnd/rest": "讓隊伍在戰鬥之間休息（主辦人）", // Has the party take a rest between fights (organizer).
+  "dnd/rest": "在戰鬥之間休息。玩家提議，由大家投票", // Take a rest between fights. Players propose it and the table votes.
+  "dnd/rest-vote": "回答玩家提議的休息", // Answer a rest a player has proposed.
+  "dnd/rest-vote:answer": "你同意休息嗎？", // Do you agree to rest?
+  "dnd/companions-away": "遣散你所有的同伴（戰鬥之間）", // Send all your companions away (between fights).
   "dnd/rest:type": "休息的長度", // How long the rest is.
   "dnd/hit-dice": "短休後花費生命骰來恢復生命值（你自己的角色）", // Spend Hit Dice to heal after a short rest (your own hero).
   "dnd/hit-dice:count": "要花費幾顆生命骰", // How many Hit Dice to spend.

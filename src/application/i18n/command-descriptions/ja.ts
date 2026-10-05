@@ -184,7 +184,10 @@ export const jaCommandDescriptions = {
   "dnd/close-round": "待たずに現在のラウンドを締め切ります（主催者）", // Closes the current round without waiting (organizer).
   "dnd/move": "パーティが待っている場面転換を決めます（主催者）", // Settles a scene change the party is waiting on (organizer).
   "dnd/move:decision": "今すぐ出発させるか、その場に留めるか", // Send the party now, or keep it where it is.
-  "dnd/rest": "戦闘の合間にパーティを休ませます（主催者）", // Has the party take a rest between fights (organizer).
+  "dnd/rest": "戦闘の合間に休憩します。プレイヤーが提案し、全員で投票します", // Take a rest between fights. Players propose it and the table votes.
+  "dnd/rest-vote": "プレイヤーが提案した休憩に答えます", // Answer a rest a player has proposed.
+  "dnd/rest-vote:answer": "休憩に賛成しますか？", // Do you agree to rest?
+  "dnd/companions-away": "仲間をすべて去らせます（戦闘の合間）", // Send all your companions away (between fights).
   "dnd/rest:type": "休憩の長さ", // How long the rest is.
   "dnd/hit-dice": "ショートレスト後にヒットダイスを使って回復します（自分のキャラクター）", // Spend Hit Dice to heal after a short rest (your own hero).
   "dnd/hit-dice:count": "使うヒットダイスの数", // How many Hit Dice to spend.
