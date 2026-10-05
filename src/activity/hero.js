@@ -4,6 +4,8 @@ import { artIconPrefix, iconForClass, iconImage, liveActions, makeButton, setArt
 import { classText, t } from "./i18n.js";
 import { partyStatusText } from "./party.js";
 import { openRules } from "./rules-book.js";
+import { renderSheet } from "./hero-sheet.js";
+import { renderLevelUpBanner } from "./level-up.js";
 
 export function renderEquipment(hero) {
   const target = document.querySelector("#live-equipment");
@@ -98,7 +100,7 @@ export function setWorkspaceTabs(game, tabs) {
     button.textContent = t(key); button.addEventListener("click", () => { app.selectedWorkspaceTab = id; renderCharacterWorkspace(game); });
     return button;
   }));
-  for (const id of ["overview", "actions", "spells", "inventory", "trade"]) {
+  for (const id of ["overview", "sheet", "actions", "spells", "inventory", "trade"]) {
     const panel = document.querySelector(`#hero-panel-${id}`);
     panel.hidden = !tabs.some(([tabId]) => tabId === id) || app.selectedWorkspaceTab !== id;
   }
@@ -151,6 +153,7 @@ export function renderCharacterWorkspace(game) {
   document.querySelector("#hero-panel-actions").append(liveActions);
   const enemy = game.foes.find((foe) => foe.name === app.selectedEnemyName);
   if (enemy) {
+    renderLevelUpBanner({ levelUp: null });
     document.querySelector("#live-turn").textContent = enemy.active ? t("activity.party.turnNow") : "";
     document.querySelector("#live-turn").classList.toggle("is-active", enemy.active);
     document.querySelector("#hero-workspace-label").textContent = t("activity.scene.encounter");
@@ -207,11 +210,13 @@ export function renderCharacterWorkspace(game) {
   populateMemberOverview(selected, partyStatusText(selected), selected.conditions ?? []);
 
   const tabs = viewingOwn
-    ? [["overview", "activity.tab.overview"], ["actions", "activity.tab.actions"], ["spells", "activity.tab.spells"], ["inventory", "activity.tab.inventory"], ["trade", "activity.tab.trade"]]
+    ? [["overview", "activity.tab.overview"], ["sheet", "activity.tab.sheet"], ["actions", "activity.tab.actions"], ["spells", "activity.tab.spells"], ["inventory", "activity.tab.inventory"], ["trade", "activity.tab.trade"]]
     : ownHero
       ? [["overview", "activity.tab.overview"], ["actions", "activity.tab.myActions"], ["trade", "activity.tab.trade"]]
       : [["overview", "activity.tab.overview"], ["trade", "activity.tab.trade"]];
   if (!tabs.some(([id]) => id === app.selectedWorkspaceTab)) app.selectedWorkspaceTab = viewingOwn ? "actions" : "overview";
+  renderSheet(game);
+  renderLevelUpBanner(viewingOwn ? game : { levelUp: null });
   setWorkspaceTabs(game, tabs);
 
   const resources = document.querySelector("#live-resources");

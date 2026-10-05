@@ -6,7 +6,7 @@ import { hitDicePool } from "../../domain/campaign/character/character-build.js"
 import type { SealedContent, Glossary } from "../../domain/campaign/rules/content-registry.js";
 import type { CheckTest } from "../../domain/campaign/character/character-sheet.js";
 import { findScene } from "../../domain/campaign/adventure/adventure-bible.js";
-import { resolveHouseRules } from "../../domain/campaign/rules/house-rules.js";
+import { levelingMode, resolveHouseRules } from "../../domain/campaign/rules/house-rules.js";
 import { buildPanelView, buildPartyView, buildHeroView, buildReactionView, buildSmiteView, buildOpportunityAttackView } from "./views/campaign-views.js";
 import { buildExploreView, buildShopView, type ExploreView, type ShopView } from "./views/explore-view.js";
 import { buildTurnView, type AttackChoice, type SpellChoice, type TurnView } from "./views/turn-view.js";
@@ -15,6 +15,7 @@ import { readyToStart } from "../../domain/campaign/lobby/lobby.js";
 import { texts } from "../i18n/texts.js";
 import { buildMapView } from "./views/map-view.js";
 import { spellFactsByName, type SpellFacts } from "./views/spell-facts.js";
+import { buildHeroSheetView, buildLevelUpView, type HeroSheetView, type LevelUpView } from "./views/hero-sheet.js";
 import { buildActivityStory, type StoryEntry } from "./views/activity-story.js";
 import type { CampaignEvent } from "../../domain/campaign/events/campaign-event.js";
 
@@ -75,6 +76,9 @@ export interface ActivityTableView {
   }[];
   // Summons and companions fighting for the party, each with the hero or creature it belongs to.
   readonly allies: readonly { readonly name: string; readonly hp: number; readonly maxHp: number; readonly condition: string; readonly zone: string; readonly active: boolean; readonly ownerName: string | null }[];
+  // Your own hero's full sheet, and what you may choose when you level up. Null without a hero.
+  readonly heroSheet: HeroSheetView | null;
+  readonly levelUp: LevelUpView | null;
   // The rules book's lines for every spell this hero can see, by the name shown on the page.
   readonly spellFacts: Readonly<Record<string, SpellFacts>>;
   readonly foes: readonly {
@@ -398,22 +402,23 @@ export function buildActivityTableView(
     partySeats: Math.max(record.lobby.maxPlayers, publicParty.length),
     party: publicParty,
     foes: panel.combat?.foes ?? [],
+    allies: panel.combat?.allies ?? [],
+    heroSheet: sheet === undefined ? null : buildHeroSheetView(sheet, state.heroStatus[sheet.id]?.hitDice, record.houseRules[levelingMode.id] === "milestone", glossary),
+    levelUp: sheet === undefined ? null : buildLevelUpView(sheet, glossary),
+    spellFacts: spellFactsByName([
+      ...(heroView?.cantrips ?? []), ...(heroView?.prepared ?? []), ...(turn?.spells.map((spell) => spell.spellId) ?? []),
+      ...(explore === null ? [] : [...explore.spells, ...explore.healing, ...explore.conjuring, ...explore.reviving].map((spell) => spell.id)),
+    ], content, glossary),
     offers: Object.values(state.offers).flatMap((offer) => {
       const from = state.characters[offer.fromCharacterId];
       const to = state.characters[offer.toCharacterId];
       if (from === undefined || to === undefined || (from.ownerUserId !== userId && to.ownerUserId !== userId)) return [];
       return [{ id: offer.id, fromCharacterId: from.id, toCharacterId: to.id, fromName: from.name, toName: to.name, itemName: glossary.names[offer.give] ?? offer.give, direction: from.ownerUserId === userId ? "outgoing" as const : "incoming" as const }];
     }),
-    allies: panel.combat?.allies ?? [],
     myHero: fullHero,
     turn: turn === null ? null : nameTurn(turn, glossary),
     explore: controlledHeroId === null || state.pendingMove !== undefined || panel.mode !== "collecting"
       ? null
-    allies: panel.combat?.allies ?? [],
-    spellFacts: spellFactsByName([
-      ...(heroView?.cantrips ?? []), ...(heroView?.prepared ?? []), ...(turn?.spells.map((spell) => spell.spellId) ?? []),
-      ...(explore === null ? [] : [...explore.spells, ...explore.healing, ...explore.conjuring, ...explore.reviving].map((spell) => spell.id)),
-    ], content, glossary),
       : explore,
     pendingRoll: panel.pendingRolls.find((roll) => roll.userId === userId) === undefined
       ? null

@@ -102,7 +102,7 @@ const abilityNames = { str: "strength", dex: "dexterity", con: "constitution", i
 function spellLines(facts) {
   const words = (key, values) => t(`activity.spellInfo.${key}`, values);
   const range = facts.range.kind === "feet" ? words("range.feet", { n: facts.range.feet }) : words(`range.${facts.range.kind}`);
-  const who = facts.area ? words("target.area") : facts.destination ? words("target.place") : words(`target.${facts.relation}`);
+  const who = facts.area ? words("target.area") : facts.destination ? words("target.place") : words(`target.${facts.relation === "ally-or-self" ? "allyOrSelf" : facts.relation}`);
   const targets = !facts.area && !facts.destination && facts.targets > 1 ? `${words("target.upTo", { n: facts.targets })} ${who}` : who;
   const check = facts.check === "none" ? words("check.none") : facts.check === "attack" ? words("check.attack") : words("check.save", { ability: t(`activity.rule.${abilityNames[facts.check] ?? facts.check}`) });
   const effects = facts.effects.map((effect) => {
@@ -116,7 +116,7 @@ function spellLines(facts) {
   });
   const flags = [facts.concentration ? words("flag.concentration") : null, facts.ritual ? words("flag.ritual") : null, facts.scales ? words(facts.level === 0 ? "flag.scalesCantrip" : "flag.scalesSpell") : null, facts.addsModifier ? words("flag.addsModifier") : null].filter(Boolean);
   const head = [facts.level === 0 ? words("cantrip") : words("level", { n: facts.level }), facts.school === null ? null : words(`school.${facts.school}`)].filter(Boolean).join(" · ");
-  return { head, rows: [[words("label.casting"), words(`time.${facts.castingTime}`)], [words("label.range"), range], [words("label.targets"), targets], [words("label.roll"), check], ...(effects.length ? [[words("label.does"), effects.join("; ")]] : [])], flags, note: words("note") };
+  return { head, rows: [[words("label.casting"), words(`time.${facts.castingTime === "bonus-action" ? "bonusAction" : facts.castingTime}`)], [words("label.range"), range], [words("label.targets"), targets], [words("label.roll"), check], ...(effects.length ? [[words("label.does"), effects.join("; ")]] : [])], flags, note: words("note") };
 }
 
 function paintSpell(name) {

@@ -92,6 +92,24 @@ export function designPreviewSnapshot() {
       { ...hero("kestrel", "Kestrel Vale", "Bard", "Human", 25, 30), tableStatus: "waiting" },
     ].slice(0, Number(new URLSearchParams(window.location.search).get("party")) || 6),
     foes: [{ name: "Hollow Sentinel", rank: "boss", hp: 18, maxHp: 36, band: "bloodied", zone: "Flooded floor", active: false }, { name: "Drowned Husk A", rank: "minion", hp: 9, maxHp: 22, band: "bloodied", zone: "Flooded floor", active: false }],
+    heroSheet: {
+      abilities: [["str", 8], ["dex", 14], ["con", 13], ["int", 17], ["wis", 12], ["cha", 10]].map(([ability, score]) => ({ ability, score, modifier: Math.floor((score - 10) / 2) })),
+      proficiencyBonus: 3, speed: 30, initiative: 2, passivePerception: 14,
+      skills: [["arcana", "int", 6, "proficient"], ["history", "int", 6, "proficient"], ["investigation", "int", 6, "proficient"], ["insight", "wis", 4, "proficient"], ["perception", "wis", 4, "proficient"], ["athletics", "str", -1, "none"], ["acrobatics", "dex", 2, "none"], ["stealth", "dex", 2, "none"], ["persuasion", "cha", 0, "none"]].map(([skill, ability, bonus, proficiency]) => ({ skill, ability, bonus, proficiency })),
+      saves: [["str", -1, false], ["dex", 2, false], ["con", 1, false], ["int", 6, true], ["wis", 4, true], ["cha", 0, false]].map(([ability, bonus, proficient]) => ({ ability, bonus, proficient })),
+      progress: { level: 5, xp: 7200, floor: 6500, next: 14000 }, hitDice: { left: 3, max: 5, dice: [6, 6, 6, 6, 6] },
+      features: [{ id: "feature:arcane-recovery", name: "Arcane Recovery" }, { id: "feature:school-of-evocation", name: "School of Evocation" }, { id: "feature:sculpt-spells", name: "Sculpt Spells" }],
+    },
+    levelUp: {
+      pendingAsi: 1, owed: true, scores: { str: 8, dex: 14, con: 13, int: 17, wis: 12, cha: 10 },
+      classPlan: { landing: "wizard", level: 6, hpGain: 5, gains: ["Sculpt Spells"], skillOptions: [], skill: null, choices: [
+        { buildClass: "wizard", current: true, level: 5, allowed: true, requires: [["int"]] },
+        { buildClass: "fighter", current: false, level: 0, allowed: false, requires: [["str", "dex"]] },
+        { buildClass: "cleric", current: false, level: 0, allowed: false, requires: [["wis"]] },
+        { buildClass: "rogue", current: false, level: 0, allowed: true, requires: [["dex"]] },
+      ] },
+      fightingStyle: null, warlock: null,
+    },
     spellFacts: {
       "Fire Bolt": { name: "Fire Bolt", level: 0, school: "evocation", castingTime: "action", range: { kind: "feet", feet: 120 }, concentration: false, ritual: false, relation: "creature", targets: 1, area: false, destination: false, check: "attack", effects: [{ kind: "damage", dice: "1d10", damageType: "fire", half: false }], scales: true, addsModifier: false },
       "Ray of Frost": { name: "Ray of Frost", level: 0, school: "evocation", castingTime: "action", range: { kind: "feet", feet: 60 }, concentration: false, ritual: false, relation: "creature", targets: 1, area: false, destination: false, check: "attack", effects: [{ kind: "damage", dice: "1d8", damageType: "cold", half: false }], scales: true, addsModifier: false },

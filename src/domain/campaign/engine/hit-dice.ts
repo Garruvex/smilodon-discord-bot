@@ -1,4 +1,3 @@
-import type { HitDiceCommand } from "../commands/campaign-command.js";
 import { abilityModifier } from "../character/character-sheet.js";
 import { hitDicePool } from "../character/character-build.js";
 import { defaultHeroResources, type HeroStatus } from "../character/hero-status.js";
@@ -11,7 +10,8 @@ import type { Rejection } from "./rejection.js";
 
 // Hit Dice on a short rest (SRD 5.1): after the party's short rest, each hero may spend as many of their remaining Hit Dice as they like. Every die is
 // rolled, the Constitution modifier is added to each, and the total is the hit points regained. The dice are taken largest first, as a rest always did.
-export function handleHitDiceCommand(decision: Decision, command: HitDiceCommand): Rejection | null {
+// The command is described by its shape here, so this system does not reach into the shared command vocabulary.
+export function handleHitDiceCommand(decision: Decision, command: { readonly kind: "spendHitDice"; readonly characterId: CharacterId; readonly count: number }): Rejection | null {
   const { state, ctx } = decision;
   const sheet = state.characters[command.characterId];
   if (ctx.actor.kind !== "user" || sheet === undefined || sheet.ownerUserId !== ctx.actor.userId) return { code: "notYourCharacter" };

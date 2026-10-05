@@ -6,6 +6,7 @@ import { showError } from "./lobby.js";
 import { openCharactersScreen, wireCharacterScreen } from "./character-builder.js";
 import { wireArtworkViewer } from "./artwork-viewer.js";
 import { wireRulesBook } from "./rules-book.js";
+import "./level-up.js";
 import { bindMapControls } from "./map.js";
 import { setTableConnectionState } from "./poll.js";
 import { designPreviewSnapshot, previewStoryNext } from "./preview.js";

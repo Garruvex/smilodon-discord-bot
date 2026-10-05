@@ -52,6 +52,7 @@ import { enSrd51Glossary } from "../application/i18n/campaign/glossary/en/srd-5.
 import { zhTwSrd51Glossary } from "../application/i18n/campaign/glossary/zh-TW/srd-5.1.js";
 import { buildSrd51 } from "../domain/campaign/content/srd-5.1/index.js";
 import { milestone0Capabilities } from "../domain/campaign/rules/capabilities.js";
+import { abilities, type Ability } from "../domain/campaign/rules/effects.js";
 import { GeminiStructuredClient } from "../infrastructure/campaign/llm/gemini-structured-client.js";
 import { OpenAiCompatibleStructuredClient } from "../infrastructure/campaign/llm/openai-compatible-structured-client.js";
 import { OpenAiResponsesStructuredClient } from "../infrastructure/campaign/llm/openai-responses-structured-client.js";
@@ -518,6 +519,32 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
             const count = integerValue(action.count);
             if (count === null) return { kind: "refused", reason: "invalidAction" };
             return activityPlay.spendHitDice(key, userId, count, id).then(mapPlayResult);
+          }
+          // Level-up choices. The engine checks every one (an improvement owed, the cap of 20, a class the hero qualifies for).
+          case "chooseAsi": {
+            const first = textValue(action.plusTwo, 3);
+            const pair = Array.isArray(action.plusOne) ? action.plusOne.map((entry) => textValue(entry, 3)) : [];
+            const isAbility = (value: string | null): value is Ability => value !== null && (abilities as readonly string[]).includes(value);
+            if (isAbility(first)) return activityPlay.chooseAsi(key, userId, { plusTwo: first }, id).then(mapPlayResult);
+            const [one, two] = pair;
+            if (pair.length === 2 && isAbility(one ?? null) && isAbility(two ?? null)) return activityPlay.chooseAsi(key, userId, { plusOne: [one as Ability, two as Ability] }, id).then(mapPlayResult);
+            return { kind: "refused", reason: "invalidAction" };
+          }
+          case "chooseClassLevel": {
+            const buildClass = textValue(action.buildClass, 32);
+            if (buildClass === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.chooseClassLevel(key, userId, buildClass, textValue(action.skill, 32) ?? undefined, id).then(mapPlayResult);
+          }
+          case "chooseFightingStyle": {
+            const styleId = textValue(action.styleId);
+            if (styleId === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.chooseFightingStyle(key, userId, styleId, id).then(mapPlayResult);
+          }
+          case "chooseWarlockOptions": {
+            const invocations = Array.isArray(action.invocations) ? action.invocations.flatMap((entry) => textValue(entry) ?? []) : undefined;
+            const pactBoon = textValue(action.pactBoon) ?? undefined;
+            if (invocations === undefined && pactBoon === undefined) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.chooseWarlockOptions(key, userId, { ...(invocations === undefined ? {} : { invocations }), ...(pactBoon === undefined ? {} : { pactBoon }) }, id).then(mapPlayResult);
           }
           case "healSpell":
           case "reviveSpell": {
