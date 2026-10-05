@@ -18,6 +18,7 @@ import { CampaignIssues } from "../application/campaign/campaign-issues.js";
 import { CharacterLibrary } from "../application/campaign/library/character-library.js";
 import { buildClasses, classTemplates, selectableBuildRaces, suggestedAbilities, type BuildChoices } from "../domain/campaign/character/character-build.js";
 import { skills } from "../domain/campaign/rules/skills.js";
+import { isTimeOfDay, isWeather, type TimeOfDay, type Weather } from "../domain/campaign/rules/world-rules.js";
 import { CampaignLobbyService, type ActivityCampaignListingItem, type ServiceResult } from "../application/campaign/campaign-lobby-service.js";
 import { CampaignPlayController, type PlayResult } from "../application/campaign/campaign-play-controller.js";
 import { buildActivityLobbyView, buildActivityTableView, canSeeActivityCampaign, type ActivityGameView } from "../application/campaign/activity-view.js";
@@ -576,6 +577,25 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
             const proxyUserId = action.userId === null ? null : textValue(action.userId);
             if (action.userId !== null && proxyUserId === null) return { kind: "refused", reason: "invalidAction" };
             return activityPlay.proxy(key, userId, proxyUserId as UserId | null, id).then(mapPlayResult);
+          }
+          case "runGame": {
+            const verb = textValue(action.verb, 32);
+            if (verb === null || !["closeRound", "retry", "retryFight", "retell", "illustrate", "illustrateScene"].includes(verb)) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.manage(key, verb as "closeRound" | "retry" | "retryFight" | "retell" | "illustrate" | "illustrateScene", id, userId).then(mapPlayResult);
+          }
+          case "raiseLevel": {
+            const level = integerValue(action.level);
+            if (level === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.raiseLevel(key, userId, level, id).then(mapPlayResult);
+          }
+          case "setWorld": {
+            const day = action.day === undefined ? undefined : integerValue(action.day);
+            const time = action.time === undefined || action.time === "" ? undefined : textValue(action.time, 16);
+            const weather = action.weather === undefined || action.weather === "" ? undefined : textValue(action.weather, 16);
+            const note = action.note === undefined || action.note === "" ? undefined : textValue(action.note, 200);
+            if (day === null || (time !== undefined && (time === null || !isTimeOfDay(time))) || (weather !== undefined && (weather === null || (weather !== "none" && !isWeather(weather)))) || note === null) return { kind: "refused", reason: "invalidAction" };
+            if (day === undefined && time === undefined && weather === undefined) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.setWorld(key, userId, { ...(day === undefined ? {} : { day }), ...(time === undefined ? {} : { time: time as TimeOfDay }), ...(weather === undefined ? {} : { weather: weather === "none" ? null : (weather as Weather) }), ...(note === undefined ? {} : { note }) }, id).then(mapPlayResult);
           }
           case "spendHitDice": {
             const count = integerValue(action.count);

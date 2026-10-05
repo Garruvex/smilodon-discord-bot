@@ -72,6 +72,66 @@ function restCard(kind, controls, box) {
   return card;
 }
 
+// A button that asks twice before it sends, for what cannot be taken back.
+function confirmButton(label, action, box, twice) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ui-control";
+  button.textContent = label;
+  let armed = null;
+  button.addEventListener("click", () => {
+    if (twice && armed === null) {
+      button.textContent = t("activity.run.sure");
+      armed = setTimeout(() => { armed = null; button.textContent = label; }, 4000);
+      return;
+    }
+    clearTimeout(armed);
+    armed = null;
+    void send(action, box);
+  });
+  return button;
+}
+
+const heading = (key) => Object.assign(document.createElement("h3"), { textContent: t(key) });
+const note = (text) => Object.assign(document.createElement("p"), { className: "sheet-note", textContent: text });
+const option = (value, text) => Object.assign(document.createElement("option"), { value, textContent: text });
+const field = (labelKey, control) => { const label = document.createElement("label"); label.className = "run-field"; label.append(Object.assign(document.createElement("span"), { textContent: t(labelKey) }), control); return label; };
+
+// The organizer's verbs for running the game. Each shows only when the game is in a state where it means something; the engine still decides.
+function runSections(run, box) {
+  const verbs = [["closeRound", true], ["retry", false], ["retryFight", true], ["retell", true], ["illustrate", false], ["illustrateScene", true]].filter(([verb]) => run[verb]);
+  const sections = [];
+  const list = document.createElement("section");
+  list.className = "level-up-section";
+  list.append(heading("activity.run.title"));
+  if (verbs.length === 0) list.append(note(t("activity.run.nothing")));
+  for (const [verb, twice] of verbs) list.append(confirmButton(t("activity.run." + verb), { kind: "runGame", verb }, box, twice), note(t("activity.run." + verb + "What")));
+  sections.push(list);
+
+  const level = document.createElement("section");
+  level.className = "level-up-section";
+  const levelInput = Object.assign(document.createElement("input"), { type: "number", min: "2", max: String(run.maxLevel), value: String(Math.min(run.maxLevel, run.lowestLevel + 1)) });
+  const levelButton = confirmButton(t("activity.run.levelGo", { level: levelInput.value }), { kind: "raiseLevel", level: () => Number(levelInput.value) }, box, true);
+  levelInput.addEventListener("input", () => { levelButton.textContent = t("activity.run.levelGo", { level: levelInput.value }); });
+  level.append(heading("activity.run.level"), note(t("activity.run.levelWhat")), field("activity.run.levelTo", levelInput), levelButton);
+  sections.push(level);
+
+  const world = document.createElement("section");
+  world.className = "level-up-section";
+  world.append(heading("activity.run.world"), note(t("activity.run.worldWhat")));
+  if (run.world !== null) world.append(note(t("activity.run.now", { day: run.world.day, time: t("activity.world.time." + run.world.time) })));
+  const day = Object.assign(document.createElement("input"), { type: "number", min: "1", placeholder: t("activity.run.keep") });
+  const time = document.createElement("select");
+  time.append(option("", t("activity.run.keep")), ...run.times.map((name) => option(name, t("activity.world.time." + name))));
+  const weather = document.createElement("select");
+  weather.append(option("", t("activity.run.keep")), option("none", t("activity.run.clear")), ...run.weathers.map((name) => option(name, t("activity.world.weather." + name))));
+  const why = Object.assign(document.createElement("input"), { type: "text", maxLength: 200 });
+  const apply = confirmButton(t("activity.run.apply"), { kind: "setWorld", day: () => (day.value === "" ? undefined : Number(day.value)), time: () => time.value, weather: () => weather.value, note: () => why.value.trim() }, box, false);
+  world.append(field("activity.run.day", day), field("activity.run.time", time), field("activity.run.weather", weather), field("activity.run.note", why), apply);
+  sections.push(world);
+  return sections;
+}
+
 function openControls() {
   const game = current;
   const box = dialog();
@@ -96,6 +156,7 @@ function openControls() {
     pause.append(button);
     parts.push(pause);
   }
+  if (game.run != null) parts.push(...runSections(game.run, box));
   if (game.proxy != null && game.proxy.options.length > 0) {
     const proxy = document.createElement("section");
     proxy.className = "level-up-section";
@@ -137,11 +198,12 @@ export function renderTableControls(game) {
   stopButton.replaceChildren(Object.assign(document.createElement("span"), { textContent: "⏸", "aria-hidden": "true" }), Object.assign(document.createElement("span"), { className: "stop-label", textContent: t("activity.controls.stop") }));
   stopButton.title = t("activity.controls.stopHint");
   stopButton.setAttribute("aria-label", `${t("activity.controls.stop")}. ${t("activity.controls.stopHint")}`);
-  const organizer = controls !== null && (controls.canPause || controls.rest !== null || controls.canPropose || (controls.proxy != null && controls.proxy.options.length > 0));
+  const organizer = controls !== null && (controls.canPause || controls.run != null || controls.rest !== null || controls.canPropose || (controls.proxy != null && controls.proxy.options.length > 0));
   menuButton.hidden = !organizer;
   menuButton.textContent = t("activity.controls.menu");
   const box = document.querySelector("#table-controls-dialog");
-  if (box?.open) { if (organizer) openControls(); else box.close(); }
+  // An open dialog is refreshed only while nobody is typing in it, so a form is not wiped by the next snapshot.
+  if (box?.open) { if (!organizer) box.close(); else if (!box.contains(document.activeElement)) openControls(); }
   renderRestVote(game.kind === "table" ? game.restVote : null);
 }
 

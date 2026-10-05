@@ -421,7 +421,8 @@ export class CampaignPlayController {
   // A DnD Admin (checked by the caller, which knows the server's role) runs
   // an organizer control on a game they do not organize. The engine still
   // sees the organizer's own rights, so it decides exactly as it would for them.
-  public async manage(key: CampaignKey, verb: ManageAction, interactionId: string): Promise<PlayResult> {
+  // A named user runs the verb as themselves, and the engine refuses anyone but the organizer.
+  public async manage(key: CampaignKey, verb: ManageAction, interactionId: string, userId: UserId | null = null): Promise<PlayResult> {
     const story = verb === "longRest" ? await this.longRestStory(key) : [];
     const command = (state: CampaignState): CampaignCommand =>
       verb === "pause"
@@ -442,7 +443,7 @@ export class CampaignPlayController {
                       // The scene the party is in now; a scene with no picture yet is painted, one with a picture is painted again.
                       ? { kind: "redoPicture", subject: state.sceneId ?? "" }
                       : { kind: "queueRest", rest: verb === "longRest" ? "long" : "short", ...(story.length === 0 ? {} : { story }) };
-    return this.perform(key, null, interactionId, command);
+    return this.perform(key, userId, interactionId, command);
   }
 
   // Organizer: paint the last posted picture again ("" when there is none, which the engine refuses).

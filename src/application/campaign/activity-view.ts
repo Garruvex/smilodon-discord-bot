@@ -1,5 +1,7 @@
 import type { AdventureBible } from "../../domain/campaign/adventure/adventure-bible.js";
 import type { UserId } from "../../domain/campaign/core/ids.js";
+import { maxLevel } from "../../domain/campaign/character/leveling.js";
+import { timesOfDay, weathers } from "../../domain/campaign/rules/world-rules.js";
 import { actingHero } from "../../domain/campaign/engine/members.js";
 import { isFallen, presentMembers, type CampaignState } from "../../domain/campaign/state/campaign-state.js";
 import { hitDicePool } from "../../domain/campaign/character/character-build.js";
@@ -55,6 +57,20 @@ export interface ActivityTableView {
   readonly controls: {
     readonly canStop: boolean;
     readonly canPause: boolean;
+    // The organizer's way to run the game: which verbs make sense right now, the party's level, and the story clock. Null for everyone else.
+    readonly run: null | {
+      readonly closeRound: boolean;
+      readonly retry: boolean;
+      readonly retryFight: boolean;
+      readonly retell: boolean;
+      readonly illustrate: boolean;
+      readonly illustrateScene: boolean;
+      readonly lowestLevel: number;
+      readonly maxLevel: number;
+      readonly world: null | { readonly day: number; readonly time: string; readonly weather: string | null };
+      readonly times: readonly string[];
+      readonly weathers: readonly string[];
+    };
     // Who may play your hero while you are away: the other players with a hero, and who it is now. Null without a hero of your own.
     readonly proxy: null | { readonly current: string | null; readonly options: readonly { readonly userId: string; readonly heroName: string }[] };
     // A player present may propose a rest to the table.
@@ -472,6 +488,19 @@ export function buildActivityTableView(
       return {
         canStop: playing && state.members[userId] !== undefined,
         canPause: playing && organizer,
+        run: !playing || !organizer ? null : {
+          closeRound: state.round?.status === "collecting",
+          retry: state.round?.status === "planning",
+          retryFight: state.encounter !== null && state.encounter.status === "ended" && state.encounter.outcome === "defeat" && state.fightCheckpoint !== null && (state.round === null || (state.round.status === "collecting" && Object.keys(state.round.submissions).length === 0)),
+          retell: state.lastNarratedRound >= 1,
+          illustrate: state.lastNarratedRound >= 1,
+          illustrateScene: state.sceneId !== null,
+          lowestLevel: Math.min(maxLevel, ...Object.values(state.characters).map((hero) => hero.level)),
+          maxLevel,
+          world: state.world === undefined ? null : { day: state.world.day, time: state.world.time, weather: state.world.weather ?? null },
+          times: timesOfDay,
+          weathers,
+        },
         proxy: ownCharacterId === null ? null : { current: state.proxies?.[userId] ?? null, options: Object.values(state.members).filter((other) => other.userId !== userId && other.characterId !== null).map((other) => ({ userId: other.userId, heroName: state.characters[other.characterId ?? ""]?.name ?? "" })) },
         canPropose: playing && !organizer && ownCharacterId !== null && state.members[userId]?.availability !== "away" && state.resting === undefined && (state.restVote === undefined || state.restVote.closesAt <= now) && (state.status === "active" || state.status === "waitingForPlayers"),
         rest: !organizer || record.lifecycle === "archived" ? null : { askedFor: state.pendingRest?.rest ?? null, resting: state.resting ?? null, now: state.round === null && (state.encounter === null || state.encounter.status === "ended") },
