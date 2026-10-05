@@ -149,6 +149,11 @@ export class CampaignPlayController {
     return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "summonCompanion", characterId, spellId, slotLevel }));
   }
 
+  // Send a companion away between fights; it is the hero's own to dismiss.
+  public dismissCompanion(key: CampaignKey, userId: UserId, companionId: string, interactionId: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "dismissCompanion", characterId, companionId }));
+  }
+
   // A spell that brings a fallen hero back, cast between fights.
   public reviveSpell(key: CampaignKey, userId: UserId, spellId: ContentId<"spell">, slotLevel: number, targetId: string, interactionId: string): Promise<PlayResult> {
     return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "castReviveSpell", characterId, targetId, spellId, slotLevel }));

@@ -188,6 +188,7 @@ export function renderParty(members) {
     copy.append(nameLine, subtitle);
     const liveLine = partyLiveLine(hero, app.currentSnapshot);
     if (liveLine !== null) copy.append(liveLine);
+    if (hero.playedBy) copy.append(Object.assign(document.createElement("span"), { className: "party-class-line", textContent: t("activity.party.playedBy", { name: hero.playedBy }) }));
     if (hero.zone != null) copy.append(Object.assign(document.createElement("span"), { className: "party-class-line combat-place", textContent: t("activity.combat.at", { zone: hero.zone }), title: hero.zone }));
     const meta = document.createElement("span");
     meta.className = "party-meta-line";

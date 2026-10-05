@@ -96,6 +96,18 @@ function openControls() {
     pause.append(button);
     parts.push(pause);
   }
+  if (game.proxy != null && game.proxy.options.length > 0) {
+    const proxy = document.createElement("section");
+    proxy.className = "level-up-section";
+    const select = document.createElement("select");
+    select.setAttribute("aria-label", t("activity.controls.proxyLabel"));
+    select.append(Object.assign(document.createElement("option"), { value: "", textContent: t("activity.controls.proxyNobody") }));
+    for (const option of game.proxy.options) select.append(Object.assign(document.createElement("option"), { value: option.userId, textContent: option.heroName }));
+    select.value = game.proxy.current ?? "";
+    select.addEventListener("change", () => void performAction({ kind: "setProxy", userId: select.value === "" ? null : select.value }));
+    proxy.append(Object.assign(document.createElement("h3"), { textContent: t("activity.controls.proxyLabel") }), select, Object.assign(document.createElement("p"), { className: "sheet-note", textContent: t("activity.controls.proxyWhat") }));
+    parts.push(proxy);
+  }
   if (game.canPropose) {
     const propose = document.createElement("section");
     propose.className = "level-up-section";
@@ -125,7 +137,7 @@ export function renderTableControls(game) {
   stopButton.replaceChildren(Object.assign(document.createElement("span"), { textContent: "⏸", "aria-hidden": "true" }), Object.assign(document.createElement("span"), { className: "stop-label", textContent: t("activity.controls.stop") }));
   stopButton.title = t("activity.controls.stopHint");
   stopButton.setAttribute("aria-label", `${t("activity.controls.stop")}. ${t("activity.controls.stopHint")}`);
-  const organizer = controls !== null && (controls.canPause || controls.rest !== null || controls.canPropose);
+  const organizer = controls !== null && (controls.canPause || controls.rest !== null || controls.canPropose || (controls.proxy != null && controls.proxy.options.length > 0));
   menuButton.hidden = !organizer;
   menuButton.textContent = t("activity.controls.menu");
   const box = document.querySelector("#table-controls-dialog");

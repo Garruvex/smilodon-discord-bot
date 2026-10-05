@@ -567,6 +567,16 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
             if (typeof action.agree !== "boolean") return { kind: "refused", reason: "invalidAction" };
             return activityPlay.answerRestVote(key, userId, action.agree, id).then(mapPlayResult);
           }
+          case "dismissCompanion": {
+            const companionId = textValue(action.companionId);
+            if (companionId === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.dismissCompanion(key, userId, companionId, id).then(mapPlayResult);
+          }
+          case "setProxy": {
+            const proxyUserId = action.userId === null ? null : textValue(action.userId);
+            if (action.userId !== null && proxyUserId === null) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.proxy(key, userId, proxyUserId as UserId | null, id).then(mapPlayResult);
+          }
           case "spendHitDice": {
             const count = integerValue(action.count);
             if (count === null) return { kind: "refused", reason: "invalidAction" };
@@ -631,7 +641,10 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
             const npcId = textValue(action.npcId);
             const itemId = textValue(action.itemId);
             if (npcId === null || itemId === null || (action.direction !== "buy" && action.direction !== "sell")) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.trade(key, userId, { npcId, itemId: itemId as ContentId<"item">, direction: action.direction }, id).then(mapPlayResult);
+            // A skill to haggle with; empty or absent pays the list price.
+            const haggle = textValue(action.haggle, 32);
+            if (haggle !== null && haggle !== "" && !["persuasion", "deception", "intimidation"].includes(haggle)) return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.trade(key, userId, { npcId, itemId: itemId as ContentId<"item">, direction: action.direction, ...(haggle === null || haggle === "" ? {} : { haggle: haggle as "persuasion" | "deception" | "intimidation" }) }, id).then(mapPlayResult);
           }
           case "useItem": {
             const itemId = textValue(action.itemId);

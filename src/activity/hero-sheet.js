@@ -1,6 +1,7 @@
 import { app } from "./state.js";
 import { t } from "./i18n.js";
 import { featureText } from "./feature-texts.js";
+import { performAction } from "./actions.js";
 
 // The Sheet tab: what the hero is good at, how far they have come, and what they can do, read from the numbers the game holds.
 const abilityOrder = ["str", "dex", "con", "int", "wis", "cha"];
@@ -78,6 +79,38 @@ function skillsBlock(sheet) {
   return block("activity.sheet.skills", Object.assign(document.createElement("h4"), { textContent: t("activity.sheet.saves") }), saves, Object.assign(document.createElement("h4"), { textContent: t("activity.sheet.skillList") }), list, legend);
 }
 
+// Creatures brought along between fights. A companion is sent away with a second press, and only when no fight is on.
+function companionsBlock(game) {
+  const list = document.createElement("div");
+  list.className = "sheet-features";
+  for (const companion of game.companions) {
+    const row = document.createElement("div");
+    row.className = "workspace-offer-row";
+    const detail = [t("activity.companions.from", { spell: companion.spellName }), companion.hp === null ? null : t("activity.companions.hurt", { hp: companion.hp })].filter(Boolean).join(" · ");
+    row.append(Object.assign(document.createElement("span"), { textContent: `${companion.name} · ${detail}` }));
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ui-control";
+    button.textContent = t("activity.companions.dismiss");
+    button.disabled = !game.canDismissCompanion;
+    let armed = null;
+    button.addEventListener("click", () => {
+      if (armed === null) {
+        button.textContent = t("activity.companions.dismissSure");
+        armed = setTimeout(() => { armed = null; button.textContent = t("activity.companions.dismiss"); }, 4000);
+        return;
+      }
+      clearTimeout(armed);
+      armed = null;
+      void performAction({ kind: "dismissCompanion", companionId: companion.id });
+    });
+    row.append(button);
+    list.append(row);
+  }
+  if (!game.canDismissCompanion) list.append(Object.assign(document.createElement("p"), { className: "sheet-note", textContent: t("activity.companions.busy") }));
+  return block("activity.companions.title", list);
+}
+
 function featuresBlock(sheet) {
   const list = document.createElement("div");
   list.className = "sheet-features";
@@ -128,5 +161,5 @@ export function renderSheet(game) {
     );
     scores.append(tile);
   }
-  panel.replaceChildren(strip, block("activity.sheet.abilities", scores), progressBlock(sheet), skillsBlock(sheet), featuresBlock(sheet));
+  panel.replaceChildren(strip, block("activity.sheet.abilities", scores), progressBlock(sheet), skillsBlock(sheet), featuresBlock(sheet), ...(game.companions?.length ? [companionsBlock(game)] : []));
 }

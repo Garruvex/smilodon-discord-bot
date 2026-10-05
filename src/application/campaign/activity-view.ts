@@ -8,6 +8,7 @@ import type { CheckTest } from "../../domain/campaign/character/character-sheet.
 import { findScene } from "../../domain/campaign/adventure/adventure-bible.js";
 import { levelingMode, resolveHouseRules } from "../../domain/campaign/rules/house-rules.js";
 import type { CombatView, DeathSavesView } from "./views/campaign-views.js";
+import { companionsOf } from "../../domain/campaign/companions/companion-roster.js";
 import { buildPanelView, buildPartyView, buildHeroView, buildReactionView, buildSmiteView, buildOpportunityAttackView } from "./views/campaign-views.js";
 import { buildExploreView, buildShopView, type ExploreView, type ShopView } from "./views/explore-view.js";
 import { buildTurnView, type AttackChoice, type SpellChoice, type TurnView } from "./views/turn-view.js";
@@ -54,12 +55,17 @@ export interface ActivityTableView {
   readonly controls: {
     readonly canStop: boolean;
     readonly canPause: boolean;
+    // Who may play your hero while you are away: the other players with a hero, and who it is now. Null without a hero of your own.
+    readonly proxy: null | { readonly current: string | null; readonly options: readonly { readonly userId: string; readonly heroName: string }[] };
     // A player present may propose a rest to the table.
     readonly canPropose: boolean;
     readonly rest: null | { readonly askedFor: "short" | "long" | null; readonly resting: "short" | "long" | null; readonly now: boolean };
   };
   // A player's proposal to rest that is open now, with where the vote stands. Null when none is.
   readonly restVote: null | { readonly rest: "short" | "long"; readonly proposedBy: string; readonly agree: number; readonly decline: number; readonly needed: number; readonly present: number; readonly yourAnswer: "agree" | "decline" | null; readonly canAnswer: boolean; readonly closesAt: number };
+  // Your hero's companions between fights, and whether they can be sent away now (not during a fight).
+  readonly companions: readonly { readonly id: string; readonly name: string; readonly spellName: string; readonly hp: number | null }[];
+  readonly canDismissCompanion: boolean;
   readonly canRequestJoin: boolean;
   readonly joinEntrance: string | null;
   readonly activeName: string | null;
@@ -87,6 +93,8 @@ export interface ActivityTableView {
     readonly seatUserId?: string;
     // Where the hero stands in a fight (the zone's name), otherwise null.
     readonly zone: string | null;
+    // While the owner is away: the hero of the player who plays this one for them. Null otherwise.
+    readonly playedBy: string | null;
     // Hit Dice left, out of how many, and the size of the next one.
     readonly hitDice: { readonly left: number; readonly max: number; readonly die: number | null };
     // In a fight: the spell they hold their concentration on, their death saves when down, and the conditions and lasting spells on them.
@@ -321,6 +329,12 @@ export function buildActivityTableView(
       isYou: hero.ownerUserId === userId,
       ...(record.organizerId === userId && hero.ownerUserId !== userId && state.members[hero.ownerUserId]?.availability === "away" && (state.encounter === null || state.encounter.status === "ended") ? { seatUserId: hero.ownerUserId } : {}),
       zone: panel.combat?.party.find((combatant) => combatant.name === hero.name)?.zone ?? null,
+      playedBy: ((): string | null => {
+        const owner = state.members[hero.ownerUserId];
+        const proxyUserId = state.proxies?.[hero.ownerUserId];
+        const proxyHero = proxyUserId === undefined ? undefined : state.members[proxyUserId]?.characterId;
+        return owner?.availability === "away" && proxyHero !== undefined && proxyHero !== null ? state.characters[proxyHero]?.name ?? null : null;
+      })(),
       hitDice: ((): ActivityTableView["party"][number]["hitDice"] => {
         const sheet = state.characters[hero.characterId];
         if (sheet === undefined) return { left: 0, max: 0, die: null };
@@ -458,6 +472,7 @@ export function buildActivityTableView(
       return {
         canStop: playing && state.members[userId] !== undefined,
         canPause: playing && organizer,
+        proxy: ownCharacterId === null ? null : { current: state.proxies?.[userId] ?? null, options: Object.values(state.members).filter((other) => other.userId !== userId && other.characterId !== null).map((other) => ({ userId: other.userId, heroName: state.characters[other.characterId ?? ""]?.name ?? "" })) },
         canPropose: playing && !organizer && ownCharacterId !== null && state.members[userId]?.availability !== "away" && state.resting === undefined && (state.restVote === undefined || state.restVote.closesAt <= now) && (state.status === "active" || state.status === "waitingForPlayers"),
         rest: !organizer || record.lifecycle === "archived" ? null : { askedFor: state.pendingRest?.rest ?? null, resting: state.resting ?? null, now: state.round === null && (state.encounter === null || state.encounter.status === "ended") },
       };
@@ -479,6 +494,8 @@ export function buildActivityTableView(
         closesAt: vote.closesAt,
       };
     })(),
+    companions: ownCharacterId === null ? [] : companionsOf(state.companions, ownCharacterId).map((companion) => ({ id: companion.id, name: glossary.names[companion.monsterId] ?? companion.monsterId, spellName: glossary.names[companion.spellId] ?? companion.spellId, hp: companion.hp })),
+    canDismissCompanion: sheet !== undefined && !isFallen(state, sheet.id) && (state.encounter === null || state.encounter.status === "ended"),
     canRequestJoin: ownCharacterId === null && record.organizerId !== userId && record.visibility !== "membersOnly"
       && Object.keys(state.members).length + Object.entries(record.joinRequests ?? {}).filter(([id, request]) => state.members[id] === undefined && request.expiresAt > now && (request.status === "invited" || request.status === "approved" || request.status === "queued")).length < record.lobby.maxPlayers,
     joinEntrance: inviteCurrent ? joinRequest.entrance ?? null : null,

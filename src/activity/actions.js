@@ -12,6 +12,8 @@ import { renderGame } from "./render.js";
 // Where each kind of action is shown: urgent decisions on top, the round composer, a category list, or the closing button.
 // Spell names as the table sends them, so a cast is confirmed by name.
 const spellNames = new Map();
+// The skill each shop is being haggled with, by the shop's NPC.
+const haggleChoice = new Map();
 
 function groupBy(items, keyOf) {
   const groups = new Map();
@@ -387,8 +389,18 @@ export function buildTableActions(game, liveActions, log) {
       }
     }
     for (const shop of game.explore.shops ?? []) {
-      for (const item of shop.buy) addAction(t("activity.action.buy", { name: item.name, price: item.price }), { kind: "shop", npcId: shop.npc.id, itemId: item.itemId, direction: "buy" });
-      for (const item of shop.sell) addAction(t("activity.action.sell", { name: item.name, price: item.price }), { kind: "shop", npcId: shop.npc.id, itemId: item.itemId, direction: "sell" });
+      // How to pay: the list price, or a haggle with a skill. The choice stays with the shop for as long as the page is open.
+      const haggle = document.createElement("select");
+      haggle.className = "shop-haggle";
+      haggle.setAttribute("aria-label", t("activity.shop.haggle", { name: shop.npc.name }));
+      haggle.title = t("activity.shop.haggleWhat");
+      haggle.append(Object.assign(document.createElement("option"), { value: "", textContent: t("activity.shop.listPrice") }));
+      for (const skill of ["persuasion", "deception", "intimidation"]) haggle.append(Object.assign(document.createElement("option"), { value: skill, textContent: t(`activity.skill.${skill}`) }));
+      haggle.value = haggleChoice.get(shop.npc.id) ?? "";
+      haggle.addEventListener("change", () => haggleChoice.set(shop.npc.id, haggle.value));
+      groups.get("items").push(haggle);
+      for (const item of shop.buy) addAction(t("activity.action.buy", { name: item.name, price: item.price }), { kind: "shop", npcId: shop.npc.id, itemId: item.itemId, direction: "buy", haggle: () => haggle.value });
+      for (const item of shop.sell) addAction(t("activity.action.sell", { name: item.name, price: item.price }), { kind: "shop", npcId: shop.npc.id, itemId: item.itemId, direction: "sell", haggle: () => haggle.value });
     }
     for (const spell of game.explore.spells) addAction(t("activity.action.cast", { name: spell.name }), { kind: "exploreSpell", spellId: spell.id });
     for (const potion of game.myHero.usablePotions ?? []) addAction(t("activity.action.drink", { name: potion.name, count: potion.count }), { kind: "useItem", itemId: potion.id });
