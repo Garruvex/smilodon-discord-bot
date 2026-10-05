@@ -113,6 +113,15 @@ describe("the Activity story", () => {
     expect(entries).toEqual([{ id: "e0", kind: "roll", who: "Mira", test: { kind: "skill", skill: "arcana" }, total: 17, dc: 15, success: true }]);
   });
 
+  it("keeps a roll in the story after a later round has cleared the state's checks", () => {
+    const planned = { id: "check-1", characterId: "c-mira", test: { kind: "skill", skill: "animalHandling" }, dc: 12 };
+    const entries = buildActivityStory(newCampaign(), [
+      { kind: "roundPlanApplied", checks: [planned] },
+      { kind: "checkResolved", checkId: "check-1", result: { roll: { total: 9 }, success: false } },
+    ] as unknown as CampaignEvent[], bible, glossary);
+    expect(entries).toEqual([{ id: "e1", kind: "roll", who: "Mira", test: planned.test, total: 9, dc: 12, success: false }]);
+  });
+
   it("carries nothing from a private summary or a hidden note", () => {
     const entries = story([{ kind: "summaryRecorded", throughRound: 3, visibility: "private", text: "The DM's secret." }]);
     expect(entries).toEqual([]);

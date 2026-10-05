@@ -62,6 +62,8 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
   const mine = (id: string): { readonly mine?: true } => (id === ownCharacterId ? { mine: true } : {});
   // A hero's wording for a round may be replaced; the entry keeps its place and takes the newest words.
   const actionAt = new Map<string, Placed>();
+  // A check is known from the plan that called it: the campaign state forgets the earlier rounds' checks when a new round opens.
+  const calledChecks = new Map<string, { readonly characterId: string; readonly test: CheckTest; readonly dc: number }>();
   const casts = new Map<string, { mine?: true; who: string; spell: string }>();
   const talks = new Map<string, Omit<Extract<StoryEntry, { kind: "talk" }>, "id" | "kind" | "text">>();
 
@@ -139,8 +141,11 @@ export function buildActivityStory(state: CampaignState, events: readonly Campai
       case "heroSpoke":
         if (event.text.trim().length > 0) add(index, { id: `e${index}`, kind: "speech", ...mine(event.characterId), who: heroName(event.characterId), text: event.text.trim() });
         break;
+      case "roundPlanApplied":
+        for (const planned of event.checks) calledChecks.set(planned.id, planned);
+        break;
       case "checkResolved": {
-        const check = state.checks[event.checkId];
+        const check = calledChecks.get(event.checkId) ?? state.checks[event.checkId];
         if (check !== undefined) add(index, { id: `e${index}`, kind: "roll", ...mine(check.characterId), who: heroName(check.characterId), test: check.test, total: event.result.roll.total, dc: check.dc, success: event.result.success });
         break;
       }

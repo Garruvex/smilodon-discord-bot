@@ -97,8 +97,9 @@ function showToast(roll) {
 
 export function rollLabel(test) {
   if (!test) return t("activity.dice.abilityCheck");
-  const key = String(test.kind === "skill" ? test.skill : test.ability).toLocaleLowerCase();
-  const name = t(`activity.rule.${key}`);
+  // Skill ids are camelCase ("animalHandling"), so the id is tried as it is before its lower-case form.
+  const raw = String(test.kind === "skill" ? test.skill : test.ability);
+  const name = [raw, raw.toLocaleLowerCase()].map((key) => t(`activity.rule.${key}`)).find((text) => !text.startsWith("activity.rule.")) ?? raw;
   return test.kind === "save" ? t("activity.dice.save", { ability: name }) : test.kind === "skill" ? t("activity.dice.skill", { skill: name }) : t("activity.dice.ability", { ability: name });
 }
 
