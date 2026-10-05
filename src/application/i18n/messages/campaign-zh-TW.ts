@@ -435,6 +435,7 @@ export const campaignZhTW = {
   "activity.move.withdrawGo": "取消前往票",
   "activity.move.withdrawStay": "取消留下票",
   "activity.action.details": "角色詳情",
+  "activity.action.ownOnly": "只描述你自己的英雄；其他英雄的行動由他們的玩家決定。",
   "activity.action.inputPlaceholder": "你的英雄要做什麼或說什麼？",
   "activity.roll.result": "d20 {natural} {sum} = {total}，對抗 DC {dc} — {outcome}",
   "activity.roll.success": "成功",

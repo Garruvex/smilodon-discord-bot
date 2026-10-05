@@ -351,6 +351,11 @@ export function buildTableActions(game, liveActions, log) {
     input.maxLength = 500;
     input.rows = 2;
     composer.push(input);
+    // Seen while typing too, which a placeholder is not.
+    const hint = document.createElement("p");
+    hint.className = "action-hint";
+    hint.textContent = t("activity.action.ownOnly");
+    composer.push(hint);
     composer.push(makeButton(t("activity.action.say"), async () => {
       const text = input.value.trim();
       if (!text) {

@@ -408,6 +408,7 @@ export const campaignEn = {
   "activity.move.withdrawGo": "Change Go vote",
   "activity.move.withdrawStay": "Change Stay vote",
   "activity.action.details": "Character details",
+  "activity.action.ownOnly": "Describe only your own hero. What other heroes do is up to their players.",
   "activity.action.inputPlaceholder": "What does your hero do or say?",
   "activity.roll.result": "d20 {natural} {sum} = {total} against DC {dc} — {outcome}",
   "activity.roll.success": "Success",

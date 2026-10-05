@@ -157,6 +157,8 @@ body[data-game-kind="lobby"] .story-now { display: none; }
   .story-now-more { display: none; }
 }
 
+.action-hint { margin: -4px 0 0; color: var(--ui-muted, #7a6244); font-size: 12px; line-height: 1.4; }
+
 /* Away: the hero's panels go grey and stay still, with one line saying why and the way back. */
 .away-lock { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; padding: 8px 12px; border: 1px solid var(--ui-border-strong, #9c7a4b); border-radius: var(--ui-radius-small, 7px); background: #e0d4bb; color: var(--ui-ink, #33241a); font-size: 13px; }
 .away-lock[hidden] { display: none; }
