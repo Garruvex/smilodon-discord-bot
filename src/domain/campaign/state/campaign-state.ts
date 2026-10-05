@@ -164,6 +164,10 @@ export interface CampaignState {
   // (engine/healing-magic.ts). One at a time per caster. Settled healings are
   // told from the saved event; nothing about them is kept here but the count.
   readonly healingPending?: Readonly<Record<CharacterId, PendingHealing>>;
+  // After a short rest, until the next round or fight begins: the heroes may spend Hit Dice, each one rolled.
+  readonly shortRestOpen?: boolean;
+  readonly hitDicePending?: Readonly<Record<CharacterId, PendingHitDice>>;
+  readonly hitDiceCount?: number;
   readonly healingCount: number;
   // Creatures the heroes brought along between fights (companions/companion-roster.ts). Absent until the first one.
   readonly companions?: CompanionRoster | undefined;
@@ -190,6 +194,14 @@ export interface EnvironmentalDamageRecord {
   readonly taken: number;
   readonly hpAfter: number;
   readonly dead: boolean;
+}
+
+// Hit Dice a hero chose to spend on a short rest, their dice requested: the dice and the Constitution bonus are fixed before the roll.
+export interface PendingHitDice {
+  readonly characterId: CharacterId;
+  readonly count: number;
+  readonly expression: DiceExpression;
+  readonly rollId: RollId;
 }
 
 // A healing spell cast outside combat, its dice requested: the expression is

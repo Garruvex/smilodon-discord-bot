@@ -27,6 +27,7 @@ import type {
   EnvironmentalDamageRecord,
   HealingRecord,
   PendingHealing,
+  PendingHitDice,
 } from "../state/campaign-state.js";
 import type { Skill } from "../rules/skills.js";
 import type { WorldState } from "../state/world-state.js";
@@ -221,6 +222,9 @@ export type CampaignEvent =
   // A fallen hero rises again (engine/revival-magic.ts); `heroStatus` holds the hero, alive, and the caster with the slot spent.
   | { readonly kind: "heroRevived"; readonly characterId: CharacterId; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>> }
   | { readonly kind: "companionDismissed"; readonly companionId: string }
+  | { readonly kind: "hitDiceStarted"; readonly pending: PendingHitDice }
+  // The dice landed: what was rolled, how much it healed, and the hero's new hit points and Hit Dice left.
+  | { readonly kind: "hitDiceSettled"; readonly characterId: CharacterId; readonly count: number; readonly rolled: number; readonly healed: number; readonly heroStatus: HeroStatus }
   | { readonly kind: "healingStarted"; readonly healing: PendingHealing }
   // The healing dice landed: the slot is spent and the hit points restored,
   // both carried as the statuses of the caster and (if another) the target.

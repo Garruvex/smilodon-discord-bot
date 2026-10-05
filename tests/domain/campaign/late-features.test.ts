@@ -8,6 +8,8 @@ import { conditionLookup } from "../../../src/domain/campaign/effects/effect-que
 import { attackMode } from "../../../src/domain/campaign/engine/combat/attack-rules.js";
 import type { EncounterSpec } from "../../../src/domain/campaign/commands/campaign-command.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
+import { SeededRandomSource } from "../../../src/application/campaign/random/seeded-random-source.js";
+import { performRoll } from "../../../src/domain/campaign/dice/roll-spec.js";
 import { alex, d20Roll, jamie, newCampaign, organizer, partyOfThree, partyWithSpells, run, ruleset, sam, system } from "./campaign-fixtures.js";
 import { Fight, skirmish } from "./combat-fixtures.js";
 
@@ -252,15 +254,22 @@ describe("Empowered Evocation, Overchannel and Supreme Healing", () => {
 
 describe("Short rest features", () => {
   it("Song of Rest heals one more die for a hero who spent a Hit Die", () => {
-    const wounded = (features: readonly string[]): number => {
+    const wounded = (features: readonly string[]): { hp: number; rolled: number } => {
       const base = withFeatures(partyOfThree(), "c-elspeth", features);
       const state: CampaignState = { ...base, heroStatus: { ...base.heroStatus, "c-borin": { hp: 1, resources: { spellSlots: {}, featureUses: {} } } } };
       const rested = run(state, organizer, { kind: "takeRest", rest: "short" }).state;
-      return rested.heroStatus["c-borin"]?.hp ?? 0;
+      const asked = run(rested, jamie, { kind: "spendHitDice", characterId: "c-borin", count: 1 });
+      const request = asked.requests.find((candidate) => candidate.kind === "roll");
+      const pending = asked.state.hitDicePending?.["c-borin"];
+      if (request?.kind !== "roll" || pending === undefined) throw new Error("no Hit Dice roll asked for");
+      const result = performRoll(request.spec, new SeededRandomSource(3));
+      const settled = run(asked.state, system, { kind: "recordRoll", rollId: pending.rollId, result });
+      return { hp: settled.state.heroStatus["c-borin"]?.hp ?? 0, rolled: result.kind === "dice" ? result.roll.total : 0 };
     };
-    // Borin's Hit Die heals 8; the song adds a d6's average of 4 (capped at his 12).
-    expect(wounded([])).toBe(9);
-    expect(wounded(["feature:song-of-rest"])).toBe(12);
+    // The song adds a d6's average of 4 to what the die gave (capped at his 12).
+    const plain = wounded([]);
+    expect(plain.hp).toBe(Math.min(12, 1 + Math.max(0, plain.rolled)));
+    expect(wounded(["feature:song-of-rest"]).hp).toBe(Math.min(12, 1 + Math.max(0, plain.rolled) + 4));
   });
 
   it("Sorcerous Restoration returns four sorcery points", () => {

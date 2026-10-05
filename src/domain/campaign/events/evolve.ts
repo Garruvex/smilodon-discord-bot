@@ -31,6 +31,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
         },
         lastRoundNumber: event.roundNumber,
         checks: {},
+        shortRestOpen: false,
       };
     case "actionSubmitted":
       return withSubmission(state, event.characterId, { kind: "action", text: event.text, revision: event.revision });
@@ -275,7 +276,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "combatNarrationRecorded":
       return evolveCombat(state, event);
     case "restTaken":
-      return withCompanions({ ...state, heroStatus: { ...state.heroStatus, ...event.heroStatus } }, afterRest(state.companions, event.rest));
+      return withCompanions({ ...state, shortRestOpen: event.rest === "short", heroStatus: { ...state.heroStatus, ...event.heroStatus } }, afterRest(state.companions, event.rest));
     case "companionsSummoned":
       return { ...state, companions: withSummoned(state.companions, event.companions, event.replaced), heroStatus: { ...state.heroStatus, ...event.heroStatus } };
     case "heroRevived":
@@ -372,6 +373,12 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       const sheet = settled.characters[event.damage.characterId];
       if (!event.damage.dead || sheet === undefined) return settled;
       return { ...settled, stash: [...settled.stash, ...sheet.equipment], characters: { ...settled.characters, [sheet.id]: { ...sheet, equipment: [] } } };
+    }
+    case "hitDiceStarted":
+      return { ...state, hitDicePending: { ...state.hitDicePending, [event.pending.characterId]: event.pending }, hitDiceCount: (state.hitDiceCount ?? 0) + 1 };
+    case "hitDiceSettled": {
+      const { [event.characterId]: _rolled, ...hitDicePending } = state.hitDicePending ?? {};
+      return { ...state, hitDicePending, heroStatus: { ...state.heroStatus, [event.characterId]: event.heroStatus } };
     }
     case "healingStarted":
       return { ...state, healingPending: { ...state.healingPending, [event.healing.casterId]: event.healing } };
@@ -481,11 +488,13 @@ function evolveCombat(state: CampaignState, event: CombatEvent): CampaignState {
   const encounter = evolveEncounter(state.encounter, event);
   if (event.kind === "encounterStarted") {
     const { characters, heroStatus, stash, gold, offers, offerCount, companions } = state;
+    // The fight ends the rest: Hit Dice can no longer be spent for it.
     const baseId = baseEncounterId(event.encounter.id);
     return {
       ...state,
       encounter,
       pendingEncounter: null,
+      shortRestOpen: false,
       encounterHistory: state.encounterHistory.includes(baseId) ? state.encounterHistory : [...state.encounterHistory, baseId],
       fightCheckpoint: { characters, heroStatus, stash, gold, offers, offerCount, companions },
     };

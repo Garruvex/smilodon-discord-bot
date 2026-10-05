@@ -257,14 +257,12 @@ describe("class features", () => {
     const tired = withStatus(newCampaign(), { "c-borin": 3 });
     const spent = { ...tired, heroStatus: { ...tired.heroStatus, "c-borin": { hp: 3, resources: { spellSlots: {}, featureUses: { "feature:second-wind": 0 } } } } };
     const short = new Fight(spent).run(organizer, { kind: "takeRest", rest: "short" });
-    // Borin's one Hit Die (d10: 6 on average, plus Con +2) heals 8.
-    expect(short.state.heroStatus["c-borin"]).toEqual({ hp: 11, resources: { spellSlots: {}, pactSlots: {}, featureUses: { "feature:second-wind": 1 } }, hitDice: 0, exhaustion: 0 });
-    // With no dice left, a second short rest heals nothing; a long rest brings one back.
-    const again = run(short.state, organizer, { kind: "takeRest", rest: "short" });
-    expect(again.state.heroStatus["c-borin"]?.hp).toBe(11);
-    const overnight = run(again.state, organizer, { kind: "takeRest", rest: "long" });
+    // The rest itself heals nothing: the hero spends Hit Dice afterwards (hit-dice.test.ts). Features come back, and the dice are untouched.
+    expect(short.state.heroStatus["c-borin"]).toEqual({ hp: 3, resources: { spellSlots: {}, pactSlots: {}, featureUses: { "feature:second-wind": 1 } }, hitDice: 1, exhaustion: 0 });
+    expect(short.state.shortRestOpen).toBe(true);
+    const overnight = run(short.state, organizer, { kind: "takeRest", rest: "long" });
     expect(overnight.state.heroStatus["c-borin"]).toMatchObject({ hp: 12, hitDice: 1 });
-    // Healthy heroes keep their dice.
+    expect(overnight.state.shortRestOpen).toBe(false);
     expect(short.state.heroStatus["c-mira"]).toMatchObject({ hp: 9, hitDice: 1 });
     const long = new Fight(spent).run(organizer, { kind: "takeRest", rest: "long" });
     expect(long.state.heroStatus["c-borin"]?.hp).toBe(12);

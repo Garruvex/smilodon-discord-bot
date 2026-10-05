@@ -143,5 +143,7 @@ export type DeliverySpec =
   | { readonly kind: "hazardNarrated"; readonly hazardId: string }
   // A healing spell cast outside combat has landed; the presenter tells it from the saved event.
   | { readonly kind: "healingSettled"; readonly healingId: string }
+  // A hero spent Hit Dice on a short rest.
+  | { readonly kind: "hitDiceSettled"; readonly characterId: string; readonly count: number; readonly rolled: number; readonly healed: number; readonly hpAfter: number }
   // Damage between fights has landed (a fall, drowning); the presenter tells it from the saved event.
   | { readonly kind: "environmentalDamage"; readonly damageId: string };

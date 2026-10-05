@@ -1,8 +1,6 @@
 import { wildShapeUses } from "../rules/wild-shape-rules.js";
 import { featureUsesOf, traitsOf } from "../rules/content-definitions.js";
 import { innateUseKey } from "../rules/traits.js";
-import { abilityModifier } from "../character/character-sheet.js";
-import { hitDicePool } from "../character/character-build.js";
 import { defaultHeroResources, type HeroStatus } from "../character/hero-status.js";
 import type { CharacterId } from "../core/ids.js";
 import { isFallen } from "../state/campaign-state.js";
@@ -10,9 +8,8 @@ import type { Decision } from "./decision.js";
 import type { Rejection } from "./rejection.js";
 
 // Rests restore limited resources between fights (2014 rules). Short:
-// features that recharge on a short rest, and Hit Dice are spent until the
-// hero is at full HP or out of dice, each healing its average plus the
-// Constitution modifier (no roll, so a rest is deterministic). Long: HP,
+// features that recharge on a short rest; the heroes then spend Hit Dice
+// themselves, each one rolled (engine/hit-dice.ts). Long: HP,
 // spell slots, every feature, and half the Hit Dice back (at least one).
 // What a scene may attach to a long rest, in the shape the engine applies.
 type StoryEffect = Parameters<Decision["applyStory"]>[1];
@@ -28,8 +25,6 @@ export function takeRest(decision: Decision, rest: "short" | "long", story: read
   if (stray.length > 0 || (rest === "short" && story.length > 0)) return { code: "invalidPlan", problems: ["A rest can only bring lines, clues, flags, rewards and keepsakes."] };
   const content = ctx.rules.content;
   const heroStatus: Record<CharacterId, HeroStatus> = {};
-  // Song of Rest: a bard's song adds one more Hit Die of healing (its average) to every hero who spent a Hit Die on this rest.
-  const song = Math.max(0, ...Object.values(state.characters).map((sheet) => (sheet.features.includes("feature:song-of-rest") && !isFallen(state, sheet.id) ? Math.floor((sheet.level >= 17 ? 12 : sheet.level >= 13 ? 10 : sheet.level >= 9 ? 8 : 6) / 2) + 1 : 0)));
   for (const sheet of Object.values(state.characters)) {
     if (isFallen(state, sheet.id)) continue;
     const fresh = defaultHeroResources(sheet, content);
@@ -46,17 +41,9 @@ export function takeRest(decision: Decision, rest: "short" | "long", story: read
     // remaining `dice` count is always the smallest-`dice` suffix of this
     // sorted pool, since every rest spends and restores largest-first too —
     // see hitDicePool's doc comment (character-build.ts).
-    const pool = hitDicePool(sheet);
-    let hp = current.hp;
-    let left = dice;
-    let spent = pool.length - dice;
-    while (hp < sheet.maxHp && left > 0) {
-      const die = pool[spent] ?? sheet.hitDie;
-      hp = Math.min(sheet.maxHp, hp + Math.max(1, Math.floor(die / 2) + 1 + abilityModifier(sheet.abilityScores.con)));
-      left -= 1;
-      spent += 1;
-    }
-    if (left < dice) hp = Math.min(sheet.maxHp, hp + song);
+    // Hit Dice are the hero's to spend after the rest (engine/hit-dice.ts): the rest itself heals nothing.
+    const hp = current.hp;
+    const left = dice;
     const featureUses = { ...current.resources.featureUses };
     for (const id of sheet.features) {
       const feature = content.find(id);

@@ -114,6 +114,7 @@ export type CampaignCommand =
   | DialogueCommand
   | UtilityMagicCommand
   | HealingMagicCommand
+  | HitDiceCommand
   | CompanionMagicCommand
   | RevivalMagicCommand
   | TravelCommand
@@ -174,6 +175,13 @@ export type RevivalMagicCommand = {
   readonly targetId: CharacterId;
   readonly spellId: ContentId<"spell">;
   readonly slotLevel: number;
+};
+
+// A hero spends Hit Dice during a short rest: each die is rolled, the Constitution modifier is added, and the total is healed.
+export type HitDiceCommand = {
+  readonly kind: "spendHitDice";
+  readonly characterId: CharacterId;
+  readonly count: number;
 };
 
 // A slotted healing spell on a friend outside combat (engine/healing-magic.ts):
