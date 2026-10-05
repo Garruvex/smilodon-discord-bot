@@ -59,6 +59,7 @@ function entryNode(entry) {
   const node = document.createElement("p");
   node.className = "story-entry";
   node.dataset.id = entry.id;
+  node.dataset.sig = JSON.stringify(entry);
   node.dataset.kind = entry.kind;
   node.dataset.group = combatKinds.has(entry.kind) ? "combat" : entry.kind === "system" ? "system" : "story";
   fillNode(node, entry);
@@ -246,7 +247,11 @@ export function renderStory(game) {
       added.push(entry);
       if (previous === null) feed.element.insertBefore(node, feed.element.querySelector(".story-empty").nextSibling);
       else previous.after(node);
-    } else if (entry.kind === "action") fillNode(node, entry);
+    } else {
+      // An entry can change after it was first seen: an edited action, and a fight line whose rolls are made later (the player rolls to hit, then for damage), so it is drawn again whenever it differs.
+      const sig = JSON.stringify(entry);
+      if (node.dataset.sig !== sig) { node.dataset.sig = sig; fillNode(node, entry); }
+    }
     previous = node;
   }
   applyFilter();
@@ -265,8 +270,9 @@ export function renderStory(game) {
   const fits = entries.filter((entry) => stripKinds.has(entry.kind) && (inFight || entry.kind === "narration"));
   const newest = fits.at(-1);
   if (newest === undefined) strip.hidden = true;
-  else if (strip.dataset.shown !== newest.id) {
+  else if (strip.dataset.shown !== newest.id || strip.dataset.sig !== JSON.stringify(newest)) {
     strip.dataset.shown = newest.id;
+    strip.dataset.sig = JSON.stringify(newest);
     // The first sight of the game shows the line without announcing it as new.
     showStrip(newest);
     if (!feed.ready) { strip.classList.remove("is-new"); clearTimeout(stripFade); strip.dataset.dim = "false"; }
