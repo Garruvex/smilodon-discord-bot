@@ -61,7 +61,7 @@ export function previewStoryNext(n) {
 export function designPreviewSnapshot() {
   const hero = (characterId, name, className, raceName, hp, maxHp, isYou = false) => ({
     characterId, name, className, raceName, level: 5, hp, maxHp, armorClass: 15, presence: "present",
-    down: false, fallen: false, conditions: [], isYou, zone: "Shattered dais", concentration: name === "Mira Fen" ? "Bless" : null, deathSaves: name === "Thorne Oakshield" ? { successes: 1, failures: 2, stable: false } : null, statuses: name === "Aria Vell" ? ["Poisoned"] : [],
+    down: false, fallen: false, conditions: [], isYou, zone: "Shattered dais", hitDice: { left: 3, max: 5, die: 8 }, concentration: name === "Mira Fen" ? "Bless" : null, deathSaves: name === "Thorne Oakshield" ? { successes: 1, failures: 2, stable: false } : null, statuses: name === "Aria Vell" ? ["Poisoned"] : [],
   });
   return {
     classNames: new URLSearchParams(window.location.search).get("language") === "zh-TW" ? { wizard: "法師", paladin: "聖騎士", ranger: "遊俠", rogue: "盜賊", cleric: "牧師", bard: "吟遊詩人" } : {},

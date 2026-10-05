@@ -61,3 +61,25 @@ describe("asking for a rest when nothing is going", () => {
     expect(after.state.round).toBeNull();
   });
 });
+
+describe("a long rest takes a day of the story", () => {
+  const finished = (state: CampaignState): CampaignState => { const { resting: _resting, ...rest } = state; return rest; };
+  const idle = (world?: { day: number; time: "dawn" | "morning" | "midday" | "afternoon" | "dusk" | "night" }): CampaignState => ({ ...newCampaign(), ...(world === undefined ? {} : { world }) });
+
+  it("is refused a second time within the same day, and allowed once a full day has passed", () => {
+    const rested = run(idle({ day: 1, time: "dusk" }), organizer, { kind: "queueRest", rest: "long" }).state;
+    expect(rested.world).toMatchObject({ day: 2, time: "dawn" });
+    // Dawn of day 2 is only two phases after the rest began at dusk.
+    expect(reject(finished(rested), organizer, { kind: "queueRest", rest: "long" })).toEqual({ code: "alreadyRested" });
+    expect(reject(finished(rested), organizer, { kind: "takeRest", rest: "long" })).toEqual({ code: "alreadyRested" });
+    const nextDusk = { ...finished(rested), world: { day: 2, time: "dusk" as const } };
+    expect(kinds(run(nextDusk, organizer, { kind: "queueRest", rest: "long" }).events)).toContain("restTaken");
+  });
+
+  it("never limits a short rest, or a table whose adventure keeps no clock", () => {
+    const rested = run(idle({ day: 1, time: "dusk" }), organizer, { kind: "queueRest", rest: "long" }).state;
+    expect(kinds(run(finished(rested), organizer, { kind: "queueRest", rest: "short" }).events)).toContain("restTaken");
+    const clockless = run(idle(), organizer, { kind: "queueRest", rest: "long" }).state;
+    expect(kinds(run(finished(clockless), organizer, { kind: "queueRest", rest: "long" }).events)).toContain("restTaken");
+  });
+});

@@ -284,7 +284,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return rest;
     }
     case "restTaken":
-      return withCompanions({ ...omitPendingRest(state), resting: event.rest, shortRestOpen: event.rest === "short", heroStatus: { ...state.heroStatus, ...event.heroStatus } }, afterRest(state.companions, event.rest));
+      return withCompanions({ ...omitPendingRest(state), resting: event.rest, shortRestOpen: event.rest === "short", ...(event.longRestAt === undefined ? {} : { lastLongRestAt: event.longRestAt }), heroStatus: { ...state.heroStatus, ...event.heroStatus } }, afterRest(state.companions, event.rest));
     case "companionsSummoned":
       return { ...state, companions: withSummoned(state.companions, event.companions, event.replaced), heroStatus: { ...state.heroStatus, ...event.heroStatus } };
     case "heroRevived":

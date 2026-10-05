@@ -426,7 +426,7 @@ export class CampaignPlayController {
                     : verb === "illustrateScene"
                       // The scene the party is in now; a scene with no picture yet is painted, one with a picture is painted again.
                       ? { kind: "redoPicture", subject: state.sceneId ?? "" }
-                      : { kind: "takeRest", rest: verb === "longRest" ? "long" : "short", ...(story.length === 0 ? {} : { story }) };
+                      : { kind: "queueRest", rest: verb === "longRest" ? "long" : "short", ...(story.length === 0 ? {} : { story }) };
     return this.perform(key, null, interactionId, command);
   }
 

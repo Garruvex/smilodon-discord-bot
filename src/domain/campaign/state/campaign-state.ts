@@ -171,6 +171,8 @@ export interface CampaignState {
   readonly pendingRest?: { readonly rest: "short" | "long"; readonly sceneId: string | null; readonly story: readonly PartyEffect[] };
   // The party is resting: the next round waits until the organizer finishes (continue). Hit Dice are spent in this time.
   readonly resting?: "short" | "long";
+  // Where the story clock stood when the party last began a long rest, counted in phases of the day (state/world-state.ts). A long rest takes a full day.
+  readonly lastLongRestAt?: number;
   readonly hitDicePending?: Readonly<Record<CharacterId, PendingHitDice>>;
   readonly hitDiceCount?: number;
   readonly healingCount: number;

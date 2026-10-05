@@ -83,6 +83,8 @@ export interface ActivityTableView {
     readonly seatUserId?: string;
     // Where the hero stands in a fight (the zone's name), otherwise null.
     readonly zone: string | null;
+    // Hit Dice left, out of how many, and the size of the next one.
+    readonly hitDice: { readonly left: number; readonly max: number; readonly die: number | null };
     // In a fight: the spell they hold their concentration on, their death saves when down, and the conditions and lasting spells on them.
     readonly concentration: string | null;
     readonly deathSaves: DeathSavesView | null;
@@ -315,6 +317,13 @@ export function buildActivityTableView(
       isYou: hero.ownerUserId === userId,
       ...(record.organizerId === userId && hero.ownerUserId !== userId && state.members[hero.ownerUserId]?.availability === "away" && (state.encounter === null || state.encounter.status === "ended") ? { seatUserId: hero.ownerUserId } : {}),
       zone: panel.combat?.party.find((combatant) => combatant.name === hero.name)?.zone ?? null,
+      hitDice: ((): ActivityTableView["party"][number]["hitDice"] => {
+        const sheet = state.characters[hero.characterId];
+        if (sheet === undefined) return { left: 0, max: 0, die: null };
+        const left = Math.min(sheet.level, state.heroStatus[sheet.id]?.hitDice ?? sheet.level);
+        const pool = hitDicePool(sheet);
+        return { left, max: sheet.level, die: pool[pool.length - left] ?? null };
+      })(),
       concentration: panel.combat?.party.find((combatant) => combatant.name === hero.name)?.concentration ?? null,
       deathSaves: panel.combat?.party.find((combatant) => combatant.name === hero.name)?.deathSaves ?? null,
       statuses: panel.combat?.party.find((combatant) => combatant.name === hero.name)?.statuses ?? [],

@@ -323,7 +323,7 @@ export class DndCommand implements BotCommand {
       }
       case "rest": {
         const long = interaction.options.getString("type", true) === "long";
-        return done(await control(long ? "longRest" : "shortRest", () => this.deps.play.rest(key, userId, long ? "long" : "short", id)), long ? text.campaign.cmd.rested : text.campaign.cmd.shortRested);
+        return done(await control(long ? "longRest" : "shortRest", () => this.deps.play.queueRest(key, userId, long ? "long" : "short", id)), long ? text.campaign.cmd.rested : text.campaign.cmd.shortRested);
       }
       case "hit-dice": {
         const count = interaction.options.getInteger("count", true);

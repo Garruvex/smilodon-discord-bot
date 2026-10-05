@@ -42,6 +42,21 @@ export function setHeroWatermark(className) {
 }
 
 
+// "Hit Dice 3 / 5 (d8)" under the conditions: who can still heal on a short rest. Public table information, so it shows for every hero.
+function renderHitDiceLine(member) {
+  const overview = document.querySelector("#member-overview");
+  let line = document.querySelector("#member-hit-dice");
+  if (line === null) {
+    line = document.createElement("p");
+    line.id = "member-hit-dice";
+    line.className = "sheet-note";
+    overview.append(line);
+  }
+  const dice = member?.hitDice;
+  line.hidden = dice === undefined || dice.max === 0;
+  if (!line.hidden) line.textContent = dice.die === null ? t("activity.hero.hitDiceNone", { max: dice.max }) : t("activity.hero.hitDice", { left: dice.left, max: dice.max, die: dice.die });
+}
+
 export function populateMemberOverview(profile, status, conditions = [], customEntries = null) {
   const overview = document.querySelector("#member-overview");
   overview.hidden = false;
@@ -210,6 +225,7 @@ export function renderCharacterWorkspace(game) {
   document.querySelector("#live-hero-ac").textContent = t("activity.hero.ac", { value: profile.armorClass });
   updateHealthMeter(profile.hp, profile.maxHp);
   populateMemberOverview(selected, partyStatusText(selected), selected.conditions ?? []);
+  renderHitDiceLine(selected);
 
   const tabs = viewingOwn
     ? [["overview", "activity.tab.overview"], ["sheet", "activity.tab.sheet"], ["actions", "activity.tab.actions"], ["spells", "activity.tab.spells"], ["inventory", "activity.tab.inventory"], ["trade", "activity.tab.trade"]]

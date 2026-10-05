@@ -4,6 +4,7 @@ import { innateUseKey } from "../rules/traits.js";
 import { defaultHeroResources, type HeroStatus } from "../character/hero-status.js";
 import type { CharacterId } from "../core/ids.js";
 import { isFallen } from "../state/campaign-state.js";
+import { longRestTooSoon, worldPhase } from "../rules/world-rules.js";
 import type { Decision } from "./decision.js";
 import type { Rejection } from "./rejection.js";
 
@@ -19,6 +20,7 @@ export function takeRest(decision: Decision, rest: "short" | "long", story: read
   if (ctx.actor.kind === "user" && ctx.actor.userId !== state.organizerId) return { code: "notOrganizer" };
   if (state.encounter !== null && state.encounter.status !== "ended") return { code: "inCombat" };
   if (state.round !== null) return { code: "roundInProgress" };
+  if (rest === "long" && longRestTooSoon(state.world, state.lastLongRestAt)) return { code: "alreadyRested" };
   // What a scene attaches to a long rest is only ever a line, a clue, a flag, a reward or a keepsake; a short rest attaches nothing.
   const allowed = new Set<StoryEffect["kind"]>(["notice", "revealClue", "setFlag", "grantReward", "grantKeepsake"]);
   const stray = story.filter((effect) => !allowed.has(effect.kind));
@@ -37,6 +39,7 @@ export function queueRest(decision: Decision, rest: "short" | "long" | null, sto
     return null;
   }
   if (state.status !== "active" && state.status !== "waitingForPlayers") return { code: "nothingToRest" };
+  if (rest === "long" && longRestTooSoon(state.world, state.lastLongRestAt)) return { code: "alreadyRested" };
   const idle = state.round === null && (state.encounter === null || state.encounter.status === "ended");
   if (idle) return takeRest(decision, rest, story);
   const allowed = new Set<StoryEffect["kind"]>(["notice", "revealClue", "setFlag", "grantReward", "grantKeepsake"]);
@@ -49,6 +52,8 @@ export function queueRest(decision: Decision, rest: "short" | "long" | null, sto
 export function takeQueuedRest(decision: Decision): void {
   const queued = decision.state.pendingRest;
   if (queued === undefined) return;
+  // The clock may have been set back since it was asked for: a long rest that is still too soon is dropped.
+  if (queued.rest === "long" && longRestTooSoon(decision.state.world, decision.state.lastLongRestAt)) { decision.emit({ kind: "restQueued", rest: null }); return; }
   performRest(decision, queued.rest, queued.sceneId === decision.state.sceneId ? queued.story : []);
 }
 
@@ -118,7 +123,8 @@ function performRest(decision: Decision, rest: "short" | "long", story: readonly
       exhaustion: current.exhaustion ?? 0,
     };
   }
-  decision.emit({ kind: "restTaken", rest, heroStatus });
+  const startedAt = rest === "long" ? worldPhase(state.world) : null;
+  decision.emit({ kind: "restTaken", rest, heroStatus, ...(startedAt === null ? {} : { longRestAt: startedAt }) });
   // Time passes with the rest: a short one is a phase of the day, a long one runs to the next dawn.
   decision.changeWorld(state.lastRoundNumber, { kind: "rest", rest }, "rest");
   for (const effect of story) decision.applyStory(state.lastRoundNumber, effect);
