@@ -1885,3 +1885,7 @@ body[data-game-kind="lobby"] .story-now { display: none; }
   .story-now { min-height: 0; padding: 8px 10px; font-size: 14px; }
   .story-now-more { display: none; }
 }
+
+/* One frame per card: the border and its corner radius. The extra square line and the soft inner rings made a double frame that did not follow the rounded corners. */
+.live-scene, .live-scene.has-enemies, .live-hero, .adventure-map-panel, .live-feature-grid > .live-hero { border-radius: var(--ui-radius); box-shadow: 0 10px 24px #0c070650; }
+.live-scene::before, .live-hero::before, .adventure-map-panel::before { display: none; }
