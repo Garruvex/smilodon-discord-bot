@@ -1,6 +1,6 @@
 import { app } from "./state.js";
 import { requestJson } from "./api.js";
-import { makeButton, setLiveMessage } from "./dom.js";
+import { makeButton, setArtwork, setLiveMessage } from "./dom.js";
 import { classText, t } from "./i18n.js";
 import { loadCharacters, openCharacterCreator } from "./character-builder.js";
 import { openGame, loadTable } from "./poll.js";
@@ -107,8 +107,13 @@ export function renderTableLobby(game) {
       const button = makeButton("", () => void performAction(saved ? { kind: "chooseSaved", snapshotId: hero.id.replace(/^lib:/, "") } : { kind: "chooseHero", heroId: hero.id }));
       button.classList.add("table-hero-choice");
       button.replaceChildren();
-      const avatar = flowElement("span", "table-flow-avatar", hero.name.slice(0, 1));
+      const avatar = flowElement("span", "table-flow-avatar");
       avatar.setAttribute("aria-hidden", "true");
+      const portrait = flowElement("img", "table-choice-portrait");
+      portrait.hidden = true;
+      const initials = flowElement("span", "", hero.name.slice(0, 1));
+      avatar.append(portrait, initials);
+      void setArtwork(portrait, initials, hero.imageUrl, "");
       const copy = flowElement("span", "table-hero-copy");
       copy.append(flowElement("strong", "", hero.name), flowElement("small", "", classText(hero.className)));
       button.append(avatar, copy, flowElement("span", "table-choice-state", selected ? text("selected") : hero.available === false ? text("taken") : text("choose")));

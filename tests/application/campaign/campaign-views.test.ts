@@ -63,7 +63,7 @@ const heroIds = presets.map((preset) => preset.id);
 describe("the lobby view", () => {
   it("offers the viewer's saved character in the Activity waiting room", () => {
     const lobby = lobbyOf((l) => join(l, "u-a"));
-    const saved = [{ id: "lib:ls-1", name: "Elara", className: "wizard" }];
+    const saved = [{ id: "lib:ls-1", name: "Elara", className: "wizard", imageUrl: "/api/activity/characters/lc-1/portrait" }];
     const view = buildActivityLobbyView(record(lobby, { lifecycle: "lobby" }), starter.bible, "u-a", starter.heroes, saved);
     expect(view.savedHeroChoices).toEqual(saved);
     expect(view.heroChoices.length).toBeGreaterThan(0);

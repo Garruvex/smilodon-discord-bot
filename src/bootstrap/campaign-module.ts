@@ -380,7 +380,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
         // Both revisions move with every change to the game; a client that already holds this one is told so instead of being sent it again.
         const token = `${storedRecord.revision}.${storedCampaign?.revision ?? 0}`;
         if (since === token) return { kind: "unchanged", token } as const;
-        const savedHeroChoices = (await library.listInTransaction(tx, userId)).flatMap((entry) => entry.snapshots.filter((snapshot) => snapshot.branch === "main").slice(-1).map((snapshot) => ({ id: libraryHeroRef(snapshot.id), name: entry.character.name, className: entry.character.className })));
+        const savedHeroChoices = (await library.listInTransaction(tx, userId)).flatMap((entry) => entry.snapshots.filter((snapshot) => snapshot.branch === "main").slice(-1).map((snapshot) => ({ id: libraryHeroRef(snapshot.id), name: entry.character.name, className: entry.character.className, imageUrl: `/api/activity/characters/${encodeURIComponent(entry.character.id)}/portrait` })));
         const adventure = adventures.documentAt(storedRecord.record.adventure.adventureId, storedRecord.record.adventure.version, storedRecord.record.language);
         if (adventure === undefined) return { kind: "refused", reason: "notFound" } as const;
         if (storedRecord.record.lifecycle === "lobby") {

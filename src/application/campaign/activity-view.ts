@@ -165,7 +165,7 @@ export interface ActivityTableView {
   readonly joinChoices: readonly { readonly id: string; readonly name: string; readonly className: string }[];
   readonly joinRequestStatus: "requested" | "invited" | "approved" | "queued" | null;
   readonly queuedJoin: null | { readonly heroName: string; readonly encounterRound: number | null; readonly nextEncounter: boolean };
-  readonly savedHeroChoices: readonly { readonly id: string; readonly name: string; readonly className: string }[];
+  readonly savedHeroChoices: readonly { readonly id: string; readonly name: string; readonly className: string; readonly imageUrl?: string }[];
   readonly reaction: ReturnType<typeof buildReactionView>;
   readonly reactionIsYours: boolean;
   readonly smite: ReturnType<typeof buildSmiteView>;
@@ -205,12 +205,12 @@ export interface ActivityLobbyView {
   readonly selectedHeroClass: string | null;
   readonly members: readonly { readonly heroName: string; readonly className: string | null; readonly ready: boolean; readonly isYou: boolean }[];
   readonly heroChoices: readonly { readonly id: string; readonly name: string; readonly className: string; readonly available: boolean }[];
-  readonly savedHeroChoices: readonly { readonly id: string; readonly name: string; readonly className: string }[];
+  readonly savedHeroChoices: readonly { readonly id: string; readonly name: string; readonly className: string; readonly imageUrl?: string }[];
 }
 
 export type ActivityGameView = ActivityLobbyView | ActivityTableView;
 
-export function buildActivityLobbyView(record: CampaignRecord, bible: AdventureBible, userId: UserId, heroes: readonly { readonly id: string; readonly name: string; readonly class: string }[], savedHeroChoices: readonly { readonly id: string; readonly name: string; readonly className: string }[] = [], now = Date.now()): ActivityLobbyView {
+export function buildActivityLobbyView(record: CampaignRecord, bible: AdventureBible, userId: UserId, heroes: readonly { readonly id: string; readonly name: string; readonly class: string }[], savedHeroChoices: readonly { readonly id: string; readonly name: string; readonly className: string; readonly imageUrl?: string }[] = [], now = Date.now()): ActivityLobbyView {
   const ownMember = record.lobby.members.find((member) => member.userId === userId && member.status !== "withdrawn");
   const takenIds = new Set(record.lobby.members.flatMap((member) => member.status !== "withdrawn" && member.heroId !== null && member.userId !== userId ? [member.heroId] : []));
   const selectedPreset = heroes.find((hero) => hero.id === ownMember?.heroId);
@@ -260,7 +260,7 @@ export function buildActivityTableView(
   userId: UserId,
   heroes: readonly { readonly id: string; readonly name: string; readonly class: string }[],
   now: number,
-  savedHeroChoices: readonly { readonly id: string; readonly name: string; readonly className: string }[] = [],
+  savedHeroChoices: readonly { readonly id: string; readonly name: string; readonly className: string; readonly imageUrl?: string }[] = [],
   events: readonly CampaignEvent[] = [],
 ): ActivityTableView {
   const panel = buildPanelView(record, state, bible, glossary);
