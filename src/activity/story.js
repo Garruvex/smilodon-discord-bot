@@ -94,6 +94,7 @@ function fillNode(node, entry) {
     node.replaceChildren(who, detail);
   } else {
     if (entry.kind === "alert") node.dataset.tone = entry.tone;
+    if (entry.kind === "system") node.dataset.code = entry.code;
     node.textContent = entryText(entry);
   }
 }

@@ -7,7 +7,7 @@ import { classText, t } from "./i18n.js";
 import { renderLobby } from "./lobby.js";
 import { renderMap } from "./map.js";
 import { renderEnemies, renderParty } from "./party.js";
-import { renderMoveNotice, renderPresenceToggle } from "./vote.js";
+import { renderMoveNotice, renderPresenceToggle, syncAwayLock } from "./vote.js";
 import { syncDrawers } from "./drawers.js";
 import { renderStory } from "./story.js";
 
@@ -62,6 +62,7 @@ export function paintGame(game) {
     paintSection("map", [game.map, game.mapText, app.mapPick, app.uiLanguage], () => renderMap(game.map, game.mapText));
     renderTable(game);
   }
+  syncAwayLock(game);
   syncDrawers(game);
   renderStory(game);
 }

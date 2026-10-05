@@ -66,7 +66,7 @@ export function designPreviewSnapshot() {
   return {
     classNames: new URLSearchParams(window.location.search).get("language") === "zh-TW" ? { wizard: "法師", paladin: "聖騎士", ranger: "遊俠", rogue: "盜賊", cleric: "牧師", bard: "吟遊詩人" } : {},
     kind: "table", campaignId: "local-preview", campaignName: "The Lantern Company", adventureTitle: "Moonlit Ruins",
-    mode: "combat", roundNumber: 4, ownPresence: "present", canTogglePresence: true, canVoteMove: true,
+    mode: "combat", roundNumber: 4, ownPresence: new URLSearchParams(window.location.search).has("away") ? "away" : "present", canTogglePresence: true, canVoteMove: true,
     scene: { title: "The Drowned Observatory", description: "Cold moonlight spills through the broken dome. Something stirs beneath the flooded floor.", imageUrl: null },
     map: new URLSearchParams(window.location.search).has("journey") ? { kind: "journey", nodes: [
       { id: "entrance", title: "The Old Hall", column: 0, row: 1, status: "visited", canTravel: false, deadEnd: false },

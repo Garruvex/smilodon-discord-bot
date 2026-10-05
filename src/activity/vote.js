@@ -112,6 +112,37 @@ export function renderPresenceToggle(game) {
 }
 
 
+// Marked away, a player is not at the table: the panels they would act from are greyed out and say so, with the way back right there.
+export function syncAwayLock(game) {
+  const away = game.kind === "table" && game.ownPresence === "away" && game.mode !== "archived";
+  const actions = document.querySelector("#hero-panel-actions");
+  let notice = document.querySelector("#away-lock");
+  if (notice === null) {
+    notice = document.createElement("div");
+    notice.id = "away-lock";
+    notice.className = "away-lock";
+    notice.setAttribute("role", "status");
+    const text = document.createElement("span");
+    const back = document.createElement("button");
+    back.type = "button";
+    back.className = "ui-control away-lock-back";
+    back.addEventListener("click", () => void performAction({ kind: "back" }));
+    notice.append(text, back);
+    actions.before(notice);
+  }
+  const viewingOwn = game.party?.find((member) => member.characterId === app.selectedPartyCharacterId)?.isYou === true;
+  const locked = away && viewingOwn && !app.selectedEnemyName;
+  notice.hidden = !locked || document.querySelector("#hero-panel-overview")?.hidden === false;
+  notice.querySelector("span").textContent = t("activity.away.locked");
+  notice.querySelector("button").textContent = t("activity.action.back");
+  for (const id of ["actions", "spells", "inventory", "trade"]) {
+    const panel = document.querySelector(`#hero-panel-${id}`);
+    panel.toggleAttribute("inert", locked);
+    panel.classList.toggle("is-away-locked", locked);
+  }
+}
+
+
 document.querySelector("#live-presence-toggle").addEventListener("click", () => {
   if (app.currentSnapshot?.kind !== "table" || !app.currentSnapshot.canTogglePresence) return;
   void performAction({ kind: app.currentSnapshot.ownPresence === "away" ? "back" : "away" });

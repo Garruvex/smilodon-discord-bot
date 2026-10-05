@@ -414,6 +414,7 @@ export const campaignZhTW = {
   "activity.action.takeAction": "採取行動",
   "activity.action.updateAction": "修改行動",
   "activity.action.away": "暫時離開",
+  "activity.away.locked": "你目前離開中，英雄暫時不行動。按「我回來了」即可繼續。",
   "activity.action.back": "我回來了",
   "activity.action.pass": "略過",
   "activity.move.heading": "要前往「{scene}」嗎？",

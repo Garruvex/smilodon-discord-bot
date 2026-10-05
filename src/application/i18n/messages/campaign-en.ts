@@ -387,6 +387,7 @@ export const campaignEn = {
   "activity.action.takeAction": "Take action",
   "activity.action.updateAction": "Update action",
   "activity.action.away": "I’m away",
+  "activity.away.locked": "You’re away, so your hero sits this out. Press I’m back to play again.",
   "activity.action.back": "I’m back",
   "activity.action.pass": "Pass",
   "activity.move.heading": "Move to {scene}?",
