@@ -60,9 +60,32 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
         { id: "pip", name: previewLanguage === "zh-TW" ? "皮普・安德堡" : "Pip Underbough", className: "Rogue", available: true },
         { id: "sable", name: previewLanguage === "zh-TW" ? "賽布爾・暮影" : "Sable Dusk", className: "Cleric", available: false },
       ],
+      savedHeroChoices: [
+        { id: "lib:preview-mira", name: previewLanguage === "zh-TW" ? "米拉・芬" : "Mira Fen", className: "Ranger", imageUrl: "/previews/mira.jpg" },
+        { id: "lib:preview-pip", name: previewLanguage === "zh-TW" ? "皮普・安德堡" : "Pip Underbough", className: "Rogue", imageUrl: "/previews/pip.jpg" },
+        { id: "lib:preview-sable", name: previewLanguage === "zh-TW" ? "賽布爾・暮影" : "Sable Dusk", className: "Cleric" },
+      ],
     });
     void setLanguage(previewLanguage).then(() => { setTableConnectionState("live"); renderGame(preview); });
   } else {
+  const overviewPreview = new URLSearchParams(window.location.search).has("overview-preview");
+  const battlefieldPreview = new URLSearchParams(window.location.search).has("battlefield-preview");
+  if (battlefieldPreview) {
+    app.wasMyTurn = true;
+    preview.party = preview.party.map((hero, index) => ({ ...hero, zone: index < 2 ? "Shattered dais" : "Broken gallery", imageUrl: index === 2 ? "/previews/mira.jpg" : index === 3 ? "/previews/pip.jpg" : null, deathSaves: null }));
+    preview.order = preview.order.map((entry) => ({ ...entry, down: false }));
+    for (const entry of [...preview.party.map((hero) => ({ ...hero, side: "party" })), ...preview.allies.map((ally) => ({ ...ally, side: "party" }))]) {
+      if (!preview.order.some((turn) => turn.name === entry.name)) preview.order.push({ name: entry.name, side: entry.side, down: false, active: false });
+    }
+    preview.map.zones.forEach((zone) => { zone.occupants = [...preview.party.map((hero) => ({ ...hero, side: "party", active: hero.isYou })), ...preview.foes.map((foe) => ({ ...foe, side: "foes" }))].filter((entry) => entry.zone === zone.name); });
+  }
+  if (overviewPreview) {
+    app.selectedPartyCharacterId = preview.myHero.characterId;
+    app.selectedWorkspaceTab = "overview";
+    app.wasMyTurn = true;
+    preview.myHero.imageUrl = "/previews/mira.jpg";
+    preview.party[0].imageUrl = "/previews/mira.jpg";
+  }
   if (new URLSearchParams(window.location.search).has("state-preview")) {
     const effects = previewLanguage === "zh-TW" ? ["專注", "祝福"] : ["Concentrating", "Blessed"];
     preview.party = preview.party.map((hero) => hero.characterId === "aria" ? { ...hero, hp: 21, conditions: effects } : hero);
@@ -112,6 +135,8 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
   void setLanguage(previewLanguage).then(() => {
     setTableConnectionState("live");
     renderGame(preview);
+    if (overviewPreview) requestAnimationFrame(() => document.querySelector(".live-hero").scrollIntoView({ block: "start" }));
+    if (battlefieldPreview) requestAnimationFrame(() => document.querySelector(".live-enemies").scrollIntoView({ block: "start" }));
     if (new URLSearchParams(window.location.search).has("story-live")) {
       let n = 0;
       setInterval(() => { preview.story = [...preview.story, previewStoryNext(n)]; n += 1; renderGame(preview); }, 4000);

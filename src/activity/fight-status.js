@@ -1,5 +1,10 @@
 import { t } from "./i18n.js";
 import { openRules } from "./rules-book.js";
+import { setArtwork } from "./dom.js";
+
+let previousPreviewTurn = null;
+let previousPreviewOrder = [];
+let initiativeObserver = null;
 
 // What the fight shows beyond health: who is holding a spell, who is dying, what is on each creature, the order of turns, and what your own turn has left.
 // All of it is read from the game; nothing here works out a rule.
@@ -48,15 +53,92 @@ export function turnOrderBar(snapshot) {
   if (order.length === 0) return null;
   const bar = document.createElement("ol");
   bar.className = "turn-order";
+  const portraitPreview = new URLSearchParams(window.location.search).has("battlefield-preview") && new URLSearchParams(window.location.search).has("design-preview");
+  if (portraitPreview) bar.classList.add("turn-order-portraits");
+  const activeName = order.find((entry) => entry.active)?.name ?? null;
+  const changed = previousPreviewTurn !== null && previousPreviewTurn !== activeName;
+  const activeIndex = order.findIndex((entry) => entry.active);
+  const displayOrder = portraitPreview && activeIndex > 0 ? [...order.slice(activeIndex), ...order.slice(0, activeIndex)] : order;
+  const oldOrder = previousPreviewOrder;
+  const firstRender = previousPreviewTurn === null;
   bar.setAttribute("aria-label", t("activity.fight.order"));
-  bar.append(Object.assign(document.createElement("li"), { className: "turn-order-round", textContent: t("activity.fight.round", { round: snapshot.roundNumber ?? 1 }) }));
-  for (const entry of order) {
+  for (const entry of displayOrder) {
     const item = document.createElement("li");
     item.className = `turn-order-item side-${entry.side}${entry.active ? " is-active" : ""}${entry.down ? " is-down" : ""}`;
     item.textContent = entry.name;
+    if (portraitPreview) {
+      const creature = (entry.side === "foes" ? snapshot.foes : [...snapshot.party, ...snapshot.allies]).find((actor) => actor.name === entry.name);
+      const portrait = document.createElement("span");
+      portrait.className = "encounter-token-portrait";
+      const fallback = document.createElement("span");
+      fallback.textContent = entry.side === "foes" ? "☠" : [...entry.name][0];
+      fallback.setAttribute("aria-hidden", "true");
+      const image = document.createElement("img");
+      image.alt = "";
+      portrait.append(fallback, image);
+      void setArtwork(image, fallback, creature?.imageUrl, "");
+      const name = document.createElement("span");
+      name.className = "turn-order-name";
+      name.textContent = entry.name;
+      item.replaceChildren(portrait, name);
+    }
     item.title = entry.name;
     if (entry.active) item.setAttribute("aria-current", "true");
     bar.append(item);
+  }
+  if (portraitPreview) {
+    previousPreviewTurn = activeName;
+    previousPreviewOrder = displayOrder.map((entry) => entry.name);
+    requestAnimationFrame(() => {
+      if (!bar.isConnected) return;
+      const fade = () => {
+        bar.classList.toggle("has-more-right", bar.scrollWidth - bar.clientWidth - bar.scrollLeft > 2);
+        bar.classList.toggle("has-more-left", bar.scrollLeft > 2);
+      };
+      bar.addEventListener("scroll", fade, { passive: true });
+      initiativeObserver?.disconnect();
+      initiativeObserver = new ResizeObserver(fade);
+      initiativeObserver.observe(bar);
+      fade();
+      const active = bar.querySelector(".is-active .encounter-token-portrait");
+      if ((!changed && !firstRender) || !active) return;
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      document.querySelector(".initiative-turn-popup")?.remove();
+      if (snapshot.party.some((hero) => hero.isYou && hero.name === activeName)) {
+      const popup = document.createElement("div");
+      popup.className = "initiative-turn-popup";
+      popup.setAttribute("role", "status");
+      popup.setAttribute("aria-live", "polite");
+      popup.textContent = "YOUR TURN";
+      document.body.append(popup);
+      if (!reduced) popup.animate([
+        { opacity: 0, transform: "translate(-50%, -50%) scale(1.55)", filter: "blur(8px)" },
+        { opacity: 1, transform: "translate(-50%, -50%) scale(.97)", filter: "blur(0)", offset: .07 },
+        { opacity: 1, transform: "translate(-50%, -50%) scale(1.02)", offset: .1 },
+        { opacity: 1, transform: "translate(-50%, -50%) scale(1)", offset: .14 },
+        { opacity: 1, transform: "translate(-50%, -50%) scale(1)", offset: .75 },
+        { opacity: 0, transform: "translate(-50%, -50%) scale(1.08)" },
+      ], { duration: 3000, easing: "ease-out", fill: "forwards" });
+      setTimeout(() => popup.remove(), 3000);
+      }
+      if (changed && !reduced) {
+        const items = [...bar.children];
+        const pitch = items.length > 1 ? items[1].offsetLeft - items[0].offsetLeft : 100;
+        items.forEach((item, index) => {
+          const oldIndex = oldOrder.indexOf(displayOrder[index].name);
+          if (oldIndex < 0) return;
+          const wrapped = oldIndex < index;
+          item.animate(wrapped ? [
+            { opacity: 0, transform: "scale(.85)" },
+            { opacity: 1, transform: "scale(1)" },
+          ] : [
+            { transform: `translateX(${(oldIndex - index) * pitch}px)` },
+            { transform: "translateX(0)" },
+          ], { duration: 450, easing: "cubic-bezier(.2,.7,.2,1)" });
+        });
+      }
+      bar.scrollTo({ left: 0, behavior: "instant" });
+    });
   }
   return bar;
 }

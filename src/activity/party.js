@@ -5,6 +5,7 @@ import { renderCharacterWorkspace } from "./hero.js";
 import { performAction } from "./actions.js";
 import { classText, t } from "./i18n.js";
 import { fightTags, turnOrderBar } from "./fight-status.js";
+import { encounterPreview } from "./encounter-preview.js";
 
 export function enemyRankIcon(rank) { return rank === "boss" ? "crowned-skull" : rank === "elite" ? "evil-minion" : rank === "minion" ? "minions" : "attack"; }
 
@@ -72,8 +73,34 @@ function makeAlly(ally) { return combatCard(ally, { side: "party", owner: ally.o
 
 export function renderEnemies(enemies, allies = app.currentSnapshot?.allies ?? []) {
   const heading = (text, extra = "") => Object.assign(document.createElement("span"), { className: `live-enemies-heading${extra}`, textContent: text });
+  const game = app.currentSnapshot;
+  if (new URLSearchParams(window.location.search).has("design-preview") && new URLSearchParams(window.location.search).has("battlefield-preview") && game?.map?.kind === "battlefield") {
+    const board = encounterPreview(game, (entry) => {
+      if (entry.side === "allies") return;
+      app.selectedEnemyName = entry.side === "foes" ? entry.name : null;
+      if (entry.side === "party") app.selectedPartyCharacterId = entry.characterId;
+      app.selectedWorkspaceTab = "overview";
+      renderParty(game.party);
+      renderCharacterWorkspace(game);
+      renderEnemies(game.foes, game.allies);
+    });
+    const title = heading(t("activity.scene.encounter"));
+    const next = document.createElement("button");
+    next.type = "button";
+    next.className = "initiative-preview-next ui-control";
+    next.textContent = "Preview next turn →";
+    next.addEventListener("click", () => {
+      const current = game.order.findIndex((entry) => entry.active);
+      game.order = game.order.map((entry, index) => ({ ...entry, active: index === (current + 1) % game.order.length }));
+      game.activeName = game.order.find((entry) => entry.active).name;
+      renderEnemies(game.foes, game.allies);
+    });
+    title.append(next);
+    liveEnemies.replaceChildren(title, ...[turnOrderBar(game)].filter(Boolean), board);
+    return;
+  }
   liveEnemies.replaceChildren(...(enemies.length
-    ? [...[turnOrderBar(app.currentSnapshot)].filter(Boolean), heading(t("activity.scene.encounter")), ...enemies.map(makeEnemy), ...(allies.length ? [heading(t("activity.ally.heading"), " live-allies-heading"), ...allies.map(makeAlly)] : [])]
+    ? [heading(t("activity.scene.encounter")), ...[turnOrderBar(app.currentSnapshot)].filter(Boolean), ...enemies.map(makeEnemy), ...(allies.length ? [heading(t("activity.ally.heading"), " live-allies-heading"), ...allies.map(makeAlly)] : [])]
     : []));
 }
 
