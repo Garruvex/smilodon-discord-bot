@@ -67,10 +67,10 @@ describe("the adventure panel", () => {
   });
 
   it("changes its controls with the state", () => {
-    expect(labels({ ...collecting, mode: "planning" })).toEqual(["My Hero", "Explore", "Away / I'm back", "Safety", "More…"]);
-    expect(labels({ ...collecting, mode: "awaitingRolls", pendingRolls: [{ characterId: "c-mira", userId: "1", heroName: "Mira", test: { kind: "skill", skill: "persuasion" }, action: "talk the guard round" }] })).toEqual(["Roll", "My Hero", "Explore", "Away / I'm back", "Safety", "More…"]);
-    expect(labels({ ...collecting, mode: "waiting" })).toEqual(["Continue", "My Hero", "Explore", "Away / I'm back", "Safety", "More…"]);
-    expect(labels({ ...collecting, mode: "paused" })).toEqual(["My Hero"]);
+    expect(labels({ ...collecting, mode: "planning" })).toEqual(["My Hero", "Away / I'm back", "Safety", "More…"]);
+    expect(labels({ ...collecting, mode: "awaitingRolls", pendingRolls: [{ characterId: "c-mira", userId: "1", heroName: "Mira", test: { kind: "skill", skill: "persuasion" }, action: "talk the guard round" }] })).toEqual(["Roll", "My Hero", "Away / I'm back", "Safety", "More…"]);
+    expect(labels({ ...collecting, mode: "waiting" })).toEqual(["Continue", "My Hero", "Away / I'm back", "Safety", "More…"]);
+    expect(labels({ ...collecting, mode: "paused" })).toEqual(["My Hero", "Away / I'm back"]);
     expect(labels({ ...collecting, mode: "archived" })).toEqual([]);
   });
 
@@ -100,8 +100,8 @@ describe("the adventure panel", () => {
     expect(card.text).toContain("Getting ready");
     expect(card.text).toContain("press Ready");
     expect(card.text).toContain("Mira ✓ Ready\nBorin … Thinking");
-    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:ready:camp", "dnd:begin:camp", "dnd:myHero:camp", "dnd:explore:camp", "dnd:away:camp", "dnd:safety:camp", "dnd:more:camp"]);
-    expect(labels(view, "zh-TW")).toEqual(["準備好了", "立即開始", "我的英雄", "探索", "離開／我回來了", "安全", "更多…"]);
+    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:ready:camp", "dnd:begin:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:safety:camp", "dnd:more:camp"]);
+    expect(labels(view, "zh-TW")).toEqual(["準備好了", "立即開始", "我的英雄", "離開／我回來了", "安全", "更多…"]);
   });
 
   it("explains a pause and a restart pause in words, on a gray card", () => {
@@ -128,6 +128,8 @@ describe("the adventure panel", () => {
       mode: "combat",
       closesAt: null,
       combat: {
+        encounterId: "encounter:test",
+        allies: [],
         round: 2,
         activeName: "Borin",
         activeUserId: "2",
@@ -162,6 +164,8 @@ describe("the adventure panel", () => {
       mode: "combat",
       closesAt: 1_800_000_000_000,
       combat: {
+        encounterId: "encounter:test",
+        allies: [],
         round: 1,
         activeName: "Mira",
         upcoming: ["Wolf", "Borin", "Goblin"],
@@ -195,6 +199,8 @@ describe("the adventure panel", () => {
     const view: PanelView = {
       ...collecting, mode: "combat", roundNumber: 1,
       combat: {
+        encounterId: "encounter:test",
+        allies: [],
         round: 1, activeName: "空虎", activeUserId: "1", playersControl: true, zones: ["辦公室"],
         party: [
           { name: "空虎", hp: 10, maxHp: 10, tempHp: 3, condition: "active", zone: "辦公室", active: true },
@@ -216,6 +222,8 @@ describe("the adventure panel", () => {
     const view: PanelView = {
       ...collecting, mode: "combat",
       combat: {
+        encounterId: "encounter:test",
+        allies: [],
         round: 1, activeName: "Last enemy", activeUserId: null, playersControl: true, zones: ["Cellar", "Stairs"],
         party: Array.from({ length: 30 }, (_, i) => ({ name: `Hero ${i} with a long name`, hp: 5, maxHp: 10, tempHp: 0, condition: "active" as const, zone: "Cellar", active: false })),
         foes: Array.from({ length: 100 }, (_, i) => ({ name: i === 99 ? "Last enemy" : `Enemy ${i} with a long name`, hp: 3, maxHp: 7, band: "bloodied" as const, zone: "Stairs", active: i === 99 })),

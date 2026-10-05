@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { chronicleEveryRounds, latestSummaryRound } from "../../../src/domain/campaign/engine/dm.js";
+import { latestSummaryRound } from "../../../src/domain/campaign/engine/dm.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 import { alex, jamie, kinds, newCampaign, reject, run, system } from "./campaign-fixtures.js";
 
@@ -59,10 +59,17 @@ describe("the Chronicler's summaries", () => {
     expect(run(state, system, { kind: "recordSummary", throughRound: 1, visibility: "public", text: "Three goblins fled at dusk." }).events).toHaveLength(1);
   });
 
-  it("asks for a summary when enough rounds have piled up, and again only after that many more", () => {
-    const { requests } = narrated(chronicleEveryRounds + 1);
-    const asked = requests.map((round) => round.some((request) => request.kind === "chronicle"));
-    expect(asked.slice(0, chronicleEveryRounds - 1)).toEqual(Array(chronicleEveryRounds - 1).fill(false));
-    expect(asked[chronicleEveryRounds - 1]).toBe(true);
+  it("keeps same-scene rounds without requesting periodic summaries", () => {
+    const { requests } = narrated(13);
+    expect(requests.flat().filter((request) => request.kind === "chronicle")).toEqual([]);
+  });
+
+  it("requests private memory when the narrated round closes a scene", () => {
+    const { state } = narrated(1);
+    let current = run(state, alex, { kind: "submitAction", characterId: "c-mira", text: "I leave." }).state;
+    current = run(current, jamie, { kind: "pass", characterId: "c-borin" }).state;
+    current = run(current, system, { kind: "applyRoundPlan", proposal: { roundNumber: 2, actions: [{ characterId: "c-mira", resolution: { kind: "automatic", reason: "The way is clear." } }], effects: [] } }).state;
+    const step = run({ ...current, sceneChangedRound: 2 }, system, { kind: "recordNarration", roundNumber: 2, text: "The party leaves the inn." });
+    expect(step.requests.filter((request) => request.kind === "chronicle")).toEqual([{ kind: "chronicle", throughRound: 2, privateOnly: true }]);
   });
 });

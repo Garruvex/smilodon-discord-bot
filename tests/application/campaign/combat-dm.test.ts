@@ -256,7 +256,7 @@ describe("combat in the DM context", () => {
   it("shows the Planner authored fights with their notes, and everyone the fight as it stands", () => {
     const fight = roundTwo();
     const events = [...fight.events];
-    const base = { state: fight.state, events, bible: testBible, glossary: enSrd51Glossary, budgetTokens: 30_000 };
+    const base = { state: { ...fight.state, sceneId: "scene:tavern" as const }, events, bible: testBible, glossary: enSrd51Glossary, budgetTokens: 30_000 };
     const planner = assembleContext({ ...base, audience: "planner" }).sections.map((section) => section.text).join("\n");
     expect(planner).toContain(`encounter:cellar-goblins in scene:tavern: Goblins burst up through the cellar trapdoor.\nFoes: Goblin\nDM notes: ${secrets.encounter}`);
 

@@ -101,7 +101,7 @@ describe("the play controller", () => {
     expect((await r.store.transaction((tx) => tx.loadCampaign(key)))?.state.members["u-b"]?.availability).toBe("away");
     expect(await controller.back(key, "u-b", "i-2")).toEqual({ kind: "ok" });
     expect(await controller.pause(key, "u-org", "i-3")).toEqual({ kind: "ok" });
-    expect(refusal(await controller.submitAction(key, "u-org", "Hi.", "i-4"))).toBe("campaignWaiting");
+    expect(refusal(await controller.submitAction(key, "u-org", "Hi.", "i-4"))).toBe("campaignPaused");
     expect(refusal(await controller.continue(key, "u-b", "i-5"))).toBe("notOrganizer");
     expect(await controller.continue(key, "u-org", "i-6")).toEqual({ kind: "ok" });
   });

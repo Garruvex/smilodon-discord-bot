@@ -6,7 +6,7 @@ import { ImageWorker } from "../../../src/application/campaign/workers/image-wor
 import { CampaignRuntime } from "../../../src/application/campaign/campaign-runtime.js";
 import { assembleContext, estimateTokens, renderTranscript, type ContextInput } from "../../../src/application/campaign/dm/context-assembler.js";
 import { ScriptedNarrator, ScriptedPlanner } from "../../../src/application/campaign/dm/scripted-dm.js";
-import type { CampaignChronicler, ChronicleRequest } from "../../../src/application/campaign/ports/dm-ports.js";
+import type { CampaignChronicler, ChronicleRequest, SceneNoteJudgment } from "../../../src/application/campaign/ports/dm-ports.js";
 import type { CampaignKey } from "../../../src/application/campaign/ports/campaign-store.js";
 import { SeededRandomSource } from "../../../src/application/campaign/random/seeded-random-source.js";
 import { DeliveryWorker } from "../../../src/application/campaign/workers/delivery-worker.js";
@@ -26,6 +26,11 @@ const player = { kind: "user", userId: "u-org" } as const;
 const day = 24 * 3600 * 1000;
 const hero = starter.en.heroes[0]?.id ?? "";
 const secretLine = "Garrick secretly pays Skarn's raiders";
+// Two reviewed changes per round reach the scene's text threshold after four rounds.
+const sceneNote = [
+  "Garrick shared news of travelers arriving at the inn. ".repeat(4).slice(0, 200),
+  "The party questioned the innkeeper about the road. ".repeat(5).slice(0, 200),
+].join("\n");
 
 class ScriptedChronicler implements CampaignChronicler {
   public readonly requests: ChronicleRequest[] = [];
@@ -57,13 +62,14 @@ async function campaign(reply?: ScriptedChronicler["reply"]): Promise<Campaign> 
           : { summary: "Garrick pays the raiders for word of rich travelers.", facts: [{ entityId: "npc:garrick", canonicalName: "Garrick", fact: secretLine }] }),
   );
   const planner = new ScriptedPlanner(r.plannerScript);
-  const narrator = new ScriptedNarrator(Array.from({ length: 60 }, () => (request: { roundNumber: number }): { text: string } => ({ text: `Garrick eyes the party through round ${request.roundNumber}.` })));
+  const narrator = new ScriptedNarrator(Array.from({ length: 60 }, () => (request: { roundNumber: number }): { text: string; note: string } => ({ text: `Garrick eyes the party through round ${request.roundNumber}.`, note: sceneNote })));
   const dm = new DmJobWorker({
     unitOfWork: r.store,
     bus: r.bus,
     planner,
     narrator,
     chronicler,
+    noteJudge: { judge: (request): Promise<readonly SceneNoteJudgment[]> => Promise.resolve(request.notes.map((note) => ({ noteIndex: note.noteIndex, decision: "keep" as const, text: "", reason: "Supported by the scripted outcome." }))) },
     adventures: r.adventures,
     glossaries: { en: enSrd51Glossary, "zh-TW": zhTwSrd51Glossary },
   });
@@ -87,6 +93,8 @@ async function playRound(c: Campaign, number: number): Promise<void> {
   await c.r.bus.execute(c.key, { kind: "submitAction", characterId: hero, text: `I keep asking about the raids (${number}).` }, { commandId: `act-${number}`, actor: player });
   await c.runtime.runOnce();
   await c.runtime.runOnce();
+  await c.runtime.runOnce();
+  await c.runtime.runOnce();
 }
 
 const stateOf = async (c: Campaign): Promise<CampaignState> => {
@@ -95,11 +103,11 @@ const stateOf = async (c: Campaign): Promise<CampaignState> => {
   return stored.state;
 };
 
-async function contextFor(c: Campaign, audience: "planner" | "narrator", budgetTokens = 30_000): Promise<{ text: string; tokens: number; omitted: number }> {
+async function contextFor(c: Campaign, audience: "planner" | "narrator", budgetTokens = 30_000): Promise<{ text: string; tokens: number; omitted: number; transcriptTokens: number }> {
   const state = await stateOf(c);
   const events = (await c.r.store.transaction((tx) => tx.readEvents(c.key))).map((envelope) => envelope.event);
   const context = assembleContext({ audience, state, events, bible: starter.en.bible, glossary: enSrd51Glossary, budgetTokens });
-  return { text: context.sections.map((section) => `[${section.layer}] ${section.text}`).join("\n\n"), tokens: context.estimatedTokens, omitted: context.omittedRounds };
+  return { text: context.sections.map((section) => `[${section.layer}] ${section.text}`).join("\n\n"), tokens: context.estimatedTokens, omitted: context.omittedRounds, transcriptTokens: estimateTokens(context.sections.find((section) => section.layer === "E")?.text ?? "") };
 }
 
 describe("a campaign over three sessions", () => {
@@ -131,14 +139,17 @@ describe("a campaign over three sessions", () => {
     const state = await stateOf(c);
     expect(state.lastNarratedRound).toBe(15);
 
-    // Summaries were kept, oldest first, for both audiences; the public ones came from public text alone.
+    // Public memory compacts verified notes for this scene; private memory keeps the DM's history.
     const publicSummaries = (state.summaries ?? []).filter((summary) => summary.visibility === "public");
     const privateSummaries = (state.summaries ?? []).filter((summary) => summary.visibility === "private");
-    expect(publicSummaries.map((summary) => summary.throughRound)).toEqual([6, 12]);
-    expect(privateSummaries.map((summary) => summary.throughRound)).toEqual([6, 12]);
+    expect(publicSummaries).toEqual([]);
+    expect(state.sceneSummaries?.[starter.en.bible.startScene]?.throughRound).toBe(12);
+    expect(privateSummaries.map((summary) => summary.throughRound)).toEqual([4, 8, 12]);
     for (const request of c.chronicler.requests.filter((candidate) => candidate.audience === "public")) {
       expect(request.transcript).not.toContain("Planner-only reason");
       expect(request.transcript).not.toContain(secretLine);
+      expect(request.scene?.id).toBe(starter.en.bible.startScene);
+      expect(request.transcript).toContain("Garrick shared news");
     }
     expect(c.chronicler.requests.some((request) => request.audience === "private" && request.transcript.includes("Planner-only reason"))).toBe(true);
     // The second summary was written knowing the first, so it can continue rather than repeat.
@@ -146,7 +157,7 @@ describe("a campaign over three sessions", () => {
 
     // One name for one person, however many times the Chronicler mentions them.
     expect(state.ledger["npc:garrick"]?.canonicalName).toBe("Garrick");
-    expect(state.ledger["npc:garrick"]?.facts.filter((fact) => fact.visibility === "secret")).toHaveLength(2);
+    expect(state.ledger["npc:garrick"]?.facts.filter((fact) => fact.visibility === "secret")).toHaveLength(3);
 
     // What the Narrator reads: the summaries and the public facts, never anything private.
     const narrator = await contextFor(c, "narrator");
@@ -169,19 +180,23 @@ describe("a campaign over three sessions", () => {
     }
   });
 
-  it("stays inside a tight budget by leaving covered rounds to their summaries, without losing the latest rounds", async () => {
+  it("includes scene memory with room and preserves recent rounds under a tight budget", async () => {
     const c = await campaign();
     for (let number = 1; number <= 13; number += 1) await playRound(c, number);
     const full = await contextFor(c, "narrator");
     const latest = (await stateOf(c)).lastRoundNumber;
-    // Rounds covered by summaries are gone from the transcript; the latest two stay word for word.
+    // Scene memory does not claim to replace whole public rounds; a generous budget keeps them.
     expect(full.text).toContain(`Round ${latest}`);
     expect(full.text).toContain(`Round ${latest - 1}`);
-    expect(full.text).not.toContain("Round 3\n");
-    const tight = await contextFor(c, "narrator", full.tokens - 12);
-    expect(tight.tokens).toBeLessThanOrEqual(full.tokens - 12);
+    expect(full.text).toContain("Round 3\n");
+    expect(full.text).toContain("The Crossroads Inn memory:");
+    const budget = full.tokens - Math.ceil(full.transcriptTokens / 2);
+    const tight = await contextFor(c, "narrator", budget);
+    expect(tight.tokens).toBeLessThanOrEqual(budget);
     expect(tight.text).toContain(`Round ${latest}`);
-    // The oldest summaries gave way first.
+    expect(tight.omitted).toBeGreaterThan(0);
+    expect(tight.text).not.toContain("Round 1\n");
+    expect(tight.text).toContain(`Round ${latest - 1}`);
     expect(tight.tokens).toBeLessThan(full.tokens);
   });
 
@@ -190,6 +205,9 @@ describe("a campaign over three sessions", () => {
     for (let number = 1; number <= 6; number += 1) await playRound(c, number);
     const state = await stateOf(c);
     expect((state.summaries ?? []).some((summary) => summary.visibility === "public")).toBe(false);
+    expect(c.chronicler.requests.some((request) => request.audience === "public")).toBe(true);
+    expect(state.sceneSummaries?.[starter.en.bible.startScene]).toBeUndefined();
+    expect(state.sceneNotes?.length).toBeGreaterThan(0);
     expect((await contextFor(c, "narrator")).text).toContain("Round 1");
   });
 
@@ -380,7 +398,7 @@ describe("pictures of monsters and moments", () => {
     const worker = p.worker(c);
     await worker.runOnce();
     expect(p.prompts).toHaveLength(1);
-    expect(p.prompts[0]).toContain("wide establishing shot");
+    expect(p.prompts[0]).toContain("wide establishing view");
     expect(p.prompts[0]).toContain("Foes present");
     expect(p.prompts[0]).toContain(scene.title);
     expect(p.prompts[0]).toContain(fight.publicDescription);
@@ -423,7 +441,7 @@ describe("pictures of monsters and moments", () => {
     await p.worker(c).runOnce();
     expect(p.prompts).toHaveLength(1);
     expect(p.prompts[0]).toContain("The night is quiet. What do you do");
-    expect(p.prompts[0]).toContain("wide establishing shot");
+    expect(p.prompts[0]).toContain("wide establishing view");
     expect(p.posted).toEqual([{ caption: starter.en.bible.scenes.find((scene) => scene.id === starter.en.bible.startScene)?.title }]);
     expect(await c.r.store.transaction((tx) => tx.pendingOutbox("heroImage"))).toEqual([]);
   });

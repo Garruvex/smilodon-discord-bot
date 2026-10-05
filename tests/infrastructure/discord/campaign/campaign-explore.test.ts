@@ -434,7 +434,7 @@ describe("what the table is told", () => {
     await g.settle();
     const said = g.said().join("\n");
     expect(said).toContain("**Borin** asks **Garrick**: “Seen anything odd on the road?”");
-    expect(said).toMatch(/\*\*Borin\*\* presses \*\*Garrick\*\* with Insight \(WIS\)\. \*\d+ against DC 20: (success|failure)\.\*/);
+    expect(said).toMatch(/\*\*Borin\*\* presses \*\*Garrick\*\* with Insight \(WIS\)\. \*🎲 d20 \d+ [+-] \d+ = \d+ against DC 20: (success|failure)\.\*/);
   });
 
   it("tells a spell cast between fights", async () => {

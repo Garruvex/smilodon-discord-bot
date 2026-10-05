@@ -111,7 +111,7 @@ describe("the play controls", () => {
     expect(contentOf(await t.press("roll", "u-org"))).toBe("You have no roll waiting.");
     await t.r.bus.execute(t.key, { kind: "pauseCampaign", reason: "organizer" }, { commandId: "p", actor: { kind: "user", userId: "u-org" } });
     await t.cards.sync(t.key);
-    expect(contentOf(await t.press("pass", "u-org"))).toBe("Play is on hold. The organizer or a returning player must continue it.");
+    expect(contentOf(await t.press("pass", "u-org"))).toBe("The game is paused. The organizer must resume it before anyone can take actions.");
   });
 
   it("passes, goes away, and returns", async () => {

@@ -56,14 +56,14 @@ describe("reading an upload", () => {
 describe("the portrait prompt", () => {
   it("keeps the likeness when there is a reference, and paints from words when there is none", () => {
     const withPicture = portraitPrompt(build, "ink", "a red cloak", true);
-    expect(withPicture).toContain("turn the person or figure in the reference picture");
+    expect(withPicture).toContain("make the person in the reference image the same character");
     expect(withPicture).toContain("Wren, a gnome rogue");
     expect(withPicture).toContain("Quick and quiet. a red cloak");
     expect(withPicture).toContain("comic-book");
     expect(withPicture).toContain("No text");
     const fromWords = portraitPrompt(build, "watercolor", "", false);
-    expect(fromWords).not.toContain("reference picture");
-    expect(fromWords).toContain("a fantasy tabletop RPG character portrait of Wren");
+    expect(fromWords).not.toContain("reference image");
+    expect(fromWords).toContain("depict Wren, a gnome rogue as a fantasy tabletop RPG character");
   });
 });
 

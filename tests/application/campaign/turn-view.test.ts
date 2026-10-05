@@ -111,7 +111,7 @@ describe("a hero's turn view", () => {
       .rolls([5, 4, 20, 3, 2])
       .run(organizer, { kind: "startEncounter", spec: { ...skirmish, partyZoneId: "courtyard" } });
     const fireball = viewOf(fight.state, "c-elspeth")?.spells.find((spell) => spell.spellId === "spell:fireball");
-    expect(fireball?.affectedByTarget?.["goblin-a"].map((target) => target.id)).toEqual(["goblin-a", "c-mira", "c-borin", "goblin-b"]);
-    expect(fireball?.affectedByTarget?.["goblin-a"].some((target) => target.self)).toBe(false);
+    expect(fireball?.affectedByTarget?.["goblin-a"]?.map((target) => target.id)).toEqual(["goblin-a", "c-mira", "c-borin", "goblin-b"]);
+    expect(fireball?.affectedByTarget?.["goblin-a"]?.some((target) => target.self)).toBe(false);
   });
 });

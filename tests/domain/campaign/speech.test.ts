@@ -38,7 +38,7 @@ describe("speaking in character", () => {
     expect(reject(state, alex, { kind: "speak", characterId: "c-mira", text: "x".repeat(301) })).toEqual({ code: "actionTooLong", maxLength: 300 });
     expect(kinds(run(state, alex, { kind: "speak", characterId: "c-mira", text: "x".repeat(300) }).events)).toEqual(["heroSpoke"]);
     const paused = run(state, organizer, { kind: "pauseCampaign", reason: "organizer" }).state;
-    expect(reject(paused, alex, { kind: "speak", characterId: "c-mira", text: "Hi." })).toEqual({ code: "campaignWaiting" });
+    expect(reject(paused, alex, { kind: "speak", characterId: "c-mira", text: "Hi." })).toEqual({ code: "campaignPaused" });
   });
 });
 
@@ -51,7 +51,7 @@ describe("a safety pause", () => {
     expect(paused.requests).toContainEqual({ kind: "deliver", delivery: { kind: "campaignPaused", reason: "safety" } });
     expect(paused.state).toMatchObject({ status: "waitingForPlayers", pausedBy: "safety" });
     // Nobody can carry on, and the pause names nobody.
-    expect(reject(paused.state, alex, { kind: "submitAction", characterId: "c-mira", text: "I go." })).toEqual({ code: "campaignWaiting" });
+    expect(reject(paused.state, alex, { kind: "submitAction", characterId: "c-mira", text: "I go." })).toEqual({ code: "campaignPaused" });
     expect(reject(paused.state, jamie, { kind: "continue" })).toEqual({ code: "notOrganizer" });
     expect(run(paused.state, organizer, { kind: "continue" }).state).toMatchObject({ status: "active", pausedBy: null });
   });
@@ -60,7 +60,7 @@ describe("a safety pause", () => {
     const fight = startedFight(newCampaign(livePacing));
     const paused = run(fight.state, alex, { kind: "pauseCampaign", reason: "safety" });
     expect(paused.requests.some((request) => request.kind === "cancelTimer")).toBe(true);
-    expect(reject(paused.state, alex, { kind: "combatDodge", combatantId: "c-mira" })).toEqual({ code: "campaignWaiting" });
+    expect(reject(paused.state, alex, { kind: "combatDodge", combatantId: "c-mira" })).toEqual({ code: "campaignPaused" });
   });
 
   it("is not for outsiders or the system, and is harmless twice", () => {

@@ -122,13 +122,13 @@ describe("exploration rounds", () => {
     expect(last.state.round).toMatchObject({ number: 2, status: "collecting" });
   });
 
-  it("does not open another round for a quiet round while the game is paused", () => {
+  it("refuses the last pass while paused and preserves the unfinished round", () => {
     let state = run(newCampaign(), system, { kind: "openRound" }).state;
     state = run(state, alex, { kind: "pass", characterId: "c-mira" }).state;
-    state = { ...state, pausedBy: "organizer" };
-    const last = run(state, jamie, { kind: "pass", characterId: "c-borin" });
-    expect(kinds(last.events)).toEqual(["passSubmitted", "roundClosed", "roundResolved"]);
-    expect(last.state.round).toBeNull();
+    state = run(state, organizer, { kind: "pauseCampaign", reason: "organizer" }).state;
+    expect(reject(state, jamie, { kind: "pass", characterId: "c-borin" })).toEqual({ code: "campaignPaused" });
+    expect(state.round).toMatchObject({ number: 1, status: "collecting" });
+    expect(state.round?.submissions["c-borin"]).toBeUndefined();
   });
 });
 

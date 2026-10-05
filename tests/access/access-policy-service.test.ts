@@ -28,6 +28,7 @@ function applicationConfiguration(): ApplicationConfiguration {
     discord: {
       token: "test-token",
       applicationId: "789012345678901234",
+      clientSecret: null,
     },
     ownerUserIds: new Set([ownerId]),
     guildConfigurationDirectory: "unused",

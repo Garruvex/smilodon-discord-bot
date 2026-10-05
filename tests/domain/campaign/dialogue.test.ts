@@ -104,14 +104,19 @@ describe("pressNpc", () => {
     expect(settled.state.dialogues[dialogueId]?.check?.success).toBe(false);
   });
 
-  it("rejects pressing an NPC whose secret is already out", () => {
+  it("rejects a repeat press after the first attempt reveals the secret", () => {
     const declared = press();
     const rollId = declared.state.pressPending?.["c-borin"]?.rollId ?? "";
     const roll = d20Roll("normal", [15], 5);
     const settled = run(declared.state, system, { kind: "recordRoll", rollId, result: { kind: "d20Test", roll } });
     expect(reject(settled.state, jamie, { kind: "pressNpc", characterId: "c-borin", npcId: "npc:smith", skill: "deception" })).toEqual({
-      code: "secretAlreadyRevealed",
+      code: "pressAlreadyAttempted",
     });
+  });
+
+  it("rejects a revealed secret even when this hero has never pressed the NPC", () => {
+    const state = { ...campaignWithSable(), npcSecretsRevealed: { "npc:smith": true } };
+    expect(reject(state, jamie, { kind: "pressNpc", characterId: "c-borin", npcId: "npc:smith", skill: "deception" })).toEqual({ code: "secretAlreadyRevealed" });
   });
 });
 
