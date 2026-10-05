@@ -35,6 +35,8 @@ const defaultMaxBytes = 8 * 1024 * 1024;
 type PictureRequest = Extract<EngineRequest, { kind: "sceneImage" | "encounterImage" | "monsterImage" | "momentImage" | "heroImage" | "redoImage" }>;
 // The kinds a picture can be painted for; a redo names one of them by its subject.
 type Painted = Exclude<PictureRequest, { kind: "redoImage" }>;
+// Scenes, heroes and fights stay in the asset store after they are posted, because the Activity shows them; the rest are posted once and dropped.
+const keptPictures: ReadonlySet<string> = new Set(["sceneImage", "heroImage", "encounterImage"]);
 const pictureKinds = ["sceneImage", "encounterImage", "monsterImage", "momentImage", "heroImage", "redoImage"] as const;
 // An automatic moment picture waits until this many rounds after the last one.
 const autoMomentGap = 3;
@@ -172,7 +174,7 @@ export class ImageWorker {
       }
       await sink.post(channelId, saved, found.caption);
       await this.mark(item.key, subject, "done");
-      if (request.kind !== "sceneImage" && request.kind !== "heroImage") await assets.remove(item.key, subject).catch(() => undefined);
+      if (!keptPictures.has(request.kind)) await assets.remove(item.key, subject).catch(() => undefined);
       return;
     }
     if (existing !== undefined && !forced) return;
@@ -213,7 +215,7 @@ export class ImageWorker {
     }
     await sink.post(channelId, image, described.caption);
     await this.mark(item.key, subject, "done");
-    if (request.kind !== "sceneImage" && request.kind !== "heroImage") await assets.remove(item.key, subject).catch(() => undefined);
+    if (!keptPictures.has(request.kind)) await assets.remove(item.key, subject).catch(() => undefined);
   }
 
   // The player's own portrait for a hero that came from their library, if they gave one.
