@@ -8,45 +8,71 @@ import { classText, t } from "./i18n.js";
 export function enemyRankIcon(rank) { return rank === "boss" ? "crowned-skull" : rank === "elite" ? "evil-minion" : rank === "minion" ? "minions" : "attack"; }
 
 
-export function makeEnemy(enemy) {
-  const card = document.createElement("button");
-  card.type = "button";
-  const rank = enemy.rank ?? "standard";
-  card.className = `live-party-card live-enemy ui-card rank-${rank}${enemy.active ? " is-active" : ""}${enemy.name === app.selectedEnemyName ? " is-selected" : ""}`;
-  card.classList.toggle("is-active", enemy.active);
-  const hpText = t("activity.hero.enemyHealth", { hp: enemy.hp, max: enemy.maxHp, band: t(`activity.band.${enemy.band}`), zone: enemy.zone });
-  card.setAttribute("aria-label", `${enemy.name}. ${t(`activity.enemyRank.${rank}`)}. ${hpText}`);
-  card.setAttribute("aria-pressed", String(enemy.name === app.selectedEnemyName));
-  card.addEventListener("click", () => { app.selectedEnemyName = enemy.name; if (app.currentSnapshot?.kind === "table") { renderParty(app.currentSnapshot.party); renderCharacterWorkspace(app.currentSnapshot); renderEnemies(app.currentSnapshot.foes); } });
-  const sigil = document.createElement("span"); sigil.className = "live-party-sigil enemy-sigil"; sigil.setAttribute("aria-hidden", "true");
-  sigil.append(iconImage(enemyRankIcon(rank))); card.append(sigil);
-  const copy = document.createElement("span"); copy.className = "live-party-copy enemy-copy";
-  const name = document.createElement("strong");
-  name.textContent = enemy.name;
-  const rankBadge = document.createElement("span");
-  rankBadge.className = "enemy-rank-label";
-  rankBadge.textContent = t(`activity.enemyRank.${rank}`);
-  const health = document.createElement("span");
-  health.textContent = hpText;
-  const track = document.createElement("span");
-  track.className = "party-health live-party-health ui-meter";
-  const fill = document.createElement("i");
-  fill.style.width = `${enemy.maxHp > 0 ? Math.max(0, Math.min(100, Math.round((enemy.hp / enemy.maxHp) * 100))) : 0}%`;
-  track.append(fill);
-  copy.append(name, rankBadge, health);
-  card.append(copy);
-  if (enemy.active) {
-    const turn = document.createElement("span");
-    turn.className = "live-party-status ui-status enemy-turn-label";
-    turn.textContent = t("activity.party.turnNow");
-    copy.append(turn);
+// A creature in the fight, drawn like a hero's card: name and who it is, where it stands, and its health. Foes can be opened for their details; allies cannot.
+function combatCard(entry, { side, rank = "standard", owner = null }) {
+  const foe = side === "foes";
+  const card = document.createElement(foe ? "button" : "div");
+  if (foe) card.type = "button";
+  card.className = `live-party-card ${foe ? "live-enemy" : "live-ally"} ui-card${foe ? ` rank-${rank}` : ""}${entry.active ? " is-active" : ""}${foe && entry.name === app.selectedEnemyName ? " is-selected" : ""}`;
+  const down = entry.hp <= 0 || entry.condition === "dead" || entry.condition === "fled";
+  if (down) card.dataset.condition = entry.condition === "fled" ? "fled" : "down";
+  const place = t("activity.combat.at", { zone: entry.zone });
+  const health = `${entry.hp} / ${entry.maxHp}`;
+  const kind = foe ? t(`activity.enemyRank.${rank}`) : owner === null ? t("activity.ally.kind") : t("activity.ally.belongsTo", { name: owner });
+  card.setAttribute("aria-label", `${entry.name}. ${kind}. ${place}. ${t("activity.hero.hp", { hp: entry.hp, max: entry.maxHp })}`);
+  if (foe) {
+    card.setAttribute("aria-pressed", String(entry.name === app.selectedEnemyName));
+    card.addEventListener("click", () => { app.selectedEnemyName = entry.name; if (app.currentSnapshot?.kind === "table") { renderParty(app.currentSnapshot.party); renderCharacterWorkspace(app.currentSnapshot); renderEnemies(app.currentSnapshot.foes, app.currentSnapshot.allies); } });
   }
-  copy.append(track);
+  const sigil = document.createElement("span");
+  sigil.className = `live-party-sigil ${foe ? "enemy-sigil" : "ally-sigil"}`;
+  sigil.setAttribute("aria-hidden", "true");
+  sigil.append(iconImage(foe ? enemyRankIcon(rank) : "minions"));
+  card.append(sigil);
+  const copy = document.createElement("span");
+  copy.className = "live-party-copy";
+  const nameLine = document.createElement("span");
+  nameLine.className = "party-name-line";
+  const name = document.createElement("strong");
+  name.textContent = entry.name;
+  nameLine.append(name);
+  if (entry.active) nameLine.append(Object.assign(document.createElement("small"), { className: "combat-turn", textContent: t("activity.party.turnNow") }));
+  const kindLine = document.createElement("span");
+  kindLine.className = "party-class-line combat-kind";
+  kindLine.textContent = kind;
+  kindLine.title = kind;
+  const placeLine = document.createElement("span");
+  placeLine.className = "party-class-line combat-place";
+  placeLine.textContent = place;
+  placeLine.title = place;
+  const meta = document.createElement("span");
+  meta.className = "party-meta-line";
+  const bar = document.createElement("span");
+  bar.className = "party-health live-party-health ui-meter";
+  const fill = document.createElement("i");
+  const percent = entry.maxHp > 0 ? Math.max(0, Math.min(100, Math.round((entry.hp / entry.maxHp) * 100))) : 0;
+  fill.style.width = `${percent}%`;
+  bar.dataset.health = percent > 60 ? "good" : percent > 30 ? "hurt" : "low";
+  bar.append(fill);
+  const hp = document.createElement("span");
+  hp.className = "party-hp-label";
+  hp.textContent = health;
+  meta.append(bar, hp);
+  copy.append(nameLine, kindLine, placeLine, meta);
+  card.append(copy);
   return card;
 }
 
+export function makeEnemy(enemy) { return combatCard(enemy, { side: "foes", rank: enemy.rank ?? "standard" }); }
 
-export function renderEnemies(enemies) { liveEnemies.replaceChildren(...(enemies.length ? [Object.assign(document.createElement("span"), { className: "live-enemies-heading", textContent: t("activity.scene.encounter") }), ...enemies.map(makeEnemy)] : [])); }
+function makeAlly(ally) { return combatCard(ally, { side: "party", owner: ally.ownerName }); }
+
+export function renderEnemies(enemies, allies = app.currentSnapshot?.allies ?? []) {
+  const heading = (text, extra = "") => Object.assign(document.createElement("span"), { className: `live-enemies-heading${extra}`, textContent: text });
+  liveEnemies.replaceChildren(...(enemies.length
+    ? [heading(t("activity.scene.encounter")), ...enemies.map(makeEnemy), ...(allies.length ? [heading(t("activity.ally.heading"), " live-allies-heading"), ...allies.map(makeAlly)] : [])]
+    : []));
+}
 
 
 // The organizer's way out of a full table with someone away: free their seat. It asks for a second press first, since it removes their hero from the table.
@@ -157,6 +183,7 @@ export function renderParty(members) {
       subtitle.replaceChildren(line(kind), line(`${t("activity.detail.level")} ${hero.level}`));
     }
     copy.append(nameLine, subtitle);
+    if (hero.zone != null) copy.append(Object.assign(document.createElement("span"), { className: "party-class-line combat-place", textContent: t("activity.combat.at", { zone: hero.zone }), title: hero.zone }));
     const meta = document.createElement("span");
     meta.className = "party-meta-line";
     if (hero.hp !== null && hero.maxHp !== null) {

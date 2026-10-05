@@ -1914,6 +1914,18 @@ body[data-game-kind="lobby"] .story-now { display: none; }
 .live-scene, .live-scene.has-enemies, .live-hero, .adventure-map-panel, .live-feature-grid > .live-hero { border-radius: var(--ui-radius); box-shadow: 0 10px 24px #0c070650; }
 .live-scene::before, .live-hero::before, .adventure-map-panel::before { display: none; }
 
+/* Creatures in a fight are drawn like heroes: name, who they are, where they stand, and a health bar. */
+.live-enemy .live-party-copy > *, .live-ally .live-party-copy > * { grid-row: auto; grid-column: 1 / -1; }
+.live-enemy .live-party-copy > .party-class-line, .live-ally .live-party-copy > .party-class-line { display: block; }
+.combat-place { color: var(--ui-muted); }
+.combat-place::before { content: "◎ "; }
+.combat-turn { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--ui-accent); color: #fff4dc; font-size: 10px; font-weight: 700; }
+.live-allies-heading { margin-top: 4px; }
+.live-ally { cursor: default; border-left: 3px solid #6c7d4c; }
+.live-ally .ally-sigil img { position: absolute; inset: 9px; width: 18px; height: 18px; filter: brightness(0) opacity(.68); }
+.live-ally .live-party-sigil { background: #d7e0bd; }
+.live-ally[data-condition="down"], .live-enemy[data-condition="down"], .live-enemy[data-condition="fled"] { opacity: .55; }
+
 /* 16-rules-book.css */
 /* The rulebook: a header button and a paper dialog with a search box and short entries. */
 .rules-open { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; padding: 0; }

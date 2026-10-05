@@ -50,7 +50,7 @@ export function beginEncounter(decision: Decision, spec: EncounterSpec): void {
       if (monster?.kind !== "monster") continue;
       const id = `${sheet.id}-${companion.id.replace(":", "-")}`;
       const creature = monsterCombatant(monster, content, { id, letter: null, zoneId: spec.partyZoneId, npcId: null, fleeBelowHpFraction: null });
-      combatants[id] = { ...creature, side: "party", companionId: companion.id, hp: companion.hp ?? creature.hp };
+      combatants[id] = { ...creature, side: "party", companionId: companion.id, summonedBy: sheet.id, hp: companion.hp ?? creature.hp };
     }
   }
   const counts = new Map<string, number>();

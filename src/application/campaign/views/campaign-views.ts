@@ -98,6 +98,17 @@ export interface CombatView {
     readonly zone: string;
     readonly active: boolean;
   }[];
+  // Creatures fighting on the party's side that are not heroes: a conjured beast, a companion brought along. Each says whose it is.
+  readonly allies: readonly {
+    readonly name: string;
+    readonly hp: number;
+    readonly maxHp: number;
+    readonly tempHp: number;
+    readonly condition: Combatant["condition"];
+    readonly zone: string;
+    readonly active: boolean;
+    readonly ownerName: string | null;
+  }[];
   // Health is shown numerically on the shared combat panel, with a short status.
   readonly foes: readonly {
     readonly name: string;
@@ -500,6 +511,18 @@ function combatViewOf(names: CombatNames, fight: NonNullable<CampaignState["enco
     party: combatants
       .filter((combatant) => combatant.side === "party")
       .map((combatant) => ({ name: name(combatant), hp: combatant.hp, maxHp: combatant.maxHp, tempHp: combatant.tempHp ?? 0, condition: combatant.condition, zone: zoneName(combatant.zoneId), active: combatant === active })),
+    allies: combatants
+      .filter((combatant) => combatant.side === "party" && combatant.source.kind === "monster" && isPresent(combatant))
+      .map((combatant) => ({
+        name: name(combatant),
+        hp: combatant.hp,
+        maxHp: combatant.maxHp,
+        tempHp: combatant.tempHp ?? 0,
+        condition: combatant.condition,
+        zone: zoneName(combatant.zoneId),
+        active: combatant === active,
+        ownerName: combatant.summonedBy === undefined || fight.combatants[combatant.summonedBy] === undefined ? null : name(fight.combatants[combatant.summonedBy]!),
+      })),
     foes: combatants
       .filter((combatant) => combatant.side === "foes")
       .map((combatant) => ({

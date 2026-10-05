@@ -104,7 +104,7 @@ export function renderTable(game) {
   document.querySelector("#live-party-count").textContent = t("activity.party.count", { count: game.party.length });
   renderTableActions(game);
   renderCharacterWorkspace(game);
-  paintSection("enemies", [game.foes, app.selectedEnemyName, app.uiLanguage], () => renderEnemies(game.foes));
+  paintSection("enemies", [game.foes, game.allies, app.selectedEnemyName, app.uiLanguage], () => renderEnemies(game.foes, game.allies ?? []));
   paintSection("party", [game.party, app.selectedPartyCharacterId, app.selectedEnemyName, app.uiLanguage], () => renderParty(game.party));
   setLiveMessage(game.submission === "action" ? t("activity.status.actionIn") : game.submission === "pass" ? t("activity.status.youPassed") : "");
   updateRollPrompt(["paused", "safety", "recovery"].includes(game.mode) ? null : game.pendingRoll);

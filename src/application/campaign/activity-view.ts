@@ -68,8 +68,12 @@ export interface ActivityTableView {
     readonly isYou: boolean;
     // Only for the organizer, on an away player's hero: whose seat the "free seat" button releases.
     readonly seatUserId?: string;
+    // Where the hero stands in a fight (the zone's name), otherwise null.
+    readonly zone: string | null;
     readonly tableStatus: "acting" | "submitted" | "passed" | "missed" | "away" | "waiting";
   }[];
+  // Summons and companions fighting for the party, each with the hero or creature it belongs to.
+  readonly allies: readonly { readonly name: string; readonly hp: number; readonly maxHp: number; readonly condition: string; readonly zone: string; readonly active: boolean; readonly ownerName: string | null }[];
   readonly foes: readonly {
     readonly name: string;
     readonly rank?: "boss" | "elite" | "minion" | "standard";
@@ -272,6 +276,7 @@ export function buildActivityTableView(
           : state.round?.submissions[hero.characterId]?.kind === "pass" ? "passed"
             : state.round?.submissions[hero.characterId]?.kind === "missed" ? "missed"
               : state.members[hero.ownerUserId]?.availability === "away" ? "away" : "waiting",
+      zone: panel.combat?.party.find((combatant) => combatant.name === hero.name)?.zone ?? null,
     };
   });
   const fullHero = heroView === null ? null : {
@@ -396,6 +401,7 @@ export function buildActivityTableView(
       if (from === undefined || to === undefined || (from.ownerUserId !== userId && to.ownerUserId !== userId)) return [];
       return [{ id: offer.id, fromCharacterId: from.id, toCharacterId: to.id, fromName: from.name, toName: to.name, itemName: glossary.names[offer.give] ?? offer.give, direction: from.ownerUserId === userId ? "outgoing" as const : "incoming" as const }];
     }),
+    allies: panel.combat?.allies ?? [],
     myHero: fullHero,
     turn: turn === null ? null : nameTurn(turn, glossary),
     explore: controlledHeroId === null || state.pendingMove !== undefined || panel.mode !== "collecting"

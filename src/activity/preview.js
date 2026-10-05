@@ -61,7 +61,7 @@ export function previewStoryNext(n) {
 export function designPreviewSnapshot() {
   const hero = (characterId, name, className, raceName, hp, maxHp, isYou = false) => ({
     characterId, name, className, raceName, level: 5, hp, maxHp, armorClass: 15, presence: "present",
-    down: false, fallen: false, conditions: [], isYou,
+    down: false, fallen: false, conditions: [], isYou, zone: "Shattered dais",
   });
   return {
     classNames: new URLSearchParams(window.location.search).get("language") === "zh-TW" ? { wizard: "法師", paladin: "聖騎士", ranger: "遊俠", rogue: "盜賊", cleric: "牧師", bard: "吟遊詩人" } : {},
@@ -91,7 +91,8 @@ export function designPreviewSnapshot() {
       { ...hero("sable", "Sable Dusk", "Cleric", "Tiefling", 29, 33), tableStatus: "waiting" },
       { ...hero("kestrel", "Kestrel Vale", "Bard", "Human", 25, 30), tableStatus: "waiting" },
     ].slice(0, Number(new URLSearchParams(window.location.search).get("party")) || 6),
-    foes: [{ name: "Hollow Sentinel", rank: "boss", hp: 18, maxHp: 36, band: "bloodied", zone: "Flooded floor", active: false }],
+    foes: [{ name: "Hollow Sentinel", rank: "boss", hp: 18, maxHp: 36, band: "bloodied", zone: "Flooded floor", active: false }, { name: "Drowned Husk A", rank: "minion", hp: 9, maxHp: 22, band: "bloodied", zone: "Flooded floor", active: false }],
+    allies: [{ name: "Giant Badger", hp: 14, maxHp: 22, condition: "active", zone: "Shattered dais", active: false, ownerName: "Mira Fen" }, { name: "Spiritual Weapon", hp: 1, maxHp: 1, condition: "active", zone: "Flooded floor", active: false, ownerName: "Sable Dusk" }],
     myHero: { ...hero("aria", "Aria Vell", "Wizard", "High Elf", 27, 34, true), imageUrl: null, gold: 18, partyGold: 42, weapons: ["Quarterstaff"], worn: ["Traveler's robe"], pack: [], stash: [], inventoryChoices: [], usablePotions: [], cantrips: ["Fire Bolt", "Ray of Frost"], prepared: ["Shield", "Magic Missile"], slots: [{ level: 1, left: 2, max: 4 }, { level: 2, left: 1, max: 3 }, { level: 3, left: 2, max: 2 }], pactSlots: [], uses: [{ id: "feature:arcane-recovery", name: "Arcane Recovery", left: 1, max: 1 }, { id: "feature:sculpt-spells", name: "Portent", left: 0, max: 2 }] },
     turn: { busy: false, attacks: [{ weapon: "item:quarterstaff", weaponName: "Quarterstaff", targets: [{ id: "sentinel", name: "Hollow Sentinel" }] }], spells: [1, 2, 3].map((slotLevel) => ({ spellId: "spell:magic-missile", spellName: "Magic Missile", slotLevel, slotsLeft: 4 - slotLevel, bonusAction: false, maxTargets: slotLevel + 2, targets: [{ id: "sentinel", name: "Hollow Sentinel" }, { id: "imp", name: "Cinder Imp" }] })), features: [], potions: [], shields: [], moves: [], engage: [], teleports: [], wildShapes: [], wildShapeChoices: [], canRevertShape: false, canWithdraw: false, canDashOrDisengage: true, canDodge: true },
     explore: null, pendingRoll: null, pendingRollCount: 0, submittedCount: 2, participantCount: 6, submission: null, canAcceptInvite: false, joinChoices: [], joinRequestStatus: null, queuedJoin: null,

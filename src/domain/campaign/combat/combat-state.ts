@@ -116,6 +116,8 @@ export interface Combatant {
   readonly boundTo?: string;
   // A creature the campaign brought along between fights (companions/companion-roster.ts): the roster entry it writes its wounds back to.
   readonly companionId?: string;
+  // Whose it is: the combatant that called it into the fight, or the hero it was brought along by. The table says "belongs to" from this.
+  readonly summonedBy?: CombatantId;
   readonly zoneId: ZoneId;
   readonly initiative: number | null;
   readonly budget: TurnBudget;
