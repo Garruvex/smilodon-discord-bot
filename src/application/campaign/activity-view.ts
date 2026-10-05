@@ -20,6 +20,7 @@ import { texts } from "../i18n/texts.js";
 import { buildMapView } from "./views/map-view.js";
 import { spellFactsByName, type SpellFacts } from "./views/spell-facts.js";
 import { buildHeroSheetView, buildLevelUpView, type HeroSheetView, type LevelUpView } from "./views/hero-sheet.js";
+import { buildJournal, buildPlaces, buildRecap, type JournalView, type PlaceView, type RecapView } from "./views/story-views.js";
 import { buildActivityStory, type StoryEntry } from "./views/activity-story.js";
 import type { CampaignEvent } from "../../domain/campaign/events/campaign-event.js";
 
@@ -39,6 +40,8 @@ export interface ActivityTableView {
   readonly ownPresence: "present" | "away";
   readonly canTogglePresence: boolean;
   readonly roundNumber: number | null;
+  // What the table may read back: the story so far, where the party has been, who and what it knows. The same words the Discord journal and recap use.
+  readonly journal: { readonly journal: JournalView; readonly places: readonly PlaceView[]; readonly recap: RecapView };
   // The story's day, time of day and weather, when the adventure keeps a clock.
   readonly world: null | { readonly day: number; readonly time: string; readonly weather: string | null };
   // fallbackImageUrl: the scene's own picture, when imageUrl is a fight's picture that may not be there yet.
@@ -418,6 +421,7 @@ export function buildActivityTableView(
     ownPresence: state.members[userId]?.availability ?? "away",
     canTogglePresence: state.members[userId] !== undefined,
     roundNumber: panel.roundNumber,
+    journal: { journal: buildJournal(state, bible), places: buildPlaces(state, events, bible), recap: buildRecap(state, events, bible) },
     world: state.world === undefined ? null : { day: state.world.day, time: state.world.time, weather: state.world.weather ?? null },
     mapText: texts[record.language].campaign.map,
     // Show the encounter illustration during combat when it is ready; otherwise

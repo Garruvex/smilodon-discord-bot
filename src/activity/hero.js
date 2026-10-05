@@ -6,6 +6,7 @@ import { partyStatusText } from "./party.js";
 import { openRules } from "./rules-book.js";
 import { renderSheet } from "./hero-sheet.js";
 import { renderCompanions } from "./companions.js";
+import { renderJournal } from "./journal.js";
 import { renderLevelUpBanner } from "./level-up.js";
 import { renderReplacementBanner } from "./replacement.js";
 
@@ -117,7 +118,7 @@ export function setWorkspaceTabs(game, tabs) {
     button.textContent = t(key); button.addEventListener("click", () => { app.selectedWorkspaceTab = id; renderCharacterWorkspace(game); });
     return button;
   }));
-  for (const id of ["overview", "sheet", "actions", "spells", "inventory", "trade", "companions"]) {
+  for (const id of ["overview", "sheet", "actions", "spells", "inventory", "trade", "companions", "journal"]) {
     const panel = document.querySelector(`#hero-panel-${id}`);
     panel.hidden = !tabs.some(([tabId]) => tabId === id) || app.selectedWorkspaceTab !== id;
   }
@@ -233,9 +234,11 @@ export function renderCharacterWorkspace(game) {
     : ownHero
       ? [["overview", "activity.tab.overview"], ["actions", "activity.tab.myActions"], ["trade", "activity.tab.trade"]]
       : [["overview", "activity.tab.overview"], ["trade", "activity.tab.trade"]];
+  tabs.push(["journal", "activity.tab.journal"]);
   if (!tabs.some(([id]) => id === app.selectedWorkspaceTab)) app.selectedWorkspaceTab = viewingOwn ? "actions" : "overview";
   renderSheet(game);
   renderCompanions(viewingOwn ? game : { companions: [] });
+  renderJournal(game);
   renderLevelUpBanner(viewingOwn ? game : { levelUp: null });
   renderReplacementBanner(viewingOwn ? game : { replacement: null });
   setWorkspaceTabs(game, tabs);
