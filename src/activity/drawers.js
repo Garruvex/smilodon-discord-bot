@@ -89,6 +89,10 @@ export function mountDrawers() {
   drawers.left.rail = rail;
   drawers.right.tab.prepend(iconImage("clue"));
   drawers.bottom.tab.prepend(iconImage("move"));
+  // The party icon: two figures side by side.
+  const partyIcon = Object.assign(document.createElement("img"), { alt: "", src: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="8" cy="8" r="3.6"/><path d="M1.5 20c0-4 3-6.6 6.5-6.6s6.5 2.6 6.5 6.6z"/><circle cx="17" cy="9" r="3"/><path d="M15 13.6c.6-.2 1.300-.3 2-.3 3.100 0 5.500 2.300 5.500 5.700h-6.200c0-2-.5-4-1.300-5.400z"/></svg>')}` });
+  partyIcon.setAttribute("aria-hidden", "true");
+  drawers.left.tab.prepend(partyIcon);
     if (event.key !== "Escape") return;
     const open = [...order].reverse().find((side) => drawers[side].drawer.dataset.open === "true");
     if (open !== undefined && !document.querySelector("dialog[open]")) drawers[open].set(false);
@@ -188,3 +192,5 @@ function paintPartyRail(game) {
 
   paintPartyRail(game);
     if (thinking || finished) button.append(Object.assign(document.createElement("i"), { className: "rail-mark" }));
+  // On a phone the rail is hidden, so the Party button carries the mark: amber while another hero is still deciding.
+  drawers.left.tab.dataset.turn = game.party.some((hero) => !hero.isYou && hero.presence !== "away" && !hero.down && !hero.fallen && (hero.tableStatus === "acting" || (hero.tableStatus === "waiting" && game.mode !== "combat"))) ? "thinking" : "";
