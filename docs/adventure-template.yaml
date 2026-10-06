@@ -88,6 +88,7 @@ clues:
     sceneId: scene:square
     publicText: The water went bad the night of the last storm.   # PUBLIC: states a fact that is already true.
     dmNotes: Revealed automatically by asking the villagers.
+    free: true                                                     # safe to hand to a stuck table (after about six rounds with no progress)
   - id: clue:rune
     sceneId: scene:square
     publicText: An old rune is scratched on the well's rim; it matches a mark on the elder's walking stick.

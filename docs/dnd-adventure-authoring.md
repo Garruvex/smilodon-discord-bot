@@ -50,6 +50,9 @@ npcs:
 
 Asking is a free, no-roll route to the clue; the engine decides what is told and the narrator only voices it. The story contract counts it.
 
+A clue may be marked `free: true`: a nudge that is safe to hand over. When the table goes about six rounds without the story moving, the engine gives the
+scene's next free clue. Any other clue may be the answer to something, so it is never handed over.
+
 ## Effects
 
 | kind | does |

@@ -66,6 +66,55 @@ describe("the story contract", () => {
   });
 });
 
+describe("every state the story can reach", () => {
+  const findings = (bible: AdventureBible) => analyzeStoryContract(bible).filter((finding) => finding.rule === "ending-stranded");
+
+  it("finds an optional branch that traps the table for good, even though the ending is reachable another way", () => {
+    // From the square the party may go home (the ending) or down the well; once down, the rope is gone and nothing leads out.
+    const bible = story([
+      scene("scene:square", { exits: [{ to: "scene:home" as never }, { to: "scene:well" as never }] }),
+      scene("scene:well", { exits: [{ to: "scene:square" as never, requires: { flags: ["rope"] } }] }),
+      scene("scene:home", { ending: true, exits: [] }),
+    ], [interaction("climb", "scene:well", { check: { skill: "athletics", dc: 12 }, onSuccess: [{ kind: "set", flag: "rope" }] })]);
+    const [finding] = findings(bible);
+    expect(finding?.severity).toBe("error");
+    expect(finding?.message).toContain("stranded in scene:well");
+    expect(finding?.message).toContain("go to scene:well");
+  });
+
+  it("finds an exit a flag shuts (notFlags) once the story has set it", () => {
+    const bible = story([
+      scene("scene:gate", { exits: [{ to: "scene:end" as never, requires: { notFlags: ["alarm"] } }] }),
+      scene("scene:end", { ending: true, exits: [] }),
+    ], [interaction("ring-the-bell", "scene:gate", { onSuccess: [{ kind: "set", flag: "alarm" }] })]);
+    expect(findings(bible)[0]?.message).toContain("ring-the-bell");
+  });
+
+  it("reads a flag set to zero as not set", () => {
+    const bible = story([
+      scene("scene:gate", { exits: [{ to: "scene:end" as never, requires: { flags: ["key"] } }] }),
+      scene("scene:end", { ending: true, exits: [] }),
+    ], [interaction("take-the-key", "scene:gate", { onSuccess: [{ kind: "set", flag: "key", value: 0 }] })]);
+    expect(findings(bible)).toHaveLength(1);
+    const fixed = story(bible.scenes, [interaction("take-the-key", "scene:gate", { onSuccess: [{ kind: "set", flag: "key" }] })]);
+    expect(findings(fixed)).toEqual([]);
+  });
+
+  it("lets the table choose: a rolled way and a sure way to the same place is safe, and a lost fight with an onDefeat is too", () => {
+    const scenes = [scene("scene:a", { exits: [{ to: "scene:b" as never, requires: { flags: ["open"] } }] }), scene("scene:b", { ending: true, exits: [] })];
+    const rolled = interaction("force", "scene:a", { check: { skill: "athletics", dc: 15 }, onSuccess: [{ kind: "set", flag: "open" }] });
+    const sure = interaction("ask-the-keeper", "scene:a", { onSuccess: [{ kind: "set", flag: "open" }] });
+    expect(findings(story(scenes, [rolled, sure]))).toEqual([]);
+    const fightFor = (onDefeat: readonly object[]): AdventureBible => ({
+      ...story(scenes, [interaction("challenge", "scene:a", { onSuccess: [{ kind: "encounter", encounter: "encounter:guard" as never }] })]),
+      encounters: [{ id: "encounter:guard", sceneId: "scene:a", publicDescription: "", dmNotes: "", zones: [], edges: [], partyZoneId: "", monsters: [], loot: [], gold: 0, onVictory: [{ kind: "set", flag: "open" }], onDefeat }] as never,
+    });
+    // With nothing after a lost fight, even the start is unsafe: the only way on can be lost.
+    expect(findings(fightFor([]))[0]?.message).toContain("stranded in scene:a");
+    expect(findings(fightFor([{ kind: "set", flag: "open" }]))).toEqual([]);
+  });
+});
+
 describe("the adventure template", () => {
   it("is a valid adventure with no story findings, so it is a safe place to start", async () => {
     const { readFileSync } = await import("node:fs");

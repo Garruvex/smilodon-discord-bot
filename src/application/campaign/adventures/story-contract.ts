@@ -1,5 +1,7 @@
 import type { AdventureBible, BibleEffect, BibleInteraction, BibleRequirement, BibleScene } from "../../../domain/campaign/adventure/adventure-bible.js";
 
+import { searchStoryStates } from "./story-states.js";
+
 // The story contract: whatever the table does, and however the dice fall, the story keeps an authored way forward to an ending.
 // This is a static check of the adventure's graph. It follows every `requires` and plays the story two ways:
 //   optimistic   every attempt succeeds: which scenes, flags and clues can ever come about;
@@ -194,7 +196,26 @@ export function analyzeStoryContract(bible: AdventureBible): readonly StoryFindi
     // The pessimistic story: every roll fails. What still reaches an ending?
     // The story must always be able to finish: one ending (a floor ending, however poor) that bad luck cannot close is enough. The good endings may need success.
     const reachableEndings = endings.filter((scene) => optimistic.scenes.has(scene.id));
-    const finishesAnyway = reachableEndings.some((scene) => pessimistic.scenes.has(scene.id));
+    // The full check: every state the story can reach, each played against chance. Only when the adventure is too large to search does the
+    // coarser check below (one merged pessimistic play) stand in for it.
+    const search = endings.length > 0 ? searchStoryStates(bible, endings.map((scene) => scene.id)) : undefined;
+    if (search?.kind === "complete") {
+      const seen = new Set<string>();
+      for (const { state, path } of search.stranded) {
+        if (seen.has(state.scene) || seen.size >= 3) continue;
+        seen.add(state.scene);
+        const holding = [...[...state.flags].filter(([, value]) => value > 0).map(([flag]) => `flag "${flag}"`), ...[...state.clues].map((clue) => `clue "${clue}"`)];
+        found({
+          severity: "error",
+          rule: "ending-stranded",
+          message: `A table can be stranded in ${state.scene}: from there, once rolls fail and fights are lost, no choice still leads to an ending. One way in: ${path.join(" → ")}.${holding.length === 0 ? "" : ` The party then holds ${holding.join(", ")}.`}`,
+          fix: "From that point, give the story a way on that needs no roll: an exit with no requirement (or one a no-roll interaction opens), an NPC tell or arrival effect for the clue it needs, an onFailure or onDefeat that still moves the story, a fallback step, or a floor ending.",
+        });
+      }
+    } else if (search?.kind === "tooLarge") {
+      found({ severity: "warning", rule: "ending-stranded", message: `The adventure has more than ${search.states} story states, too many to check one by one; only the coarse check was made.`, fix: "Split the adventure, or use fewer flags that only matter together." });
+    }
+    const finishesAnyway = search?.kind === "complete" || reachableEndings.some((scene) => pessimistic.scenes.has(scene.id));
     for (const ending of finishesAnyway ? [] : reachableEndings) {
       if (pessimistic.scenes.has(ending.id)) continue;
       // Only what something actually requires is a gate; a flag nobody reads is not why the way is shut.

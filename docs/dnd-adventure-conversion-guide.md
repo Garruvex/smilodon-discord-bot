@@ -26,7 +26,7 @@ forward, and write down the way forward *when things go badly*.
 | `unreachable-scene` | No exit, `goto` or arrival leads to the scene, even when everything succeeds. | Add the exit or `goto`, or delete the scene. |
 | `dead-end-scene` | A scene lists `exits: []` and is not an ending, so the party is stuck. | Give it an exit, or mark it `ending: true`. |
 | `unsatisfiable-requirement` | An exit or interaction needs a flag or clue that nothing ever sets or reveals. | Set the flag or reveal the clue somewhere, or drop the requirement. |
-| `ending-stranded` | When every roll fails and every fight is lost, no ending can be reached. | Add a floor ending that bad luck cannot close, and give gates a no-roll way (an automatic interaction, an NPC `tells`, an arrival effect, or a `fallback` step), an `onFailure` that moves on, and every fight an `onDefeat` that lets the story go on at a cost. Good endings may need success. |
+| `ending-stranded` | Some state the story can reach (after any choice, including an optional branch) has no way left to an ending once rolls fail and fights are lost. The checker plays every state separately: a branch that shuts its own way back, an exit closed by `notFlags`, or a flag set to `0` all count, and it prints the shortest way into the trap. | Add a floor ending that bad luck cannot close, and give gates a no-roll way (an automatic interaction, an NPC `tells`, an arrival effect, or a `fallback` step), an `onFailure` that moves on, and every fight an `onDefeat` that lets the story go on at a cost. Good endings may need success. |
 | `rolled-gate` (warning) | One roll, one attempt, no failure branch decides something the story needs. | Add attempts, an `onFailure`, or another interaction that gives the same result. |
 | `no-ending` (warning) | No scene is marked `ending: true`, so finishing cannot be checked. | Mark the final scene(s). |
 
@@ -45,14 +45,17 @@ forward, and write down the way forward *when things go badly*.
    asks them gets the clue with no roll and the NPC says it in their own voice. Without `tells`, an NPC knows only what their public description says,
    and questions about the plot go nowhere. Include the words players are likely to use (the thing, the person, the place), in each language the table plays.
 6. **Plant the clues.** A player must be able to learn what to do next. Every important next step needs a clue that is revealed without a roll
-   (arrival effect or an automatic interaction). Put a better version behind a roll if you like.
+   (arrival effect or an automatic interaction). Put a better version behind a roll if you like. Mark a clue `free: true` when it is safe to hand to a
+   table that is stuck (a nudge, not the answer to a mystery): the engine gives it after about six rounds without progress. Clues not marked free are
+   never handed over.
 7. **Schedule time-based events.** If something happens "at midnight" or "when the alarm sounds", do not rely on a player saying "I wait". Say it
    in a clue the table learns for free, and give the fight a `schedule` so it breaks out by itself: `schedule: { requires: { clues: [clue:strikes-at-midnight] }, time: night, afterRounds: 2 }`
    starts it on the first round the party acts once they are in the scene, know the clue, it is night (needs a `startTime`), and two rounds have passed. Every part is
    optional. Never make the table ask for the event.
 8. **Name the step the engine may take for a stuck table.** On each point where the story could stall, mark ONE interaction `fallback: true`: the step
    a patient guide would simply let happen. If the table goes about nine rounds without the story moving, the engine takes that step for them with no
-   roll and no fee (after a hint at three rounds and a free clue at six). Only an adventure can authorize this, so choose steps that do not take
+   roll and no fee (after a hint at three rounds and a clue marked `free: true` at six). It happens as a world event beside the players' own
+   actions; it never replaces what someone chose to do. Rounds where everyone passes count too. Only an adventure can authorize this, so choose steps that do not take
    away a choice the story established (reading the rune, opening the gate, the elder finally speaking) and never one that decides an ending.
 9. **Make failure a branch, not a wall.** (A lost fight too: give each fight an `onDefeat`: the party is carried off, robbed, or driven back, and the story goes on.) A lost negotiation can lead to the fight. A failed search can cost time. A failed lock can be broken,
    noisily. The story continues; it just gets harder.
