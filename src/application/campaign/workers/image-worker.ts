@@ -28,6 +28,9 @@ export interface ImageWorkerOptions {
   readonly timeoutMs?: number;
   // A picture is tried this many times, then it goes without.
   readonly maxAttempts?: number;
+  // A scene picture waits for its round to be told, but only this long (default two minutes): a narrator that keeps failing must not leave a new place without a picture.
+  readonly narrationWaitMs?: number;
+  readonly now?: () => number;
 }
 
 const defaultMaxBytes = 8 * 1024 * 1024;
@@ -136,12 +139,14 @@ export class ImageWorker {
     // Keep a room's picture even if the party moves on before this background
     // job starts. It is stored under that scene and can be reused on return;
     // posting is still gated below so it cannot appear beside another room.
-    if (asked.kind === "sceneImage" && asked.roundNumber > 0 && state.lastRoundNumber === asked.roundNumber && state.lastNarratedRound < asked.roundNumber) return "later";
+    // Past the wait the picture is painted from the scene's own description (the prompt never needs the narration).
+    const patient = (this.options.now ?? Date.now)() - item.createdAt < (this.options.narrationWaitMs ?? 120_000);
+    if (patient && asked.kind === "sceneImage" && asked.roundNumber > 0 && state.lastRoundNumber === asked.roundNumber && state.lastNarratedRound < asked.roundNumber) return "later";
     if (asked.kind === "sceneImage" && asked.roundNumber > 0) {
       const arrival = await unitOfWork.transaction(async (tx) => (await tx.outboxForCampaign(item.key)).find((entry) =>
         entry.request.kind === "deliver" && entry.request.delivery.kind === "sceneArrival" &&
         entry.request.delivery.sceneId === asked.sceneId && entry.request.delivery.roundNumber === asked.roundNumber));
-      if (arrival?.status === "pending") return "later";
+      if (arrival?.status === "pending" && patient) return "later";
       // If the matching room text could not be delivered, omit its picture too.
       if (arrival?.status === "failed") return;
     }

@@ -48,7 +48,7 @@ class Shelf implements ImageAssetStore {
   }
 }
 
-async function table(): Promise<{ r: Rig; key: CampaignKey; painter: Painter; posted: { channelId: string; caption: string }[]; worker: ImageWorker; failPost: { on: boolean }; shelf: Shelf }> {
+async function table(): Promise<{ r: Rig; key: CampaignKey; painter: Painter; posted: { channelId: string; caption: string }[]; worker: ImageWorker; failPost: { on: boolean }; shelf: Shelf; clock: { now: number } }> {
   const r = rig();
   const key = await startedCampaign(r);
   // The opening scene is illustrated separately; these tests are about the rest.
@@ -69,14 +69,17 @@ async function table(): Promise<{ r: Rig; key: CampaignKey; painter: Painter; po
   const posted: { channelId: string; caption: string }[] = [];
   const failPost = { on: false };
   const shelf = new Shelf();
+  // The tests enqueue pictures at instant 1; the clock starts there, so a picture is still inside its wait for narration.
+  const clock = { now: 1 };
   const worker = new ImageWorker({
+    now: (): number => clock.now,
     unitOfWork: r.store,
     adventures: r.adventures,
     generator: painter,
     sink: { post: (channelId, _image, caption): Promise<void> => (failPost.on ? Promise.reject(new Error("no permission")) : (posted.push({ channelId, caption }), Promise.resolve())) },
     assets: shelf,
   });
-  return { r, key, painter, posted, worker, failPost, shelf };
+  return { r, key, painter, posted, worker, failPost, shelf, clock };
 }
 
 const ask = (t: Awaited<ReturnType<typeof table>>, sceneId: string, id = sceneId, roundNumber = 0): Promise<void> =>
@@ -179,6 +182,21 @@ describe("scene pictures", () => {
     await withRound(1, 1);
     expect((await t.worker.runOnce()).processed).toBe(1);
     expect(t.posted).toHaveLength(1);
+  });
+
+  it("paints from the scene's own description once the narrator has had its wait and still not told the round", async () => {
+    const t = await table();
+    await t.r.store.transaction(async (tx) => {
+      const stored = await tx.loadCampaign(t.key);
+      if (stored === undefined) throw new Error("campaign");
+      await tx.saveCampaign(t.key, { ...stored.state, lastRoundNumber: 1, lastNarratedRound: 0 }, stored.revision);
+    });
+    await ask(t, chapel, chapel, 1);
+    expect((await t.worker.runOnce()).processed).toBe(0);
+    t.clock.now = 1 + 121_000;
+    expect((await t.worker.runOnce()).processed).toBe(1);
+    expect(t.posted).toHaveLength(1);
+    expect((await recordOf(t)).images?.[chapel]).toBe("done");
   });
 
   it("keeps the picture without posting if the party moves while generation is running", async () => {
