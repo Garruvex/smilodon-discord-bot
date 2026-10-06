@@ -1,0 +1,260 @@
+import { srd51Classes } from "../content/srd-5.1/classes.js";
+import { srd51DragonAncestries, srd51Races, srd51Subraces } from "../content/srd-5.1/races.js";
+import { parseContentId, type ContentId } from "../rules/content-id.js";
+import type { ClassDefinition, RaceDefinition } from "../rules/content-definitions.js";
+import type { Ability } from "../rules/effects.js";
+import { abilities } from "../rules/effects.js";
+import { abilityModifier, isSkill, type CharacterSheet, type Skill, type SkillProficiency } from "./character-sheet.js";
+
+// The guided character builder's rules (plan §3, Character creation). A build
+// is the player's choices; every number on the sheet is derived from them
+// here, by the engine, never taken from a person or a model. Classes and
+// races are sealed content (content/srd-5.1/classes.ts, races.ts): the same
+// data content-registry.ts validates for every spell, item, and monster, so
+// a class or race with a missing feature, spell, or kit item fails the build
+// the way any other broken content would, not silently at chargen time. This
+// module just re-shapes that content for the builder: it needs no
+// SealedContent of its own since a build is always for the SRD 5.1 roster,
+// the same coupling the kit gear (literal "item:longsword" IDs) already has.
+export type { StartingKit } from "../rules/content-definitions.js";
+
+export const buildClasses = [
+  "fighter",
+  "rogue",
+  "cleric",
+  "barbarian",
+  "bard",
+  "druid",
+  "monk",
+  "paladin",
+  "ranger",
+  "sorcerer",
+  "warlock",
+  "wizard",
+] as const;
+export type BuildClass = (typeof buildClasses)[number];
+
+export function isBuildClass(value: string): value is BuildClass {
+  return (buildClasses as readonly string[]).includes(value);
+}
+
+export const buildRaces = ["human", "elf", "dwarf", "halfling", "dragonborn", "gnome", "half-elf", "half-orc", "tiefling", "hill-dwarf", "mountain-dwarf", "high-elf", "wood-elf", "drow", "lightfoot-halfling", "stout-halfling", "forest-gnome", "rock-gnome", "black-dragonborn", "blue-dragonborn", "brass-dragonborn", "bronze-dragonborn", "copper-dragonborn", "gold-dragonborn", "green-dragonborn", "red-dragonborn", "silver-dragonborn", "white-dragonborn"] as const;
+export type BuildRace = (typeof buildRaces)[number];
+
+// Broad legacy entries remain valid for imports but are replaced by their
+// explicit subraces in new builds.
+export const selectableBuildRaces: readonly BuildRace[] = ["human", "hill-dwarf", "mountain-dwarf", "high-elf", "wood-elf", "drow", "lightfoot-halfling", "stout-halfling", "black-dragonborn", "blue-dragonborn", "brass-dragonborn", "bronze-dragonborn", "copper-dragonborn", "gold-dragonborn", "green-dragonborn", "red-dragonborn", "silver-dragonborn", "white-dragonborn", "forest-gnome", "rock-gnome", "half-elf", "half-orc", "tiefling"];
+
+export function isBuildRace(value: string): value is BuildRace {
+  return (buildRaces as readonly string[]).includes(value);
+}
+
+function slugOf(id: ContentId): string {
+  const parsed = parseContentId(id);
+  if (parsed === null) throw new Error(`"${id}" is not a valid content ID.`);
+  return parsed.slug;
+}
+
+function byBuildKey<Slug extends string, Definition extends { readonly id: ContentId }>(
+  definitions: readonly Definition[],
+  isKnown: (value: string) => value is Slug,
+  what: string,
+): Readonly<Record<Slug, Definition>> {
+  const entries = definitions.map((definition): readonly [Slug, Definition] => {
+    const slug = slugOf(definition.id);
+    if (!isKnown(slug)) throw new Error(`${what} content "${definition.id}" is not one of the builder's known ${what}s.`);
+    return [slug, definition];
+  });
+  return Object.fromEntries(entries) as Readonly<Record<Slug, Definition>>;
+}
+
+// The class roster's full data, keyed the way the builder (and every
+// existing caller) already spells a class: "fighter", not "class:fighter".
+export const classTemplates: Readonly<Record<BuildClass, ClassDefinition>> = byBuildKey(srd51Classes, isBuildClass, "class");
+
+export const raceTemplates: Readonly<Record<BuildRace, RaceDefinition>> = byBuildKey([...srd51Races, ...srd51Subraces, ...srd51DragonAncestries], isBuildRace, "race");
+
+function raceContentId(race: BuildRace): ContentId<"race"> {
+  return `race:${race}`;
+}
+
+// A sheet's classes and the levels held in each, keyed by builder slug. Every
+// class-aware reader (leveling.ts, combat's HP-on-rest, the multiclass
+// commands) goes through this rather than the raw field, so a sheet saved
+// before multiclassing existed — classLevels absent, just className/level —
+// still reads as the single class it always was.
+export function classLevelsOf(sheet: Pick<CharacterSheet, "className" | "level" | "classLevels">): Readonly<Partial<Record<BuildClass, number>>> {
+  if (sheet.classLevels !== undefined) return sheet.classLevels;
+  return sheet.className !== undefined && isBuildClass(sheet.className) ? { [sheet.className]: sheet.level } : {};
+}
+
+// SRD 5.1 multiclassing: whether the hero's ability scores meet this class's
+// requirement to take a level in it. Always true for a class already held
+// (see multiclassRequires' doc comment on content-definitions.ts).
+export function canMulticlassInto(buildClass: BuildClass, sheet: Pick<CharacterSheet, "className" | "level" | "classLevels" | "abilityScores">): boolean {
+  if ((classLevelsOf(sheet)[buildClass] ?? 0) > 0) return true;
+  const template = classTemplates[buildClass] as ClassDefinition | undefined;
+  if (template === undefined) return false;
+  return template.multiclassRequires.every((group) => group.some((ability) => sheet.abilityScores[ability] >= 13));
+}
+
+// One Hit Die per class level, largest first: how a rest spends and recovers
+// them when the pool mixes die sizes (character/rest.ts). Largest-first is
+// not a house rule — it is the greedy-optimal order for "heal until full or
+// out of dice" and the natural mirror for restoring the biggest ones back
+// first, so it needs no player choice to reach the SRD's own numbers.
+export function hitDicePool(sheet: Pick<CharacterSheet, "className" | "level" | "classLevels" | "hitDie">): readonly number[] {
+  const levels = classLevelsOf(sheet);
+  const dice: number[] = [];
+  for (const [buildClass, count] of Object.entries(levels)) {
+    const die = (classTemplates as Readonly<Record<string, ClassDefinition | undefined>>)[buildClass]?.hitDie ?? sheet.hitDie;
+    for (let index = 0; index < (count ?? 0); index += 1) dice.push(die);
+  }
+  while (dice.length < sheet.level) dice.push(sheet.hitDie);
+  return dice.sort((a, b) => b - a);
+}
+
+// SRD 5.1 standard array: each score is used once.
+export const standardArray: readonly number[] = [15, 14, 13, 12, 10, 8];
+
+export interface BuildChoices {
+  readonly class: BuildClass;
+  // One of the class's starting kits (see classTemplates).
+  readonly kit: string;
+  readonly abilities: Readonly<Record<Ability, number>>;
+  // The class's chosen skill proficiencies, and (rogue) which two of them get expertise.
+  readonly skills: readonly Skill[];
+  readonly expertise: readonly Skill[];
+  readonly name: string;
+  // What the character looks like and what the player says about their past:
+  // the table's own words, kept short and never read as rules.
+  readonly appearance: string;
+  readonly backstory: string;
+  // Optional so a build made before races existed (or a caller that has not
+  // added a race picker yet — the Discord builder does not, still) stays
+  // legal; deriveSheet applies no racial bonus and the SRD default speed
+  // when it is absent.
+  readonly race?: BuildRace;
+  // Half-Elf chooses two different non-Charisma abilities for its +1s.
+  // Absent on older saved builds, which retain the original Dex/Con default.
+  readonly raceAbilityChoices?: readonly Ability[];
+  // Half-Elf Skill Versatility: two skills chosen independently of class.
+  readonly raceSkillChoices?: readonly Skill[];
+}
+
+// Every reason a build cannot be made, in the builder's own words (codes the
+// Discord layer localizes). Empty when the build is legal.
+export type BuildProblem =
+  | { readonly code: "unknownClass" }
+  | { readonly code: "unknownRace" }
+  | { readonly code: "invalidRaceAbilityChoices" }
+  | { readonly code: "invalidRaceSkillChoices" }
+  | { readonly code: "unknownKit"; readonly kit: string }
+  | { readonly code: "abilitiesNotStandardArray" }
+  | { readonly code: "skillCount"; readonly expected: number }
+  | { readonly code: "skillNotAllowed"; readonly skill: string }
+  | { readonly code: "skillRepeated"; readonly skill: string }
+  | { readonly code: "expertiseCount"; readonly expected: number }
+  | { readonly code: "expertiseNotProficient"; readonly skill: string }
+  | { readonly code: "badName" }
+  | { readonly code: "textTooLong" };
+
+export function buildProblems(build: BuildChoices): readonly BuildProblem[] {
+  const template = classTemplates[build.class] as ClassDefinition | undefined;
+  if (template === undefined) return [{ code: "unknownClass" }];
+  const problems: BuildProblem[] = [];
+  if (build.race !== undefined && !isBuildRace(build.race)) problems.push({ code: "unknownRace" });
+  if (build.raceAbilityChoices !== undefined && (build.race !== "half-elf" || build.raceAbilityChoices.length !== 2 || new Set(build.raceAbilityChoices).size !== 2 || build.raceAbilityChoices.some((ability) => !abilities.includes(ability) || ability === "cha"))) problems.push({ code: "invalidRaceAbilityChoices" });
+  if (build.raceSkillChoices !== undefined && (build.race !== "half-elf" || build.raceSkillChoices.length !== 2 || new Set(build.raceSkillChoices).size !== 2 || build.raceSkillChoices.some((skill) => !isSkill(skill) || build.skills.includes(skill)))) problems.push({ code: "invalidRaceSkillChoices" });
+  if (!template.kits.some((kit) => kit.id === build.kit)) problems.push({ code: "unknownKit", kit: build.kit });
+  const scores = abilities.map((ability) => build.abilities[ability]).sort((a, b) => b - a);
+  if (scores.length !== standardArray.length || scores.some((score, index) => score !== standardArray[index])) problems.push({ code: "abilitiesNotStandardArray" });
+  if (build.skills.length !== template.skillCount) problems.push({ code: "skillCount", expected: template.skillCount });
+  const seen = new Set<string>();
+  for (const skill of build.skills) {
+    if (!isSkill(skill) || !template.skillChoices.includes(skill)) problems.push({ code: "skillNotAllowed", skill });
+    else if (seen.has(skill)) problems.push({ code: "skillRepeated", skill });
+    seen.add(skill);
+  }
+  if (build.expertise.length !== template.expertiseCount) problems.push({ code: "expertiseCount", expected: template.expertiseCount });
+  for (const skill of build.expertise) if (!build.skills.includes(skill)) problems.push({ code: "expertiseNotProficient", skill });
+  if ([...build.name.trim()].length < 1 || [...build.name.trim()].length > maxNameLength) problems.push({ code: "badName" });
+  if ([...build.appearance].length > maxBackgroundLength || [...build.backstory].length > maxBackgroundLength) problems.push({ code: "textTooLong" });
+  return problems;
+}
+
+export const maxNameLength = 40;
+export const maxBackgroundLength = 300;
+
+// The gear a build starts with.
+export function kitEquipment(build: Pick<BuildChoices, "class" | "kit">): readonly ContentId<"item">[] {
+  return classTemplates[build.class].kits.find((kit) => kit.id === build.kit)?.equipment ?? [];
+}
+
+// What the engine reads of a hero, minus what a campaign assigns (ID and owner).
+export type DerivedSheet = Omit<CharacterSheet, "id" | "ownerUserId">;
+
+// Every ability a race's fixed bonus raises, added once at creation (SRD
+// 5.1 applies racial increases before anything derived from ability scores,
+// so this runs before the hit-point calculation below).
+function withAbilityScoreIncrease(scores: Readonly<Record<Ability, number>>, increase: Readonly<Partial<Record<Ability, number>>>): Readonly<Record<Ability, number>> {
+  const result: Record<Ability, number> = { ...scores };
+  for (const ability of abilities) result[ability] = scores[ability] + (increase[ability] ?? 0);
+  return result;
+}
+
+// Derives every number: hit points from the class's Hit Die and Constitution,
+// proficiency +2, the class's saving throws, features, spells and slots. The
+// gear is the build's kit unless a saved snapshot brings its own. A chosen
+// race folds its ability score increase and speed in; combat reads the
+// race's own traits straight from content (combatant-profile.ts's heroTraits).
+export function deriveSheet(build: BuildChoices, gear?: { readonly equipment: readonly ContentId<"item">[]; readonly worn?: readonly ContentId<"item">[] }): DerivedSheet {
+  const template = classTemplates[build.class];
+  const race = build.race === undefined ? undefined : raceTemplates[build.race];
+  const increase = race === undefined ? {} : { ...race.abilityScoreIncrease };
+  if (build.race === "half-elf" && build.raceAbilityChoices?.length === 2) {
+    delete increase.dex;
+    delete increase.con;
+    for (const ability of build.raceAbilityChoices) increase[ability] = (increase[ability] ?? 0) + 1;
+  }
+  const abilityScores = withAbilityScoreIncrease(build.abilities, increase);
+  const skills: Partial<Record<Skill, SkillProficiency>> = {};
+  for (const skill of build.skills) skills[skill] = build.expertise.includes(skill) ? "expertise" : "proficient";
+  for (const skill of race?.skillProficiencies ?? []) if (skills[skill] === undefined) skills[skill] = "proficient";
+  for (const skill of build.raceSkillChoices ?? []) if (skills[skill] === undefined) skills[skill] = "proficient";
+  const equipment = gear?.equipment ?? kitEquipment(build);
+  return {
+    name: build.name.trim(),
+    className: build.class,
+    classLevels: { [build.class]: 1 },
+    ...(build.race === undefined ? {} : { race: raceContentId(build.race) }),
+    abilityScores,
+    proficiencyBonus: 2,
+    skills,
+    savingThrows: template.savingThrows,
+    level: 1,
+    xp: 0,
+    maxHp: Math.max(1, template.hitDie + abilityModifier(abilityScores.con) + (race?.bonusHpPerLevel ?? 0) + (template.features.includes("feature:draconic-bloodline") ? 1 : 0)),
+    hitDie: template.hitDie,
+    speed: race?.speed ?? 30,
+    equipment,
+    ...(gear?.worn === undefined ? {} : { worn: gear.worn }),
+    features: template.features,
+    // A Warlock's level-1 slot is Pact Magic even before any level-up
+    // (character/leveling.ts's combinedSpellcasting does this from level 2
+    // on): its recovery on a short rest, not just a long one, is real from
+    // the start, not something that only kicks in once the hero levels.
+    spellcasting:
+      template.spellcasting === null
+        ? null
+        : { ability: template.spellcasting.ability, spells: template.spellcasting.spells, slots: template.casterType === "pact" ? {} : template.spellcasting.slots },
+    ...(template.casterType === "pact" && template.spellcasting !== null ? { pactMagic: { slots: template.spellcasting.slots } } : {}),
+  };
+}
+
+// The suggested standard-array assignment for a class: highest score to the
+// ability it leans on most. The builder starts from it and lets the player change it.
+export function suggestedAbilities(buildClass: BuildClass): Readonly<Record<Ability, number>> {
+  const order = classTemplates[buildClass].suggested;
+  return Object.fromEntries(order.map((ability, index) => [ability, standardArray[index] ?? 8])) as Record<Ability, number>;
+}

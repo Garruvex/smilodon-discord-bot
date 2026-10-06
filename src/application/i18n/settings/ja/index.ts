@@ -3,6 +3,7 @@ import { jaAccess } from "./access.js";
 import { jaChat } from "./chat.js";
 import { jaMemory } from "./memory.js";
 import { jaCommunity } from "./community.js";
+import { jaDnd } from "./dnd.js";
 import { jaMusic } from "./music.js";
 import { jaSecurity } from "./security.js";
 
@@ -12,6 +13,7 @@ export const jaSettingsText: SettingsTextCatalog = {
   ...jaMusic,
   ...jaChat,
   ...jaMemory,
+  ...jaDnd,
   ...jaCommunity,
   ...jaSecurity,
 };

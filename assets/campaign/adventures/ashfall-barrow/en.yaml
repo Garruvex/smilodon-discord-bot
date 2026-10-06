@@ -1,0 +1,328 @@
+# A full-length bundled campaign: six scenes, six fights, three level-ups.
+# Scene, NPC, clock, clue, encounter and hero IDs must match the zh-TW edition exactly.
+id: ashfall-barrow
+version: "1"
+language: en
+title: The Ashfall Barrow
+premise: >-
+  Miners from the village of Harrowmere have been vanishing on the road to the
+  old silver seam, and the smoke over the hills has turned black. The trail
+  runs from the village cellar to a kobold-ridden warren, through the gate of
+  a forgotten barrow, and down to the vault where an ancient crown still waits.
+dmOverview: >-
+  Lord Aldric Vane was buried with the Ashfall Crown, a relic that let him
+  command the dead. Kobolds digging for silver broke into the barrow and one of
+  them put the crown on; the warren's chieftain now serves it, and Aldric's
+  restless spirit is waking the barrow's dead through the crown. Aldric was
+  not evil: he swore to guard the valley and cannot rest while the crown is in
+  living hands. Returning the crown to his tomb and speaking the oath ends the
+  haunting peacefully; destroying his spirit by force also ends it, but the
+  valley loses its old guardian. Marta, the innkeeper, hides that her brother
+  was one of the missing miners and is still alive in the warren.
+startScene: scene:harrowmere-inn
+scenes:
+  - id: scene:harrowmere-inn
+    title: The Harrowmere Inn
+    publicDescription: >-
+      A low, crowded common room that smells of woodsmoke and wet wool. Empty
+      stools mark the places where the miners used to sit.
+    dmNotes: >-
+      Marta pays a reward of 100 gold for the missing miners or an end to the
+      smoke. She avoids talking about her brother Tomas; a successful Insight
+      check (medium) shows the grief behind her business manner, and she then
+      admits Tomas went up the mine road three weeks ago. The cellar has been
+      full of giant rats since the smoke began; she will pay extra if the party
+      clears it, and it is a gentle first fight. She sells basic gear.
+    npcIds: [npc:marta]
+  - id: scene:mine-road
+    title: The Mine Road
+    publicDescription: >-
+      A rutted track climbing between black pines. Ash drifts down like grey
+      snow, and a cart lies overturned across the way.
+    dmNotes: >-
+      The cart is a kobold ambush. A Perception check (medium) spots the
+      tripwires and the archers in the trees, which lets the party act first.
+      Otherwise the kobolds spring the trap. Tracks lead up to a cave mouth,
+      the entrance of the warren.
+    npcIds: []
+  - id: scene:kobold-warren
+    title: The Kobold Warren
+    publicDescription: >-
+      Low tunnels cut into the hillside, hung with bones and scraps of miners'
+      clothing. Somewhere deeper a drum keeps a slow, uneasy beat.
+    dmNotes: >-
+      A skill challenge with a clock: the warren's alarm. Each failed
+      Stealth check or noisy action advances it by 1. Three successes (Stealth
+      to creep, Perception to find the prison, Athletics to force the door)
+      free Tomas and the other prisoners and reveal the chieftain's plan.
+      If the alarm fills, the hobgoblin captain who leads the kobolds, and
+      his bugbear guard fall on the party. Tomas can tell the party the crown
+      came from the barrow to the north.
+    npcIds: [npc:tomas]
+  - id: scene:barrow-gate
+    title: The Barrow Gate
+    publicDescription: >-
+      A grassy mound crowned with standing stones. A great door of black
+      stone stands open, and a cold light spills from the dark beyond.
+    dmNotes: >-
+      The dead guard the gate: skeletons in rusted mail rise as the party
+      crosses the threshold. A Religion or History check (medium) reads the
+      carved oath over the door: "The valley's guardian sleeps; let no living
+      hand disturb the crown." It is the first hint that Aldric is a guardian,
+      not a monster.
+    npcIds: []
+  - id: scene:barrow-depths
+    title: The Barrow Depths
+    publicDescription: >-
+      Long halls of fitted stone, their walls lined with burial niches. The
+      air is cold, and the dust on the floor has been stirred by many feet.
+    dmNotes: >-
+      The shambling dead, and something worse, hold the depths. A specter,
+      the echo of Aldric's captain, drifts among the zombies. The specter is
+      loyal to Aldric and can be reasoned with by a Persuasion check (hard)
+      if the party names the oath. The passage ends at the vault door.
+    npcIds: []
+  - id: scene:crown-vault
+    title: The Crown Vault
+    publicDescription: >-
+      A round chamber lit by pale fire. A stone bier stands in the middle, and
+      above it hangs a figure in ancient armor with a tarnished crown.
+    dmNotes: >-
+      Chieftain Grukk, the kobold who wears the crown, stands guard with an
+      ogre thrall and a skeleton under the crown's spell. Lord Aldric's spirit is
+      bound to the crown and speaks through it. If the party takes the crown
+      from Grukk, Aldric's spirit becomes clear and calm. A Persuasion check
+      (medium) or speaking the barrow oath lets the party return the crown to
+      the bier and end the haunting peacefully. If the party attacks the
+      spirit instead, it fights.
+    npcIds: [npc:aldric]
+npcs:
+  - id: npc:marta
+    name: Marta
+    voice: Brisk and practical; goes quiet whenever her brother is mentioned.
+    publicDescription: A weathered innkeeper in a flour-dusted apron who counts coins twice.
+    secret: Her brother Tomas was one of the missing miners, and she is desperate to know if he is alive.
+    shop:
+      stock:
+        - itemId: item:potion-of-healing
+          buyPrice: 50
+          sellPrice: 25
+        - itemId: item:dagger
+          buyPrice: 2
+          sellPrice: 1
+        - itemId: item:javelin
+          buyPrice: 5
+          sellPrice: 2
+        - itemId: item:shortsword
+          buyPrice: 10
+          sellPrice: 5
+        - itemId: item:hide-armor
+          buyPrice: 10
+          sellPrice: 5
+        - itemId: item:quarterstaff
+          buyPrice: 2
+          sellPrice: 1
+  - id: npc:tomas
+    name: Tomas
+    voice: Hoarse and grateful; jokes to keep from shaking.
+    publicDescription: A gaunt miner with rope-burned wrists, still wearing his lantern-strap.
+    secret: He saw the kobold chieftain put on the crown and knows the crown seems to speak to whoever wears it.
+  - id: npc:aldric
+    name: Lord Aldric Vane
+    voice: Slow and formal; speaks as if every sentence were an oath.
+    publicDescription: The pale, translucent shape of an armored lord whose eyes burn like cold coals.
+    secret: He is the valley's sworn guardian and wants only to lie at rest with his crown; he never wanted the dead to rise.
+clocks:
+  - id: clock:warren-alarm
+    sceneId: scene:kobold-warren
+    name: The warren's alarm
+    segments: 4
+    onFull: encounter:warren-guards
+    dmNotes: >-
+      Advance by 1 whenever a hero fails a check in the warren or does
+      something loud. When it fills, the captain and his bugbear arrive and
+      the fight begins.
+clues:
+  - id: clue:prison-cage
+    sceneId: scene:kobold-warren
+    publicText: A cage of lashed timber holds the missing miners, alive, and one of them is Tomas.
+    dmNotes: Reveal after the party has succeeded at three checks in the warren.
+  - id: clue:barrow-oath
+    sceneId: scene:barrow-gate
+    publicText: The carved oath over the door names the barrow's dead lord as the valley's guardian, bound to protect it.
+    dmNotes: Reveal on a successful Religion or History check at the gate, or when Tomas mentions the crown.
+encounters:
+  - id: encounter:cellar-rats
+    sceneId: scene:harrowmere-inn
+    publicDescription: >-
+      The cellar door bursts open and a swarm of giant rats pours out from
+      between the barrels, red eyes glinting in the lamplight.
+    dmNotes: >-
+      Start this when the party goes down to clear the cellar. It is a gentle
+      opening fight, mostly to let the heroes find their feet.
+    zones:
+      - { id: cellar-stairs, name: Cellar stairs }
+      - { id: cellar-floor, name: Cellar floor }
+    edges:
+      - { from: cellar-stairs, to: cellar-floor, feet: 10 }
+    partyZoneId: cellar-stairs
+    loot: [item:dagger]
+    gold: 8
+    monsters:
+      - { monsterId: monster:giant-rat, zoneId: cellar-floor }
+      - { monsterId: monster:giant-rat, zoneId: cellar-floor }
+      - { monsterId: monster:giant-rat, zoneId: cellar-floor }
+  - id: encounter:road-ambush
+    sceneId: scene:mine-road
+    publicDescription: >-
+      Arrows hiss from the pines, and small, scaly figures scramble over the
+      overturned cart with a shrill war cry.
+    dmNotes: >-
+      Start this when the party reaches the cart without spotting the trap, or
+      when the party pushes past the ambush. Kobolds flee when hurt.
+    zones:
+      - { id: road, name: The road }
+      - { id: cart, name: The overturned cart }
+      - { id: treeline, name: The treeline }
+    edges:
+      - { from: road, to: cart, feet: 15 }
+      - { from: cart, to: treeline, feet: 20 }
+    partyZoneId: road
+    loot: [item:shortbow, item:potion-of-healing]
+    gold: 15
+    milestoneLevel: 2
+    monsters:
+      - { monsterId: monster:kobold, zoneId: cart, fleeBelowHpFraction: 0.5 }
+      - { monsterId: monster:kobold, zoneId: cart, fleeBelowHpFraction: 0.5 }
+      - { monsterId: monster:kobold, zoneId: treeline, fleeBelowHpFraction: 0.5 }
+      - { monsterId: monster:kobold, zoneId: treeline, fleeBelowHpFraction: 0.5 }
+  - id: encounter:warren-guards
+    sceneId: scene:kobold-warren
+    publicDescription: >-
+      A horn sounds through the tunnels. A broad hobgoblin in scarred armor
+      strides out, and a bugbear ducks under the low roof behind him.
+    dmNotes: >-
+      Start this when the warren's alarm fills, or when the party breaks into
+      the prison openly. The hobgoblin fights to hold the corridor.
+    zones:
+      - { id: tunnel-mouth, name: Tunnel mouth }
+      - { id: guard-hall, name: Guard hall }
+    edges:
+      - { from: tunnel-mouth, to: guard-hall, feet: 10 }
+    partyZoneId: tunnel-mouth
+    loot: [item:greataxe, item:potion-of-healing]
+    gold: 30
+    milestoneLevel: 3
+    monsters:
+      - { monsterId: monster:hobgoblin, zoneId: guard-hall }
+      - { monsterId: monster:bugbear, zoneId: guard-hall }
+  - id: encounter:gate-skeletons
+    sceneId: scene:barrow-gate
+    publicDescription: >-
+      The rusted mail on the flagstones clatters upright. Skeletal guards turn
+      their empty helms toward the party and raise their blades.
+    dmNotes: >-
+      Start this when the party crosses the threshold. They do not pursue
+      beyond the door.
+    zones:
+      - { id: threshold, name: Threshold }
+      - { id: gate-hall, name: Gate hall }
+    edges:
+      - { from: threshold, to: gate-hall, feet: 15 }
+    partyZoneId: threshold
+    loot: [item:longsword, item:shield]
+    gold: 20
+    monsters:
+      - { monsterId: monster:skeleton, zoneId: gate-hall }
+      - { monsterId: monster:skeleton, zoneId: gate-hall }
+      - { monsterId: monster:skeleton, zoneId: gate-hall }
+  - id: encounter:depths-dead
+    sceneId: scene:barrow-depths
+    publicDescription: >-
+      Burial niches split open. Zombies drag themselves into the passage, and a
+      cold shape in the dark begins to keen.
+    dmNotes: >-
+      Start this when the party steps into the long hall, or after the
+      persuasion attempt with the specter fails. A successful Persuasion
+      check (hard) can end the specter's part in the fight.
+    zones:
+      - { id: hall-entry, name: Hall entry }
+      - { id: burial-hall, name: Burial hall }
+      - { id: vault-door, name: Vault door }
+    edges:
+      - { from: hall-entry, to: burial-hall, feet: 10 }
+      - { from: burial-hall, to: vault-door, feet: 10 }
+    partyZoneId: hall-entry
+    loot: [item:potion-of-healing, item:mace]
+    gold: 40
+    milestoneLevel: 4
+    monsters:
+      - { monsterId: monster:zombie, zoneId: burial-hall }
+      - { monsterId: monster:zombie, zoneId: burial-hall }
+      - { monsterId: monster:specter, zoneId: vault-door }
+  - id: encounter:crown-vault
+    sceneId: scene:crown-vault
+    publicDescription: >-
+      The kobold chieftain hisses under the weight of the crown. The bier
+      cracks, and the armored spirit above it turns to face the party.
+    dmNotes: >-
+      Start this when the party attacks the kobold chieftain, or when they
+      refuse to return the crown. The chieftain flees below half his hit
+      points and drops the crown, which lets the party try the oath.
+    zones:
+      - { id: vault-entry, name: Vault entry }
+      - { id: bier, name: The bier }
+    edges:
+      - { from: vault-entry, to: bier, feet: 10 }
+    partyZoneId: vault-entry
+    loot: [item:longbow, item:potion-of-healing]
+    gold: 120
+    monsters:
+      - { monsterId: monster:ogre, zoneId: bier }
+      - { monsterId: monster:kobold, zoneId: bier, fleeBelowHpFraction: 0.5 }
+      - { monsterId: monster:skeleton, zoneId: bier }
+heroes:
+  - id: c-borin
+    name: Borin
+    class: fighter
+    abilityScores: { str: 16, dex: 12, con: 15, int: 10, wis: 12, cha: 8 }
+    proficiencyBonus: 2
+    skills: { athletics: proficient, perception: proficient, intimidation: proficient, survival: proficient }
+    savingThrows: [str, con]
+    level: 1
+    maxHp: 12
+    hitDie: 10
+    speed: 30
+    equipment: [item:longsword, item:chain-mail, item:shield]
+    features: [feature:fighting-style-dueling, feature:second-wind]
+  - id: c-mira
+    name: Mira
+    class: rogue
+    abilityScores: { str: 8, dex: 16, con: 12, int: 13, wis: 10, cha: 14 }
+    proficiencyBonus: 2
+    skills:
+      { stealth: expertise, perception: expertise, acrobatics: proficient, deception: proficient, investigation: proficient, persuasion: proficient }
+    savingThrows: [dex, int]
+    level: 1
+    maxHp: 9
+    hitDie: 8
+    speed: 30
+    equipment: [item:shortsword, item:shortbow, item:leather-armor]
+    features: [feature:sneak-attack, feature:thieves-cant]
+  - id: c-elspeth
+    name: Elspeth
+    class: cleric
+    abilityScores: { str: 14, dex: 10, con: 13, int: 10, wis: 16, cha: 12 }
+    proficiencyBonus: 2
+    skills: { insight: proficient, medicine: proficient, religion: proficient, persuasion: proficient }
+    savingThrows: [wis, cha]
+    level: 1
+    maxHp: 9
+    hitDie: 8
+    speed: 30
+    equipment: [item:mace, item:chain-mail, item:shield]
+    features: [feature:disciple-of-life]
+    spellcasting:
+      ability: wis
+      spells: [spell:sacred-flame, spell:thaumaturgy, spell:bless, spell:cure-wounds, spell:healing-word, spell:guiding-bolt]
+      slots: { "1": 2 }

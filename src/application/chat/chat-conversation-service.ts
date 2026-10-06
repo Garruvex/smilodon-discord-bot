@@ -403,11 +403,9 @@ export class ChatConversationService {
   // correction is a quality regression, not a reason to not reply at all.
   private async verifyAttribution(
     draftResponse: string,
-    replyChain: readonly ReplyChainMessage[],
-    channelHistory: readonly { authorId: string; authorDisplayName: string; content: string }[],
-    guildId: string,
-    channelId: string,
+    request: ChatRequest,
   ): Promise<string> {
+    const { message: currentMessage, replyChain, channelHistory, guildId, channelId } = request;
     if (replyChain.length === 0 && channelHistory.length === 0) return draftResponse;
     const verifier = this.utilityProvider?.verifyAttribution ? this.utilityProvider : this.provider;
     if (!verifier.verifyAttribution) return draftResponse;
@@ -416,9 +414,21 @@ export class ChatConversationService {
         ...replyChain.map((hop) => ({ authorId: hop.authorId, authorDisplayName: hop.authorDisplayName, content: hop.content })),
         ...channelHistory.map((hop) => ({ authorId: hop.authorId, authorDisplayName: hop.authorDisplayName, content: hop.content })),
       ];
-      const result = await verifier.verifyAttribution(draftResponse, context);
+      const result = await verifier.verifyAttribution(draftResponse, context, currentMessage);
       if (!result.needsCorrection) return draftResponse;
-      const corrected = stripUntrustedMarkers(result.correctedResponse ?? "");
+      const notes = result.correctionNotes?.trim();
+      if (!notes) return draftResponse;
+      // Keep the original request/persona, but never execute tools or emit previews twice.
+      // Only the repaired text is consumed; all secondary output is discarded.
+      const repair = await this.provider.reply({
+        ...request,
+        attributionRepair: { draft: draftResponse, notes },
+        enabledTools: [],
+        webSearchMode: "off",
+        imageGenerationEnabled: false,
+        historyReactionsEnabled: false,
+      });
+      const corrected = stripUntrustedMarkers(repair.text);
       if (!corrected) return draftResponse;
       // A "correction" that is just the draft echoed back (often wrapped in
       // the fence markers) isn't a correction — deliver the draft untouched.
@@ -736,7 +746,7 @@ export class ChatConversationService {
       void loreChunks;
       void replyChainOverflow;
       void personalitySourceHash;
-      const response = await this.provider.reply({
+      const request: ChatRequest = {
         ...requestInput,
         recentHistory,
         channelMode,
@@ -753,7 +763,8 @@ export class ChatConversationService {
         enabledTools: toolsEnabled && this.toolRegistry
           ? this.toolRegistry.list().filter((tool) => !disabledToolNames?.has(tool.name))
           : [],
-      }, observer);
+      };
+      const response = await this.provider.reply(request, observer);
       // Includes reply-chain authors, not just explicit @mentions — the
       // prompt (see buildChatInstructions' replyChainSection) tells the
       // model to treat the message it's replying to as the subject when the
@@ -854,7 +865,7 @@ export class ChatConversationService {
       // is the one place that guarantees every downstream consumer sees the
       // corrected version rather than some seeing the draft.
       validatedResponse.text = await this.verifyAttribution(
-        validatedResponse.text, input.replyChain, input.channelHistory, input.guildId, input.channelId,
+        validatedResponse.text, request,
       );
       const deliveredAssistantMessage = await deliver(validatedResponse);
       // Signals the extraction sub-task (reserved at the very top of this

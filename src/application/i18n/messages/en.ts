@@ -1,3 +1,4 @@
+import { campaignEn } from "./campaign-en.js";
 // The English source of every user-facing runtime message, and the fallback
 // for any message a language hasn't translated yet. Keys are dotted paths:
 // "music.panel.queue.title" becomes `text.music.panel.queue.title` (see
@@ -284,6 +285,7 @@ export const en = {
   "setup.status.feature.chatbot": "AI chat",
   "setup.status.feature.birthdays": "Birthdays",
   "setup.status.feature.reminders": "Reminders",
+  "setup.status.feature.campaign": "D&D campaigns",
   "setup.status.feature.nsfw": "NSFW",
   "setup.status.feature.linkFix": "Link fixing",
   "setup.status.roles": "Roles",
@@ -334,6 +336,7 @@ export const en = {
   "security.trap.log.acted": "{user} posted in {channel} and was {action}. {removed} of their messages were removed.",
   "security.trap.log.blocked": "{user} posted in {channel} but could not be {action}: their highest role is above mine, or I'm missing the permission. Their message was removed.",
   "security.trap.log.error": "{user} posted in {channel}, but something went wrong while handling it. Check the bot's logs.",
+  ...campaignEn,
 } as const satisfies Record<string, string>;
 
 export type MessageKey = keyof typeof en;

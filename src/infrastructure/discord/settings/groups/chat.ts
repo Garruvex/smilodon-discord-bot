@@ -208,7 +208,13 @@ export const chat = groupWithSections("chat", [
             patch: { chatbotPersonalityAsset: saved.assetPath, chatbotPersonalityFile: null },
             // Which `##` sections were set aside as situational lore, so an
             // admin notices one that should always apply.
-            notes: lore.length > 0 ? [text.message(path, "lore", { count: lore.length, headings: lore.join(", ") })] : [],
+            // Re-uploading edits to an already-uploaded file leaves the stored
+            // asset path unchanged, so without this the confirmation would
+            // read "no changes" even though the file was replaced.
+            notes: [
+              text.message(path, "saved"),
+              ...(lore.length > 0 ? [text.message(path, "lore", { count: lore.length, headings: lore.join(", ") })] : []),
+            ],
           };
         },
       }),
@@ -225,8 +231,9 @@ export const chat = groupWithSections("chat", [
     chatSetting("examples", {
       file: upload({
         read: (p) => p.chat.examplesAsset,
-        save: async (attachment, { guildId, deps }) => ({
+        save: async (attachment, { guildId, deps, text, path }) => ({
           patch: { chatbotExamplesAsset: await deps.assets.saveExamples(guildId, attachment), chatbotExamplesFile: null },
+          notes: [text.message(path, "saved")],
         }),
       }),
     }),

@@ -77,6 +77,7 @@ export const jaChat: SettingsTextCatalog = {
     label: "性格ファイル",
     description: "personality.md をアップロード（ひな形はテンプレートの操作で入手）",
     messages: {
+      saved: "性格ファイルを保存し、すぐに反映されます。",
       lore: "性格をコンパイルしました：{count} 個のセクションを状況に応じた設定として扱い、関係するときだけ送ります——{headings}。常に使う内容は `##` セクションの外に出してください。",
     },
   },
@@ -86,7 +87,11 @@ export const jaChat: SettingsTextCatalog = {
     messages: { done: "既定の性格を使います。" },
   },
   "chat.persona.examples": { label: "会話例", description: "キャラクターの口調で書いた会話の例" },
-  "chat.persona.examples.file": { label: "会話例ファイル", description: "examples.md をアップロード（ひな形はテンプレートの操作で入手）" },
+  "chat.persona.examples.file": {
+    label: "会話例ファイル",
+    description: "examples.md をアップロード（ひな形はテンプレートの操作で入手）",
+    messages: { saved: "会話例ファイルを保存し、すぐに反映されます。" },
+  },
   "chat.persona.use-default-examples": {
     label: "会話例を削除",
     description: "アップロードした会話例を削除する",

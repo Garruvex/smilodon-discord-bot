@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "npm run typecheck && npm run lint && npm run migrations:check && npm run test",
+    "campaign:harness": "tsx src/scripts/campaign-harness.ts",
     "command:create": "tsx src/scripts/generate-command.ts",
     "config:validate": "tsx src/scripts/validate-guild-config.ts",
     "deploy:commands": "tsx src/scripts/deploy-commands.ts",
@@ -20,6 +21,7 @@
     "db:backfill-memories": "tsx src/scripts/migrate-memories-to-central-schema.ts",
     "db:generate": "drizzle-kit generate && tsx src/scripts/normalize-postgres-migrations.ts && tsx src/scripts/prune-migration-snapshots.ts drizzle",
     "db:generate:sqlite": "drizzle-kit generate --config drizzle-sqlite.config.ts && tsx src/scripts/prune-migration-snapshots.ts drizzle-sqlite",
+    "db:import-campaigns": "tsx src/scripts/import-campaign-sqlite.ts",
     "db:import-files": "tsx src/scripts/import-file-persistence.ts",
     "db:migrate:active": "tsx src/scripts/migrate-active-database.ts",
     "db:studio": "drizzle-kit studio",

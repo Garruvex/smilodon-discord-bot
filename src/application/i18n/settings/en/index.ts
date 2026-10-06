@@ -3,6 +3,7 @@ import { enAccess } from "./access.js";
 import { enChat } from "./chat.js";
 import { enMemory } from "./memory.js";
 import { enCommunity } from "./community.js";
+import { enDnd } from "./dnd.js";
 import { enMusic } from "./music.js";
 import { enSecurity } from "./security.js";
 
@@ -12,6 +13,7 @@ export const enSettingsText: SettingsTextCatalog = {
   ...enMusic,
   ...enChat,
   ...enMemory,
+  ...enDnd,
   ...enCommunity,
   ...enSecurity,
 };

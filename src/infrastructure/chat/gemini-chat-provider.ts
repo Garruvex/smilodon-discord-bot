@@ -446,10 +446,11 @@ export class GeminiChatProvider implements ChatProvider {
   public async verifyAttribution(
     draftResponse: string,
     context: readonly { authorId: string; authorDisplayName: string; content: string }[],
-  ): Promise<{ needsCorrection: boolean; correctedResponse: string | null }> {
+    currentMessage: string,
+  ): Promise<{ needsCorrection: boolean; correctionNotes: string | null }> {
     const response = await this.summaryModelChain.run((model) => this.generateStructured(
       model,
-      buildAttributionVerificationPrompt(draftResponse, context),
+      buildAttributionVerificationPrompt(draftResponse, context, currentMessage),
       attributionVerificationJsonSchema,
     ));
     return parseAttributionVerificationOutput((response.text ?? "").trim());

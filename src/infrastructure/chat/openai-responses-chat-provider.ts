@@ -479,9 +479,10 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
   public async verifyAttribution(
     draftResponse: string,
     context: readonly { authorId: string; authorDisplayName: string; content: string }[],
-  ): Promise<{ needsCorrection: boolean; correctedResponse: string | null }> {
+    currentMessage: string,
+  ): Promise<{ needsCorrection: boolean; correctionNotes: string | null }> {
     const text = await this.callStructuredOutput(
-      buildAttributionVerificationPrompt(draftResponse, context),
+      buildAttributionVerificationPrompt(draftResponse, context, currentMessage),
       "attribution_verification",
       attributionVerificationJsonSchema,
     );

@@ -1,0 +1,292 @@
+# 完整長度的內建戰役：六個場景、六場戰鬥、三次升級。
+# 場景、NPC、時鐘、線索、遭遇與英雄的 ID 必須與英文版完全相同。
+id: ashfall-barrow
+version: "1"
+language: zh-TW
+title: 灰燼古塚
+premise: >-
+  哈羅米爾村的礦工不斷在通往舊銀礦的路上失蹤，山上的煙也變成了黑色。線索從村裡的
+  地窖出發，經過爬滿狗頭人的洞窟、被遺忘的古塚大門，一路通向古老王冠仍在等待的墓室。
+dmOverview: >-
+  艾德里克·維恩勳爵與「灰燼王冠」一同下葬，這件聖物讓他能號令亡者。挖銀礦的狗頭人
+  闖進古塚，其中一隻戴上了王冠；洞窟的酋長如今聽命於它，而艾德里克不安的靈魂正透過
+  王冠喚醒古塚裡的亡者。艾德里克並不邪惡：他曾發誓守護山谷，只要王冠還在活人手中，
+  他就無法安息。把王冠放回墓中並說出誓言，能和平結束鬧鬼；用武力消滅他的靈魂同樣能
+  結束，但山谷會失去古老的守護者。旅店老闆瑪塔隱瞞了她的哥哥就是失蹤礦工之一，而他
+  仍活在洞窟裡。
+startScene: scene:harrowmere-inn
+scenes:
+  - id: scene:harrowmere-inn
+    title: 哈羅米爾旅店
+    publicDescription: >-
+      低矮擁擠的大廳，瀰漫著柴煙與濕羊毛的氣味。空著的板凳，標示出礦工們曾經坐過的位置。
+    dmNotes: >-
+      瑪塔懸賞 100 金幣，尋找失蹤的礦工或終結那道煙。她避談自己的哥哥托馬斯；洞悉檢定
+      （中等）成功會看出她公事公辦背後的哀傷，她隨後承認托馬斯三週前走上了礦道。自從
+      起煙後，地窖裡就湧出大批巨鼠；若隊伍清理地窖，她會多付酬勞，這也是一場溫和的
+      開場戰鬥。她販售基本裝備。
+    npcIds: [npc:marta]
+  - id: scene:mine-road
+    title: 礦道
+    publicDescription: >-
+      一條佈滿車轍的小路，蜿蜒穿過黑松林。灰燼像灰色的雪一樣飄落，一輛翻倒的馬車橫在路中。
+    dmNotes: >-
+      馬車是狗頭人的埋伏。察覺檢定（中等）成功，能發現絆索和樹上的弓手，讓隊伍先行動；
+      否則狗頭人會發動陷阱。足跡一路通往一處洞口，那就是洞窟的入口。
+    npcIds: []
+  - id: scene:kobold-warren
+    title: 狗頭人洞窟
+    publicDescription: >-
+      山坡上鑿出的低矮隧道，掛滿骨頭與礦工衣物的碎片。更深處有面鼓，不安地敲著緩慢的節奏。
+    dmNotes: >-
+      附時鐘的技能挑戰：洞窟的警報。每次隱匿檢定失敗或發出噪音，警報加 1。累積三次
+      成功（隱匿潛行、察覺找到牢房、運動撬開門）即可救出托馬斯與其他囚犯，並得知酋長的
+      計畫。若警報填滿，率領狗頭人的強獸人隊長，與他的熊地精護衛會撲向隊伍。托馬斯能告訴
+      隊伍，王冠是從北邊的古塚帶出來的。
+    npcIds: [npc:tomas]
+  - id: scene:barrow-gate
+    title: 古塚大門
+    publicDescription: >-
+      一座長滿青草的土丘，頂上立著幾塊巨石。一扇黑色石門敞開著，門後的黑暗中透出冷光。
+    dmNotes: >-
+      亡者守著大門：隊伍跨過門檻時，穿著生鏽鎖甲的骷髏會站起來。宗教或歷史檢定（中等）
+      成功，能讀出門上刻的誓言：「山谷的守護者長眠於此；不容活人驚擾王冠。」這是第一個
+      暗示，說明艾德里克是守護者而不是怪物。
+    npcIds: []
+  - id: scene:barrow-depths
+    title: 古塚深處
+    publicDescription: >-
+      一條條以石塊砌成的長廊，牆上滿是墓穴壁龕。空氣冰冷，地上的灰塵被許多雙腳踩亂過。
+    dmNotes: >-
+      蹣跚的亡者與更糟的東西佔據了深處。一個幽靈——艾德里克的隊長的殘響——在殭屍之間
+      飄蕩。幽靈對艾德里克忠心耿耿；若隊伍說出誓言，說服檢定（困難）成功就能與它交涉。
+      通道盡頭是墓室的門。
+    npcIds: []
+  - id: scene:crown-vault
+    title: 王冠墓室
+    publicDescription: >-
+      一間被蒼白火焰照亮的圓形墓室。中央立著石棺台，台上懸著一個身披古老鎧甲的身影，
+      戴著失去光澤的王冠。
+    dmNotes: >-
+      戴著王冠的狗頭人酋長格魯克在此把守，身邊有一名受王冠法術操控的食人魔僕從與一具
+      骷髏。艾德里克勳爵的靈魂被束縛在王冠上，透過它說話。若隊伍從格魯克手中取下王冠，
+      艾德里克的靈魂會變得清明而平靜。說服檢定（中等）成功，或說出古塚的誓言，隊伍就能把
+      王冠放回棺台，和平結束鬧鬼。若隊伍攻擊靈魂，它會反擊。
+    npcIds: [npc:aldric]
+npcs:
+  - id: npc:marta
+    name: 瑪塔
+    voice: 幹練務實；一提到她的哥哥就沉默下來。
+    publicDescription: 一位飽經風霜的旅店老闆，圍裙沾著麵粉，數錢總要數兩遍。
+    secret: 她的哥哥托馬斯就是失蹤的礦工之一，她非常想知道他是否還活著。
+    shop:
+      stock:
+        - itemId: item:potion-of-healing
+          buyPrice: 50
+          sellPrice: 25
+        - itemId: item:dagger
+          buyPrice: 2
+          sellPrice: 1
+        - itemId: item:javelin
+          buyPrice: 5
+          sellPrice: 2
+        - itemId: item:shortsword
+          buyPrice: 10
+          sellPrice: 5
+        - itemId: item:hide-armor
+          buyPrice: 10
+          sellPrice: 5
+        - itemId: item:quarterstaff
+          buyPrice: 2
+          sellPrice: 1
+  - id: npc:tomas
+    name: 托馬斯
+    voice: 聲音沙啞、滿懷感激；用玩笑掩飾顫抖。
+    publicDescription: 一位形容枯槁的礦工，手腕上有繩索勒出的痕跡，身上仍繫著提燈的背帶。
+    secret: 他看見狗頭人酋長戴上王冠，也知道王冠似乎會對戴著它的人說話。
+  - id: npc:aldric
+    name: 艾德里克·維恩勳爵
+    voice: 緩慢而正式；每一句話都像誓言。
+    publicDescription: 一位身披鎧甲、蒼白而半透明的勳爵，雙眼像冰冷的炭火般燃燒。
+    secret: 他是山谷立誓的守護者，只想帶著王冠安息；他從未想要喚醒亡者。
+clocks:
+  - id: clock:warren-alarm
+    sceneId: scene:kobold-warren
+    name: 洞窟的警報
+    segments: 4
+    onFull: encounter:warren-guards
+    dmNotes: >-
+      每當英雄在洞窟裡檢定失敗或發出巨大聲響，加 1。填滿時，隊長與他的熊地精抵達，
+      戰鬥開始。
+clues:
+  - id: clue:prison-cage
+    sceneId: scene:kobold-warren
+    publicText: 一座以木頭捆成的牢籠裡關著失蹤的礦工，他們都還活著，其中一位就是托馬斯。
+    dmNotes: 隊伍在洞窟中累積三次檢定成功後揭露。
+  - id: clue:barrow-oath
+    sceneId: scene:barrow-gate
+    publicText: 門上刻的誓言，稱古塚的亡者為山谷的守護者，立誓保護這片土地。
+    dmNotes: 在大門處宗教或歷史檢定成功時揭露，或在托馬斯提到王冠時揭露。
+encounters:
+  - id: encounter:cellar-rats
+    sceneId: scene:harrowmere-inn
+    publicDescription: >-
+      地窖的門猛地被撞開，一大群巨鼠從酒桶之間湧出，紅色的眼睛在燈光下閃爍。
+    dmNotes: >-
+      隊伍下去清理地窖時開始。這是溫和的開場戰鬥，主要是讓英雄們找到手感。
+    zones:
+      - { id: cellar-stairs, name: 地窖階梯 }
+      - { id: cellar-floor, name: 地窖地面 }
+    edges:
+      - { from: cellar-stairs, to: cellar-floor, feet: 10 }
+    partyZoneId: cellar-stairs
+    loot: [item:dagger]
+    gold: 8
+    monsters:
+      - { monsterId: monster:giant-rat, zoneId: cellar-floor }
+      - { monsterId: monster:giant-rat, zoneId: cellar-floor }
+      - { monsterId: monster:giant-rat, zoneId: cellar-floor }
+  - id: encounter:road-ambush
+    sceneId: scene:mine-road
+    publicDescription: >-
+      箭矢從松林中呼嘯而出，細小而佈滿鱗片的身影尖叫著翻過翻倒的馬車。
+    dmNotes: >-
+      隊伍沒發現陷阱就走到馬車旁，或強行闖過埋伏時開始。狗頭人受傷後會逃跑。
+    zones:
+      - { id: road, name: 道路 }
+      - { id: cart, name: 翻倒的馬車 }
+      - { id: treeline, name: 林緣 }
+    edges:
+      - { from: road, to: cart, feet: 15 }
+      - { from: cart, to: treeline, feet: 20 }
+    partyZoneId: road
+    loot: [item:shortbow, item:potion-of-healing]
+    gold: 15
+    milestoneLevel: 2
+    monsters:
+      - { monsterId: monster:kobold, zoneId: cart, fleeBelowHpFraction: 0.5 }
+      - { monsterId: monster:kobold, zoneId: cart, fleeBelowHpFraction: 0.5 }
+      - { monsterId: monster:kobold, zoneId: treeline, fleeBelowHpFraction: 0.5 }
+      - { monsterId: monster:kobold, zoneId: treeline, fleeBelowHpFraction: 0.5 }
+  - id: encounter:warren-guards
+    sceneId: scene:kobold-warren
+    publicDescription: >-
+      隧道裡響起號角聲。一名身穿傷痕累累盔甲的壯碩強獸人大步走出，一頭熊地精低頭
+      鑽過低矮的洞頂跟在他身後。
+    dmNotes: >-
+      洞窟警報填滿，或隊伍公然闖入牢房時開始。強獸人會死守走廊。
+    zones:
+      - { id: tunnel-mouth, name: 隧道口 }
+      - { id: guard-hall, name: 護衛廳 }
+    edges:
+      - { from: tunnel-mouth, to: guard-hall, feet: 10 }
+    partyZoneId: tunnel-mouth
+    loot: [item:greataxe, item:potion-of-healing]
+    gold: 30
+    milestoneLevel: 3
+    monsters:
+      - { monsterId: monster:hobgoblin, zoneId: guard-hall }
+      - { monsterId: monster:bugbear, zoneId: guard-hall }
+  - id: encounter:gate-skeletons
+    sceneId: scene:barrow-gate
+    publicDescription: >-
+      石板上生鏽的鎖甲咔啦作響地站了起來。骷髏守衛將空洞的頭盔轉向隊伍，舉起了武器。
+    dmNotes: >-
+      隊伍跨過門檻時開始。它們不會追出大門之外。
+    zones:
+      - { id: threshold, name: 門檻 }
+      - { id: gate-hall, name: 大門廳 }
+    edges:
+      - { from: threshold, to: gate-hall, feet: 15 }
+    partyZoneId: threshold
+    loot: [item:longsword, item:shield]
+    gold: 20
+    monsters:
+      - { monsterId: monster:skeleton, zoneId: gate-hall }
+      - { monsterId: monster:skeleton, zoneId: gate-hall }
+      - { monsterId: monster:skeleton, zoneId: gate-hall }
+  - id: encounter:depths-dead
+    sceneId: scene:barrow-depths
+    publicDescription: >-
+      墓穴壁龕裂開，殭屍拖著身子爬進通道，黑暗中一個冰冷的影子開始哀嚎。
+    dmNotes: >-
+      隊伍踏進長廳，或與幽靈的交涉失敗後開始。說服檢定（困難）成功，可以讓幽靈退出戰鬥。
+    zones:
+      - { id: hall-entry, name: 長廳入口 }
+      - { id: burial-hall, name: 墓廳 }
+      - { id: vault-door, name: 墓室門 }
+    edges:
+      - { from: hall-entry, to: burial-hall, feet: 10 }
+      - { from: burial-hall, to: vault-door, feet: 10 }
+    partyZoneId: hall-entry
+    loot: [item:potion-of-healing, item:mace]
+    gold: 40
+    milestoneLevel: 4
+    monsters:
+      - { monsterId: monster:zombie, zoneId: burial-hall }
+      - { monsterId: monster:zombie, zoneId: burial-hall }
+      - { monsterId: monster:specter, zoneId: vault-door }
+  - id: encounter:crown-vault
+    sceneId: scene:crown-vault
+    publicDescription: >-
+      狗頭人酋長在王冠的重壓下嘶聲低吼。棺台裂開，台上那個身披鎧甲的靈魂轉向了隊伍。
+    dmNotes: >-
+      隊伍攻擊狗頭人酋長，或拒絕歸還王冠時開始。酋長生命值低於一半時會逃跑並掉下王冠，
+      隊伍就能嘗試說出誓言。
+    zones:
+      - { id: vault-entry, name: 墓室入口 }
+      - { id: bier, name: 棺台 }
+    edges:
+      - { from: vault-entry, to: bier, feet: 10 }
+    partyZoneId: vault-entry
+    loot: [item:longbow, item:potion-of-healing]
+    gold: 120
+    monsters:
+      - { monsterId: monster:ogre, zoneId: bier }
+      - { monsterId: monster:kobold, zoneId: bier, fleeBelowHpFraction: 0.5 }
+      - { monsterId: monster:skeleton, zoneId: bier }
+heroes:
+  - id: c-borin
+    name: 波林
+    class: fighter
+    abilityScores: { str: 16, dex: 12, con: 15, int: 10, wis: 12, cha: 8 }
+    proficiencyBonus: 2
+    skills: { athletics: proficient, perception: proficient, intimidation: proficient, survival: proficient }
+    savingThrows: [str, con]
+    level: 1
+    maxHp: 12
+    hitDie: 10
+    speed: 30
+    equipment: [item:longsword, item:chain-mail, item:shield]
+    features: [feature:fighting-style-dueling, feature:second-wind]
+  - id: c-mira
+    name: 米拉
+    class: rogue
+    abilityScores: { str: 8, dex: 16, con: 12, int: 13, wis: 10, cha: 14 }
+    proficiencyBonus: 2
+    skills:
+      { stealth: expertise, perception: expertise, acrobatics: proficient, deception: proficient, investigation: proficient, persuasion: proficient }
+    savingThrows: [dex, int]
+    level: 1
+    maxHp: 9
+    hitDie: 8
+    speed: 30
+    equipment: [item:shortsword, item:shortbow, item:leather-armor]
+    features: [feature:sneak-attack, feature:thieves-cant]
+  - id: c-elspeth
+    name: 艾絲佩絲
+    class: cleric
+    abilityScores: { str: 14, dex: 10, con: 13, int: 10, wis: 16, cha: 12 }
+    proficiencyBonus: 2
+    skills: { insight: proficient, medicine: proficient, religion: proficient, persuasion: proficient }
+    savingThrows: [wis, cha]
+    level: 1
+    maxHp: 9
+    hitDie: 8
+    speed: 30
+    equipment: [item:mace, item:chain-mail, item:shield]
+    features: [feature:disciple-of-life]
+    spellcasting:
+      ability: wis
+      spells: [spell:sacred-flame, spell:thaumaturgy, spell:bless, spell:cure-wounds, spell:healing-word, spell:guiding-bolt]
+      slots: { "1": 2 }

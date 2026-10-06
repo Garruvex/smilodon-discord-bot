@@ -3,6 +3,7 @@ import { catalogIssues } from "../application/i18n/texts.js";
 import type { Logger } from "pino";
 
 import { AccessPolicyService } from "../application/access/access-policy-service.js";
+import { createCampaignModule, type CampaignModule } from "./campaign-module.js";
 import { CommandDispatcher } from "../application/commands/command-dispatcher.js";
 import { CommandRegistry } from "../application/commands/command-registry.js";
 import type { ApplicationConfiguration } from "../config/configuration.js";
@@ -211,6 +212,8 @@ function createChatProviderFromConfig(config: ProviderConfig, logger: Logger): C
 }
 
 export interface ApplicationDependencies {
+  // The D&D campaign runtime: started when Discord is ready, stopped on shutdown.
+  campaign: CampaignModule;
   commandRegistry: CommandRegistry;
   commandDispatcher: CommandDispatcher;
   // Services built after dependencies (the admin panel) register their
@@ -253,6 +256,7 @@ export interface ApplicationDependencies {
 // scripts/deploy-commands.ts) needs, either as its own return value or to
 // keep building the surrounding chat/behavior/scheduler runtime on top of.
 export interface CommandRegistrationResult {
+  campaign: CampaignModule;
   commandRegistry: CommandRegistry;
   componentRegistry: ComponentRegistry;
   accessPolicyService: AccessPolicyService;
@@ -404,6 +408,12 @@ export function registerCommands(
     guildConfigurationProvider,
   );
   commandRegistry.register(new HelpCommand(commandRegistry, accessPolicyService, guildConfigurationProvider));
+  const campaign = createCampaignModule({ configuration, logger, client: discordClient, accessPolicyService });
+  commandRegistry.register(campaign.command);
+  componentRegistry.register(campaign.handler);
+  componentRegistry.register(campaign.hubHandler);
+  componentRegistry.register(campaign.libraryHandler);
+  componentRegistry.register(campaign.adventureHandler);
 
   const chatProvider = configuration.chat ? createChatProviderFromConfig(configuration.chat, logger) : null;
   // Fully independent provider for the two standalone structured-output
@@ -465,6 +475,7 @@ export function registerCommands(
     applicationEmojiCatalog,
     auditLogService,
     personaDriftStore,
+    campaign: campaign.settings,
     ...(channelSummaryCheckpointStore ? { channelSummaryCheckpointStore } : {}),
     channelSummaryProviderAvailable: utilityProvider?.summarizeChannelMessages !== undefined,
   };
@@ -488,6 +499,7 @@ export function registerCommands(
   commandRegistry.register(new CustomizeCommand(userCustomizationStore, utilityProvider));
 
   return {
+    campaign,
     commandRegistry,
     componentRegistry,
     accessPolicyService,
@@ -526,6 +538,7 @@ export function createDependencies(
   messageReactionWatchStore: MessageReactionWatchStore,
 ): ApplicationDependencies {
   const {
+    campaign,
     commandRegistry,
     componentRegistry,
     accessPolicyService,
@@ -675,6 +688,7 @@ export function createDependencies(
   ));
 
   return {
+    campaign,
     commandRegistry,
     commandDispatcher,
     componentRegistry,

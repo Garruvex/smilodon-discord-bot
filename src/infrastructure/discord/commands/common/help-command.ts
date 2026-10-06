@@ -13,6 +13,7 @@ const moduleLabels: Record<CommandModule, string> = {
   [CommandModule.Music]: "Music",
   [CommandModule.Birthdays]: "Birthdays",
   [CommandModule.Reminders]: "Reminders",
+  [CommandModule.Campaign]: "D&D",
   [CommandModule.Nsfw]: "NSFW",
 };
 

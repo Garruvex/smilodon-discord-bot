@@ -154,6 +154,27 @@ describe("loadConfiguration", () => {
     expect(configuration.chat).toMatchObject({ baseUrl: "https://api.openai.com/v1" });
   });
 
+  it("gives the campaign pictures their own connection, defaulting to the shared OpenAI one", () => {
+    const shared = loadConfiguration({ ...validEnvironment, OPENAI_API_KEY: "shared", OPENAI_BASE_URL: "https://shared.test/v1/", CAMPAIGN_IMAGE_MODEL: "gpt-image-1" });
+    expect(shared.campaignImages).toEqual({ apiKey: "shared", baseUrl: "https://shared.test/v1", model: "gpt-image-1" });
+
+    const apart = loadConfiguration({
+      ...validEnvironment,
+      OPENAI_API_KEY: "shared",
+      CAMPAIGN_IMAGE_MODEL: "gpt-image-1",
+      CAMPAIGN_IMAGE_API_KEY: "images-only",
+      CAMPAIGN_IMAGE_BASE_URL: "https://images.test/v1/",
+      CAMPAIGN_IMAGE_QUALITY: "low",
+    });
+    expect(apart.campaignImages).toEqual({ apiKey: "images-only", baseUrl: "https://images.test/v1", model: "gpt-image-1", quality: "low" });
+
+    // A key of its own is enough: the chat needs no key at all.
+    expect(loadConfiguration({ ...validEnvironment, CAMPAIGN_IMAGE_MODEL: "gpt-image-1", CAMPAIGN_IMAGE_API_KEY: "images-only" }).campaignImages).toMatchObject({ apiKey: "images-only" });
+    // No model, no pictures; no key anywhere, no pictures.
+    expect(loadConfiguration({ ...validEnvironment, OPENAI_API_KEY: "shared" }).campaignImages).toBeNull();
+    expect(loadConfiguration({ ...validEnvironment, CAMPAIGN_IMAGE_MODEL: "gpt-image-1" }).campaignImages).toBeNull();
+  });
+
   it("loads a Gemini chat configuration from GOOGLE_API_KEY, no OPENAI_* required", () => {
     const configuration = loadConfiguration({
       ...validEnvironment,

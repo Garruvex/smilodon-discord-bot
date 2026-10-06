@@ -251,6 +251,7 @@ export const ja = {
   "setup.status.feature.chatbot": "AI チャット",
   "setup.status.feature.birthdays": "誕生日",
   "setup.status.feature.reminders": "リマインダー",
+  "setup.status.feature.campaign": "D&D キャンペーン",
   "setup.status.feature.nsfw": "NSFW",
   "setup.status.feature.linkFix": "リンク修正",
   "setup.status.roles": "ロール",

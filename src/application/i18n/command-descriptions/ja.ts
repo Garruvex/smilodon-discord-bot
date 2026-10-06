@@ -160,4 +160,34 @@ export const jaCommandDescriptions = {
   "vote:option3": "選択肢3。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 3; give at least two choices, or none for Yes/No.
   "vote:option4": "選択肢4。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 4; give at least two choices, or none for Yes/No.
   "vote:option5": "選択肢5。2つ以上指定するか、「はい／いいえ」にする場合はすべて空欄にします。", // Choice 5; give at least two choices, or none for Yes/No.
+  "dnd": "AI が進行する D&D キャンペーンを行います", // Runs AI-hosted D&D campaigns.
+  "dnd/setup": "このサーバーを D&D 用に設定し、D&D カテゴリと一覧チャンネルを作ります", // Sets this server up for D&D: a D&D category with a games hub channel.
+  "dnd/setup:hub": "このチャンネルを一覧チャンネルにする（既定: 新しい #dnd-games）", // Use this channel as the hub (default: a new #dnd-games).
+  "dnd/new": "専用チャンネル付きで新しいゲームを作成します", // Creates a new game with its own channels.
+  "dnd/new:name": "ゲーム名", // The game's name.
+  "dnd/new:language": "プレイする言語（既定: English）", // The language the game is played in (default: English).
+  "dnd/new:pacing": "ラウンドの進み方（既定: ライブ）", // How fast rounds go (default: live).
+  "dnd/new:players": "卓の最大人数（既定 3）", // Most players at the table (default: 3).
+  "dnd/new:visibility": "開始後に誰が観戦できるか（既定はカテゴリを見られる全員）", // Who can watch once the game starts (default: everyone).
+  "dnd/status": "このチャンネルのゲームの状態を表示します", // Shows the state of this channel's game.
+  "dnd/pause": "このゲームを一時停止します（主催者）", // Pauses this game (organizer).
+  "dnd/resume": "一時停止したゲームを再開します（主催者）", // Resumes a paused game (organizer).
+  "dnd/close-round": "待たずに現在のラウンドを締め切ります（主催者）", // Closes the current round without waiting (organizer).
+  "dnd/rest": "戦闘の合間にパーティを休ませます（主催者）", // Has the party take a rest between fights (organizer).
+  "dnd/rest:type": "休憩の長さ", // How long the rest is.
+  "dnd/level": "生存中のヒーロー全員を指定のレベルに上げます。マイルストーン方式用（主催者）", // Raises every living hero to a level, for milestone leveling (organizer).
+  "dnd/level:level": "パーティを上げるレベル", // The level to raise the party to.
+  "dnd/retry": "保留になったラウンドを DM にやり直させます（主催者）", // Asks the DM to try the held round again (organizer).
+  "dnd/characters": "あなたのキャラクターライブラリを開きます（作成・表示・書き出し・削除）", // Opens your character library: build, view, export and delete characters.
+  "dnd/import-character": "書き出したファイルからキャラクターをライブラリに追加します", // Adds a character from an exported file to your library.
+  "dnd/import-character:file": "My Characters から書き出したキャラクターファイル（.json）", // The character file (.json) exported from My Characters.
+  "dnd/upload-adventure": "ファイルから冒険をこのサーバーに追加します（確認と承認あり）", // Adds an adventure from a file to this server, after checks and your approval.
+  "dnd/upload-adventure:file": "冒険ファイル（YAML または JSON）", // The adventure file (YAML or JSON).
+  "dnd/adventures": "このサーバーの冒険を一覧表示します（下書きの確認、削除、復元）", // Lists this server's adventures: review a draft, remove one, or restore it.
+  "dnd/author": "アイデアやメモから冒険作者に冒険を書いてもらいます", // Has the Adventure Author write an adventure from an idea or your notes.
+  "dnd/author:idea": "冒険の内容", // What the adventure is about.
+  "dnd/author:language": "書く言語（既定は英語）", // The language to write it in (default: English).
+  "dnd/author:notes": "元にする自分のメモ（テキストまたは Markdown）", // Your own notes to build from (text or Markdown).
+  "dnd/repair": "このゲームのチャンネルを確認しカードを描き直します（主催者）", // Checks this game's channels and redraws its cards (organizer).
+  "dnd/reopen": "終了したゲームを、止まった場所で一時停止したまま再開できる状態にします（主催者）", // Opens a finished game again, paused where it stopped (organizer).
 } as const satisfies CommandDescriptionCatalog;

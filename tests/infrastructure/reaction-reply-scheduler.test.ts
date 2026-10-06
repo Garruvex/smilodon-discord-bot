@@ -32,7 +32,7 @@ function configuration(): ApplicationConfiguration {
     persistence: { driver: "file", databaseUrl: null },
     lavalink: { host: "localhost", port: 2333, password: "test-password", secure: false },
     chat: null,
-    utilityChat: null,
+    utilityChat: null, campaign: null,
     embeddings: null,
     memory: defaultMemoryEngineLimits,
     chatDelivery: { maxGeneratedImageAggregateBytes: 10 * 1024 * 1024 },
@@ -50,7 +50,7 @@ function profile(overrides: { reactionReplies?: boolean; chatbot?: boolean; minR
     panel: { progressBar: { style: "standard", length: 12, customTheme: null } },
     features: {
       common: true, diagnostics: true, music: false, chatbot: overrides.chatbot ?? true, birthdays: false,
-      reminders: false, nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false,
+      reminders: false, campaign: false, nsfw: false, linkFix: false, retainMemberDataOnLeave: true, ambientReplies: false,
       channelHistory: false, reactionReplies: overrides.reactionReplies ?? true, historyReactions: false,
     },
     roles: { botAdministrator: new Set(), musicController: new Set(), restricted: new Set(), chatbot: new Set([chatbotRoleId]) },

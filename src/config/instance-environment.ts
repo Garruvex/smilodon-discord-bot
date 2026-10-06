@@ -5,10 +5,11 @@ import { parse } from "dotenv";
 
 const instanceNamePattern = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 // CHATBOT_* (main chatbot persona/reply model), UTILITY_* (fully independent
-// task for standalone structured-output calls), and OPENAI_*/GOOGLE_* (the
-// shared per-vendor API key pool both tasks draw from) — all instance-owned,
+// task for standalone structured-output calls), CAMPAIGN_* (the AI dungeon
+// master's model), and OPENAI_*/GOOGLE_* (the shared per-vendor API key pool
+// every task draws from) — all instance-owned,
 // none inherited from the shared root .env.
-const instanceOwnedEnvironmentPrefixes = ["CHATBOT_", "UTILITY_", "OPENAI_", "GOOGLE_"] as const;
+const instanceOwnedEnvironmentPrefixes = ["CHATBOT_", "UTILITY_", "CAMPAIGN_", "OPENAI_", "GOOGLE_"] as const;
 
 export interface LoadedInstanceEnvironment {
   name: string;

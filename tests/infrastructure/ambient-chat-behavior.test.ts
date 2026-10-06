@@ -25,7 +25,7 @@ function configuration(): ApplicationConfiguration {
     persistence: { driver: "file", databaseUrl: null },
     lavalink: { host: "localhost", port: 2333, password: "test-password", secure: false },
     chat: null,
-    utilityChat: null,
+    utilityChat: null, campaign: null,
     embeddings: null,
     memory: defaultMemoryEngineLimits,
     chatDelivery: { maxGeneratedImageAggregateBytes: 10 * 1024 * 1024 },
@@ -43,7 +43,7 @@ function profile(overrides: { ambientReplies?: boolean } = {}): GuildConfigurati
     idleImageAsset: null,
     panel: { progressBar: { style: "standard", length: 12, customTheme: null } },
     features: {
-      common: true, diagnostics: true, music: true, chatbot: true, birthdays: false, reminders: false,
+      common: true, diagnostics: true, music: true, chatbot: true, birthdays: false, reminders: false, campaign: false,
       nsfw: false, linkFix: false, retainMemberDataOnLeave: true,
       ambientReplies: overrides.ambientReplies ?? true,
       channelHistory: false, reactionReplies: false, historyReactions: false,

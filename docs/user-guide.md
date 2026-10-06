@@ -339,6 +339,7 @@ full processing model and trust rules.
 | `/settings-community timezone <zone>` | Sets the IANA time zone (e.g. `America/New_York`) birthday announcements are computed in. Defaults to UTC. |
 | `/settings-community birthdays [enabled] [channel]` | Turns on birthday announcements and sets the announcement channel (required before enabling). |
 | `/settings-community reminders [enabled]` | Turns `/remind` on or off for this server. |
+| `/settings-dnd campaigns [enabled]` | Turns the `/dnd` campaigns on or off. The rest of the D&D group: `status` (hub, role, running games, model), `hub-channel <channel>` (move the games hub), `admin-role <role>` (who runs games), `setup` (makes the D&D category with a #dnd-games hub, or repairs it). |
 | `/settings-community welcome [join-channel] [leave-channel] [clear-join-channel] [clear-leave-channel]` | Sets the join/leave announcement channels. Each is independent — leaving one unset just means that event stays silent. Join posts a generated welcome card; leave is a plain text line. |
 | `/settings-community link-fix [enabled] [add-/remove-channels] [twitter] [threads] [tiktok] [instagram] [reddit] [bilibili]` | Rewrites Twitter/X, Threads, Instagram, Bilibili, TikTok, and Reddit links for better embeds in watched channels. Each service can be toggled independently of the overall `enabled` switch. |
 | `/settings-community nsfw <enabled>` | Allows NSFW image commands server-wide (still needs an age-restricted channel per use). |

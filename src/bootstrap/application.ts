@@ -86,6 +86,10 @@ export class Application {
     this.dependencies.channelEditScheduler.stop();
     this.dependencies.reminderScheduler.stop();
     this.dependencies.pollService.stop();
+    // Before the client is destroyed: an in-flight campaign pass still needs Discord to finish its delivery.
+    await this.dependencies.campaign.stop().catch((error: unknown) => {
+      this.logger.error({ error }, "Campaign runtime failed to stop cleanly");
+    });
     // Destroyed before draining, not after — this stops new Discord
     // messages (and so new chat turns) from arriving while we wait for
     // whatever background memory writes (dedicated extraction,
@@ -182,6 +186,10 @@ export class Application {
           this.dependencies.channelSummaryScheduler?.start();
           this.dependencies.reactionReplyScheduler?.start();
           this.dependencies.reminderScheduler.start();
+          // After the client is ready: recovery after a restart may need to redraw cards.
+          this.dependencies.campaign.start().catch((error: unknown) => {
+            this.logger.error({ error }, "Campaign runtime failed to start; /dnd games will not advance");
+          });
         })
         .catch(() => {
           // musicInitPromise already logged fatal and triggered shutdown
@@ -308,15 +316,23 @@ export class Application {
     // The admin panel repairs itself when its messages or channel go away.
     this.client.on(Events.MessageDelete, (message) => {
       this.adminPanelService.handleMessagesDeleted(message.guildId, message.channelId, [message.id]);
+      if (message.guildId !== null) this.dependencies.campaign.handleMessagesDeleted(message.guildId, message.channelId, [message.id]);
     });
     this.client.on(Events.MessageBulkDelete, (messages, channel) => {
       this.adminPanelService.handleMessagesDeleted(channel.guildId, channel.id, [...messages.keys()]);
+      this.dependencies.campaign.handleMessagesDeleted(channel.guildId, channel.id, [...messages.keys()]);
     });
     this.client.on(Events.ChannelDelete, (channel) => {
       if (channel.isDMBased()) return;
+      this.dependencies.campaign.handleChannelDeleted(channel.guildId, channel.id);
       void this.adminPanelService.handleChannelDeleted(channel.guildId, channel.id).catch((error: unknown) => {
         this.logger.error({ error, guildId: channel.guildId, channelId: channel.id }, "Unable to handle a deleted admin panel channel");
       });
+    });
+
+    // A Games or Parties forum post is a thread; it is made again too.
+    this.client.on(Events.ThreadDelete, (thread) => {
+      this.dependencies.campaign.handleChannelDeleted(thread.guildId, thread.id);
     });
 
     this.client.on(Events.GuildDelete, (guild) => {
@@ -443,5 +459,9 @@ export function createDiscordClient(): Client {
     // the MessageReactionAdd handler below call .fetch() on each to get the
     // real data instead of silently operating on missing content.
     partials: [Partials.Message, Partials.Reaction, Partials.User],
+    // Discord limits how fast one channel's messages may be edited, and a request
+    // waiting out that limit is held by the client. The default 15 s timeout gave
+    // up on such an edit, so a card stayed stale while the game had moved on.
+    rest: { timeout: 60_000 },
   });
 }

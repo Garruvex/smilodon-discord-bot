@@ -39,7 +39,7 @@ function guildConfiguration(chatbotEnabled: boolean): GuildConfiguration {
       music: true,
       chatbot: chatbotEnabled,
       birthdays: false,
-      reminders: false,
+      reminders: false, campaign: false,
       nsfw: false,
       linkFix: false,
       retainMemberDataOnLeave: true,

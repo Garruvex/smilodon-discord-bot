@@ -5,7 +5,7 @@ import type { TrapConfiguration } from "../domain/security/trap-policy.js";
 // holds sub-switches (ambientReplies, channelHistory, ...) that aren't
 // features in their own right, so iterate this, not Object.keys(features).
 export const guildFeatureNames = [
-  "common", "diagnostics", "music", "chatbot", "birthdays", "reminders", "nsfw", "linkFix",
+  "common", "diagnostics", "music", "chatbot", "birthdays", "reminders", "campaign", "nsfw", "linkFix",
 ] as const;
 export type GuildFeatureName = (typeof guildFeatureNames)[number];
 export type RoleGroupName = "botAdministrator" | "musicController" | "chatbot";
@@ -25,6 +25,8 @@ export interface GuildFeatureConfiguration {
   chatbot: boolean;
   birthdays: boolean;
   reminders: boolean;
+  // The D&D campaign commands (/dnd).
+  campaign: boolean;
   nsfw: boolean;
   linkFix: boolean;
   // Whether a departing member's private, user-owned data is kept (true,

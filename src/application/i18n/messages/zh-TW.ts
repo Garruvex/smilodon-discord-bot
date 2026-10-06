@@ -1,3 +1,4 @@
+import { campaignZhTW } from "./campaign-zh-TW.js";
 import type { TranslationCatalog } from "./en.js";
 
 // Traditional Chinese (zh-TW). DRAFT — pending review by a native speaker.
@@ -252,6 +253,7 @@ export const zhTW = {
   "setup.status.feature.chatbot": "AI 聊天",
   "setup.status.feature.birthdays": "生日",
   "setup.status.feature.reminders": "提醒",
+  "setup.status.feature.campaign": "D&D 團務",
   "setup.status.feature.nsfw": "NSFW",
   "setup.status.feature.linkFix": "連結修正",
   "setup.status.roles": "身分組",
@@ -302,4 +304,5 @@ export const zhTW = {
   "security.trap.log.acted": "{user} 在 {channel} 發言，已被{action}，並刪除了其 {removed} 則訊息",
   "security.trap.log.blocked": "{user} 在 {channel} 發言，但無法{action}：對方的最高身分組高於我，或我缺少權限。其訊息已刪除",
   "security.trap.log.error": "{user} 在 {channel} 發言，但處理時發生問題，請查看機器人日誌",
+  ...campaignZhTW,
 } as const satisfies TranslationCatalog;

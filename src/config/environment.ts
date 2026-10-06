@@ -126,6 +126,24 @@ const environmentSchema = z.object({
   UTILITY_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1).max(128_000).default(2_048),
   UTILITY_GEMINI_THINKING_BUDGET: z.coerce.number().int().min(-1).max(32_768).optional(),
 
+  // The AI dungeon master for /dnd campaigns: its own model and credentials
+  // (the shared OPENAI_API_KEY/GOOGLE_API_KEY pool). Unset means /dnd cannot
+  // start a game. Reasoning effort "none" is the setting that met the
+  // milestone 0 latency targets (docs/dnd-milestone-0-report.md).
+  CAMPAIGN_MODEL: optionalNonEmptyString,
+  CAMPAIGN_FALLBACK_MODELS: fallbackModelsList,
+  CAMPAIGN_PROVIDER: z.enum(["openai", "gemini"]).default("openai"),
+  CAMPAIGN_MODE: z.enum(["chat_completions", "responses"]).optional(),
+  CAMPAIGN_REASONING_EFFORT: z.enum(["none", "low", "medium", "high", "xhigh", "max"]).default("none"),
+  CAMPAIGN_GEMINI_THINKING_BUDGET: z.coerce.number().int().min(-1).max(32_768).optional(),
+  // Campaign pictures: an OpenAI-compatible image model, its own connection
+  // (the key and address default to OPENAI_API_KEY / OPENAI_BASE_URL, and are
+  // never the chat's), and how many pictures one campaign may have made (default 12).
+  CAMPAIGN_IMAGE_MODEL: optionalNonEmptyString,
+  CAMPAIGN_IMAGE_API_KEY: optionalNonEmptyString,
+  CAMPAIGN_IMAGE_BASE_URL: z.preprocess((value) => (value === "" ? undefined : value), z.string().url().optional()),
+  CAMPAIGN_IMAGE_QUALITY: z.preprocess((value) => (value === "" ? undefined : value), z.enum(["low", "medium", "high", "auto"]).optional()),
+
   // See MemoryEngineLimits in memory-engine.ts for what each of these
   // actually gates and the reasoning behind the defaults — the similarity
   // threshold in particular is model-dependent and should be recalibrated
@@ -222,6 +240,15 @@ export function loadConfiguration(
     parsed.data.OPENAI_API_KEY,
     parsed.data.GOOGLE_API_KEY,
   );
+  validateProviderConfig(
+    "CAMPAIGN",
+    parsed.data.CAMPAIGN_MODEL,
+    parsed.data.CAMPAIGN_PROVIDER,
+    parsed.data.CAMPAIGN_MODE,
+    parsed.data.CAMPAIGN_GEMINI_THINKING_BUDGET,
+    parsed.data.OPENAI_API_KEY,
+    parsed.data.GOOGLE_API_KEY,
+  );
 
   return {
     instanceName: parsed.data.INSTANCE_NAME ?? null,
@@ -246,6 +273,8 @@ export function loadConfiguration(
     },
     chat: buildChatConfiguration(parsed.data),
     utilityChat: buildUtilityChatConfiguration(parsed.data),
+    campaign: buildCampaignConfiguration(parsed.data),
+    campaignImages: buildCampaignImages(parsed.data),
     chatDelivery: {
       maxGeneratedImageAggregateBytes: parsed.data.CHATBOT_MAX_GENERATED_IMAGE_BYTES,
     },
@@ -283,7 +312,7 @@ export function loadConfiguration(
 // than silently ignored, so a mismatched config fails at startup instead of
 // quietly doing something other than what was configured.
 function validateProviderConfig(
-  namespace: "CHATBOT" | "UTILITY",
+  namespace: "CHATBOT" | "UTILITY" | "CAMPAIGN",
   model: string | undefined,
   provider: "openai" | "gemini",
   mode: "chat_completions" | "responses" | undefined,
@@ -363,6 +392,35 @@ function buildChatConfiguration(
     summaryModels,
     summaryMaxOutputTokens,
     maxOutputTokens,
+  };
+}
+
+// The AI dungeon master's model (CAMPAIGN_*): the same provider families as
+// the chat tasks, but campaign calls are structured JSON with a reasoning
+// effort that includes "none", so it has its own small shape.
+function buildCampaignConfiguration(data: z.infer<typeof environmentSchema>): ApplicationConfiguration["campaign"] {
+  if (!data.CAMPAIGN_MODEL) return null;
+  const models = [data.CAMPAIGN_MODEL, ...data.CAMPAIGN_FALLBACK_MODELS];
+  if (data.CAMPAIGN_PROVIDER === "gemini") {
+    return { provider: "gemini", apiKey: data.GOOGLE_API_KEY as string, models, thinkingBudget: data.CAMPAIGN_GEMINI_THINKING_BUDGET ?? null };
+  }
+  const apiKey = data.OPENAI_API_KEY as string;
+  const baseUrl = data.OPENAI_BASE_URL.replace(/\/$/, "");
+  if ((data.CAMPAIGN_MODE ?? "responses") === "responses") {
+    return { provider: "openai-responses", apiKey, baseUrl, models, reasoningEffort: data.CAMPAIGN_REASONING_EFFORT };
+  }
+  return { provider: "openai-compatible", apiKey, baseUrl, models };
+}
+
+function buildCampaignImages(data: z.infer<typeof environmentSchema>): NonNullable<ApplicationConfiguration["campaignImages"]> | null {
+  // The campaign has its own connection; the shared OpenAI key and address are only its default.
+  const apiKey = data.CAMPAIGN_IMAGE_API_KEY ?? data.OPENAI_API_KEY;
+  if (!data.CAMPAIGN_IMAGE_MODEL || !apiKey) return null;
+  return {
+    apiKey,
+    baseUrl: (data.CAMPAIGN_IMAGE_BASE_URL ?? data.OPENAI_BASE_URL).replace(/\/$/, ""),
+    model: data.CAMPAIGN_IMAGE_MODEL,
+    ...(data.CAMPAIGN_IMAGE_QUALITY === undefined ? {} : { quality: data.CAMPAIGN_IMAGE_QUALITY }),
   };
 }
 

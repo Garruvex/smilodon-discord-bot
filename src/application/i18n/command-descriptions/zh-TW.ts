@@ -162,4 +162,34 @@ export const zhTWCommandDescriptions = {
   "vote:option3": "選項 3；至少提供兩個選項，或全部留空以使用是／否", // Choice 3; give at least two choices, or none for Yes/No.
   "vote:option4": "選項 4；至少提供兩個選項，或全部留空以使用是／否", // Choice 4; give at least two choices, or none for Yes/No.
   "vote:option5": "選項 5；至少提供兩個選項，或全部留空以使用是／否", // Choice 5; give at least two choices, or none for Yes/No.
+  "dnd": "進行由 AI 主持的 D&D 團務", // Runs AI-hosted D&D campaigns.
+  "dnd/setup": "設定這個伺服器的 D&D：建立 D&D 分類與總覽頻道", // Sets this server up for D&D: a D&D category with a games hub channel.
+  "dnd/setup:hub": "指定這個頻道當作總覽頻道（預設：新的 #dnd-games）", // Use this channel as the hub (default: a new #dnd-games).
+  "dnd/new": "建立新團務與專屬頻道", // Creates a new game with its own channels.
+  "dnd/new:name": "團務名稱", // The game's name.
+  "dnd/new:language": "遊玩語言（預設：English）", // The language the game is played in (default: English).
+  "dnd/new:pacing": "回合節奏（預設：即時）", // How fast rounds go (default: live).
+  "dnd/new:players": "桌上最多玩家數（預設 3）", // Most players at the table (default: 3).
+  "dnd/new:visibility": "遊戲開始後誰可以觀看（預設為看得到分類的所有人）", // Who can watch once the game starts (default: everyone).
+  "dnd/status": "顯示這個頻道團務的狀態", // Shows the state of this channel's game.
+  "dnd/pause": "暫停這場團務（主辦人）", // Pauses this game (organizer).
+  "dnd/resume": "繼續已暫停的團務（主辦人）", // Resumes a paused game (organizer).
+  "dnd/close-round": "不再等待，直接結束這一回合的收件（主辦人）", // Closes the current round without waiting (organizer).
+  "dnd/rest": "讓隊伍在戰鬥之間休息（主辦人）", // Has the party take a rest between fights (organizer).
+  "dnd/rest:type": "休息的長度", // How long the rest is.
+  "dnd/level": "把所有存活的角色提升到指定等級，用於里程碑升級（主辦人）", // Raises every living hero to a level, for milestone leveling (organizer).
+  "dnd/level:level": "隊伍要提升到的等級", // The level to raise the party to.
+  "dnd/retry": "請地下城主重新結算被擱置的回合（主辦人）", // Asks the DM to try the held round again (organizer).
+  "dnd/characters": "開啟你的角色庫：建立、檢視、匯出與刪除角色", // Opens your character library: build, view, export and delete characters.
+  "dnd/import-character": "從匯出的檔案把角色加入你的角色庫", // Adds a character from an exported file to your library.
+  "dnd/import-character:file": "從「我的角色」匯出的角色檔案（.json）", // The character file (.json) exported from My Characters.
+  "dnd/upload-adventure": "從檔案把冒險加入這個伺服器（經過檢查與你的核准）", // Adds an adventure from a file to this server, after checks and your approval.
+  "dnd/upload-adventure:file": "冒險檔案（YAML 或 JSON）", // The adventure file (YAML or JSON).
+  "dnd/adventures": "列出這個伺服器的冒險：檢視草稿、移除或還原", // Lists this server's adventures: review a draft, remove one, or restore it.
+  "dnd/author": "請冒險作者依你的點子或筆記寫一個冒險", // Has the Adventure Author write an adventure from an idea or your notes.
+  "dnd/author:idea": "這個冒險在說什麼", // What the adventure is about.
+  "dnd/author:language": "撰寫的語言（預設英文）", // The language to write it in (default: English).
+  "dnd/author:notes": "你自己的筆記（文字或 Markdown）", // Your own notes to build from (text or Markdown).
+  "dnd/repair": "檢查這場團務的頻道並重新繪製卡片（主辦人）", // Checks this game's channels and redraws its cards (organizer).
+  "dnd/reopen": "重新開啟已結束的團務，並暫停在結束的地方（主辦人）", // Opens a finished game again, paused where it stopped (organizer).
 } as const satisfies CommandDescriptionCatalog<keyof typeof jaCommandDescriptions>;
