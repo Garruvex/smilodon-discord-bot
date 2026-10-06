@@ -130,6 +130,8 @@ export interface BibleClue {
   readonly sceneId: SceneId;
   readonly publicText: string;
   readonly dmNotes: string;
+  // The adventure allows this clue to be given to a table that is stuck. Any other clue may be the answer to something, so it is never handed over.
+  readonly free?: boolean;
 }
 
 export interface BibleScene {

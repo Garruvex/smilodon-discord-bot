@@ -17,6 +17,9 @@ export interface AdventureCatalogOptions {
   readonly library: UploadedAdventureLibrary;
   // A server may hold this many adventures waiting for approval or approved.
   readonly maxPerGuild?: number;
+  // Whether an uploaded adventure must pass the story contract ("enforce") or only be warned ("warn", the default while older adventures are
+  // converted). Adventures the Author wrote are always held to it.
+  readonly storyContract?: "warn" | "enforce";
 }
 
 export type SubmitResult =
@@ -66,7 +69,8 @@ export class AdventureCatalog {
   // with its ID made unique to the server. A file is data: nothing in it is an
   // instruction to the bot.
   public async submit(input: { guildId: string; uploaderUserId: string; source: StoredAdventure["source"]; text: string; isAdmin?: boolean }): Promise<SubmitResult> {
-    const report = validateAdventure(input.text, this.options.content);
+    // An adventure the Author wrote is always held to the story contract; an upload is held to it when the table's setting says so.
+    const report = validateAdventure(input.text, this.options.content, { storyContract: input.source === "author" ? "enforce" : (this.options.storyContract ?? "warn") });
     if (!report.ok || report.document === null) return { kind: "invalid", report };
     const canonical = canonicalize(report.document, input.guildId);
     const { bible } = canonical;
@@ -160,7 +164,7 @@ export class AdventureCatalog {
   // A stored draft checked again, for a review reopened after the private screen was dismissed.
   public async review(key: string): Promise<{ readonly adventure: StoredAdventure; readonly report: AdventureReport } | undefined> {
     const adventure = await this.get(key);
-    return adventure === undefined ? undefined : { adventure, report: validateAdventure(adventure.yaml, this.options.content) };
+    return adventure === undefined ? undefined : { adventure, report: validateAdventure(adventure.yaml, this.options.content, { storyContract: adventure.source === "author" ? "enforce" : (this.options.storyContract ?? "warn") }) };
   }
 
   public get(key: string): Promise<StoredAdventure | undefined> {

@@ -148,7 +148,8 @@ export class DmJobWorker {
     });
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
-        const proposal = await this.options.planner.plan(requestFor(problems));
+        // A round nobody acted in has nothing for the model to judge: only the story's own clock runs (see direct).
+        const proposal = actions.length === 0 ? fallbackPlan(requestFor([])) : await this.options.planner.plan(requestFor(problems));
         const wallet = loaded.stored.ruleset.houseRules[lootGold.id] === "split" ? "hero" : "pool";
         const directed = this.direct(loaded, proposal);
         const resolved = resolveStoryEffects(directed.proposal, directed.bible, loaded.stored.state, { wallet, ...(this.options.random === undefined ? {} : { random: this.options.random }) });

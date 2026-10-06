@@ -148,6 +148,10 @@ function resolveInteractions(
     return { characterId: action.characterId, resolution: { kind: "check", test, dcTier: nearestTier(check.dc), dc: check.dc, rollModeReasons: reasons } };
   });
 
+  for (const id of proposal.worldSteps ?? []) {
+    const step = available.get(id);
+    if (step !== undefined && !attempts.has(id)) attempts.set(id, { interaction: { ...step, check: null, pay: 0 }, heroes: [] });
+  }
   const interactionEffects: PlannedEffect[] = [];
   const random = options.random ?? Math.random;
   for (const { interaction, heroes } of attempts.values()) {

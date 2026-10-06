@@ -73,27 +73,23 @@ export const plainLabel = (label: string): string => label.replace(/\s*[ï¼ˆ(][^ï
 
 // The scene's next clue the party does not have, in the order the adventure lists them.
 export function nextClue(bible: AdventureBible, state: CampaignState): BibleClue | undefined {
-  return bible.clues.find((clue) => clue.sceneId === state.sceneId && !state.clues.some((known) => known.id === clue.id));
+  // Only a clue the adventure marked `free` may be given to a stuck table; any other may be the answer to something.
+  return bible.clues.find((clue) => clue.free === true && clue.sceneId === state.sceneId && !state.clues.some((known) => known.id === clue.id));
 }
 
-// Applies the director's step to a planned round: the second step adds a free clue; the third takes the adventure's fallback step by planning
-// the first hero's action as that interaction with no roll and no fee. Returns the proposal and the bible to resolve it against.
+// Applies the director's step to a planned round: the second step adds a free clue; the third takes the adventure's fallback step as a world event
+// beside the players' actions (the heroes' own actions are never rewritten). Returns the proposal and the bible to resolve it against.
 export function directPlan(proposal: PlannerProposal, bible: AdventureBible, state: CampaignState, level: StallLevel): { readonly proposal: PlannerProposal; readonly bible: AdventureBible } {
   if (level < 2) return { proposal, bible };
   let next = proposal;
-  let story = bible;
   const clue = nextClue(bible, state);
   if (clue !== undefined) next = { ...next, effects: [...next.effects, { kind: "revealClue", clueId: clue.id, when: { kind: "always" } }] };
   if (level >= 3) {
     const step = availableInteractions(bible, state).find((interaction) => interaction.fallback === true);
-    const hero = next.actions.find((action) => action.interactionId == null);
-    if (step !== undefined && hero !== undefined) {
-      next = { ...next, actions: next.actions.map((action) => (action === hero ? { ...action, resolution: { kind: "automatic", reason: step.label }, interactionId: step.id } : action)) };
-      // With no roll and no fee, so the step happens however the dice would have fallen.
-      story = { ...bible, interactions: (bible.interactions ?? []).map((interaction) => (interaction.id === step.id ? { ...interaction, check: null, pay: 0 } : interaction)) };
-    }
+    // A world event beside the players' own actions, never in place of one: it happens with no roll and no fee, whatever the heroes chose.
+    if (step !== undefined) next = { ...next, worldSteps: [...(next.worldSteps ?? []), step.id] };
   }
-  return { proposal: next, bible: story };
+  return { proposal: next, bible };
 }
 
 // Rounds the party has spent in the scene they are in: the finished rounds since they arrived (or since the story began).

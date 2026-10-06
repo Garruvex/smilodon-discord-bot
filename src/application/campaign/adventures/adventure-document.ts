@@ -162,7 +162,7 @@ const documentSchema = z
           .strict(),
       )
       .default([]),
-    clues: z.array(z.object({ id: clueId, sceneId, publicText: text, dmNotes: text }).strict()).default([]),
+    clues: z.array(z.object({ id: clueId, sceneId, publicText: text, dmNotes: text, free: z.boolean().optional() }).strict()).default([]),
     interactions: z.array(interactionSchema).default([]),
     encounters: z
       .array(
@@ -326,6 +326,7 @@ export function parseAdventureDocument(source: string): AdventureDocument {
   const bible: AdventureBible = {
     ...rest,
     scenes: clean(scenes) as unknown as AdventureBible["scenes"],
+    clues: clean(rest.clues) as unknown as AdventureBible["clues"],
     npcs,
     encounters: bibleEncounters as unknown as AdventureBible["encounters"],
     ...(interactions.length === 0 ? {} : { interactions: clean(interactions) as unknown as readonly BibleInteraction[] }),
@@ -393,7 +394,7 @@ function interactionProblems(data: z.infer<typeof documentSchema>): readonly str
   // Every plain effect in a list, looking inside random tables.
   const flatten = (list: readonly BibleEffect[]): BibleEffect[] => list.flatMap((effect) => (effect.kind === "random" ? effect.options.flatMap((option) => flatten(option.effects)) : [effect]));
   const allEffects = data.interactions.flatMap((interaction) => [...flatten(interaction.onSuccess as BibleEffect[]), ...flatten(interaction.onFailure as BibleEffect[]), ...interaction.tiers.flatMap((tier) => flatten(tier.effects as BibleEffect[]))]);
-  const fightEffects = data.encounters.flatMap((encounter) => [...encounter.triggers.flatMap((trigger) => trigger.effects as BibleFightEffect[]), ...(encounter.onVictory as BibleEffect[])]);
+  const fightEffects = data.encounters.flatMap((encounter) => [...encounter.triggers.flatMap((trigger) => trigger.effects as BibleFightEffect[]), ...(encounter.onVictory as BibleEffect[]), ...(encounter.onDefeat as BibleEffect[])]);
   const enterEffects = data.scenes.flatMap((scene) => [...((scene.onEnter ?? []) as BibleEffect[]), ...((scene.onLongRest ?? []) as BibleEffect[])]);
   const setFlags = new Set([...allEffects, ...fightEffects, ...enterEffects].flatMap((effect) => (effect.kind === "set" ? [effect.flag] : [])));
   const checkEffects = (owner: string, list: readonly BibleEffect[]): void => {
@@ -503,7 +504,7 @@ export function checkAdventureContent(document: AdventureDocument, content: Seal
         if (effect.kind === "reward") for (const item of effect.items ?? []) expectKind(encounter.id, item, "item");
       }
     }
-    for (const effect of encounter.onVictory ?? []) if (effect.kind === "reward") for (const item of effect.items ?? []) expectKind(encounter.id, item, "item");
+    for (const effect of [...(encounter.onVictory ?? []), ...(encounter.onDefeat ?? [])]) if (effect.kind === "reward") for (const item of effect.items ?? []) expectKind(encounter.id, item, "item");
     for (const item of encounter.loot) expectKind(encounter.id, item, "item");
   }
   return problems;

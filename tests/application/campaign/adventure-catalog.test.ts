@@ -91,6 +91,30 @@ describe("an uploaded adventure", () => {
     expect(await store.transaction((tx) => tx.listAdventures("g-1"))).toEqual([]);
   });
 
+  it("holds an upload to the story contract when the server says so, and an Author's adventure always", async () => {
+    // A story with no ending marked cannot be shown to finish: by default an upload is only warned about it.
+    const stranded = templateYaml.replaceAll("ending: true", "");
+    const warned = await catalog().catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: stranded });
+    expect(warned).toMatchObject({ kind: "pending" });
+    const store = new InMemoryCampaignStore();
+    const library = new UploadedAdventureLibrary(new StaticAdventureLibrary([{ id: starterAdventureId, editions: starter }]));
+    const strict = new AdventureCatalog({ unitOfWork: store, clock: new ManualClock(1_000), content, library, storyContract: "enforce" });
+    expect(await strict.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: stranded })).toMatchObject({ kind: "invalid" });
+    expect(await catalog().catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "author", text: stranded })).toMatchObject({ kind: "invalid" });
+  });
+
+  it("counts a lost fight's effects like a won one's: a flag only defeat sets is set, and its reward items are checked", async () => {
+    const lines = (...each: string[]): string => each.map((line) => `${line}${String.fromCharCode(10)}`).join("");
+    const story = (onDefeat: string): string =>
+      templateYaml
+        .replace(lines("      - { kind: goto, scene: scene:the-road-away }"), onDefeat)
+        .replace(lines("      - to: scene:the-road-away"), lines("      - to: scene:the-road-away", "        requires: { flags: [driven-off] }"));
+    const fled = await catalog().catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: story(lines("      - { kind: set, flag: driven-off }")) });
+    expect(fled.kind === "invalid" ? fled.report.errors : []).not.toContainEqual(expect.stringContaining("driven-off"));
+    const loot = await catalog().catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: story(lines("      - { kind: set, flag: driven-off }", "      - { kind: reward, gold: 1, items: [item:crown-of-stars] }")) });
+    expect(loot.kind === "invalid" ? loot.report.errors.some((error) => error.includes("item:crown-of-stars")) : false).toBe(true);
+  });
+
   it("replaces a draft on a second upload, refuses to change an approved one, and stops at the server's limit", async () => {
     const { catalog: c } = catalog(undefined, 2);
     const first = await c.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: yamlOf("en") });

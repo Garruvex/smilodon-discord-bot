@@ -57,6 +57,8 @@ export interface PlannerProposal {
   readonly roundNumber: number;
   readonly actions: readonly PlannerAction[];
   readonly effects: readonly PlannerEffect[];
+  // Authored interactions that happen as the story's own doing (the stall director's fallback step): no hero, no roll, no fee.
+  readonly worldSteps?: readonly string[];
 }
 
 export type PlannerEffect =

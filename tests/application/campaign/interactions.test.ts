@@ -92,6 +92,19 @@ function proposal(interactionId: string | null): PlannerProposal {
   };
 }
 
+describe("a step the story takes by itself", () => {
+  it("happens beside the heroes' actions with no roll and no fee, and leaves every action as it was", () => {
+    const { bible } = parseAdventureDocument(yaml(search));
+    const asked = { ...proposal(null), worldSteps: ["interaction:search-field"] };
+    const resolved = resolveStoryEffects(asked, bible, inField);
+    if (resolved.kind !== "resolved") throw new Error(JSON.stringify(resolved));
+    expect(resolved.proposal.actions).toEqual([{ characterId: "c-mira", resolution: asked.actions[0]?.resolution }]);
+    expect(resolved.proposal.effects).toContainEqual(expect.objectContaining({ effect: expect.objectContaining({ kind: "revealClue", clueId: "clue:tracks" }), when: { kind: "always" } }));
+    expect(resolved.proposal.effects).toContainEqual({ effect: { kind: "setFlag", flag: "cellar-open", value: 1 }, when: { kind: "always" } });
+    expect((resolved.proposal.effects ?? []).some(({ effect }) => effect.kind === "setFlag" && effect.flag === "spooked")).toBe(false);
+  });
+});
+
 describe("parsing interactions", () => {
   it("reads checks, tiers, requirements and exits", () => {
     const { bible } = parseAdventureDocument(yaml(search));

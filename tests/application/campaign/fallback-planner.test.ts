@@ -29,6 +29,13 @@ describe("planning without the model", () => {
     expect(plan.actions[0]).toMatchObject({ interactionId: "interaction:search" });
   });
 
+  it("never plans an action the player refused as an attempt at it", () => {
+    const labels = [{ id: "interaction:attack", label: "Attack the guard" }];
+    expect(fallbackPlan(request(["I do not attack the guard"], labels)).actions[0]).not.toHaveProperty("interactionId");
+    expect(fallbackPlan(request(["我不要攻擊守衛"], [{ id: "interaction:attack", label: "攻擊守衛" }])).actions[0]).not.toHaveProperty("interactionId");
+    expect(fallbackPlan(request(["I attack the guard"], labels)).actions[0]).toMatchObject({ interactionId: "interaction:attack" });
+  });
+
   it("matches Chinese labels, ignoring the skill in brackets", () => {
     const plan = fallbackPlan(request(["我想觀察班特，看他有沒有隱瞞什麼"], [{ id: "interaction:sense", label: "觀察班特，看他有沒有隱瞞什麼（洞悉）" }, { id: "interaction:coax", label: "說服班特說出守夜時真正發生了什麼（魅力）" }]));
     expect(plan.actions[0]).toMatchObject({ interactionId: "interaction:sense" });

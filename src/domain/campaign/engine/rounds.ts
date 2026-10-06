@@ -144,7 +144,10 @@ function closeRound(decision: Decision, reason: RoundCloseReason): void {
   }
 
   const hasActions = Object.values(round.submissions).some((submission) => submission.kind === "action");
-  if (!hasActions) {
+  // Passing is not a way to stop the story: every few rounds with nobody acting, the round is planned anyway (with no actions), which is where the
+  // story's own clock runs (a fight that was due, a hint, a clue, the adventure's next step).
+  const directed = !hasActions && ((decision.state.quietRounds ?? 0) + 1) % quietRoundsBeforeDirecting === 0;
+  if (!hasActions && !directed) {
     // Only passes and misses: a template status and no model call. The next
     // round opens straight away while someone is present, so the table is
     // never left without a panel to act on; missed rounds mark players away,
@@ -158,8 +161,11 @@ function closeRound(decision: Decision, reason: RoundCloseReason): void {
     enterWaiting(decision);
     return;
   }
-  if (hasActions) decision.request({ kind: "plan", roundNumber: round.number });
+  if (hasActions || directed) decision.request({ kind: "plan", roundNumber: round.number });
 }
+
+// Rounds in a row with nobody acting before the story moves on its own.
+export const quietRoundsBeforeDirecting = 3;
 
 // Every check of the round is resolved: the round is done and the Narrator
 // describes it. Held while waiting for players; continue finishes it.

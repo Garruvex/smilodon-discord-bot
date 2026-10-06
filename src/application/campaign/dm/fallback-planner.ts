@@ -27,10 +27,14 @@ function coverage(action: string, label: string): number {
 
 const matchThreshold = 0.5;
 
+// A player who says they do NOT do something has not asked for it. Pair matching cannot read that, so any refusal in the words keeps the action
+// from being taken as an interaction at all (it is then taken as stated, never as the thing it refuses).
+const refusal = /\b(?:not|never|no|don't|dont|won't|wont|can't|cant|refuse|refuses|avoid|without|instead of)\b|不要|不會|不能|不想|不用|不去|不打|不攻擊|別|拒絕|避免/iu;
+
 export function fallbackPlan(request: PlannerRequest): PlannerProposal {
   const taken = new Set<string>();
   const actions: PlannerAction[] = request.actions.map((action) => {
-    const scored = (request.story.interactions ?? [])
+    const scored = refusal.test(action.text) ? [] : (request.story.interactions ?? [])
       .filter((interaction) => interaction.sceneId === request.story.sceneId && !taken.has(interaction.id))
       .map((interaction) => ({ interaction, score: coverage(action.text, interaction.label) }))
       .sort((a, b) => b.score - a.score);
@@ -41,7 +45,7 @@ export function fallbackPlan(request: PlannerRequest): PlannerProposal {
       taken.add(best.interaction.id);
       return { characterId: action.characterId, resolution: { kind: "automatic", reason: "Planned without the planner model: this matches an authored interaction." }, interactionId: best.interaction.id };
     }
-    return { characterId: action.characterId, resolution: { kind: "automatic", reason: "Planned without the planner model: the action is taken as stated, with no story effect." } };
+    return { characterId: action.characterId, resolution: { kind: "automatic", reason: "Planned without the planner model: the action is taken as stated; whether it works is not judged and it has no story effect." } };
   });
   return { roundNumber: request.roundNumber, actions, effects: [] };
 }

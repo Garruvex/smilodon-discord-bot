@@ -16,7 +16,7 @@ const interaction = (id: string, extra: Partial<BibleInteraction> = {}): BibleIn
 });
 const bible = (interactions: readonly BibleInteraction[]): AdventureBible => ({
   id: "t", version: "1", language: "en", title: "", premise: "", dmOverview: "", startScene: "scene:a", scenes: [], npcs: [], encounters: [], clocks: [],
-  clues: [{ id: "clue:one", sceneId: "scene:a", publicText: "one", dmNotes: "" }, { id: "clue:two", sceneId: "scene:a", publicText: "two", dmNotes: "" }],
+  clues: [{ id: "clue:one", sceneId: "scene:a", publicText: "one", dmNotes: "", free: true }, { id: "clue:two", sceneId: "scene:a", publicText: "two", dmNotes: "", free: true }, { id: "clue:answer", sceneId: "scene:a", publicText: "the answer", dmNotes: "" }],
   interactions,
 } as unknown as AdventureBible);
 const state = (clues: readonly string[] = []): CampaignState => ({ sceneId: "scene:a", clues: clues.map((id) => ({ id, text: "" })), flags: {} }) as unknown as CampaignState;
@@ -52,13 +52,12 @@ describe("what the director does", () => {
     const rolled = interaction("lock", { check: { skill: "thievery", dc: 20 }, pay: 50, fallback: true });
     const ordinary = interaction("chat", { check: { skill: "persuasion", dc: 10 } });
     const forced = directPlan(round(), bible([ordinary, rolled]), state(), 3);
-    expect(forced.proposal.actions[0]).toMatchObject({ interactionId: "interaction:lock", resolution: { kind: "automatic" } });
-    const taken = forced.bible.interactions?.find((candidate) => candidate.id === "interaction:lock");
-    expect(taken).toMatchObject({ check: null, pay: 0 });
-    expect(forced.bible.interactions?.find((candidate) => candidate.id === "interaction:chat")?.check).not.toBeNull();
+    // It happens beside the players' own actions, which are left exactly as they chose.
+    expect(forced.proposal.worldSteps).toEqual(["interaction:lock"]);
+    expect(forced.proposal.actions).toEqual(round().actions);
     // With no fallback step authored, nothing is forced.
     const none = directPlan(round(), bible([ordinary]), state(), 3);
-    expect(none.proposal.actions[0]).not.toHaveProperty("interactionId");
+    expect(none.proposal.worldSteps).toBeUndefined();
   });
 
   it("points the narrator at the first open step that would move the story, without the skill in brackets", () => {

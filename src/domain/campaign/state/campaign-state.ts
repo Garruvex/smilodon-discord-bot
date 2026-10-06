@@ -37,6 +37,8 @@ export interface CampaignState {
   // before the first one).
   readonly round: RoundState | null;
   readonly lastRoundNumber: number;
+  // Rounds in a row that ended with nobody acting (passes and misses only).
+  readonly quietRounds?: number;
   // The adventure's opening, told before the first round: pending while the
   // Narrator writes it, waiting while the table gets ready, done once the
   // first round can open. Absent in games that started before openings
