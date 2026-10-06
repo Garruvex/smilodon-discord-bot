@@ -51,7 +51,8 @@ forward, and write down the way forward *when things go badly*.
 7. **Schedule time-based events.** If something happens "at midnight" or "when the alarm sounds", do not rely on a player saying "I wait". Say it
    in a clue the table learns for free, and give the fight a `schedule` so it breaks out by itself: `schedule: { requires: { clues: [clue:strikes-at-midnight] }, time: night, afterRounds: 2 }`
    starts it on the first round the party acts once they are in the scene, know the clue, it is night (needs a `startTime`), and two rounds have passed. Every part is
-   optional. Never make the table ask for the event.
+   optional. Never make the table ask for the event. A table that waits in the scene (two rounds, or `afterRounds` if longer) with everything else in
+   place has the time of day brought to it: the story passes to that hour and the fight breaks out.
 8. **Name the step the engine may take for a stuck table.** On each point where the story could stall, mark ONE interaction `fallback: true`: the step
    a patient guide would simply let happen. If the table goes about nine rounds without the story moving, the engine takes that step for them with no
    roll and no fee (after a hint at three rounds and a clue marked `free: true` at six). It happens as a world event beside the players' own

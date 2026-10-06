@@ -2,6 +2,7 @@ import type { AdventureBible, BibleClue, BibleInteraction } from "../../../domai
 import type { CampaignEvent } from "../../../domain/campaign/events/campaign-event.js";
 import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 import type { PlannerEffect, PlannerProposal } from "../ports/dm-ports.js";
+import { timesOfDay } from "../../../domain/campaign/rules/world-rules.js";
 import { availableInteractions, requirementMet } from "./interactions.js";
 
 // The stall director: a table that stops making progress is helped along, step by step, so the story always has a way forward. It is plain
@@ -116,4 +117,24 @@ export function scheduledEffects(bible: AdventureBible, state: CampaignState, ev
     (encounter.schedule.time === undefined || state.world?.time === encounter.schedule.time) &&
     rounds >= (encounter.schedule.afterRounds ?? 0));
   return due === undefined ? [] : [{ kind: "startEncounter", encounterId: due.id, when: { kind: "always" } }];
+}
+
+// Time passes only when the story says so, so a fight set for a time of day would never come to a table that simply waits for it. Once the party
+// has waited in its scene as long as the adventure asks (at least two rounds), with everything else in place, the story moves on to that time:
+// the number of phases of the day to pass, or 0 when nothing is waiting on the clock.
+export const roundsBeforeTimePasses = 2;
+
+export function scheduledWait(bible: AdventureBible, state: CampaignState, events: readonly CampaignEvent[]): number {
+  const now = state.world?.time;
+  if (now === undefined || state.pendingEncounter !== null || (state.encounter !== null && state.encounter.status !== "ended")) return 0;
+  const rounds = roundsInScene(events);
+  const waiting = bible.encounters.find((encounter) =>
+    encounter.schedule?.time !== undefined &&
+    encounter.schedule.time !== now &&
+    encounter.sceneId === state.sceneId &&
+    !state.encounterHistory.includes(encounter.id) &&
+    requirementMet(encounter.schedule.requires, state) &&
+    rounds >= Math.max(encounter.schedule.afterRounds ?? 0, roundsBeforeTimePasses));
+  const time = waiting?.schedule?.time;
+  return time === undefined ? 0 : (timesOfDay.indexOf(time) - timesOfDay.indexOf(now) + timesOfDay.length) % timesOfDay.length;
 }

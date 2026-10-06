@@ -109,6 +109,7 @@ export function resolveStoryEffects(
   }
 
   const { actions, interactionEffects } = resolvedInteractions;
+  if (proposal.worldTime !== undefined && proposal.worldTime > 0) effects.push({ effect: { kind: "advanceTime", steps: proposal.worldTime }, when: { kind: "always" } });
   effects.push(...interactionEffects);
   if (problems.length > 0) return { kind: "invalid", problems };
   return { kind: "resolved", proposal: { roundNumber: proposal.roundNumber, actions, effects } };
@@ -150,7 +151,8 @@ function resolveInteractions(
 
   for (const id of proposal.worldSteps ?? []) {
     const step = available.get(id);
-    if (step !== undefined && !attempts.has(id)) attempts.set(id, { interaction: { ...step, check: null, pay: 0 }, heroes: [] });
+    // No roll, so no total to reach a tier with: only the step itself happens (a tier hung on nobody's check would make the plan invalid).
+    if (step !== undefined && !attempts.has(id)) attempts.set(id, { interaction: { ...step, check: null, pay: 0, tiers: [] }, heroes: [] });
   }
   const interactionEffects: PlannedEffect[] = [];
   const random = options.random ?? Math.random;

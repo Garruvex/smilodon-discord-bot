@@ -59,6 +59,8 @@ export interface PlannerProposal {
   readonly effects: readonly PlannerEffect[];
   // Authored interactions that happen as the story's own doing (the stall director's fallback step): no hero, no roll, no fee.
   readonly worldSteps?: readonly string[];
+  // Phases of the day the story passes this round by itself (a table waiting for a fight set at night): no hero's doing.
+  readonly worldTime?: number;
 }
 
 export type PlannerEffect =

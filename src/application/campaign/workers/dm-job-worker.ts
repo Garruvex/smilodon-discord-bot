@@ -5,6 +5,7 @@ import type { CampaignEvent } from "../../../domain/campaign/events/campaign-eve
 import { dcLadder, rollModeReasons } from "../../../domain/campaign/rules/difficulty.js";
 import { abilities } from "../../../domain/campaign/rules/effects.js";
 import { lootGold } from "../../../domain/campaign/rules/house-rules.js";
+import { timesOfDay } from "../../../domain/campaign/rules/world-rules.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import type { CampaignLanguage, SceneId } from "../../../domain/campaign/adventure/adventure-bible.js";
 import type { CampaignCommandBus } from "../campaign-command-bus.js";
@@ -15,7 +16,7 @@ import { encounterRecords } from "../dm/combat-records.js";
 import { checkLabel, roundRecords } from "../dm/round-records.js";
 import { fallbackPlan } from "../dm/fallback-planner.js";
 import { tellsFor } from "../dm/npc-tells.js";
-import { defaultStall, directPlan, openLead, plainLabel, scheduledEffects, stalledRounds, stallLevel, type StallConfig } from "../dm/stall-director.js";
+import { defaultStall, directPlan, openLead, plainLabel, scheduledEffects, scheduledWait, stalledRounds, stallLevel, type StallConfig } from "../dm/stall-director.js";
 import { plannerStory, resolveStoryEffects } from "../dm/story-effects.js";
 import type { RuntimeLogger } from "../campaign-runtime.js";
 import type { CampaignKey, CampaignUnitOfWork, OutboxItem, StoredCampaign } from "../ports/campaign-store.js";
@@ -204,7 +205,7 @@ export class DmJobWorker {
     let note = "";
     try {
       // Read against what the adventure established: an invented item or demand is told again once without it, and a line that still invents is replaced by the plain one.
-      const narrated = await this.audited("narration", request, outcomeFacts(request), (asked) => this.options.narrator.narrate(asked));
+      const narrated = await this.audited(item, "narration", request, outcomeFacts(request), (asked) => this.options.narrator.narrate(asked));
       if (narrated === undefined) text = fallbackNarration(request);
       else {
         text = narrated.text;
@@ -231,7 +232,7 @@ export class DmJobWorker {
     let text: string;
     try {
       // A retelling is read like the first telling; one that still invents, or cannot be checked, leaves the earlier telling standing.
-      const told = await this.audited("narration", request, outcomeFacts(request), (asked) => this.options.narrator.narrate(asked));
+      const told = await this.audited(item, "narration", request, outcomeFacts(request), (asked) => this.options.narrator.narrate(asked));
       if (told === undefined) return;
       text = told.text;
     } catch (error) {
@@ -375,7 +376,7 @@ export class DmJobWorker {
     };
     let text: string;
     try {
-      const told = await this.audited("opening", request, heroes.map((hero) => `${hero.name} is one of the party.`), (asked) => this.options.narrator.narrate(asked));
+      const told = await this.audited(item, "opening", request, heroes.map((hero) => `${hero.name} is one of the party.`), (asked) => this.options.narrator.narrate(asked));
       text = told?.text ?? fallbackOpening(loaded, heroes.map((hero) => hero.name));
     } catch (error) {
       if (item.attempts + 1 < this.maxAttempts) throw error;
@@ -394,7 +395,7 @@ export class DmJobWorker {
     const request = this.combatNarratorRequest(loaded, encounterId, round, final);
     let text: string;
     try {
-      const told = await this.audited("combat", request, [JSON.stringify(request.beats), ...(request.outcome === null ? [] : [`The fight ended: ${JSON.stringify(request.outcome)}`])], (asked) => this.options.narrator.narrateCombat(asked));
+      const told = await this.audited(item, "combat", request, [JSON.stringify(request.beats), ...(request.outcome === null ? [] : [`The fight ended: ${JSON.stringify(request.outcome)}`])], (asked) => this.options.narrator.narrateCombat(asked));
       // A flourish that invents is simply left out; the closing narration falls back to its template.
       if (told === undefined && !final) return;
       text = told?.text ?? fallbackCombatNarration(request);
@@ -421,7 +422,7 @@ export class DmJobWorker {
     let text: string;
     try {
       const facts = [`${request.heroName} ${request.direction === "buy" ? "buys" : "sells"} ${request.itemName} with ${request.npc.name}: listed at ${request.listedPrice} gold, settled at ${request.finalPrice} gold, ${request.completed ? "done" : "not done"}.`];
-      text = (await this.audited("trade", request, facts, (asked) => this.options.narrator.narrateTrade(asked)))?.text ?? fallbackTradeNarration(request);
+      text = (await this.audited(item, "trade", request, facts, (asked) => this.options.narrator.narrateTrade(asked)))?.text ?? fallbackTradeNarration(request);
     } catch (error) {
       if (item.attempts + 1 < this.maxAttempts) throw error;
       text = fallbackTradeNarration(request);
@@ -443,7 +444,7 @@ export class DmJobWorker {
     try {
       const asked = told.length === 0 ? request : { ...request, tells: told.map((tell) => tell.text) };
       const facts = [`${request.heroName} says to ${request.npc.name}: "${request.question ?? ""}"`, ...told.map((tell) => `${request.npc.name} may say: ${tell.text}`), ...(request.npc.secret === null ? [] : [`${request.npc.name} may reveal: ${request.npc.secret}`])];
-      const said = await this.audited("dialogue", asked, facts, async (next) => ({ text: (await this.options.narrator.narrateDialogue(next)).text }));
+      const said = await this.audited(item, "dialogue", asked, facts, async (next) => ({ text: (await this.options.narrator.narrateDialogue(next)).text }));
       text = said?.text ?? fallbackDialogueNarration(request);
     } catch (error) {
       if (item.attempts + 1 < this.maxAttempts) throw error;
@@ -463,7 +464,7 @@ export class DmJobWorker {
     let text: string;
     try {
       // A spell's description is where a hidden door or a secret could be made up: it may say only what the scene already holds.
-      text = (await this.audited("spell", request, [`${request.heroName} casts ${request.spell.name}.`], (asked) => this.options.narrator.narrateUtilityCast(asked)))?.text ?? fallbackUtilityCastNarration(request);
+      text = (await this.audited(item, "spell", request, [`${request.heroName} casts ${request.spell.name}.`], (asked) => this.options.narrator.narrateUtilityCast(asked)))?.text ?? fallbackUtilityCastNarration(request);
     } catch (error) {
       if (item.attempts + 1 < this.maxAttempts) throw error;
       text = fallbackUtilityCastNarration(request);
@@ -480,7 +481,7 @@ export class DmJobWorker {
     let text: string;
     try {
       const facts = [`${request.heroName} made a ${request.ability} save (${request.total} against DC ${request.dc}): ${request.success ? "success" : "failure"}${request.exhaustionGained > 0 ? `, gaining ${request.exhaustionGained} level of Exhaustion` : ""}.`];
-      text = (await this.audited("hazard", request, facts, (asked) => this.options.narrator.narrateHazard(asked)))?.text ?? fallbackHazardNarration(request);
+      text = (await this.audited(item, "hazard", request, facts, (asked) => this.options.narrator.narrateHazard(asked)))?.text ?? fallbackHazardNarration(request);
     } catch (error) {
       if (item.attempts + 1 < this.maxAttempts) throw error;
       text = fallbackHazardNarration(request);
@@ -625,6 +626,7 @@ export class DmJobWorker {
   // Tells it, has the line read against what the adventure established (when an auditor is set up), and tells it again once without what it invented.
   // Returns undefined when the second telling still invents: the caller then uses the plain line. An auditor that fails never blocks play.
   private async audited<R extends { readonly context: DmContext; readonly language: CampaignLanguage; readonly avoid?: readonly string[] }, T extends { readonly text: string }>(
+    item: OutboxItem,
     kind: NarrationKind,
     request: R,
     facts: readonly string[],
@@ -638,6 +640,8 @@ export class DmJobWorker {
       try {
         return await auditor.audit({ context: request.context, language: request.language, kind, text, facts });
       } catch (error) {
+        // A hiccup is tried again with the whole job; only on the last attempt is the plain line used instead.
+        if (item.attempts + 1 < this.maxAttempts) throw error;
         this.options.logger?.warn({ err: error, kind }, "The narration auditor failed; the plain line is used");
         return null;
       }
@@ -659,6 +663,12 @@ export class DmJobWorker {
     // What the adventure scheduled to happen on its own now (a fight at midnight), unless this round already starts one.
     const due = proposal.effects.some((effect) => effect.kind === "startEncounter") ? [] : scheduledEffects(loaded.bible, loaded.stored.state, loaded.events);
     if (due.length > 0) proposal = { ...proposal, effects: [...proposal.effects, ...due] };
+    // A fight waiting only for its time of day: the time comes, and the fight with it.
+    const wait = due.length > 0 || proposal.effects.some((effect) => effect.kind === "startEncounter") ? 0 : scheduledWait(loaded.bible, loaded.stored.state, loaded.events);
+    if (wait > 0) {
+      const atThatTime = { ...loaded.stored.state, world: { ...(loaded.stored.state.world as NonNullable<typeof loaded.stored.state.world>), time: timesOfDay[(timesOfDay.indexOf(loaded.stored.state.world?.time ?? "dawn") + wait) % timesOfDay.length] ?? "dawn" } };
+      proposal = { ...proposal, worldTime: wait, effects: [...proposal.effects, ...scheduledEffects(loaded.bible, atThatTime, loaded.events)] };
+    }
     if (this.options.stall === false) return { proposal, bible: loaded.bible };
     const level = stallLevel(stalledRounds(loaded.events), this.options.stall ?? defaultStall);
     if (level >= 2) this.options.logger?.warn({ level, sceneId: loaded.stored.state.sceneId }, "The table has stalled; the stall director is helping");

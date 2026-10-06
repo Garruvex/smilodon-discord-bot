@@ -301,12 +301,13 @@ describe("DmJobWorker", () => {
       expect(await events(store)).toContainEqual({ kind: "narrationRecorded", roundNumber: 1, text: "Mira: I sneak past Garrick." });
     });
 
-    it("never lets a failing auditor stop play, and never shows a line it could not check", async () => {
-      const narrator = new ScriptedNarrator([{ text: "Mira slips by the guard.", note: "" }]);
-      const watch = auditor([new Error("503")]);
+    it("tries again when the auditor fails, and on the last try uses the plain line rather than one it could not check", async () => {
+      const narrator = new ScriptedNarrator([{ text: "Mira slips by the guard.", note: "" }, { text: "Mira slips by the guard.", note: "" }]);
+      const watch = auditor([new Error("503"), new Error("503")]);
       const { store, bus, worker } = await table(automatic(), narrator, startState(), { auditor: watch.auditor });
       await closeRoundOne(bus);
       await worker.runOnce();
+      expect(await worker.runOnce()).toMatchObject({ processed: 0, failed: [{ error: "503" }] });
       expect(await worker.runOnce()).toEqual({ processed: 1, failed: [] });
       expect(await events(store)).toContainEqual({ kind: "narrationRecorded", roundNumber: 1, text: "Mira: I sneak past Garrick." });
     });

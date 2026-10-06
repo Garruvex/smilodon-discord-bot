@@ -170,7 +170,8 @@ class Story {
     if (due !== undefined) return [{ label: `${due.id} breaks out`, outcomes: this.fight(state, due.id, 0) }];
 
     const moves: Move[] = [];
-    for (const exit of scene.exits ?? []) {
+    // A scene that lists no exits lets the party go anywhere, as the engine plays it (the Planner sends them).
+    for (const exit of scene.exits ?? this.bible.scenes.map((other) => ({ to: other.id, requires: undefined }))) {
       if (exit.to === scene.id || !met(exit.requires, state)) continue;
       moves.push({ label: `go to ${exit.to}`, outcomes: this.arrive(state, exit.to, 0).map((next) => ({ label: `arrive in ${exit.to}`, state: next })) });
     }

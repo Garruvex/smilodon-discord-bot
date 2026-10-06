@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { directPlan, nextClue, openLead, plainLabel, roundsInScene, scheduledEffects, stalledRounds, stallLevel } from "../../../src/application/campaign/dm/stall-director.js";
+import { directPlan, nextClue, openLead, plainLabel, roundsInScene, scheduledEffects, scheduledWait, stalledRounds, stallLevel } from "../../../src/application/campaign/dm/stall-director.js";
 import type { PlannerProposal } from "../../../src/application/campaign/ports/dm-ports.js";
 import type { AdventureBible, BibleInteraction } from "../../../src/domain/campaign/adventure/adventure-bible.js";
 import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign-event.js";
@@ -81,6 +81,19 @@ describe("fights the adventure scheduled", () => {
     expect(scheduledEffects(bible2, at({ ...night, clues: [{ id: "clue:midnight", text: "" }] }), sceneEvents(1))).toEqual([]);
     expect(scheduledEffects(bible2, at({ world: { time: "dusk", day: 1 }, clues: [{ id: "clue:midnight", text: "" }] }), sceneEvents(5))).toEqual([]);
     expect(scheduledEffects(bible2, at(night), sceneEvents(5))).toEqual([]);
+  });
+
+  it("brings the time a fight is set for to a table that waits for it, once everything else is in place", () => {
+    const bible2 = withFight({ time: "night" as never, afterRounds: 1, requires: { clues: ["clue:midnight" as never] } });
+    const knowing = { clues: [{ id: "clue:midnight", text: "" }] };
+    // Dusk to night is one phase; it waits for at least two rounds in the scene.
+    expect(scheduledWait(bible2, at({ world: { time: "dusk", day: 1 }, ...knowing }), sceneEvents(2))).toBe(1);
+    expect(scheduledWait(bible2, at({ world: { time: "dusk", day: 1 }, ...knowing }), sceneEvents(1))).toBe(0);
+    expect(scheduledWait(bible2, at({ world: { time: "morning", day: 1 }, ...knowing }), sceneEvents(3))).toBe(4);
+    // Not without the clue, not when it is already night (then the fight itself is due), and never for an adventure with no clock.
+    expect(scheduledWait(bible2, at({ world: { time: "dusk", day: 1 } }), sceneEvents(3))).toBe(0);
+    expect(scheduledWait(bible2, at({ world: { time: "night", day: 1 }, ...knowing }), sceneEvents(3))).toBe(0);
+    expect(scheduledWait(bible2, at(knowing), sceneEvents(3))).toBe(0);
   });
 
   it("starts a fight with no conditions as soon as a round is planned in its scene, and never twice or during another fight", () => {

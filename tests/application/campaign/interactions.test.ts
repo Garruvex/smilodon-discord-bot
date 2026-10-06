@@ -102,6 +102,17 @@ describe("a step the story takes by itself", () => {
     expect(resolved.proposal.effects).toContainEqual(expect.objectContaining({ effect: expect.objectContaining({ kind: "revealClue", clueId: "clue:tracks" }), when: { kind: "always" } }));
     expect(resolved.proposal.effects).toContainEqual({ effect: { kind: "setFlag", flag: "cellar-open", value: 1 }, when: { kind: "always" } });
     expect((resolved.proposal.effects ?? []).some(({ effect }) => effect.kind === "setFlag" && effect.flag === "spooked")).toBe(false);
+    // Its tier (a reward for a high roll) cannot happen without a roll, and nothing may hang on a check nobody makes: the engine would refuse the plan.
+    expect((resolved.proposal.effects ?? []).filter(({ when }) => when.kind !== "always")).toEqual([]);
+  });
+});
+
+describe("time the story passes by itself", () => {
+  it("is planned as one advance of the clock, on no one's check", () => {
+    const { bible } = parseAdventureDocument(yaml(search));
+    const resolved = resolveStoryEffects({ ...proposal(null), worldTime: 2 }, bible, inField);
+    if (resolved.kind !== "resolved") throw new Error(JSON.stringify(resolved));
+    expect(resolved.proposal.effects).toContainEqual({ effect: { kind: "advanceTime", steps: 2 }, when: { kind: "always" } });
   });
 });
 
