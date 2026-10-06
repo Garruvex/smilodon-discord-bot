@@ -320,6 +320,9 @@ export function buildNarratorPrompt(request: NarratorRequest): { system: string;
   const stalled = request.nudge === undefined
     ? ""
     : `\nThe table has been circling without the story moving. End the narration with one concrete, natural thing in the scene that invites this kind of action, in the world's own terms: "${request.nudge}". Never present it as a choice, a game option, a skill, or a check, and do not say it is a hint.`;
+  const avoided = request.avoid === undefined || request.avoid.length === 0
+    ? ""
+    : `\nYour last telling invented facts the adventure never established: ${request.avoid.map((entry) => `"${entry}"`).join(", ")}. Tell it again without them, and without replacing them with other invented facts.`;
   const outcomes = request.outcomes.map((outcome) => `- ${describeOutcome(outcome)}`).join("\n");
   const spotlight = request.spotlight.length > 0 ? `\nQuiet heroes to invite: ${request.spotlight.join(", ")}.` : "";
   const threat =
@@ -327,7 +330,7 @@ export function buildNarratorPrompt(request: NarratorRequest): { system: string;
       ? ""
       : `\nA fight breaks out right after this: ${request.threat} End on the fight erupting instead of a question; do not describe any attacks.`;
   return {
-    ...splitPrompt(request.context, rules, `Round ${request.roundNumber} outcomes:\n${outcomes || "- Nobody acted."}${spotlight}${threat}${stalled}`),
+    ...splitPrompt(request.context, rules, `Round ${request.roundNumber} outcomes:\n${outcomes || "- Nobody acted."}${spotlight}${threat}${stalled}${avoided}`),
   };
 }
 
@@ -512,6 +515,7 @@ export function buildDialogueNarratorPrompt(request: DialogueNarratorRequest): {
     ...(request.tells === undefined || request.tells.length === 0
       ? []
       : [`This NPC is willing to tell the hero the following, which the adventure has decided they share now. Say it in the NPC's own voice and manner, naturally and completely, adding nothing to it and leaving nothing out: ${request.tells.map((tell) => `"${tell}"`).join(" ")}`]),
+    ...(request.avoid === undefined || request.avoid.length === 0 ? [] : [`Your last answer invented facts the adventure never established: ${request.avoid.map((entry) => `"${entry}"`).join(", ")}. Answer again without them, and without replacing them with other invented facts.`]),
     "Never mention dice, DCs, or checks.",
   ].join("\n");
   const situation =
@@ -616,6 +620,8 @@ export function describeBeat(beat: CombatBeat): string {
 }
 
 // ---------------------------------------------------------------- Shared
+
+export const renderContext = (context: DmContext): string => renderSections(context.sections);
 
 function renderSections(sections: DmContext["sections"]): string {
   return sections.map((section) => `## ${section.layer}. ${section.title}\n${section.text}`).join("\n\n");

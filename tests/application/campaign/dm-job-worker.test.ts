@@ -12,7 +12,8 @@ import type { CampaignKey } from "../../../src/application/campaign/ports/campai
 import { SeededRandomSource } from "../../../src/application/campaign/random/seeded-random-source.js";
 import { RulesetCatalog } from "../../../src/application/campaign/rules/ruleset-catalog.js";
 import { ManualClock } from "../../../src/application/campaign/time/manual-clock.js";
-import { DmJobWorker } from "../../../src/application/campaign/workers/dm-job-worker.js";
+import { DmJobWorker, type DmJobWorkerOptions } from "../../../src/application/campaign/workers/dm-job-worker.js";
+import type { CampaignNarrationAuditor } from "../../../src/application/campaign/ports/dm-ports.js";
 import { RollWorker } from "../../../src/application/campaign/workers/roll-worker.js";
 import { enSrd51Glossary } from "../../../src/application/i18n/campaign/glossary/en/srd-5.1.js";
 import { zhTwSrd51Glossary } from "../../../src/application/i18n/campaign/glossary/zh-TW/srd-5.1.js";
@@ -70,7 +71,7 @@ interface Table {
   readonly narrator: ScriptedNarrator;
 }
 
-async function table(planner: ScriptedPlanner, narrator: ScriptedNarrator, state = startState()): Promise<Table> {
+async function table(planner: ScriptedPlanner, narrator: ScriptedNarrator, state = startState(), extra: Partial<DmJobWorkerOptions> = {}): Promise<Table> {
   const store = new InMemoryCampaignStore();
   const clock = new ManualClock(0);
   const content = ruleset().content;
@@ -91,6 +92,7 @@ async function table(planner: ScriptedPlanner, narrator: ScriptedNarrator, state
     adventures: { find: (id, version): AdventureBible | undefined => (id === testBible.id && version === testBible.version ? testBible : undefined) },
     glossaries: { en: enSrd51Glossary, "zh-TW": zhTwSrd51Glossary },
     maxAttempts: 2,
+    ...extra,
   });
   const rolls = new RollWorker(store, bus, new SeededRandomSource(4), clock);
   return { store, bus, worker, rolls, planner, narrator };
@@ -257,6 +259,57 @@ describe("DmJobWorker", () => {
     const log = await events(store);
     expect(log.some((event) => event.kind === "roundPlanApplied")).toBe(true);
     expect(log.some((event) => event.kind === "plannerFailed")).toBe(false);
+  });
+
+  describe("reading each telling against what the adventure established", () => {
+    const automatic = (): ScriptedPlanner => new ScriptedPlanner([{ roundNumber: 1, actions: [{ characterId: "c-mira", resolution: { kind: "automatic", reason: "No one is looking." } }] }]);
+    const auditor = (answers: (string[] | Error)[]): { audited: string[]; auditor: CampaignNarrationAuditor } => {
+      const audited: string[] = [];
+      return { audited, auditor: { audit: (request) => { audited.push(request.text); const answer = answers.shift() ?? []; return answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer); } } };
+    };
+
+    it("lets an honest line through untouched", async () => {
+      const narrator = new ScriptedNarrator([{ text: "Mira slips by the guard.", note: "" }]);
+      const watch = auditor([[]]);
+      const { store, bus, worker } = await table(automatic(), narrator, startState(), { auditor: watch.auditor });
+      await closeRoundOne(bus);
+      await worker.runOnce();
+      await worker.runOnce();
+      expect(watch.audited).toEqual(["Mira slips by the guard."]);
+      expect(narrator.requests).toHaveLength(1);
+      expect((await events(store)).filter((event) => event.kind === "narrationRecorded")).toHaveLength(1);
+    });
+
+    it("tells a line again, once, without what it invented", async () => {
+      const narrator = new ScriptedNarrator([{ text: "Mira pockets a silver coin.", note: "" }, { text: "Mira slips by the guard.", note: "" }]);
+      const watch = auditor([["a silver coin"], []]);
+      const { store, bus, worker } = await table(automatic(), narrator, startState(), { auditor: watch.auditor });
+      await closeRoundOne(bus);
+      await worker.runOnce();
+      await worker.runOnce();
+      expect(narrator.requests[1]?.avoid).toEqual(["a silver coin"]);
+      expect(await events(store)).toContainEqual({ kind: "narrationRecorded", roundNumber: 1, text: "Mira slips by the guard." });
+    });
+
+    it("uses the plain line when the second telling still invents", async () => {
+      const narrator = new ScriptedNarrator([{ text: "A silver coin.", note: "" }, { text: "A gold ring.", note: "" }]);
+      const watch = auditor([["a silver coin"], ["a gold ring"]]);
+      const { store, bus, worker } = await table(automatic(), narrator, startState(), { auditor: watch.auditor });
+      await closeRoundOne(bus);
+      await worker.runOnce();
+      await worker.runOnce();
+      expect(await events(store)).toContainEqual({ kind: "narrationRecorded", roundNumber: 1, text: "Mira: I sneak past Garrick." });
+    });
+
+    it("never lets a failing auditor stop play", async () => {
+      const narrator = new ScriptedNarrator([{ text: "Mira slips by the guard.", note: "" }]);
+      const watch = auditor([new Error("503")]);
+      const { store, bus, worker } = await table(automatic(), narrator, startState(), { auditor: watch.auditor });
+      await closeRoundOne(bus);
+      await worker.runOnce();
+      expect(await worker.runOnce()).toEqual({ processed: 1, failed: [] });
+      expect(await events(store)).toContainEqual({ kind: "narrationRecorded", roundNumber: 1, text: "Mira slips by the guard." });
+    });
   });
 
   it("falls back to template narration when the Narrator keeps failing, so play continues", async () => {

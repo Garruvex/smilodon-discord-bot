@@ -6,7 +6,7 @@ import { dcLadder, rollModeReasons } from "../../../domain/campaign/rules/diffic
 import { abilities } from "../../../domain/campaign/rules/effects.js";
 import { lootGold } from "../../../domain/campaign/rules/house-rules.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
-import type { SceneId } from "../../../domain/campaign/adventure/adventure-bible.js";
+import type { CampaignLanguage, SceneId } from "../../../domain/campaign/adventure/adventure-bible.js";
 import type { CampaignCommandBus } from "../campaign-command-bus.js";
 import { assembleContext, defaultContextBudget, renderTranscript, type ContextAudience } from "../dm/context-assembler.js";
 import { latestSummaryRound } from "../../../domain/campaign/engine/dm.js";
@@ -22,6 +22,7 @@ import type { CampaignKey, CampaignUnitOfWork, OutboxItem, StoredCampaign } from
 import type {
   AdventureCatalog,
   CampaignChronicler,
+  CampaignNarrationAuditor,
   CampaignNarrator,
   CampaignPlanner,
   CampaignSceneNoteJudge,
@@ -46,6 +47,8 @@ export interface DmJobWorkerOptions {
   // Condenses rounds in the background; without one, summaries are simply not made.
   readonly chronicler?: CampaignChronicler;
   readonly noteJudge?: CampaignSceneNoteJudge;
+  // Reads each narration and NPC line against what the adventure established, so an invented item or demand is told again without it. Without one, lines go as written.
+  readonly auditor?: CampaignNarrationAuditor;
   readonly adventures: AdventureCatalog;
   readonly glossaries: Readonly<Record<string, Glossary>>;
   // Resolves each campaign's pinned ruleset, so the narrator can be given reference cards for the monsters in a fight.
@@ -198,9 +201,14 @@ export class DmJobWorker {
     let text: string;
     let note = "";
     try {
-      const narrated = await this.options.narrator.narrate(request);
-      text = narrated.text;
-      note = narrated.note ?? "";
+      // Read against what the adventure established: an invented item or demand is told again once without it, and a line that still invents is replaced by the plain one.
+      const facts = [...request.outcomes.map((outcome) => `${outcome.heroName} attempted: "${outcome.action}" (${outcome.result.kind})`), ...(request.threat === null ? [] : [request.threat])];
+      const narrated = await this.audited("narration", request, facts, (asked) => this.options.narrator.narrate(asked));
+      if (narrated === undefined) text = fallbackNarration(request);
+      else {
+        text = narrated.text;
+        note = narrated.note ?? "";
+      }
     } catch (error) {
       if (item.attempts + 1 < this.maxAttempts) throw error;
       text = fallbackNarration(request);
@@ -424,7 +432,10 @@ export class DmJobWorker {
     const told = current?.kind === "ask" ? tellsFor(loaded.bible.npcs.find((npc) => npc.id === current.npcId), current.question, loaded.stored.state, loaded.bible) : [];
     let text: string;
     try {
-      text = (await this.options.narrator.narrateDialogue(told.length === 0 ? request : { ...request, tells: told.map((tell) => tell.text) })).text;
+      const asked = told.length === 0 ? request : { ...request, tells: told.map((tell) => tell.text) };
+      const facts = [`${request.heroName} says to ${request.npc.name}: "${request.question ?? ""}"`, ...told.map((tell) => `${request.npc.name} may say: ${tell.text}`), ...(request.npc.secret === null ? [] : [`${request.npc.name} may reveal: ${request.npc.secret}`])];
+      const said = await this.audited("dialogue", asked, facts, async (next) => ({ text: (await this.options.narrator.narrateDialogue(next)).text }));
+      text = said?.text ?? fallbackDialogueNarration(request);
     } catch (error) {
       if (item.attempts + 1 < this.maxAttempts) throw error;
       text = fallbackDialogueNarration(request);
@@ -598,6 +609,35 @@ export class DmJobWorker {
     // A table that keeps circling is nudged toward something the scene has ready (the first step of the director).
     const lead = this.options.stall === false || stallLevel(stalledRounds(loaded.events), this.options.stall ?? defaultStall) < 1 ? undefined : openLead(loaded.bible, state);
     return { context: this.context("narrator", loaded), language: state.language, roundNumber, outcomes, spotlight, threat, ...(lead === undefined ? {} : { nudge: plainLabel(lead.label) }) };
+  }
+
+  // Tells it, has the line read against what the adventure established (when an auditor is set up), and tells it again once without what it invented.
+  // Returns undefined when the second telling still invents: the caller then uses the plain line. An auditor that fails never blocks play.
+  private async audited<R extends { readonly context: DmContext; readonly language: CampaignLanguage; readonly avoid?: readonly string[] }, T extends { readonly text: string }>(
+    kind: "narration" | "dialogue",
+    request: R,
+    facts: readonly string[],
+    generate: (request: R) => Promise<T>,
+  ): Promise<T | undefined> {
+    const first = await generate(request);
+    const auditor = this.options.auditor;
+    if (auditor === undefined) return first;
+    const invented = async (text: string): Promise<readonly string[]> => {
+      try {
+        return await auditor.audit({ context: request.context, language: request.language, kind, text, facts });
+      } catch (error) {
+        this.options.logger?.warn({ err: error, kind }, "The narration auditor failed; the line is let through");
+        return [];
+      }
+    };
+    const found = await invented(first.text);
+    if (found.length === 0) return first;
+    this.options.logger?.warn({ kind, invented: found }, "A line invented facts; it is told again without them");
+    const second = await generate({ ...request, avoid: found });
+    const again = await invented(second.text);
+    if (again.length === 0) return second;
+    this.options.logger?.warn({ kind, invented: again }, "The second telling still invented facts; the plain line is used");
+    return undefined;
   }
 
   // The stall director's step for this round (see dm/stall-director.ts), logged when it acts.

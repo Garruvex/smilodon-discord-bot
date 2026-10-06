@@ -101,6 +101,8 @@ export interface NarratorRequest {
   // Set for the adventure's opening, told before the first round (round 0, no
   // outcomes): the heroes to introduce as the party.
   readonly opening?: { readonly heroes: readonly { readonly name: string; readonly className: string | null }[] };
+  // Facts the last attempt invented (the adventure did not establish them): tell it again without them.
+  readonly avoid?: readonly string[];
   // The table has gone several rounds without the story moving: something the scene has ready, in the players' words, for the narration to point at.
   readonly nudge?: string;
 }
@@ -151,6 +153,8 @@ export interface DialogueNarratorRequest {
   readonly secretRevealed: boolean;
   // What the NPC tells in this reply (facts the adventure says this NPC shares, already decided): the narrator voices them, adding nothing.
   readonly tells?: readonly string[];
+  // Facts the last attempt invented (the adventure did not establish them): say it again without them.
+  readonly avoid?: readonly string[];
 }
 
 // A ritual (or cantrip) spell cast outside combat (engine/utility-magic.ts):
@@ -225,6 +229,20 @@ export interface SceneNoteJudgment {
   readonly decision: "keep" | "reword" | "drop";
   readonly text: string;
   readonly reason: string;
+}
+
+// A line about to be shown, to be read against what the adventure established. Returns what it invented (an item, a price, a demand, a person): empty when nothing.
+export interface NarrationAuditRequest {
+  readonly context: DmContext;
+  readonly language: CampaignLanguage;
+  readonly kind: "narration" | "dialogue";
+  readonly text: string;
+  // What was committed in this moment (the outcomes, what the NPC was told to say), which the context above does not yet hold.
+  readonly facts: readonly string[];
+}
+
+export interface CampaignNarrationAuditor {
+  audit(request: NarrationAuditRequest): Promise<readonly string[]>;
 }
 
 export interface CampaignSceneNoteJudge {
