@@ -26,7 +26,7 @@ forward, and write down the way forward *when things go badly*.
 | `unreachable-scene` | No exit, `goto` or arrival leads to the scene, even when everything succeeds. | Add the exit or `goto`, or delete the scene. |
 | `dead-end-scene` | A scene lists `exits: []` and is not an ending, so the party is stuck. | Give it an exit, or mark it `ending: true`. |
 | `unsatisfiable-requirement` | An exit or interaction needs a flag or clue that nothing ever sets or reveals. | Set the flag or reveal the clue somewhere, or drop the requirement. |
-| `ending-stranded` | An ending can be reached only if some roll succeeds (or some paid step is paid). With every roll failing, the story stops. | Give each gate a way that needs no roll, or an `onFailure` that still moves on. |
+| `ending-stranded` | When every roll fails and every fight is lost, no ending can be reached. | Add a floor ending that bad luck cannot close, and give gates a no-roll way (an automatic interaction, an NPC `tells`, an arrival effect, or a `fallback` step), an `onFailure` that moves on, and every fight an `onDefeat` that lets the story go on at a cost. Good endings may need success. |
 | `rolled-gate` (warning) | One roll, one attempt, no failure branch decides something the story needs. | Add attempts, an `onFailure`, or another interaction that gives the same result. |
 | `no-ending` (warning) | No scene is marked `ending: true`, so finishing cannot be checked. | Mark the final scene(s). |
 
@@ -54,7 +54,7 @@ forward, and write down the way forward *when things go badly*.
    a patient guide would simply let happen. If the table goes about nine rounds without the story moving, the engine takes that step for them with no
    roll and no fee (after a hint at three rounds and a free clue at six). Only an adventure can authorize this, so choose steps that do not take
    away a choice the story established (reading the rune, opening the gate, the elder finally speaking) and never one that decides an ending.
-9. **Make failure a branch, not a wall.** A lost negotiation can lead to the fight. A failed search can cost time. A failed lock can be broken,
+9. **Make failure a branch, not a wall.** (A lost fight too: give each fight an `onDefeat`: the party is carried off, robbed, or driven back, and the story goes on.) A lost negotiation can lead to the fight. A failed search can cost time. A failed lock can be broken,
    noisily. The story continues; it just gets harder.
 10. **Add a floor ending.** If the party fails everything, there is still a scene that closes the story (the village suffers, the culprit escapes,
    the festival goes on without them). Mark it `ending: true`.

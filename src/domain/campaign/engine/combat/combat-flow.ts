@@ -287,6 +287,8 @@ export function endIfDecided(decision: Decision): boolean {
     }
     for (const effect of encounter.spec.onVictory ?? []) decision.applyStory(decision.state.lastRoundNumber, effect);
   }
+  // A lost fight still leaves the story a way on, when the adventure wrote one.
+  if (foesLeft) for (const effect of encounter.spec.onDefeat ?? []) decision.applyStory(decision.state.lastRoundNumber, effect);
   decision.request({ kind: "deliver", delivery: { kind: "encounterEnded", encounterId: encounter.id } });
   // The closing narration covers the last round; exploration resumes after it.
   decision.request({ kind: "narrateCombat", encounterId: encounter.id, round: encounter.round, final: true });

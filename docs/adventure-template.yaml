@@ -154,6 +154,10 @@ encounters:
       - { monsterId: monster:giant-crab, zoneId: water }
     onVictory:
       - { kind: set, flag: shrine-handled }
+    # A LOST FIGHT MUST STILL LEAVE A WAY ON. Here the party is driven off and the story goes to the floor ending. It could instead set the flag at a
+    # cost (captured, wounded, robbed) so the story goes on.
+    onDefeat:
+      - { kind: goto, scene: scene:the-road-away }
 
 # The ready-made heroes the adventure ships with. Copy them as they are; do not invent bonuses.
 heroes:

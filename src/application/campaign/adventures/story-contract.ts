@@ -77,7 +77,7 @@ function apply(bible: AdventureBible, progress: Progress, effects: readonly Bibl
   return changed;
 }
 
-// A fight is won in both plays (a lost fight is the table's choice and the engine's, not a dice gate): its truce and victory effects follow.
+// A fight is won in the optimistic play (its truce and victory effects follow) and lost in the pessimistic one (only its onDefeat effects follow).
 function fight(bible: AdventureBible, progress: Progress, encounterId: string, mode: Mode, depth: number): boolean {
   const key = `fight:${encounterId}`;
   if (progress.done.has(key) || depth > 8) return false;
@@ -85,7 +85,7 @@ function fight(bible: AdventureBible, progress: Progress, encounterId: string, m
   const encounter = bible.encounters.find((candidate) => candidate.id === encounterId);
   if (encounter === undefined) return true;
   const trigger = (encounter.triggers ?? []).flatMap((entry) => entry.effects.filter((effect) => effect.kind !== "add" && effect.kind !== "end" && effect.kind !== "announce"));
-  apply(bible, progress, [...trigger, ...(encounter.onVictory ?? [])] as readonly BibleEffect[], mode, depth + 1);
+  apply(bible, progress, (mode === "optimistic" ? [...trigger, ...(encounter.onVictory ?? [])] : (encounter.onDefeat ?? [])) as readonly BibleEffect[], mode, depth + 1);
   return true;
 }
 
@@ -143,6 +143,7 @@ function holders(bible: AdventureBible): { readonly flags: Map<string, string[]>
   for (const interaction of bible.interactions ?? []) scan([...interaction.onSuccess, ...interaction.onFailure, ...interaction.tiers.flatMap((tier) => tier.effects)], interaction.id);
   for (const encounter of bible.encounters) {
     scan(encounter.onVictory ?? [], encounter.id);
+    scan(encounter.onDefeat ?? [], encounter.id);
     for (const trigger of encounter.triggers ?? []) scan(trigger.effects.filter((effect) => effect.kind !== "add" && effect.kind !== "end" && effect.kind !== "announce") as readonly BibleEffect[], encounter.id);
   }
   return { flags, clues };
@@ -191,8 +192,10 @@ export function analyzeStoryContract(bible: AdventureBible): readonly StoryFindi
       }
     }
     // The pessimistic story: every roll fails. What still reaches an ending?
+    // The story must always be able to finish: one ending (a floor ending, however poor) that bad luck cannot close is enough. The good endings may need success.
     const reachableEndings = endings.filter((scene) => optimistic.scenes.has(scene.id));
-    for (const ending of reachableEndings) {
+    const finishesAnyway = reachableEndings.some((scene) => pessimistic.scenes.has(scene.id));
+    for (const ending of finishesAnyway ? [] : reachableEndings) {
       if (pessimistic.scenes.has(ending.id)) continue;
       // Only what something actually requires is a gate; a flag nobody reads is not why the way is shut.
       const missingFlags = [...optimistic.flags].filter((flag) => !pessimistic.flags.has(flag) && gating.flags.has(flag));
@@ -204,8 +207,8 @@ export function analyzeStoryContract(bible: AdventureBible): readonly StoryFindi
       found({
         severity: "error",
         rule: "ending-stranded",
-        message: `${ending.id} cannot be reached when the rolls go badly: nothing automatic leads there. Out of reach: ${blockers.join("; ") || "a route that needs a successful roll"}.`,
-        fix: "Give each of those a way that needs no roll (an automatic interaction or an arrival effect), or a failure branch (onFailure) that still moves the story on.",
+        message: `No ending can be reached when the rolls go badly (${ending.id} is shut): nothing automatic leads there. Out of reach: ${blockers.join("; ") || "a route that needs a successful roll"}.`,
+        fix: "Add a floor ending that bad luck cannot close (a scene marked ending: true that something automatic leads to), or give each of those a way that needs no roll (an automatic interaction, an NPC tell or an arrival effect), a failure branch (onFailure) that still moves the story on, a fallback step, or, for a fight, an onDefeat that lets the story go on at a cost.",
       });
     }
     for (const interaction of bible.interactions ?? []) {

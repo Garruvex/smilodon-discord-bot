@@ -200,6 +200,9 @@ export interface BibleEncounter {
   readonly triggers?: readonly BibleTrigger[];
   // Story effects when the party wins (a fight never starts another fight).
   readonly onVictory?: readonly BiblePartyEffect[];
+  // Story effects when the party loses it. A lost fight must still leave the story a way on: set the flag that lets the story go forward at a cost,
+  // or move the party somewhere (captured, left for dead). Without it nothing authored happens when the party loses.
+  readonly onDefeat?: readonly BiblePartyEffect[];
   // Which side is taken by surprise (the story says so outright). Absent: nobody, unless the ambush below catches the party.
   readonly surprised?: "party" | "foes";
   // The fight breaks out by itself when all of this holds, on a round where the party acts: they are in this scene, the requirement is met,
@@ -310,6 +313,7 @@ export function encounterSpec(encounter: BibleEncounter, bible?: AdventureBible)
     effects: trigger.effects.flatMap((effect, position) => fightEffectsOf(effect, `${id}:trigger${index}:${position}`, bible)),
   }));
   const onVictory = (encounter.onVictory ?? []).flatMap((effect, position) => withArrival(storyEffectOf(effect, `${id}:victory:${position}`, bible), bible));
+  const onDefeat = (encounter.onDefeat ?? []).flatMap((effect, position) => withArrival(storyEffectOf(effect, `${id}:defeat:${position}`, bible), bible));
   return {
     id,
     zones,
@@ -323,6 +327,7 @@ export function encounterSpec(encounter: BibleEncounter, bible?: AdventureBible)
     ...(reinforcements === undefined ? {} : { reinforcements }),
     ...(triggers.length === 0 ? {} : { triggers }),
     ...(onVictory.length === 0 ? {} : { onVictory }),
+    ...(onDefeat.length === 0 ? {} : { onDefeat }),
     ...(surprised === undefined ? {} : { surprised }),
     ...(ambush === undefined ? {} : { ambush }),
     ...(dread === undefined ? {} : { dread }),

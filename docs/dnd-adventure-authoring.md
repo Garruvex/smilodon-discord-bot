@@ -101,6 +101,7 @@ encounters:
           - { kind: add, monsters: [...] }     # foes arrive
           - { kind: end }                      # a truce: the fight ends as a win
     onVictory: [{ kind: set, flag: settled }, { kind: goto, scene: scene:hut }]
+    onDefeat: [{ kind: goto, scene: scene:cell }]    # a lost fight still leaves the story a way on (the same kinds as onVictory)
 ```
 
 ## What the engine keeps for itself

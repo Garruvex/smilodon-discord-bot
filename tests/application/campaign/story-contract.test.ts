@@ -91,8 +91,35 @@ describe("scheduled fights", () => {
   it("count as a free way on: a fight that breaks out by itself and sets the flag a gate needs", () => {
     const scenes = [scene("scene:a", { exits: [{ to: "scene:b" as never, requires: { flags: ["won"] } }] }), scene("scene:b", { ending: true, exits: [] })];
     const base = story(scenes);
-    const fightOnly = (schedule?: object): AdventureBible => ({ ...base, interactions: [interaction("start", "scene:a", { check: { skill: "stealth", dc: 12 }, onSuccess: [{ kind: "encounter", encounter: "encounter:ambush" as never }] })], encounters: [{ id: "encounter:ambush", sceneId: "scene:a", publicDescription: "", dmNotes: "", zones: [], edges: [], partyZoneId: "", monsters: [], loot: [], gold: 0, onVictory: [{ kind: "set", flag: "won" }], ...(schedule === undefined ? {} : { schedule }) }] as never });
+    const fightOnly = (schedule?: object): AdventureBible => ({ ...base, interactions: [interaction("start", "scene:a", { check: { skill: "stealth", dc: 12 }, onSuccess: [{ kind: "encounter", encounter: "encounter:ambush" as never }] })], encounters: [{ id: "encounter:ambush", sceneId: "scene:a", publicDescription: "", dmNotes: "", zones: [], edges: [], partyZoneId: "", monsters: [], loot: [], gold: 0, onVictory: [{ kind: "set", flag: "won" }], onDefeat: [{ kind: "set", flag: "won" }], ...(schedule === undefined ? {} : { schedule }) }] as never });
     expect(rules(fightOnly())).toContain("ending-stranded");
     expect(rules(fightOnly({ afterRounds: 1 }))).toEqual([]);
+  });
+});
+
+describe("a lost fight", () => {
+  it("must still leave the story a way on", () => {
+    const scenes = [scene("scene:a", { exits: [{ to: "scene:b" as never, requires: { flags: ["won"] } }] }), scene("scene:b", { ending: true, exits: [] })];
+    const fightWith = (onDefeat: readonly object[]): AdventureBible => ({
+      ...story(scenes, [interaction("fight", "scene:a", { onSuccess: [{ kind: "encounter", encounter: "encounter:boss" as never }] })]),
+      encounters: [{ id: "encounter:boss", sceneId: "scene:a", publicDescription: "", dmNotes: "", zones: [], edges: [], partyZoneId: "", monsters: [], loot: [], gold: 0, onVictory: [{ kind: "set", flag: "won" }], onDefeat }] as never,
+    });
+    expect(rules(fightWith([]))).toContain("ending-stranded");
+    // Beaten, the party is carried off; the way on is still there, at a cost.
+    expect(rules(fightWith([{ kind: "set", flag: "won" }]))).toEqual([]);
+  });
+});
+
+describe("endings", () => {
+  it("lets the good ending need success as long as a floor ending is always open", () => {
+    const scenes = [
+      scene("scene:a", { exits: [{ to: "scene:good" as never, requires: { flags: ["door-open"] } }, { to: "scene:floor" as never }] }),
+      scene("scene:good", { ending: true, exits: [] }),
+      scene("scene:floor", { ending: true, exits: [] }),
+    ];
+    const rolled = interaction("pick-the-lock", "scene:a", { check: { skill: "thievery", dc: 15 }, onSuccess: [{ kind: "set", flag: "door-open" }] });
+    expect(rules(story(scenes, [rolled]))).toEqual([]);
+    // Without the floor ending, a bad roll closes the story.
+    expect(rules(story(scenes.slice(0, 2).map((entry, index) => (index === 0 ? scene("scene:a", { exits: [{ to: "scene:good" as never, requires: { flags: ["door-open"] } }] }) : entry)), [rolled]))).toContain("ending-stranded");
   });
 });

@@ -309,6 +309,7 @@ export interface EncounterSpec {
   readonly triggers?: readonly EncounterTrigger[];
   // Story effects applied when the party wins (after the loot and experience). Absent: none.
   readonly onVictory?: readonly PartyEffect[];
+  readonly onDefeat?: readonly PartyEffect[];
   // Foes lying in wait: unless some hero's passive Perception reaches this, the party is taken by surprise.
   readonly ambush?: { readonly dc: number };
   // Something dreadful as the fight breaks out: every hero saves against it, and one who fails is frightened until their first turn ends.

@@ -185,6 +185,7 @@ const documentSchema = z
             reinforcements: z.array(monsterEntry).max(6).optional(),
             triggers: z.array(triggerSchema).default([]),
             onVictory: z.array(victoryEffectSchema).default([]),
+            onDefeat: z.array(victoryEffectSchema).default([]),
             loot: z.array(contentId("item")).default([]),
             gold: z.number().int().min(0).default(0),
             milestoneLevel: z.number().int().min(2).max(20).optional(),
@@ -314,11 +315,12 @@ export function parseAdventureDocument(source: string): AdventureDocument {
   });
   // Same for the optional levels: absent, not undefined.
   const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
-  const bibleEncounters = encounters.map(({ milestoneLevel, triggers, onVictory, ...encounter }) => ({
+  const bibleEncounters = encounters.map(({ milestoneLevel, triggers, onVictory, onDefeat, ...encounter }) => ({
     ...(clean(encounter)),
     ...(milestoneLevel === undefined ? {} : { milestoneLevel }),
     ...(triggers.length === 0 ? {} : { triggers: clean(triggers) as unknown as readonly BibleTrigger[] }),
     ...(onVictory.length === 0 ? {} : { onVictory: clean(onVictory) as unknown as readonly BiblePartyEffect[] }),
+    ...(onDefeat.length === 0 ? {} : { onDefeat: clean(onDefeat) as unknown as readonly BiblePartyEffect[] }),
   }));
   // The same for the optional pieces of interactions, requirements and exits: absent, not undefined (a JSON round trip drops them).
   const bible: AdventureBible = {
@@ -359,6 +361,7 @@ export function checkEditionsMatch(editions: readonly AdventureDocument[]): read
         zones: encounter.zones.map((zone) => zone.id),
         triggers: withoutWords(encounter.triggers ?? []),
         onVictory: withoutWords(encounter.onVictory ?? []),
+        onDefeat: withoutWords(encounter.onDefeat ?? []),
       })),
       heroes: document.heroes.map(({ name: _name, ...mechanics }) => mechanics),
     });
@@ -448,6 +451,7 @@ function interactionProblems(data: z.infer<typeof documentSchema>): readonly str
       }
     });
     checkEffects(`${owner} victory`, encounter.onVictory as BibleEffect[]);
+    checkEffects(`${owner} defeat`, encounter.onDefeat as BibleEffect[]);
   }
   for (const scene of data.scenes) {
     checkEffects(`${scene.id} arrival`, (scene.onEnter ?? []) as BibleEffect[]);
