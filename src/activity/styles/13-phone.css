@@ -1,0 +1,13 @@
+/* On a phone the title shares its row with the buttons, so it is set smaller to keep the header (and the vote card under it) short. */
+@media (max-width: 480px) {
+  .live-header { row-gap: 6px; padding-block: 8px; }
+  .live-header .lobby-brand { gap: 8px; }
+  .live-header .lobby-brand-mark { width: 34px; height: 34px; flex: 0 0 34px; }
+  .live-header h1 { font-size: 21px; line-height: 1.12; overflow-wrap: anywhere; }
+  .presence-toggle, .live-heading-right .lobby-retry { min-height: 36px; padding-inline: 10px; font-size: 12px; }
+}
+@media (max-width: 480px) {
+  .live-header { grid-template-areas: "brand brand" "status actions"; }
+  .live-header-status { gap: 5px; }
+  .live-header-status .live-phase, .live-round { min-height: 36px; padding: 6px 9px; font-size: 11px; }
+}

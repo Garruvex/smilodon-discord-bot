@@ -33,7 +33,7 @@ describe("starting an encounter", () => {
     expect(fight.encounter.order).toEqual(["c-mira", "c-borin", "goblin-a", "goblin-b"]);
     expect(fight.encounter.status).toBe("active");
     expect(fight.current).toBe("c-mira");
-    expect(fight.combatant("c-mira").budget).toEqual({ action: true, bonusAction: true, reaction: true, movement: 30, attacksLeft: 1, bonusSpellCast: false });
+    expect(fight.combatant("c-mira").budget).toEqual({ action: true, bonusAction: true, reaction: true, movement: 30, attacksLeft: 1, bonusSpellCast: false, spellCast: false });
     expect(fight.requests).toContainEqual({
       kind: "startTimer",
       timer: { kind: "combatTurn", timerId: "turn:enc-1:1", dueAt: 180_000, encounterId: "enc-1", turnNumber: 1 },
@@ -301,5 +301,31 @@ describe("autopilot combat mode", () => {
       .rolls([20, 15, 5, 4, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15], [6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6])
       .run(organizer, { kind: "startEncounter", spec: skirmish });
     expect(fight.encounter.status).toBe("ended");
+  });
+});
+
+describe("a hero who goes down on their own turn", () => {
+  function downedOnOwnTurn(): { fight: Fight; id: string } {
+    const fight = startedFight();
+    const id = fight.current ?? "";
+    expect(fight.combatant(id).source.kind).toBe("hero");
+    const combatant = { ...fight.combatant(id), hp: 0, condition: "unconscious" as const };
+    fight.state = { ...fight.state, encounter: { ...fight.encounter, combatants: { ...fight.encounter.combatants, [id]: combatant } } };
+    return { fight, id };
+  }
+
+  it("can still end the turn, so the fight is not held until the timer runs out", () => {
+    const { fight, id } = downedOnOwnTurn();
+    const owner = fight.state.characters[id]?.ownerUserId ?? "";
+    fight.run({ kind: "user", userId: owner }, { kind: "endTurn", combatantId: id });
+    expect(fight.current).not.toBe(id);
+    expect(fight.kinds()).toContain("turnEnded");
+  });
+
+  it("cannot end the turn while a death save is still to be rolled", () => {
+    const { fight, id } = downedOnOwnTurn();
+    const owner = fight.state.characters[id]?.ownerUserId ?? "";
+    fight.state = { ...fight.state, encounter: { ...fight.encounter, pendingRolls: { r1: { purpose: "deathSave", combatantId: id, spec: { mode: "normal", modifier: 0, bonusDice: [] } } } as never } };
+    expect(fight.reject({ kind: "user", userId: owner }, { kind: "endTurn", combatantId: id })).toEqual({ code: "notYourTurn" });
   });
 });

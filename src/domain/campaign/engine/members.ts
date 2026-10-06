@@ -13,6 +13,7 @@ import { scheduleReminder } from "./reminders.js";
 import { reactionTimerId } from "./combat/reactions.js";
 import { smiteTimerId } from "./combat/smite.js";
 import { opportunityAttackTimerId } from "./combat/movement.js";
+import { rollChecksForAwayMember } from "./checks.js";
 import { awayRestriction, beginEncounter, onMemberAway, rearmedTurnDeadline, resumeCombat, turnTimerId } from "./combat/combat-flow.js";
 import { closeIfEveryoneResponded, enterWaiting, finishReadyCheck, finishRoundIfResolved, openRound } from "./rounds.js";
 
@@ -65,6 +66,7 @@ export function markAway(decision: Decision, userId: UserId): Rejection | null {
     if (restriction !== null) return restriction;
   }
   decision.emit({ kind: "memberMarkedAway", userId, reason });
+  rollChecksForAwayMember(decision, userId);
   onMemberAway(decision, userId);
   const round = decision.state.round;
   const characterId = member.characterId;
@@ -94,6 +96,24 @@ export function markReturned(decision: Decision, userId: UserId): Rejection | nu
   return null;
 }
 
+// The organizer frees an away player's seat so someone else can take it. Only between fights, and never the organizer's own.
+export function retireMember(decision: Decision, userId: UserId): Rejection | null {
+  const { state, ctx } = decision;
+  if (ctx.actor.kind !== "user" || ctx.actor.userId !== state.organizerId) return { code: "notOrganizer" };
+  const member = state.members[userId];
+  if (member === undefined) return { code: "notMember" };
+  if (userId === state.organizerId) return { code: "organizerStays" };
+  if (member.availability !== "away") return { code: "memberNotAway" };
+  if (state.encounter !== null && state.encounter.status !== "ended") return { code: "inCombat" };
+  const characterId = member.characterId;
+  decision.emit({ kind: "memberRetired", userId, characterId, name: characterId === null ? null : (state.characters[characterId]?.name ?? null) });
+  decision.request({ kind: "deliver", delivery: { kind: "seatFreed", name: characterId === null ? null : (state.characters[characterId]?.name ?? null) } });
+  const round = decision.state.round;
+  if (round?.status === "collecting") closeIfEveryoneResponded(decision);
+  if (decision.state.status === "active" && presentMembers(decision.state).length === 0) enterWaiting(decision);
+  return null;
+}
+
 // Resumes a campaign that was waiting for players, picking up held work:
 // planning, pending rolls (with fresh deadlines), or the next round.
 export function continueCampaign(decision: Decision): Rejection | null {
@@ -101,11 +121,18 @@ export function continueCampaign(decision: Decision): Rejection | null {
   if (ctx.actor.kind !== "user") return { code: "notMember" };
   const member = state.members[ctx.actor.userId];
   if (member === undefined && ctx.actor.userId !== state.organizerId) return { code: "notMember" };
-  if (member?.availability === "away") return { code: "memberAway" };
+  // Resting: the organizer's continue ends it, and the next round opens.
+  if (state.resting !== undefined && state.status === "active" && state.pausedBy === null) {
+    if (ctx.actor.userId !== state.organizerId) return { code: "notOrganizer" };
+    decision.emit({ kind: "restEnded" });
+    return openRound(decision, { skipActorCheck: true });
+  }
   if (state.status !== "waitingForPlayers") return { code: "campaignNotWaiting" };
   // A deliberate pause is the organizer's to lift.
   if (state.pausedBy !== null && ctx.actor.userId !== state.organizerId) return { code: "notOrganizer" };
-  if (presentMembers(state).length === 0) return { code: "nobodyPresent" };
+  // Resuming the table is also saying "I am back": an away organizer must not be locked out of their own table.
+  if (member?.availability === "away") decision.emit({ kind: "memberReturned", userId: ctx.actor.userId });
+  if (presentMembers(decision.state).length === 0) return { code: "nobodyPresent" };
 
   const checkDeadlines: Record<CheckId, Instant | null> = {};
   for (const check of Object.values(state.checks)) {
@@ -178,7 +205,8 @@ export function continueCampaign(decision: Decision): Rejection | null {
     if (decision.state.lastNarratedRound >= decision.state.lastRoundNumber) beginEncounter(decision, pending);
     return null;
   }
-  if (round === null) return openRound(decision);
+  // Still resting after the pause: the organizer finishes the rest with the next continue.
+  if (round === null) return decision.state.resting !== undefined ? null : openRound(decision);
   if (round.status === "planning") decision.request({ kind: "plan", roundNumber: round.number });
   if (round.status === "resolving") finishRoundIfResolved(decision);
   return null;

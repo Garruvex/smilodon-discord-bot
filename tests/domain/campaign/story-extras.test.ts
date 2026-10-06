@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { passivePerception } from "../../../src/domain/campaign/character/character-sheet.js";
-import type { EncounterSpec, PlannedEffect, RoundPlanProposal } from "../../../src/domain/campaign/commands/campaign-command.js";
+import type { EncounterSpec, PartyEffect, PlannedEffect, RoundPlanProposal } from "../../../src/domain/campaign/commands/campaign-command.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 import { alex, d20Roll, jamie, newCampaign, organizer, partyOfThree, run, system } from "./campaign-fixtures.js";
 import { Fight, skirmish } from "./combat-fixtures.js";
@@ -149,5 +149,47 @@ describe("a fight that opens in dread", () => {
     expect(frightened(fight)).toEqual([]);
     expect(fight.encounter.dreadFailed ?? []).toEqual([]);
     expect(fight.encounter.status).toBe("active");
+  });
+});
+
+describe("a borrowed monster made tougher", () => {
+  const withStats = (stats: EncounterSpec["monsters"][number]["stats"]): EncounterSpec => ({ ...skirmish, monsters: skirmish.monsters.map((monster, index) => (index === 0 ? { ...monster, ...(stats === undefined ? {} : { stats }) } : monster)) });
+
+  it("uses the adventure's hit points, armor class and attack bonuses for that monster only", () => {
+    const plain = new Fight(partyOfThree()).run(organizer, { kind: "startEncounter", spec: skirmish });
+    const tough = new Fight(partyOfThree()).run(organizer, { kind: "startEncounter", spec: withStats({ hp: 40, armorClass: 19, toHit: 3, damage: 2 }) });
+    const first = skirmish.monsters[0]?.monsterId.slice("monster:".length) ?? "";
+    const id = `${first}-a`;
+    const before = plain.combatant(id);
+    const after = tough.combatant(id);
+    expect(after).toMatchObject({ maxHp: 40, hp: 40, armorClass: 19 });
+    expect(after.attacks[0]?.toHit).toBe((before.attacks[0]?.toHit ?? 0) + 3);
+    expect(after.attacks[0]?.damage.modifier).toBe((before.attacks[0]?.damage.modifier ?? 0) + 2);
+    // The other monster is as it was.
+    const other = skirmish.monsters[1] === undefined ? "" : `${first}-b`;
+    expect(tough.combatant(other).maxHp).toBe(plain.combatant(other).maxHp);
+  });
+});
+
+describe("what a scene brings with a long rest", () => {
+  const story: PartyEffect[] = [
+    { kind: "notice", noticeId: "rest:n", text: "The fire crackles low." },
+    { kind: "grantKeepsake", keepsake: { id: "dream-charm", name: "Dream charm", description: "Woven in your sleep." } },
+  ];
+  const rest = (kind: "short" | "long", effects: PartyEffect[]): ReturnType<typeof run> => run(partyOfThree(), organizer, { kind: "takeRest", rest: kind, story: effects });
+
+  it("plays the scene's lines and gifts once the rest is taken", () => {
+    const step = rest("long", story);
+    expect(step.events.some((event) => event.kind === "restTaken")).toBe(true);
+    expect(step.state.keepsakes).toMatchObject({ "dream-charm": { name: "Dream charm" } });
+    expect(deliveries(step)).toContainEqual({ kind: "storyNotice", text: "The fire crackles low." });
+    // A second long rest brings them nowhere again.
+    const again = run(step.state, organizer, { kind: "takeRest", rest: "long", story });
+    expect(deliveries(again)).not.toContainEqual({ kind: "storyNotice", text: "The fire crackles low." });
+  });
+
+  it("refuses anything but lines, clues, flags, rewards and keepsakes, and gives a short rest nothing", () => {
+    expect(() => rest("long", [{ kind: "transitionScene", sceneId: "scene:elsewhere" }])).toThrow(/invalidPlan/);
+    expect(() => rest("short", story)).toThrow(/invalidPlan/);
   });
 });

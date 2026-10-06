@@ -28,6 +28,8 @@ export const accents = {
   amber: 0xf1c40f,
   red: 0xe74c3c,
   blue: 0x3498db,
+  // A call for dice: nothing else on the Adventure panel wears it.
+  purple: 0x9b59b6,
   gray: 0x95a5a6,
 } as const;
 

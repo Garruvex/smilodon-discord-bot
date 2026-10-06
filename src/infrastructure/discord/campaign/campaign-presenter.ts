@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { escapeMarkdown } from "discord.js";
 
 import type { AdventureLibrary } from "../../../application/campaign/ports/adventure-library.js";
 import type { AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
@@ -7,7 +8,6 @@ import type { CampaignKey, CampaignUnitOfWork } from "../../../application/campa
 import { texts, type Texts } from "../../../application/i18n/texts.js";
 import { combatantName, encounterRecords, type CombatBeat } from "../../../application/campaign/dm/combat-records.js";
 import { buildOpportunityAttackView, buildReactionView, buildSmiteView } from "../../../application/campaign/views/campaign-views.js";
-import { abilityOf, type CheckTest } from "../../../domain/campaign/character/character-sheet.js";
 import { formatDiceExpression } from "../../../domain/campaign/dice/dice-expression.js";
 import { combatMode } from "../../../domain/campaign/rules/house-rules.js";
 import type { DeliverySpec } from "../../../domain/campaign/engine/engine-request.js";
@@ -17,7 +17,7 @@ import type { CampaignRecord } from "../../../application/campaign/ports/campaig
 import type { CampaignState, CheckState } from "../../../domain/campaign/state/campaign-state.js";
 import type { CampaignCardService } from "./campaign-card-service.js";
 import type { CampaignMessageGateway, MessageStyle } from "./campaign-message-gateway.js";
-import { skillKey } from "./text-keys.js";
+import { checkLabel } from "./text-keys.js";
 
 export interface PresenterOptions {
   readonly unitOfWork: CampaignUnitOfWork;
@@ -65,6 +65,16 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
     const combat = state === undefined ? null : this.combatText(record, state, events, text);
 
     switch (delivery.kind) {
+      case "actionIntent": {
+        const submitted = events.find((event) => event.kind === "actionSubmitted" && event.roundNumber === delivery.roundNumber && event.characterId === delivery.characterId && event.revision === delivery.revision);
+        if (submitted?.kind !== "actionSubmitted") break;
+        const hero = escapeMarkdown(state?.characters[delivery.characterId]?.name ?? delivery.characterId);
+        const intent = escapeMarkdown(submitted.text).replace(/\r?\n/g, "\n> ");
+        const zh = record.language === "zh-TW";
+        const label = delivery.revision > 1 ? (zh ? "更新意圖" : "Updated intent") : (zh ? "行動意圖" : "Action intent");
+        await say(adventureChannelId, `**${label} · ${hero}**\n> ${intent}\n${zh ? "等待判定。" : "Awaiting resolution."}`, [], "intent");
+        break;
+      }
       case "rollResult": {
         const line = state === undefined ? null : rollLine(events, state, delivery.checkId, text);
         const delay = this.options.revealDelayMs ?? 0;
@@ -83,12 +93,30 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
       case "narration":
         {
           const told = narration(events, delivery.roundNumber);
-          await say(adventureChannelId, told === null || delivery.regenerated !== true ? told : `${text.campaign.msg.retold}\n${told}`);
+          await say(adventureChannelId, told === null || delivery.regenerated !== true ? told : `${text.campaign.msg.retold}\n${told}`, [], "narration");
         }
         break;
       case "opening": {
         const opening = events.findLast((event) => event.kind === "openingRecorded");
-        await say(adventureChannelId, opening?.kind === "openingRecorded" ? opening.text : null);
+        await say(adventureChannelId, opening?.kind === "openingRecorded" ? opening.text : null, [], "narration");
+        break;
+      }
+      case "sceneMoveProposed": {
+        const bible = this.options.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
+        const scene = bible?.scenes.find((candidate) => candidate.id === delivery.sceneId);
+        if (scene !== undefined) {
+          await say(adventureChannelId, text.campaign.msg.sceneMoveProposed({ scene: escapeMarkdown(scene.title) }), [], "notice");
+        }
+        break;
+      }
+      case "sceneArrival": {
+        const bible = this.options.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
+        const scene = bible?.scenes.find((candidate) => candidate.id === delivery.sceneId);
+        const description = scene?.publicDescription.trim();
+        if (scene !== undefined) {
+          // Keep the move itself visible even when this scene has no public description.
+          await say(adventureChannelId, text.campaign.msg.sceneArrival({ scene: escapeMarkdown(scene.title), description: description ?? "" }));
+        }
         break;
       }
       case "heroArrival": {
@@ -112,7 +140,7 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         break;
       }
       case "combatNarration":
-        await say(adventureChannelId, combatNarration(events, delivery.round));
+        await say(adventureChannelId, combatNarration(events, delivery.round), [], "narration");
         break;
       case "attackResolved":
         if (playersFight) await say(adventureChannelId, combat?.action(delivery.attackId) ?? null, [], "action");
@@ -120,12 +148,29 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
       case "combatBeat":
         if (playersFight) await say(adventureChannelId, combat?.beat(delivery.combatantId, delivery.beat) ?? null, [], "action");
         break;
+      case "combatMove": {
+        if (!playersFight || state === undefined) break;
+        const bible = this.options.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
+        const glossary = this.options.glossaries[record.language];
+        const started = events.findLast((event) => event.kind === "encounterStarted" && event.encounter.id === delivery.encounterId);
+        const combatant = started?.kind === "encounterStarted" ? started.encounter.combatants[delivery.combatantId] : undefined;
+        if (bible !== undefined && glossary !== undefined && combatant !== undefined) {
+          await say(adventureChannelId, text.campaign.msg.combatMove({ actor: combatantName(combatant, { state, bible, glossary }), zone: delivery.zoneName }), [], "action");
+        }
+        break;
+      }
       case "deathSave":
         if (playersFight) await say(adventureChannelId, combat?.deathSave(delivery.combatantId) ?? null, [], "action");
         break;
       case "speech": {
         const hero = state?.characters[delivery.characterId];
         if (hero !== undefined) await say(adventureChannelId, text.campaign.msg.speech({ hero: hero.name, text: delivery.text }));
+        break;
+      }
+      case "rollsCalled": {
+        // Only a game played by post pings: at a live table the panel and the dice on the screen are enough.
+        const waiting = record.pacingPreset === "playByPost" && state !== undefined ? this.rollCall(state, delivery.roundNumber) : [];
+        if (waiting.length > 0) await say(adventureChannelId, text.campaign.msg.rollsCalled({ users: waiting.map((id) => `<@${id}>`).join(" ") }), waiting);
         break;
       }
       case "timerReminder": {
@@ -157,6 +202,12 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
       case "fightNotice":
       case "storyNotice":
         await say(adventureChannelId, delivery.text, [], "notice");
+        break;
+      case "seatFreed":
+        await say(adventureChannelId, delivery.name === null ? text.campaign.msg.seatFreedNobody : text.campaign.msg.seatFreed({ hero: delivery.name }), [], "notice");
+        break;
+      case "clueFound":
+        await say(adventureChannelId, `🔍 ${delivery.text}`, [], "notice");
         break;
       case "rewardFound": {
         // Gold and items an authored reward gave the party, from the saved loot event.
@@ -226,6 +277,12 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
         if (state !== undefined && bible !== undefined && glossary !== undefined) await say(adventureChannelId, outsideCombatText(delivery, events, state, bible, glossary, text));
         break;
       }
+      case "hitDiceSettled": {
+        // A hero spent Hit Dice on a short rest: what was rolled and healed, from the saved event alone.
+        const hero = state?.characters[delivery.characterId];
+        if (hero !== undefined) await say(adventureChannelId, text.campaign.msg.hitDiceSettled({ hero: hero.name, count: delivery.count, rolled: delivery.rolled, healed: delivery.healed, hp: delivery.hpAfter, max: hero.maxHp }), [], "notice");
+        break;
+      }
       case "healingSettled": {
         // A healing spell between fights: what was rolled and restored, from the saved event alone.
         const settled = events.findLast((event) => event.kind === "healingSettled" && event.healing.id === delivery.healingId);
@@ -273,6 +330,15 @@ export class DiscordCampaignPresenter implements CampaignPresenter {
 
   // Halfway through a long wait: only the players still being waited for are
   // named. Discord shows the time left in each reader's own clock.
+  // The players whose heroes still have a roll to make this round and who are at the table.
+  private rollCall(state: CampaignState, roundNumber: number): readonly string[] {
+    const owners = Object.values(state.checks)
+      .filter((check) => check.roundNumber === roundNumber && check.status === "pending")
+      .flatMap((check) => (state.characters[check.characterId] === undefined ? [] : [state.characters[check.characterId]?.ownerUserId ?? ""]))
+      .filter((userId) => userId !== "" && state.members[userId]?.availability === "present");
+    return [...new Set(owners)];
+  }
+
   private reminderNotice(state: CampaignState, target: Extract<DeliverySpec, { kind: "timerReminder" }>["target"], text: Texts): { readonly content: string; readonly userIds: readonly string[] } | null {
     const when = (at: number): string => `<t:${Math.floor(at / 1000)}:R>`;
     const present = (userId: string): boolean => state.members[userId]?.availability === "present";
@@ -415,9 +481,9 @@ function actionLine(beat: Extract<CombatBeat, { kind: "action" }>, text: Texts):
     if (target.condition === "dead") parts.push(t.combatDead);
     else if (target.condition === "unconscious" || target.condition === "stable") parts.push(t.combatDown);
     if (target.knockedProne) parts.push(t.combatProne);
-    return parts.length === 0 ? target.name : t.combatTarget({ name: target.name, result: parts.join(", ") });
+    return parts.length === 0 ? `**${escapeMarkdown(target.name)}**` : t.combatTarget({ name: escapeMarkdown(target.name), result: parts.join(", ") });
   });
-  const line = { actor: beat.actor, using: beat.using, results: results.join("; ") };
+  const line = { actor: escapeMarkdown(beat.actor), using: escapeMarkdown(beat.using), results: results.join("; ") };
   return beat.opportunity ? t.combatOpportunity(line) : t.combatAction(line);
 }
 
@@ -460,13 +526,6 @@ function rollLine(events: readonly CampaignEvent[], state: CampaignState, checkI
     outcome: `${success ? "✅" : "❌"} ${outcome}`,
   });
   return started?.kind === "checkRollStarted" && started.timedOut ? `${line} ${text.campaign.msg.rollTimedOut}` : line;
-}
-
-// The English abbreviation sits next to the localized name, where players cross-check rules.
-function checkLabel(test: CheckTest, text: Texts): string {
-  const ability = abilityOf(test);
-  const name = test.kind === "skill" ? text.campaign.skill[skillKey(test.skill)] : text.campaign.ability[ability];
-  return `${test.kind === "save" ? text.campaign.msg.saveLabel({ name }) : name} (${ability.toUpperCase()})`;
 }
 
 // Discord rejects a message over 2,000 characters.
@@ -513,7 +572,7 @@ function outsideCombatText(
       const line =
         dialogue.kind === "ask" || dialogue.check === null
           ? t.askLine({ hero, npc, question: dialogue.question ?? "" })
-          : t.pressLine({ hero, npc, skill: checkLabel(dialogue.check.test, text), total: dialogue.check.total, dc: dialogue.check.dc, result: passed(dialogue.check.success, text) });
+          : t.pressLine({ hero, npc, skill: checkLabel(dialogue.check.test, text), total: dialogue.check.natural === undefined ? dialogue.check.total : `🎲 d20 ${dialogue.check.natural} ${dialogue.check.total - dialogue.check.natural >= 0 ? "+" : "−"} ${Math.abs(dialogue.check.total - dialogue.check.natural)} = ${dialogue.check.total}`, dc: dialogue.check.dc, result: passed(dialogue.check.success, text) });
       return join([line], told.text);
     }
     case "utilityCastNarrated": {

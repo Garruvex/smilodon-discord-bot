@@ -1,7 +1,7 @@
 import type { CompanionRoster } from "../companions/companion-roster.js";
 import type { CampaignLanguage, NpcId, SceneId } from "../adventure/adventure-bible.js";
 import type { CharacterSheet, CheckTest } from "../character/character-sheet.js";
-import type { EncounterSpec, PlannedEffect } from "../commands/campaign-command.js";
+import type { EncounterSpec, PartyEffect, PlannedEffect } from "../commands/campaign-command.js";
 import type { EncounterState } from "../combat/combat-state.js";
 import type { HeroStatus } from "../combat/combatant-profile.js";
 import type { CampaignId, CharacterId, CheckId, Instant, RollId, UserId } from "../core/ids.js";
@@ -16,6 +16,8 @@ import type { Ability, DamageType } from "../rules/effects.js";
 // The in-memory aggregate the engine decides against. The repository
 // assembles it from the campaign tables; evolve() produces the next one.
 // A story object with no rules of its own: a name and what the party knows of it.
+import type { WorldState } from "./world-state.js";
+
 export interface Keepsake {
   readonly id: string;
   readonly name: string;
@@ -48,15 +50,35 @@ export interface CampaignState {
   // Each covers the rounds after the previous one of its kind, through its own
   // round. Absent in games that started before summaries existed.
   readonly summaries?: readonly StorySummary[];
+  // Public, narrator-written changes for each scene. Recent notes stay verbatim;
+  // the Chronicler folds a scene's notes into sceneSummaries when they grow large.
+  readonly sceneNotes?: readonly SceneNote[];
+  readonly sceneSummaries?: Readonly<Record<string, SceneSummary>>;
+  // Pending notes are not shown as facts. The asynchronous judge either admits
+  // a verified wording to sceneNotes or drops it after its bounded retries.
+  readonly pendingSceneNotes?: readonly PendingSceneNote[];
   // Who may play a hero in a fight while its owner is away: owner -> proxy.
   // A grant does nothing while the owner is present, and only reaches turns
   // (never the owner's items, story choices or anything outside a fight).
   readonly proxies?: Readonly<Record<UserId, UserId>>;
+  // Heroes whose seat was freed, by name, so what was already told about them still reads.
+  readonly retiredHeroes?: Readonly<Record<CharacterId, string>>;
   // Someone used the safety pause: the next narration is asked to keep gentle
   // (plan §5, Table safety). Cleared once that narration is told.
   readonly safetyNote?: boolean;
   // The round in which the party last changed scene: the moment a chapter closes.
   readonly sceneChangedRound?: number;
+  // A move to another scene the table has not yet agreed to. It settles when
+  // the next round closes: the party goes unless more than half of the
+  // present players pressed Stay (a tie stays).
+  readonly pendingMove?: PendingMove;
+  readonly sceneMoveSettledRound?: number;
+  readonly sceneMoveSettledDestination?: SceneId | null;
+  // A scene the table voted to stay out of; the Planner does not propose it again until the party moves on.
+  readonly sceneMoveDeclinedScene?: SceneId;
+  // Each stay in a scene, oldest first; the last is where the party is. Absent in
+  // games that began before visits were kept: the first move starts the record.
+  readonly visits?: readonly SceneVisit[];
   // Checks of the current round only; earlier ones live in the event log.
   readonly checks: Readonly<Record<CheckId, CheckState>>;
   readonly ledger: Readonly<Record<string, LedgerEntry>>;
@@ -74,6 +96,8 @@ export interface CampaignState {
   readonly flags?: Readonly<Record<string, number>>;
   // Story objects the party carries, by id; absent: none yet.
   readonly keepsakes?: Readonly<Record<string, Keepsake>>;
+  // The story's day, time of day and weather; absent when the adventure gives none.
+  readonly world?: WorldState;
   // Heroes' HP and limited resources between fights; a hero missing here is
   // fresh (full HP, every slot and use).
   readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>>;
@@ -106,6 +130,9 @@ export interface CampaignState {
   // (engine/dialogue.ts). One at a time per hero; cleared once the roll
   // settles the conversation.
   readonly pressPending?: Readonly<Record<CharacterId, PendingPress>>;
+  // Each NPC can be pressed for their secret once by the party; the four
+  // skill buttons are alternative approaches to that single attempt.
+  readonly npcPressAttempts?: readonly NpcId[];
   // A conversation already decided (a plain question, or a settled press),
   // waiting for the Narrator to voice the NPC's reply; removed once
   // recordDialogueNarration lands. Not gameplay state, same as trades.
@@ -114,6 +141,8 @@ export interface CampaignState {
   // NPCs who have given up their authored secret (adventure-bible.ts's
   // BibleNpc.secret) to a successful press; once true, pressNpc refuses a
   // second attempt on that NPC and later conversation may reference it.
+  // NPCs killed in a fight: they are no longer in their scene, and can be neither spoken to nor traded with.
+  readonly npcsDown?: readonly NpcId[];
   readonly npcSecretsRevealed?: Readonly<Record<NpcId, boolean>>;
   // A ritual spell cast outside combat, waiting for the Narrator to describe
   // what it reveals or does (engine/utility-magic.ts); removed once
@@ -135,6 +164,20 @@ export interface CampaignState {
   // (engine/healing-magic.ts). One at a time per caster. Settled healings are
   // told from the saved event; nothing about them is kept here but the count.
   readonly healingPending?: Readonly<Record<CharacterId, PendingHealing>>;
+  // After a short rest, until the next round or fight begins: the heroes may spend Hit Dice, each one rolled.
+  readonly shortRestOpen?: boolean;
+  // A rest the organizer asked for while a round or a fight is going: taken when it ends, before the next round opens (engine/rest.ts).
+  // The scene's long-rest lines are kept with it, and used only if the party is still in that scene.
+  readonly pendingRest?: { readonly rest: "short" | "long"; readonly sceneId: string | null; readonly story: readonly PartyEffect[] };
+  // The party is resting: the next round waits until the organizer finishes (continue). Hit Dice are spent in this time.
+  readonly resting?: "short" | "long";
+  // A player's proposal to rest, open until a majority of the players present has agreed, can no longer agree, or the time is up.
+  // The scene's long-rest lines are kept with it, as with a rest the organizer asks for.
+  readonly restVote?: { readonly rest: "short" | "long"; readonly proposedBy: UserId; readonly agree: readonly UserId[]; readonly decline: readonly UserId[]; readonly closesAt: Instant; readonly sceneId: string | null; readonly story: readonly PartyEffect[] };
+  // Where the story clock stood when the party last began a long rest, counted in phases of the day (state/world-state.ts). A long rest takes a full day.
+  readonly lastLongRestAt?: number;
+  readonly hitDicePending?: Readonly<Record<CharacterId, PendingHitDice>>;
+  readonly hitDiceCount?: number;
   readonly healingCount: number;
   // Creatures the heroes brought along between fights (companions/companion-roster.ts). Absent until the first one.
   readonly companions?: CompanionRoster | undefined;
@@ -161,6 +204,14 @@ export interface EnvironmentalDamageRecord {
   readonly taken: number;
   readonly hpAfter: number;
   readonly dead: boolean;
+}
+
+// Hit Dice a hero chose to spend on a short rest, their dice requested: the dice and the Constitution bonus are fixed before the roll.
+export interface PendingHitDice {
+  readonly characterId: CharacterId;
+  readonly count: number;
+  readonly expression: DiceExpression;
+  readonly rollId: RollId;
 }
 
 // A healing spell cast outside combat, its dice requested: the expression is
@@ -242,7 +293,7 @@ export interface DialogueRecord {
   readonly npcId: NpcId;
   readonly kind: "ask" | "press";
   readonly question: string | null;
-  readonly check: { readonly test: CheckTest; readonly dc: number; readonly total: number; readonly success: boolean; readonly moments: RollMoments } | null;
+  readonly check: { readonly test: CheckTest; readonly dc: number; readonly total: number; readonly natural?: number; readonly success: boolean; readonly moments: RollMoments } | null;
 }
 
 // A ritual spell cast outside combat (engine/utility-magic.ts): no roll, no
@@ -318,6 +369,38 @@ export interface Pacing {
   readonly awayAfterMisses: number;
 }
 
+// One stay in a scene. The party can come back, so the same scene may have
+// several, each with its own id. A round belongs to the visit it was played in:
+// from the round the party arrived (the round the move happened, whose telling
+// is already in the new scene) up to, not including, the round it left.
+export interface SceneVisit {
+  readonly id: string;
+  readonly sceneId: SceneId;
+  readonly arrivedRound: number;
+  // The move round's narration describes the departure and belongs to where it began.
+  readonly narratedThroughRound?: number;
+  // Absent while the party is still there.
+  readonly leftRound?: number;
+  readonly cameFrom?: SceneId;
+  // How the party got here: the table agreed, the organizer sent it, or the story did.
+  readonly arrivedBy?: MoveReason;
+}
+
+export type MoveReason = "agreed" | "organizer" | "story";
+
+export interface PendingMove {
+  readonly sceneId: SceneId;
+  readonly proposedRound: number;
+  // What happens on arrival, the scene change first.
+  readonly effects: readonly PartyEffect[];
+  readonly objectors: readonly UserId[];
+  // Players who explicitly voted to go; missing votes still follow the table's go-by-silence rule.
+  readonly supporters?: readonly UserId[];
+  readonly proposedBy?: UserId;
+  // Who wants to go: the heroes behind the proposal, when it names them.
+  readonly heroes?: readonly CharacterId[];
+}
+
 export interface MemberState {
   readonly userId: UserId;
   readonly characterId: CharacterId | null;
@@ -359,6 +442,21 @@ export type Resolution =
 export interface StorySummary {
   readonly throughRound: number;
   readonly visibility: "public" | "private";
+  readonly text: string;
+}
+
+export interface SceneNote {
+  readonly roundNumber: number;
+  readonly sceneId: string;
+  readonly text: string;
+}
+
+export interface PendingSceneNote extends SceneNote {
+  readonly noteIndex: number;
+}
+
+export interface SceneSummary {
+  readonly throughRound: number;
   readonly text: string;
 }
 

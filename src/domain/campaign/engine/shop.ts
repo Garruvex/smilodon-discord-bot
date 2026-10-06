@@ -34,8 +34,9 @@ export function handleShopCommand(decision: Decision, command: ShopCommand): Rej
 // The skills SRD 5.1 actually uses to talk a price up or down.
 const haggleSkills = ["persuasion", "deception", "intimidation"] as const;
 
-function mayTrade(decision: Decision, characterId: CharacterId): Rejection | null {
+function mayTrade(decision: Decision, characterId: CharacterId, npcId: TradeRecord["npcId"]): Rejection | null {
   const { state, ctx } = decision;
+  if (state.npcsDown?.includes(npcId) === true) return { code: "npcDown" };
   if (ctx.actor.kind !== "user" || state.characters[characterId]?.ownerUserId !== ctx.actor.userId) return { code: "notYourCharacter" };
   if (isFallen(state, characterId)) return { code: "heroFallen" };
   if (state.encounter !== null && state.encounter.status !== "ended") return { code: "inCombat" };
@@ -61,7 +62,7 @@ function instantTrade(
   direction: "buy" | "sell",
   price: number,
 ): Rejection | null {
-  const refusal = mayTrade(decision, characterId);
+  const refusal = mayTrade(decision, characterId, npcId);
   if (refusal !== null) return refusal;
   const { state, ctx } = decision;
   if (ctx.rules.content.find(itemId)?.kind !== "item") return { code: "unknownItem" };
@@ -85,7 +86,7 @@ function instantTrade(
 
 function startHaggle(decision: Decision, command: Extract<ShopCommand, { kind: "hagglePrice" }>): Rejection | null {
   const { characterId, npcId, itemId, direction, listedPrice, skill } = command;
-  const refusal = mayTrade(decision, characterId);
+  const refusal = mayTrade(decision, characterId, npcId);
   if (refusal !== null) return refusal;
   const { state, ctx } = decision;
   if (ctx.rules.content.find(itemId)?.kind !== "item") return { code: "unknownItem" };

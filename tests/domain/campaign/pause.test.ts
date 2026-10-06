@@ -14,7 +14,7 @@ describe("pausing the campaign", () => {
     expect(kinds(paused.events)).toEqual(["campaignPaused"]);
     expect(paused.requests).toContainEqual({ kind: "cancelTimer", timerId: "round:1" });
     expect(paused.state).toMatchObject({ status: "waitingForPlayers", pausedBy: "organizer" });
-    expect(reject(paused.state, alex, { kind: "submitAction", characterId: "c-mira", text: "I look around." })).toEqual({ code: "campaignWaiting" });
+    expect(reject(paused.state, alex, { kind: "submitAction", characterId: "c-mira", text: "I look around." })).toEqual({ code: "campaignPaused" });
 
     expect(reject(paused.state, alex, { kind: "continue" })).toEqual({ code: "notOrganizer" });
     const resumed = run(paused.state, organizer, { kind: "continue" }, { now: 1_000_000 });

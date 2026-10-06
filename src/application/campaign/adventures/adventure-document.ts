@@ -6,6 +6,7 @@ import { isSkill, type CharacterSheet, type Skill, type SkillProficiency } from 
 import type { ContentId } from "../../../domain/campaign/rules/content-id.js";
 import type { SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import { abilities, damageTypes } from "../../../domain/campaign/rules/effects.js";
+import { timesOfDay, weathers } from "../../../domain/campaign/rules/world-rules.js";
 
 // A ready-made hero shipped with an adventure. The owner is assigned when a
 // player picks it.
@@ -36,6 +37,8 @@ const gotoEffect = z.object({ kind: z.literal("goto"), scene: sceneId }).strict(
 const clockEffect = z.object({ kind: z.literal("clock"), clock: clockId, by: z.number().int().min(1).max(3) }).strict();
 const noticeEffect = z.object({ kind: z.literal("notice"), text }).strict();
 const keepsakeEffect = z.object({ kind: z.literal("keepsake"), id: flagName, name: text, description: text }).strict();
+const timeEffect = z.object({ kind: z.literal("time"), advance: z.number().int().min(1).max(12) }).strict();
+const weatherEffect = z.object({ kind: z.literal("weather"), weather: z.enum(weathers) }).strict();
 const encounterEffect = z.object({ kind: z.literal("encounter"), encounter: encounterId }).strict();
 const hurtEffect = z
   .object({
@@ -55,7 +58,7 @@ const randomEffect = z
         z
           .object({
             weight: z.number().int().min(1).max(100).optional(),
-            effects: z.array(z.discriminatedUnion("kind", [revealEffect, setEffect, rewardEffect, gotoEffect, clockEffect, noticeEffect, keepsakeEffect, encounterEffect, hurtEffect])),
+            effects: z.array(z.discriminatedUnion("kind", [revealEffect, setEffect, rewardEffect, gotoEffect, clockEffect, noticeEffect, keepsakeEffect, timeEffect, weatherEffect, encounterEffect, hurtEffect])),
           })
           .strict(),
       )
@@ -63,9 +66,18 @@ const randomEffect = z
       .max(20),
   })
   .strict();
-const effectSchema = z.discriminatedUnion("kind", [revealEffect, setEffect, rewardEffect, gotoEffect, clockEffect, noticeEffect, keepsakeEffect, encounterEffect, hurtEffect, randomEffect]);
+const effectSchema = z.discriminatedUnion("kind", [revealEffect, setEffect, rewardEffect, gotoEffect, clockEffect, noticeEffect, keepsakeEffect, timeEffect, weatherEffect, encounterEffect, hurtEffect, randomEffect]);
 // A fight's effects: the story ones (a fight never starts another fight), foes arriving, a truce, a line for the table.
-const monsterEntry = z.object({ monsterId: contentId("monster"), zoneId, npcId: npcId.nullable().default(null), fleeBelowHpFraction: z.number().gt(0).lt(1).nullable().default(null) }).strict();
+// A borrowed stat block made tougher or weaker: hit points, armor class, and a bonus to every attack roll and damage roll.
+const monsterStats = z
+  .object({
+    hp: z.number().int().min(1).max(1000).optional(),
+    armorClass: z.number().int().min(5).max(30).optional(),
+    toHit: z.number().int().min(-5).max(10).optional(),
+    damage: z.number().int().min(-5).max(20).optional(),
+  })
+  .strict();
+const monsterEntry = z.object({ monsterId: contentId("monster"), zoneId, npcId: npcId.nullable().default(null), rank: z.enum(["boss", "elite", "minion"]).optional(), fleeBelowHpFraction: z.number().gt(0).lt(1).nullable().default(null), stats: monsterStats.optional() }).strict();
 const fightEffectSchema = z.discriminatedUnion("kind", [
   revealEffect,
   setEffect,
@@ -78,8 +90,8 @@ const fightEffectSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("end") }).strict(),
   z.object({ kind: z.literal("announce"), text }).strict(),
 ]);
-const victoryEffectSchema = z.discriminatedUnion("kind", [revealEffect, setEffect, rewardEffect, gotoEffect, clockEffect, noticeEffect, keepsakeEffect]);
-const enterEffectSchema = z.discriminatedUnion("kind", [revealEffect, setEffect, rewardEffect, noticeEffect, keepsakeEffect]);
+const victoryEffectSchema = z.discriminatedUnion("kind", [revealEffect, setEffect, rewardEffect, gotoEffect, clockEffect, noticeEffect, keepsakeEffect, timeEffect, weatherEffect]);
+const enterEffectSchema = z.discriminatedUnion("kind", [revealEffect, setEffect, rewardEffect, noticeEffect, keepsakeEffect, timeEffect, weatherEffect]);
 const triggerSchema = z
   .object({
     when: z.discriminatedUnion("kind", [
@@ -114,11 +126,14 @@ const documentSchema = z
     title: text,
     premise: text,
     startingLevel: z.number().int().min(1).max(10).optional(),
+    suggestedParty: z.object({ min: z.number().int().min(1).max(8), max: z.number().int().min(1).max(8) }).strict().refine((party) => party.min <= party.max).optional(),
     dmOverview: text,
     startScene: sceneId,
+    linear: z.boolean().optional(),
+    startTime: z.object({ day: z.number().int().min(1).max(10_000).optional(), time: z.enum(timesOfDay), weather: z.enum(weathers).optional() }).strict().optional(),
     scenes: z
       .array(
-        z.object({ id: sceneId, title: text, publicDescription: text, dmNotes: text, npcIds: z.array(npcId), exits: z.array(z.object({ to: sceneId, requires: requirementSchema.optional() }).strict()).optional(), onEnter: z.array(enterEffectSchema).optional() }).strict(),
+        z.object({ id: sceneId, title: text, publicDescription: text, details: text.optional(), dmNotes: text, npcIds: z.array(npcId), exits: z.array(z.object({ to: sceneId, requires: requirementSchema.optional(), hidden: z.boolean().optional(), hint: text.optional() }).strict()).optional(), onEnter: z.array(enterEffectSchema).optional(), onLongRest: z.array(enterEffectSchema).optional() }).strict(),
       )
       .min(1),
     npcs: z.array(
@@ -162,17 +177,9 @@ const documentSchema = z
             ambush: z.object({ dc: z.number().int().min(1).max(30) }).strict().optional(),
             dread: z.object({ ability: z.enum(abilities), dc: z.number().int().min(1).max(30) }).strict().optional(),
             monsters: z
-              .array(
-                z
-                  .object({
-                    monsterId: contentId("monster"),
-                    zoneId,
-                    npcId: npcId.nullable().default(null),
-                    fleeBelowHpFraction: z.number().gt(0).lt(1).nullable().default(null),
-                  })
-                  .strict(),
-              )
+              .array(monsterEntry)
               .min(1),
+            reinforcements: z.array(monsterEntry).max(6).optional(),
             triggers: z.array(triggerSchema).default([]),
             onVictory: z.array(victoryEffectSchema).default([]),
             loot: z.array(contentId("item")).default([]),
@@ -291,7 +298,7 @@ export function parseAdventureDocument(source: string): AdventureDocument {
   });
   if (problems.length > 0) throw new AdventureDocumentError(problems);
 
-  const { heroes: _heroes, startingLevel, encounters, interactions, scenes, ...rest } = data;
+  const { heroes: _heroes, startingLevel, suggestedParty, linear, startTime, encounters, interactions, scenes, ...rest } = data;
   // zod's .optional() leaves the key present with value undefined, which
   // exactOptionalPropertyTypes treats as different from the key being
   // absent; strip it so an npc with no shop matches BibleNpc exactly.
@@ -316,6 +323,9 @@ export function parseAdventureDocument(source: string): AdventureDocument {
     encounters: bibleEncounters as unknown as AdventureBible["encounters"],
     ...(interactions.length === 0 ? {} : { interactions: clean(interactions) as unknown as readonly BibleInteraction[] }),
     ...(startingLevel === undefined ? {} : { startingLevel }),
+    ...(suggestedParty === undefined ? {} : { suggestedParty }),
+    ...(linear === undefined ? {} : { linear }),
+    ...(startTime === undefined ? {} : { startTime: clean(startTime) as unknown as NonNullable<AdventureBible["startTime"]> }),
   };
   return { bible, heroes };
 }
@@ -330,7 +340,9 @@ export function checkEditionsMatch(editions: readonly AdventureDocument[]): read
       version: document.bible.version,
       startScene: document.bible.startScene,
       startingLevel: document.bible.startingLevel ?? null,
-      scenes: document.bible.scenes.map((scene) => [scene.id, scene.npcIds, scene.exits ?? null, withoutWords(scene.onEnter ?? null)]),
+      suggestedParty: document.bible.suggestedParty ?? null,
+      startTime: document.bible.startTime ?? null,
+      scenes: document.bible.scenes.map((scene) => [scene.id, scene.npcIds, scene.exits?.map(({ hint: _hint, ...exit }) => exit) ?? null, withoutWords(scene.onEnter ?? null), withoutWords(scene.onLongRest ?? null)]),
       interactions: (document.bible.interactions ?? []).map(({ label: _label, dmNotes: _notes, ...mechanics }) => withoutWords(mechanics)),
       npcs: document.bible.npcs.map((npc) => [npc.id, npc.shop ?? null]),
       clocks: document.bible.clocks.map((clock) => [clock.id, clock.sceneId, clock.segments, clock.onFull]),
@@ -374,7 +386,7 @@ function interactionProblems(data: z.infer<typeof documentSchema>): readonly str
   const flatten = (list: readonly BibleEffect[]): BibleEffect[] => list.flatMap((effect) => (effect.kind === "random" ? effect.options.flatMap((option) => flatten(option.effects)) : [effect]));
   const allEffects = data.interactions.flatMap((interaction) => [...flatten(interaction.onSuccess as BibleEffect[]), ...flatten(interaction.onFailure as BibleEffect[]), ...interaction.tiers.flatMap((tier) => flatten(tier.effects as BibleEffect[]))]);
   const fightEffects = data.encounters.flatMap((encounter) => [...encounter.triggers.flatMap((trigger) => trigger.effects as BibleFightEffect[]), ...(encounter.onVictory as BibleEffect[])]);
-  const enterEffects = data.scenes.flatMap((scene) => (scene.onEnter ?? []) as BibleEffect[]);
+  const enterEffects = data.scenes.flatMap((scene) => [...((scene.onEnter ?? []) as BibleEffect[]), ...((scene.onLongRest ?? []) as BibleEffect[])]);
   const setFlags = new Set([...allEffects, ...fightEffects, ...enterEffects].flatMap((effect) => (effect.kind === "set" ? [effect.flag] : [])));
   const checkEffects = (owner: string, list: readonly BibleEffect[]): void => {
     for (const effect of flatten(list)) {
@@ -430,6 +442,7 @@ function interactionProblems(data: z.infer<typeof documentSchema>): readonly str
   }
   for (const scene of data.scenes) {
     checkEffects(`${scene.id} arrival`, (scene.onEnter ?? []) as BibleEffect[]);
+    checkEffects(`${scene.id} long rest`, (scene.onLongRest ?? []) as BibleEffect[]);
     for (const exit of scene.exits ?? []) {
       if (!sceneIds.has(exit.to)) problems.push(`${scene.id} has an exit to unknown ${exit.to}.`);
       checkRequirement(`${scene.id}'s exit to ${exit.to}`, exit.requires as BibleRequirement | undefined);
@@ -468,7 +481,7 @@ export function checkAdventureContent(document: AdventureDocument, content: Seal
       if (effect.kind === "reward") for (const item of effect.items ?? []) expectKind(interaction.id, item, "item");
     }
   }
-  for (const scene of document.bible.scenes) for (const effect of scene.onEnter ?? []) if (effect.kind === "reward") for (const item of effect.items ?? []) expectKind(scene.id, item, "item");
+  for (const scene of document.bible.scenes) for (const effect of [...(scene.onEnter ?? []), ...(scene.onLongRest ?? [])]) if (effect.kind === "reward") for (const item of effect.items ?? []) expectKind(scene.id, item, "item");
   for (const encounter of document.bible.encounters) {
     for (const monster of encounter.monsters) expectKind(encounter.id, monster.monsterId, "monster");
     for (const trigger of encounter.triggers ?? []) {

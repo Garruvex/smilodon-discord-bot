@@ -71,7 +71,9 @@ describe("exploration rounds", () => {
     expect(revised.events).toEqual([
       { kind: "actionSubmitted", roundNumber: 1, characterId: "c-mira", text: "I pick the lock.", revision: 2 },
     ]);
-    expect(revised.requests).toEqual([]);
+    expect(revised.requests).toEqual([
+      { kind: "deliver", delivery: { kind: "actionIntent", roundNumber: 1, characterId: "c-mira", revision: 2 } },
+    ]);
 
     const last = run(revised.state, jamie, { kind: "pass", characterId: "c-borin" });
     expect(kinds(last.events)).toEqual(["passSubmitted", "roundClosed"]);
@@ -120,13 +122,13 @@ describe("exploration rounds", () => {
     expect(last.state.round).toMatchObject({ number: 2, status: "collecting" });
   });
 
-  it("does not open another round for a quiet round while the game is paused", () => {
+  it("refuses the last pass while paused and preserves the unfinished round", () => {
     let state = run(newCampaign(), system, { kind: "openRound" }).state;
     state = run(state, alex, { kind: "pass", characterId: "c-mira" }).state;
-    state = { ...state, pausedBy: "organizer" };
-    const last = run(state, jamie, { kind: "pass", characterId: "c-borin" });
-    expect(kinds(last.events)).toEqual(["passSubmitted", "roundClosed", "roundResolved"]);
-    expect(last.state.round).toBeNull();
+    state = run(state, organizer, { kind: "pauseCampaign", reason: "organizer" }).state;
+    expect(reject(state, jamie, { kind: "pass", characterId: "c-borin" })).toEqual({ code: "campaignPaused" });
+    expect(state.round).toMatchObject({ number: 1, status: "collecting" });
+    expect(state.round?.submissions["c-borin"]).toBeUndefined();
   });
 });
 
@@ -187,12 +189,10 @@ describe("timers and away mode", () => {
 
     // Nothing proceeds while waiting.
     expect(reject(state, system, { kind: "applyRoundPlan", proposal: miraSneaks })).toEqual({ code: "campaignWaiting" });
-    expect(reject(state, alex, { kind: "continue" })).toEqual({ code: "memberAway" });
 
-    state = run(state, alex, { kind: "markReturned", userId: "u-alex" }).state;
-    expect(state.status).toBe("waitingForPlayers");
+    // Resuming from away is also coming back, so nobody is locked out of the table they run.
     const resumed = run(state, alex, { kind: "continue" });
-    expect(kinds(resumed.events)).toEqual(["resumed"]);
+    expect(kinds(resumed.events)).toEqual(["memberReturned", "resumed"]);
     expect(resumed.requests).toEqual([{ kind: "plan", roundNumber: 1 }]);
     expect(resumed.state.status).toBe("active");
   });
@@ -218,6 +218,7 @@ describe("round plans and checks", () => {
     });
     expect(step.state.round?.resolutions).toEqual({ "c-mira": { kind: "check", checkId: "r1:c-mira" } });
     expect(step.requests).toEqual([
+      { kind: "deliver", delivery: { kind: "rollsCalled", roundNumber: 1 } },
       { kind: "startTimer", timer: { kind: "roll", timerId: "roll:r1:c-mira", dueAt: 121_000, checkId: "r1:c-mira" } },
     ]);
   });

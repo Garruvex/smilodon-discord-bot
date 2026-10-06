@@ -7,13 +7,25 @@ export type Rejection =
   | { readonly code: "notOrganizer" }
   | { readonly code: "notYourCharacter" }
   | { readonly code: "memberAway" }
+  | { readonly code: "memberNotAway" }
+  | { readonly code: "noShortRest" }
+  | { readonly code: "resting" }
+  | { readonly code: "nothingToRest" }
+  | { readonly code: "alreadyRested" }
+  | { readonly code: "restVoteOpen" }
+  | { readonly code: "noRestVote" }
+  | { readonly code: "hitDicePending" }
+  | { readonly code: "noHitDice" }
+  | { readonly code: "organizerStays" }
   | { readonly code: "systemOnly" }
   | { readonly code: "campaignWaiting" }
+  | { readonly code: "campaignPaused" }
   | { readonly code: "campaignNotWaiting" }
   | { readonly code: "nobodyPresent" }
   | { readonly code: "roundAlreadyOpen" }
   | { readonly code: "noOpenRound" }
   | { readonly code: "roundNotCollecting" }
+  | { readonly code: "moveDecisionPending" }
   | { readonly code: "notParticipant" }
   | { readonly code: "emptyAction" }
   | { readonly code: "actionTooLong"; readonly maxLength: number }
@@ -32,6 +44,8 @@ export type Rejection =
   | { readonly code: "nothingToIllustrate" }
   | { readonly code: "nothingToRedo" }
   | { readonly code: "noReaction" }
+  | { readonly code: "noPendingMove" }
+  | { readonly code: "invalidMove" }
   | { readonly code: "noOpportunityAttack" }
   | { readonly code: "noSmite" }
   | { readonly code: "invalidProxy" }
@@ -66,7 +80,9 @@ export type Rejection =
   | { readonly code: "haggleAlreadyPending" }
   | { readonly code: "invalidPressSkill" }
   | { readonly code: "pressAlreadyPending" }
+  | { readonly code: "pressAlreadyAttempted" }
   | { readonly code: "dialoguePending" }
+  | { readonly code: "npcDown" }
   | { readonly code: "secretAlreadyRevealed" }
   | { readonly code: "notARitualSpell" }
   | { readonly code: "hazardAlreadyPending" }

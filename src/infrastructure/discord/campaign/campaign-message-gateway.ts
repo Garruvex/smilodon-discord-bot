@@ -1,16 +1,18 @@
 import { DiscordAPIError, EmbedBuilder, RESTJSONErrorCodes, type Client, type GuildTextBasedChannel } from "discord.js";
 
 import type { CardPayload } from "./card-payload.js";
+import { noIcons, type CampaignIcon, type CampaignIcons } from "./campaign-icons.js";
 
 // The message operations the campaign cards need, apart from discord.js so the
 // card service can be tested with a fake. Sends return the message ID so it
 // can be saved; edits report a message that no longer exists instead of
 // throwing, because a deleted card is normal and is replaced.
 // How a history message looks, so the eye can tell the story from the mechanics. The story itself (narration, speech) is plain
-// prose; every other kind is a coloured panel: dice, actions in a fight, rewards, table notices and hazards.
-export type MessageStyle = "roll" | "action" | "reward" | "notice" | "hazard";
+// prose; declared intents are blue cards and resolved combat actions are red cards.
+// Dice, rewards, table notices and hazards retain their own result styles.
+export type MessageStyle = "intent" | "narration" | "roll" | "action" | "reward" | "notice" | "hazard";
 
-const styleColors: Readonly<Record<MessageStyle, number>> = { roll: 0x5865f2, action: 0xed4245, reward: 0xf1c40f, notice: 0x9b59b6, hazard: 0xe67e22 };
+const styleColors: Readonly<Record<Exclude<MessageStyle, "narration">, number>> = { intent: 0x3498db, roll: 0x5865f2, action: 0xed4245, reward: 0xf1c40f, notice: 0x9b59b6, hazard: 0xe67e22 };
 
 export interface CampaignMessageGateway {
   send(channelId: string, payload: CardPayload): Promise<string>;
@@ -34,7 +36,10 @@ export interface CampaignMessageGateway {
 const missingCodes: readonly number[] = [RESTJSONErrorCodes.UnknownMessage, RESTJSONErrorCodes.UnknownChannel];
 
 export class DiscordMessageGateway implements CampaignMessageGateway {
-  public constructor(private readonly client: Client) {}
+  public constructor(
+    private readonly client: Client,
+    private readonly icons: CampaignIcons = noIcons,
+  ) {}
 
   public async send(channelId: string, payload: CardPayload): Promise<string> {
     const message = await (await this.channel(channelId)).send(options(payload));
@@ -75,7 +80,7 @@ export class DiscordMessageGateway implements CampaignMessageGateway {
 
   public async post(channelId: string, content: string, mentionUserIds: readonly string[] = [], nonce?: string, style?: MessageStyle): Promise<string> {
     const message = await (await this.channel(channelId)).send({
-      ...body(content, style),
+      ...body(content, style, this.icons),
       allowedMentions: mentionUserIds.length === 0 ? { parse: [] } : { parse: [], users: [...mentionUserIds] },
       ...(nonce === undefined ? {} : { nonce, enforceNonce: true }),
     });
@@ -85,7 +90,7 @@ export class DiscordMessageGateway implements CampaignMessageGateway {
   public async editText(channelId: string, messageId: string, content: string, style?: MessageStyle): Promise<"ok" | "missing"> {
     try {
       const channel = await this.channel(channelId);
-      await channel.messages.edit(messageId, { ...body(content, style), allowedMentions: { parse: [] } });
+      await channel.messages.edit(messageId, { ...body(content, style, this.icons), allowedMentions: { parse: [] } });
       return "ok";
     } catch (error) {
       if (error instanceof DiscordAPIError && missingCodes.includes(Number(error.code))) return "missing";
@@ -110,8 +115,15 @@ export class DiscordMessageGateway implements CampaignMessageGateway {
   }
 }
 
-function body(content: string, style: MessageStyle | undefined): { content: string; embeds: EmbedBuilder[] } {
-  return style === undefined ? { content, embeds: [] } : { content: "", embeds: [new EmbedBuilder().setColor(styleColors[style]).setDescription(content)] };
+// The icon in the corner of each kind of panel.
+const styleIcons: Readonly<Partial<Record<MessageStyle, CampaignIcon>>> = { roll: "roll", action: "attack", reward: "reward", notice: "notice", hazard: "hazard" };
+
+function body(content: string, style: MessageStyle | undefined, icons: CampaignIcons): { content: string; embeds: EmbedBuilder[] } {
+  if (style === undefined || style === "narration") return { content, embeds: [] };
+  const embed = new EmbedBuilder().setColor(styleColors[style]).setDescription(content);
+  const iconName = styleIcons[style];
+  const icon = iconName === undefined ? undefined : icons.emoji(iconName);
+  return { content: "", embeds: [icon === undefined ? embed : embed.setThumbnail(`https://cdn.discordapp.com/emojis/${icon.id}.png?size=64`)] };
 }
 
 function options(payload: CardPayload): { components: CardPayload["components"]; flags: CardPayload["flags"]; allowedMentions: CardPayload["allowedMentions"]; files?: { attachment: Buffer; name: string }[] } {

@@ -13,6 +13,8 @@ export interface AdventureHandlerDependencies {
   readonly catalog: AdventureCatalog;
   readonly authority: CampaignAuthority;
   readonly glossaries?: Readonly<Record<string, Glossary>>;
+  // A complete adventure file to start from, in the asker's language; without it the example button says there is none.
+  readonly example?: (language: "en" | "zh-TW") => string;
 }
 
 // Approve or Discard on an adventure draft, and Review, Remove and Restore from the server's adventure list. Anyone can press the button; the
@@ -31,6 +33,11 @@ export class AdventureComponentHandler implements ComponentHandler {
     const t = texts[languageOf(interaction)].campaign.adventure;
     await interaction.deferUpdate();
     const isAdmin = await this.deps.authority.isAdmin(interaction);
+    if (parsed.action === "example") {
+      const language = languageOf(interaction);
+      const file = this.deps.example?.(language);
+      return void (await interaction.followUp({ content: file === undefined ? t.gone : t.exampleSent, ...(file === undefined ? {} : { files: [{ attachment: Buffer.from(file, "utf8"), name: `example-adventure-${language}.yaml` }] }), ephemeral: true }));
+    }
     // A draft is only ever decided in the server it was made in.
     const draft = await this.deps.catalog.get(parsed.key);
     if (draft === undefined || draft.guildId !== interaction.guildId) return void (await interaction.editReply({ content: t.gone, components: [] }));

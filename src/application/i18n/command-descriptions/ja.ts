@@ -13,6 +13,14 @@ export const jaCommandDescriptions = {
   "birthday/set:user": "代わりに他のメンバーの誕生日を設定します（ボット管理者のみ）。", // Set another member's birthday instead (bot administrators only).
   "birthday/view": "メンバーの誕生日を表示します。", // Shows a member's birthday.
   "birthday/view:user": "調べるメンバー。省略すると自分になります。", // The member to look up; defaults to you.
+  "birthday/list": "このサーバーに登録された誕生日をすべて表示します。", // Shows all saved birthdays in this server.
+  "birthday/set:year": "年齢表示に使う生年（任意）。",
+  "birthday/set:message": "個別の誕生日告知メッセージ（1000文字以内、任意）。",
+  "birthday/set:clear-year": "保存した生年を削除します。",
+  "birthday/set:clear-message": "個別メッセージを削除し、サーバーの設定を使います。",
+  "birthday/template": "サーバーの誕生日メッセージを表示・変更します（ボット管理者のみ）。",
+  "birthday/template:message": "テンプレート：{member}, {birthday}, {age}, {ordinal}, {date}, {days}（1000文字以内）。",
+  "birthday/template:reset": "既定の誕生日告知メッセージに戻します。",
   "birthday/remove": "自分の誕生日を削除します。", // Removes your birthday.
   "birthday/remove:user": "代わりに他のメンバーの誕生日を削除します（ボット管理者のみ）。", // Remove another member's birthday instead (bot administrators only).
   "birthday/next": "次に誕生日を迎えるメンバーを表示します。", // Shows whose birthday is coming up next.
@@ -166,6 +174,7 @@ export const jaCommandDescriptions = {
   "dnd/new": "専用チャンネル付きで新しいゲームを作成します", // Creates a new game with its own channels.
   "dnd/new:name": "ゲーム名", // The game's name.
   "dnd/new:language": "プレイする言語（既定: English）", // The language the game is played in (default: English).
+  "dnd/new:adventure": "遊ぶ冒険: タイトルまたはその一部（既定はボット付属の冒険）", // The adventure to play: its title or part of it (default: the one that comes with the bot).
   "dnd/new:pacing": "ラウンドの進み方（既定: ライブ）", // How fast rounds go (default: live).
   "dnd/new:players": "卓の最大人数（既定 3）", // Most players at the table (default: 3).
   "dnd/new:visibility": "開始後に誰が観戦できるか（既定はカテゴリを見られる全員）", // Who can watch once the game starts (default: everyone).
@@ -173,21 +182,37 @@ export const jaCommandDescriptions = {
   "dnd/pause": "このゲームを一時停止します（主催者）", // Pauses this game (organizer).
   "dnd/resume": "一時停止したゲームを再開します（主催者）", // Resumes a paused game (organizer).
   "dnd/close-round": "待たずに現在のラウンドを締め切ります（主催者）", // Closes the current round without waiting (organizer).
-  "dnd/rest": "戦闘の合間にパーティを休ませます（主催者）", // Has the party take a rest between fights (organizer).
+  "dnd/move": "パーティが待っている場面転換を決めます（主催者）", // Settles a scene change the party is waiting on (organizer).
+  "dnd/move:decision": "今すぐ出発させるか、その場に留めるか", // Send the party now, or keep it where it is.
+  "dnd/rest": "戦闘の合間に休憩します。プレイヤーが提案し、全員で投票します", // Take a rest between fights. Players propose it and the table votes.
+  "dnd/rest-vote": "プレイヤーが提案した休憩に答えます", // Answer a rest a player has proposed.
+  "dnd/rest-vote:answer": "休憩に賛成しますか？", // Do you agree to rest?
+  "dnd/companions-away": "仲間をすべて去らせます（戦闘の合間）", // Send all your companions away (between fights).
   "dnd/rest:type": "休憩の長さ", // How long the rest is.
+  "dnd/hit-dice": "ショートレスト後にヒットダイスを使って回復します（自分のキャラクター）", // Spend Hit Dice to heal after a short rest (your own hero).
+  "dnd/hit-dice:count": "使うヒットダイスの数", // How many Hit Dice to spend.
   "dnd/level": "生存中のヒーロー全員を指定のレベルに上げます。マイルストーン方式用（主催者）", // Raises every living hero to a level, for milestone leveling (organizer).
   "dnd/level:level": "パーティを上げるレベル", // The level to raise the party to.
+  "dnd/time": "物語の日数・時間帯・天気を修正します（主催者）", // Corrects the story's day, time of day or weather (organizer).
+  "dnd/time:day": "物語の日（初日は 1）", // The day of the story (the first day is 1).
+  "dnd/time:time": "時間帯", // The time of day.
+  "dnd/time:weather": "天気（none で解除）", // The weather (none clears it).
+  "dnd/time:note": "修正の理由（ゲームの履歴に残ります）", // Why it is being corrected (kept in the game's history).
   "dnd/retry": "保留になったラウンドを DM にやり直させます（主催者）", // Asks the DM to try the held round again (organizer).
   "dnd/characters": "あなたのキャラクターライブラリを開きます（作成・表示・書き出し・削除）", // Opens your character library: build, view, export and delete characters.
   "dnd/import-character": "書き出したファイルからキャラクターをライブラリに追加します", // Adds a character from an exported file to your library.
   "dnd/import-character:file": "My Characters から書き出したキャラクターファイル（.json）", // The character file (.json) exported from My Characters.
   "dnd/upload-adventure": "ファイルから冒険をこのサーバーに追加します（確認と承認あり）", // Adds an adventure from a file to this server, after checks and your approval.
   "dnd/upload-adventure:file": "冒険ファイル（YAML または JSON）", // The adventure file (YAML or JSON).
+  "dnd/upload-adventure:language": "この冒険で使用する言語", // The language of this adventure.
+  "dnd/setup:language": "D&D チャンネルで使用する言語", // Language for the D&D channels.
   "dnd/adventures": "このサーバーの冒険を一覧表示します（下書きの確認、削除、復元）", // Lists this server's adventures: review a draft, remove one, or restore it.
   "dnd/author": "アイデアやメモから冒険作者に冒険を書いてもらいます", // Has the Adventure Author write an adventure from an idea or your notes.
   "dnd/author:idea": "冒険の内容", // What the adventure is about.
   "dnd/author:language": "書く言語（既定は英語）", // The language to write it in (default: English).
   "dnd/author:notes": "元にする自分のメモ（テキストまたは Markdown）", // Your own notes to build from (text or Markdown).
   "dnd/repair": "このゲームのチャンネルを確認しカードを描き直します（主催者）", // Checks this game's channels and redraws its cards (organizer).
+  "dnd/size": "ゲームの参加人数を変更します（主催者）", // Changes how many players the game takes (organizer).
+  "dnd/size:players": "席数（1〜6）。すでに参加しているプレイヤー数より少なくはできません", // Seats in the game, 1 to 6. Never fewer than the players already in it.
   "dnd/reopen": "終了したゲームを、止まった場所で一時停止したまま再開できる状態にします（主催者）", // Opens a finished game again, paused where it stopped (organizer).
 } as const satisfies CommandDescriptionCatalog;

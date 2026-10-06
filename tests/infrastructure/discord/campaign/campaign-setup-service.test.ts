@@ -32,6 +32,22 @@ async function newGame(r: Rig, name = "Moonlit Ruins", language: "en" | "zh-TW" 
 }
 
 describe("server setup", () => {
+  it("creates a Traditional Chinese D&D space and retains its language on repair", async () => {
+    const r = rig();
+    const { service, resources, messages } = setup(r);
+    const first = await service.setupGuild(guildId, null, "zh-TW");
+    if (first.kind !== "ok") throw new Error("setup");
+    expect(first.settings.language).toBe("zh-TW");
+    expect(resources.categoryNames).toEqual(["龍與地下城"]);
+    expect(resources.channels[0]?.options).toMatchObject({ name: "龍與地下城-團務", topic: "本伺服器的龍與地下城團務" });
+    expect(resources.forums.map((forum) => forum.options.name)).toEqual(["公開遊戲", "公開隊伍", "私人遊戲", "私人隊伍"]);
+    expect(resources.forums[0]?.options.topic).toBe("龍與地下城 公開遊戲");
+    expect(flatten(messages.live(first.settings.hubChannelId!)[0]!.payload).text).toContain("還沒有團務");
+    const repaired = await service.setupGuild(guildId, null);
+    expect(repaired.kind === "ok" && repaired.settings.language).toBe("zh-TW");
+    expect(resources.categories.size).toBe(1);
+  });
+
   it("creates the D&D category, the four campaign forums, and a read-only hub channel, and lists games there", async () => {
     const r = rig();
     const { service, resources, messages } = setup(r);
@@ -39,7 +55,10 @@ describe("server setup", () => {
     if (result.kind !== "ok") throw new Error("setup");
     expect(resources.categories.size).toBe(1);
     expect(resources.channels).toHaveLength(1);
-    expect(resources.channels[0]?.options).toMatchObject({ name: "dnd-games", playersReadOnly: true });
+    expect(resources.channels[0]?.options).toMatchObject({ name: "dnd-games" });
+    // Every D&D channel is locked to players, the picked hub and the private forums' viewer role included.
+    expect(resources.locked.map((lock) => lock.channelId).sort()).toEqual([result.settings.hubChannelId, result.settings.publicGamesForumId, result.settings.publicPartiesForumId, result.settings.privateGamesForumId, result.settings.privatePartiesForumId].sort());
+    expect(resources.locked.find((lock) => lock.channelId === result.settings.privateGamesForumId)?.roleId).toBe(result.settings.privateGamesRoleId);
     expect(resources.forums.map((forum) => forum.options.name)).toEqual(["public-games", "public-parties", "private-games", "private-parties"]);
     expect(resources.forums.find((forum) => forum.options.name === "public-games")?.options.tags).toEqual(["Recruiting", "Active", "Paused", "Completed"]);
     expect(resources.forums.find((forum) => forum.options.name === "public-parties")?.options.tags).toEqual([]);
@@ -74,7 +93,7 @@ describe("server setup", () => {
   it("uses the channel the organizer ran it in as the hub, and keeps the category on a repeat", async () => {
     const r = rig();
     const { service, resources } = setup(r);
-    resources.channels.push({ id: "mine", options: { name: "general", topic: "", parentId: null, playersReadOnly: false, allowThreadMessages: false } });
+    resources.channels.push({ id: "mine", options: { name: "general", topic: "", parentId: null } });
     const first = await service.setupGuild(guildId, "mine");
     const again = await service.setupGuild(guildId, "mine");
     expect(first).toEqual(again);

@@ -68,6 +68,10 @@ export function renderHeroCard(view: HeroView, text: Texts, campaignId: string, 
           .setCustomId(campaignCustomId("details", campaignId, view.characterId))
           .setLabel(t.button.details)
           .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(campaignCustomId("inspect", campaignId, view.characterId))
+          .setLabel(t.button.inspect)
+          .setStyle(ButtonStyle.Secondary),
       ),
     );
   return cardPayload(container, picture === undefined ? [] : [picture]);

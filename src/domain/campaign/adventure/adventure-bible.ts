@@ -1,6 +1,7 @@
 import type { EncounterMonster, EncounterSpec, EncounterTrigger, FightEffect, PartyEffect } from "../commands/campaign-command.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { Ability, DamageType } from "../rules/effects.js";
+import type { TimeOfDay, Weather } from "../rules/world-rules.js";
 
 // The adventure as authored (plan §6, layer B). Fields are split by who may
 // see them: public fields can reach narration; dmOverview, dmNotes, and
@@ -23,8 +24,14 @@ export interface AdventureBible {
   // The level the adventure is written for. Absent: level 1. The table's
   // starting-level rule can override it; everyone is brought up to the result.
   readonly startingLevel?: number;
+  // The party this adventure is written for. Fights are tuned for `min` heroes and grow tougher in proportion to every hero beyond that; `max` is the most the story is written for.
+  readonly suggestedParty?: { readonly min: number; readonly max: number };
   readonly dmOverview: string;
   readonly startScene: SceneId;
+  // The story only moves forward on purpose (a train, a dream, a descent): one-way exits are not reported as mistakes.
+  readonly linear?: boolean;
+  // When the story begins: day (1 if not given), time of day and weather. Absent: the adventure keeps no clock and nobody invents one.
+  readonly startTime?: { readonly day?: number; readonly time: TimeOfDay; readonly weather?: Weather };
   readonly scenes: readonly BibleScene[];
   readonly npcs: readonly BibleNpc[];
   readonly encounters: readonly BibleEncounter[];
@@ -47,7 +54,10 @@ export type BiblePartyEffect =
   // A line the table sees, once (the same words are never shown twice).
   | { readonly kind: "notice"; readonly text: string }
   // A story object the party now carries, with the name and words the table knows it by.
-  | { readonly kind: "keepsake"; readonly id: string; readonly name: string; readonly description: string };
+  | { readonly kind: "keepsake"; readonly id: string; readonly name: string; readonly description: string }
+  // Time passes in the story by phases of the day (six make a day); the sky changes. Only when the adventure has a clock (startTime).
+  | { readonly kind: "time"; readonly advance: number }
+  | { readonly kind: "weather"; readonly weather: Weather };
 
 // Harm between fights, rolled by the dice: to the heroes the effect follows (rollers, the default: each hero who took the attempt and
 // whose result it hangs on) or to the whole party.
@@ -124,12 +134,18 @@ export interface BibleScene {
   readonly title: string;
   readonly publicDescription: string;
   readonly dmNotes: string;
+  // More of what the table can learn here (what is engraved, what the room says about the people who left): the Narrator may use it, so it holds nothing secret.
+  readonly details?: string;
   // NPCs present in the scene.
   readonly npcIds: readonly NpcId[];
   // Where the party can go from here. Absent: anywhere the Planner sends them.
-  readonly exits?: readonly { readonly to: SceneId; readonly requires?: BibleRequirement }[];
+  // hidden: the map does not show this way until the party has used it (a secret door). hint: what the map says about a place not yet
+  // visited, instead of "???" ("A path north"); it must give nothing away.
+  readonly exits?: readonly { readonly to: SceneId; readonly requires?: BibleRequirement; readonly hidden?: boolean; readonly hint?: string }[];
   // What happens whenever the party arrives here by any route: clues, flags, rewards, notices, keepsakes (each lands only once).
   readonly onEnter?: readonly Exclude<BiblePartyEffect, { readonly kind: "goto" | "encounter" | "clock" }>[];
+  // What happens when the party takes a long rest here: the same kinds as onEnter.
+  readonly onLongRest?: readonly Exclude<BiblePartyEffect, { readonly kind: "goto" | "encounter" | "clock" }>[];
 }
 
 export interface BibleNpc {
@@ -170,6 +186,8 @@ export interface BibleEncounter {
   // Winning this fight is a story milestone: at a milestone table the party is
   // raised to this level. An experience table ignores it.
   readonly milestoneLevel?: number;
+  // Foes who join when the party is bigger than the adventure's suggested minimum: two from this list (in turn) for each extra hero.
+  readonly reinforcements?: readonly EncounterMonster[];
   // Beats inside the fight, each once: foes that arrive, a truce, story effects, a line for the table.
   readonly triggers?: readonly BibleTrigger[];
   // Story effects when the party wins (a fight never starts another fight).
@@ -233,6 +251,10 @@ export function storyEffectOf(effect: BiblePartyEffect, rewardId: string, bible?
       return { kind: "notice", noticeId: rewardId, text: effect.text };
     case "keepsake":
       return { kind: "grantKeepsake", keepsake: { id: effect.id, name: effect.name, description: effect.description } };
+    case "time":
+      return { kind: "advanceTime", steps: effect.advance };
+    case "weather":
+      return { kind: "setWeather", weather: effect.weather };
     case "encounter":
       return null;
   }
@@ -242,6 +264,12 @@ export function storyEffectOf(effect: BiblePartyEffect, rewardId: string, bible?
 export function enterEffects(bible: AdventureBible | undefined, sceneId: string): readonly PartyEffect[] {
   const scene = bible?.scenes.find((candidate) => candidate.id === sceneId);
   return (scene?.onEnter ?? []).flatMap((effect, position) => storyEffectOf(effect, `${sceneId}:enter:${position}`, bible) ?? []);
+}
+
+// What a long rest in a scene brings, as engine effects.
+export function longRestEffects(bible: AdventureBible | undefined, sceneId: string | null): readonly PartyEffect[] {
+  const scene = sceneId === null ? undefined : bible?.scenes.find((candidate) => candidate.id === sceneId);
+  return (scene?.onLongRest ?? []).flatMap((effect, position) => storyEffectOf(effect, `${sceneId}:rest:${position}`, bible) ?? []);
 }
 
 // A move to a scene brings that scene's arrival effects with it.
@@ -264,7 +292,7 @@ function fightEffectsOf(effect: BibleFightEffect, rewardId: string, bible?: Adve
 }
 
 export function encounterSpec(encounter: BibleEncounter, bible?: AdventureBible): EncounterSpec {
-  const { id, zones, edges, partyZoneId, monsters, loot, gold, milestoneLevel, ambush, dread, surprised } = encounter;
+  const { id, zones, edges, partyZoneId, monsters, loot, gold, milestoneLevel, ambush, dread, surprised, reinforcements } = encounter;
   const triggers: EncounterTrigger[] = (encounter.triggers ?? []).map((trigger, index) => ({
     when: trigger.when,
     effects: trigger.effects.flatMap((effect, position) => fightEffectsOf(effect, `${id}:trigger${index}:${position}`, bible)),
@@ -279,6 +307,8 @@ export function encounterSpec(encounter: BibleEncounter, bible?: AdventureBible)
     loot,
     gold,
     ...(milestoneLevel === undefined ? {} : { milestoneLevel }),
+    ...(bible?.suggestedParty === undefined ? {} : { partyBase: bible.suggestedParty.min }),
+    ...(reinforcements === undefined ? {} : { reinforcements }),
     ...(triggers.length === 0 ? {} : { triggers }),
     ...(onVictory.length === 0 ? {} : { onVictory }),
     ...(surprised === undefined ? {} : { surprised }),

@@ -82,7 +82,7 @@ const trapdoorFight: PlannerProposal = {
 };
 
 describe("story effects from the Planner", () => {
-  it("resolves authored IDs to definitions and refuses ones the party cannot reach", () => {
+  it("resolves authored IDs to definitions, refuses unknown ones, and leaves out a fight the party cannot reach", () => {
     const resolved = resolveStoryEffects(trapdoorFight, testBible, tavern);
     expect(resolved).toMatchObject({
       kind: "resolved",
@@ -101,12 +101,9 @@ describe("story effects from the Planner", () => {
       kind: "invalid",
       problems: ['Unknown scene "scene:moon".', "The party is already in scene:tavern; drop the transition.", 'Unknown encounter "encounter:dragon".'],
     });
-    expect(resolveStoryEffects(trapdoorFight, testBible, { ...tavern, sceneId: null })).toMatchObject({
-      problems: ["encounter:cellar-goblins belongs to scene:tavern, where the party is not."],
-    });
-    expect(resolveStoryEffects(trapdoorFight, testBible, { ...tavern, encounterHistory: ["encounter:cellar-goblins"] })).toMatchObject({
-      problems: ["encounter:cellar-goblins has already been fought."],
-    });
+    // Out of place or already fought: the fight is left out, and the round still resolves.
+    expect(resolveStoryEffects(trapdoorFight, testBible, { ...tavern, sceneId: null })).toMatchObject({ kind: "resolved", proposal: { effects: [] } });
+    expect(resolveStoryEffects(trapdoorFight, testBible, { ...tavern, encounterHistory: ["encounter:cellar-goblins"] })).toMatchObject({ kind: "resolved", proposal: { effects: [] } });
   });
 
   it("starts the authored fight after narration that leads into it", async () => {
@@ -162,7 +159,7 @@ describe("clocks and clues from the Planner", () => {
     });
   });
 
-  it("refuses unknown, out-of-place, or repeated clocks and clues, and absurd advances", () => {
+  it("refuses unknown clocks and clues and absurd advances, and leaves out repeated or out-of-place ones", () => {
     const bad: PlannerProposal = {
       ...trapdoorFight,
       effects: [
@@ -179,12 +176,9 @@ describe("clocks and clues from the Planner", () => {
         'Unknown clock "clock:nope".',
         "clock:guards-return may advance by 1 to 3 segments.",
         'Unknown clue "clue:nope".',
-        "clue:cellar-key was already revealed.",
       ],
     });
-    expect(resolveStoryEffects(ticking, testBible, { ...tavern, sceneId: null })).toMatchObject({
-      problems: ["clock:guards-return belongs to scene:tavern, where the party is not.", "clue:cellar-key belongs to scene:tavern, where the party is not."],
-    });
+    expect(resolveStoryEffects(ticking, testBible, { ...tavern, sceneId: null })).toMatchObject({ kind: "resolved", proposal: { effects: [] } });
   });
 
   it("shows the Planner the clock and clue notes, and the Narrator only what was revealed", () => {
@@ -262,7 +256,7 @@ describe("combat in the DM context", () => {
   it("shows the Planner authored fights with their notes, and everyone the fight as it stands", () => {
     const fight = roundTwo();
     const events = [...fight.events];
-    const base = { state: fight.state, events, bible: testBible, glossary: enSrd51Glossary, budgetTokens: 30_000 };
+    const base = { state: { ...fight.state, sceneId: "scene:tavern" as const }, events, bible: testBible, glossary: enSrd51Glossary, budgetTokens: 30_000 };
     const planner = assembleContext({ ...base, audience: "planner" }).sections.map((section) => section.text).join("\n");
     expect(planner).toContain(`encounter:cellar-goblins in scene:tavern: Goblins burst up through the cellar trapdoor.\nFoes: Goblin\nDM notes: ${secrets.encounter}`);
 

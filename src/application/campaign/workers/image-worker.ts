@@ -1,11 +1,12 @@
 import { findScene, type AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
-import type { EngineRequest } from "../../../domain/campaign/engine/engine-request.js";
+import type { EngineRequest, PictureSnapshot } from "../../../domain/campaign/engine/engine-request.js";
 import type { CampaignRecord } from "../ports/campaign-record.js";
 import { RevisionConflictError, type CampaignKey, type CampaignUnitOfWork, type OutboxItem } from "../ports/campaign-store.js";
 import type { AdventureLibrary } from "../ports/adventure-library.js";
 import { creaturePrompt, heroPrompt, momentPrompt, scenePrompt, type PictureBrief } from "../images/image-prompts.js";
 import { ImageProviderError, type GeneratedImage, type ImageAssetStore, type ImageGenerator, type SceneImageSink } from "../ports/image-ports.js";
 import type { WorkerRunResult } from "./roll-worker.js";
+import { KeyedSerialQueue } from "../../concurrency/keyed-serial-queue.js";
 
 export interface ImageWorkerOptions {
   readonly unitOfWork: CampaignUnitOfWork;
@@ -31,10 +32,12 @@ export interface ImageWorkerOptions {
 
 const defaultMaxBytes = 8 * 1024 * 1024;
 
-type PictureRequest = Extract<EngineRequest, { kind: "sceneImage" | "monsterImage" | "momentImage" | "heroImage" | "redoImage" }>;
+type PictureRequest = Extract<EngineRequest, { kind: "sceneImage" | "encounterImage" | "monsterImage" | "momentImage" | "heroImage" | "redoImage" }>;
 // The kinds a picture can be painted for; a redo names one of them by its subject.
 type Painted = Exclude<PictureRequest, { kind: "redoImage" }>;
-const pictureKinds = ["sceneImage", "monsterImage", "momentImage", "heroImage", "redoImage"] as const;
+// Scenes, heroes and fights stay in the asset store after they are posted, because the Activity shows them; the rest are posted once and dropped.
+const keptPictures: ReadonlySet<string> = new Set(["sceneImage", "heroImage", "encounterImage"]);
+const pictureKinds = ["sceneImage", "encounterImage", "monsterImage", "momentImage", "heroImage", "redoImage"] as const;
 // An automatic moment picture waits until this many rounds after the last one.
 const autoMomentGap = 3;
 
@@ -42,6 +45,7 @@ const autoMomentGap = 3;
 // A scene, a kind of monster (or a named NPC), or one told round each get one picture.
 export function pictureSubject(request: PictureRequest): string {
   if (request.kind === "sceneImage") return request.sceneId;
+  if (request.kind === "encounterImage") return `encounter:${request.encounterId}`;
   if (request.kind === "monsterImage") return request.npcId ?? request.monsterId;
   if (request.kind === "heroImage") return `hero:${request.characterId}`;
   if (request.kind === "redoImage") return request.subject;
@@ -62,7 +66,7 @@ function paintedFor(subject: string, bible: AdventureBible): Painted | undefined
 }
 
 // Makes pictures as background jobs (plan §6, Adventures and images): one per
-// scene the party enters, one per kind of monster it meets, and one for a
+// scene the party enters, one establishing shot per fight, and one for a
 // moment the organizer asks for. Text play never waits for them: a failure
 // only means there is no picture, and a picture that arrives late
 // is posted for what it was made for. Every prompt is built from text the table
@@ -70,13 +74,18 @@ function paintedFor(subject: string, bible: AdventureBible): Painted | undefined
 // NPC's public description, a round's told narration), so nothing the DM keeps
 // secret can reach an image.
 export class ImageWorker {
+  private readonly queue = new KeyedSerialQueue();
   public constructor(private readonly options: ImageWorkerOptions) {}
 
   // Campaigns run side by side, a few at a time; one campaign's pictures run in
   // order, so a repeat request finds the picture the first one made.
-  public async runOnce(): Promise<WorkerRunResult> {
+  public runOnce(): Promise<WorkerRunResult> {
+    return this.queue.run("images", () => this.runPending());
+  }
+
+  private async runPending(): Promise<WorkerRunResult> {
     const items = (
-      await this.options.unitOfWork.transaction(async (tx) => [...(await tx.pendingOutbox("sceneImage")), ...(await tx.pendingOutbox("monsterImage")), ...(await tx.pendingOutbox("heroImage")), ...(await tx.pendingOutbox("momentImage")), ...(await tx.pendingOutbox("redoImage"))])
+      await this.options.unitOfWork.transaction(async (tx) => [...(await tx.pendingOutbox("sceneImage")), ...(await tx.pendingOutbox("encounterImage")), ...(await tx.pendingOutbox("monsterImage")), ...(await tx.pendingOutbox("heroImage")), ...(await tx.pendingOutbox("momentImage")), ...(await tx.pendingOutbox("redoImage"))])
     );
     const failed: { id: string; error: string }[] = [];
     let processed = 0;
@@ -124,7 +133,18 @@ export class ImageWorker {
     const loaded = await unitOfWork.transaction(async (tx) => ({ stored: await tx.loadRecord(item.key), campaign: await tx.loadCampaign(item.key) }));
     if (loaded.stored === undefined || loaded.campaign === undefined) return;
     const { state } = loaded.campaign;
+    // Keep a room's picture even if the party moves on before this background
+    // job starts. It is stored under that scene and can be reused on return;
+    // posting is still gated below so it cannot appear beside another room.
     if (asked.kind === "sceneImage" && asked.roundNumber > 0 && state.lastRoundNumber === asked.roundNumber && state.lastNarratedRound < asked.roundNumber) return "later";
+    if (asked.kind === "sceneImage" && asked.roundNumber > 0) {
+      const arrival = await unitOfWork.transaction(async (tx) => (await tx.outboxForCampaign(item.key)).find((entry) =>
+        entry.request.kind === "deliver" && entry.request.delivery.kind === "sceneArrival" &&
+        entry.request.delivery.sceneId === asked.sceneId && entry.request.delivery.roundNumber === asked.roundNumber));
+      if (arrival?.status === "pending") return "later";
+      // If the matching room text could not be delivered, omit its picture too.
+      if (arrival?.status === "failed") return;
+    }
     const { record } = loaded.stored;
     const existing = record.images?.[subject];
     // A subject keeps the picture it has, and a finished game makes no more.
@@ -133,7 +153,14 @@ export class ImageWorker {
     const bible = adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
     // A redo paints the subject again; anything else keeps the picture it has.
     const forced = asked.kind === "redoImage";
-    const request = asked.kind === "redoImage" ? (bible === undefined ? undefined : paintedFor(asked.subject, bible)) : asked;
+    const original = forced && subject.startsWith("encounter:")
+      ? (await unitOfWork.transaction((tx) => tx.outboxForCampaign(item.key)))
+        .map((entry) => entry.request)
+        .find((entry) => entry.kind === "encounterImage" && pictureSubject(entry) === subject)
+      : undefined;
+    const request = asked.kind === "redoImage"
+      ? original?.kind === "encounterImage" ? original : (bible === undefined ? undefined : paintedFor(asked.subject, bible))
+      : asked;
     // A redo of a scene that has no picture yet simply paints it: that is how the organizer asks for the scene they are in.
     if (request === undefined || (forced && existing === undefined && request.kind !== "sceneImage")) return;
     if (existing === "made") {
@@ -141,9 +168,13 @@ export class ImageWorker {
       const saved = await assets.load(item.key, subject);
       const found = bible === undefined ? undefined : await this.describe(request, item.key, record, bible);
       if (saved === undefined || found === undefined || channelId === null) return void (await this.mark(item.key, subject, "failed"));
+      if (request.kind === "sceneImage" && !(await this.sceneIsCurrent(item.key, request.sceneId))) {
+        await this.mark(item.key, subject, "done");
+        return;
+      }
       await sink.post(channelId, saved, found.caption);
       await this.mark(item.key, subject, "done");
-      await assets.remove(item.key, subject).catch(() => undefined);
+      if (!keptPictures.has(request.kind)) await assets.remove(item.key, subject).catch(() => undefined);
       return;
     }
     if (existing !== undefined && !forced) return;
@@ -165,6 +196,12 @@ export class ImageWorker {
     }
     const described = bible === undefined ? undefined : await this.describe(request, item.key, record, bible);
     if (described === undefined || channelId === null) return void (await this.mark(item.key, subject, "skipped"));
+    if (request.kind === "momentImage" && request.auto === true && !forced) {
+      const sceneId = request.snapshot?.sceneId ?? state.sceneId;
+      if (sceneId === null || !(await this.reserveAutomaticMoment(item.key, sceneId, subject))) {
+        return void (await this.mark(item.key, subject, "skipped"));
+      }
+    }
 
     const image = await generator.generate({ prompt: described.prompt, aspect: described.aspect, timeoutMs: this.options.timeoutMs ?? 90_000, ...(described.references === undefined ? {} : { references: described.references }) });
     if (image.bytes.byteLength > (this.options.maxBytes ?? defaultMaxBytes)) throw new Error("The picture is larger than the limit.");
@@ -172,12 +209,38 @@ export class ImageWorker {
     // the same image without paying the provider again.
     await assets.save(item.key, subject, image);
     await this.mark(item.key, subject, "made");
+    if (request.kind === "sceneImage" && !(await this.sceneIsCurrent(item.key, request.sceneId))) {
+      await this.mark(item.key, subject, "done");
+      return;
+    }
     await sink.post(channelId, image, described.caption);
     await this.mark(item.key, subject, "done");
-    await assets.remove(item.key, subject).catch(() => undefined);
+    if (!keptPictures.has(request.kind)) await assets.remove(item.key, subject).catch(() => undefined);
   }
 
   // The player's own portrait for a hero that came from their library, if they gave one.
+  private async reserveAutomaticMoment(key: CampaignKey, sceneId: string, subject: string): Promise<boolean> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.options.unitOfWork.transaction(async (tx) => {
+          const stored = await tx.loadRecord(key);
+          if (stored === undefined) return false;
+          const previous = stored.record.automaticMomentScenes?.[sceneId];
+          if (previous !== undefined) return previous === subject;
+          await tx.saveRecord({ ...stored.record, automaticMomentScenes: { ...stored.record.automaticMomentScenes, [sceneId]: subject } }, stored.revision);
+          return true;
+        });
+      } catch (error) {
+        if (!(error instanceof RevisionConflictError) || attempt === 2) throw error;
+      }
+    }
+    return false;
+  }
+
+  private async sceneIsCurrent(key: CampaignKey, sceneId: string): Promise<boolean> {
+    return this.options.unitOfWork.transaction(async (tx) => (await tx.loadCampaign(key))?.state.sceneId === sceneId);
+  }
+
   private async ownPortrait(key: CampaignKey, characterId: string): Promise<{ readonly image: GeneratedImage; readonly name: string } | undefined> {
     const { unitOfWork, portraits } = this.options;
     if (portraits === undefined) return undefined;
@@ -216,9 +279,23 @@ export class ImageWorker {
           .map((envelope) => envelope.event)
           .findLast((event) => event.kind === "openingRecorded")
         : undefined;
-      const description = opening?.kind === "openingRecorded" ? `${scene.publicDescription} ${opening.text}` : scene.publicDescription;
-      const party = await this.partyFor(key);
-      return { ...scenePrompt({ title: scene.title, description, party: party.descriptions }), caption: scene.title, references: party.references };
+      const openingText = opening?.kind === "openingRecorded" ? opening.text : undefined;
+      const party = await this.partyFor(key, request.snapshot);
+      const atmosphere = await this.atmosphereOf(key, request.snapshot);
+      return { ...scenePrompt({ title: scene.title, description: scene.publicDescription, ...(openingText === undefined ? {} : { opening: openingText }), party: party.descriptions, ...(atmosphere === undefined ? {} : { atmosphere }) }), caption: scene.title, references: party.references };
+    }
+    if (request.kind === "encounterImage") {
+      const scene = findScene(bible, request.snapshot.sceneId);
+      if (scene === undefined) return undefined;
+      const encounter = bible.encounters.find((entry) => entry.id === request.encounterId.replace(/~\d+$/, ""));
+      const creatures = request.monsters.map((entry) => {
+        const kind = this.options.monsterName?.(entry.monsterId, "en") ?? entry.monsterId.replace(/^monster:/, "").replace(/-/g, " ");
+        const npc = entry.npcId === null ? undefined : bible.npcs.find((candidate) => candidate.id === entry.npcId);
+        return npc === undefined ? kind : `${npc.name}, ${kind}: ${npc.publicDescription}`;
+      });
+      const party = await this.partyFor(key, request.snapshot);
+      const atmosphere = await this.atmosphereOf(key, request.snapshot);
+      return { ...scenePrompt({ title: scene.title, description: scene.publicDescription, party: party.descriptions, creatures, ...(encounter === undefined ? {} : { encounter: encounter.publicDescription }), ...(atmosphere === undefined ? {} : { atmosphere }) }), caption: scene.title, references: party.references };
     }
     if (request.kind === "monsterImage") {
       const name = this.options.monsterName?.(request.monsterId, "en") ?? request.monsterId.replace(/^monster:/, "").replace(/-/g, " ");
@@ -231,32 +308,44 @@ export class ImageWorker {
       if (sheet === undefined) return undefined;
       // The class by its builder name (English) when the sheet has one, so the prompt is not in the table's language.
       const className = Object.keys(sheet.classLevels ?? {})[0] ?? sheet.className ?? "adventurer";
-      return { ...heroPrompt({ name: sheet.name, level: sheet.level, className, ...(sheet.race === undefined ? {} : { race: sheet.race }), gear: sheet.equipment }), caption: sheet.name };
+      return { ...heroPrompt({ name: sheet.name, level: sheet.level, className, ...(sheet.race === undefined ? {} : { race: sheet.race }), ...(sheet.appearance === undefined ? {} : { appearance: sheet.appearance }), gear: sheet.equipment }), caption: sheet.name };
     }
     const events = await this.options.unitOfWork.transaction((tx) => tx.readEvents(key));
     const told = events.map((envelope) => envelope.event).findLast((event) => event.kind === "narrationRecorded" && event.roundNumber === request.roundNumber);
     if (told?.kind !== "narrationRecorded") return undefined;
     const state = await this.options.unitOfWork.transaction((tx) => tx.loadCampaign(key));
-    const scene = findScene(bible, state?.state.sceneId ?? null);
-    const party = await this.partyFor(key);
-    return { ...momentPrompt({ narration: told.text, ...(scene === undefined ? {} : { sceneTitle: scene.title }), party: party.descriptions }), caption: scene?.title ?? record.name, references: party.references };
+    // The scene, time and party as they were when the picture was asked for; only a request without them (an old one) looks at the story now.
+    const scene = findScene(bible, request.snapshot === undefined ? (state?.state.sceneId ?? null) : request.snapshot.sceneId);
+    const party = await this.partyFor(key, request.snapshot);
+    const atmosphere = await this.atmosphereOf(key, request.snapshot);
+    return { ...momentPrompt({ narration: told.text, ...(scene === undefined ? {} : { sceneTitle: scene.title }), party: party.descriptions, ...(atmosphere === undefined ? {} : { atmosphere }) }), caption: scene?.title ?? record.name, references: party.references };
   }
 
-  private async partyFor(key: CampaignKey): Promise<{ readonly descriptions: string[]; readonly references: { readonly name: string; readonly image: GeneratedImage }[] }> {
+  // The light of the moment: the time of day and weather the story had then (the snapshot), or has now for a request that carries none.
+  private async atmosphereOf(key: CampaignKey, snapshot: PictureSnapshot | undefined): Promise<string | undefined> {
+    const world = snapshot === undefined ? (await this.options.unitOfWork.transaction((tx) => tx.loadCampaign(key)))?.state.world : snapshot.world;
+    return world === undefined ? undefined : `${world.time}${world.weather === undefined ? "" : `, ${world.weather}`}`;
+  }
+
+  private async partyFor(key: CampaignKey, snapshot?: PictureSnapshot): Promise<{ readonly descriptions: string[]; readonly references: { readonly name: string; readonly image: GeneratedImage }[] }> {
     const state = (await this.options.unitOfWork.transaction((tx) => tx.loadCampaign(key)))?.state;
     if (state === undefined) return { descriptions: [], references: [] };
     const descriptions: string[] = [];
     const references: { name: string; image: GeneratedImage }[] = [];
-    for (const member of Object.values(state.members)) {
-      if (member.availability !== "present" || member.characterId === null) continue;
-      const hero = state.characters[member.characterId];
-      if (hero === undefined || state.heroStatus[hero.id]?.dead === true) continue;
+    // Who was there is what the snapshot says (with the level and gear they had then); without one, whoever is present now.
+    const present = snapshot === undefined ? Object.values(state.members).flatMap((member) => (member.availability === "present" && member.characterId !== null ? [{ id: member.characterId }] : [])) : snapshot.heroes;
+    for (const seen of present) {
+      const hero = state.characters[seen.id];
+      if (hero === undefined || (snapshot === undefined && state.heroStatus[hero.id]?.dead === true)) continue;
+      const level = "level" in seen ? seen.level : hero.level;
+      const equipment = "equipment" in seen ? seen.equipment : hero.equipment;
       const race = hero.race?.replace(/^race:/, "").replace(/-/g, " ") ?? "unspecified ancestry";
       const klass = Object.keys(hero.classLevels ?? {})[0] ?? hero.className ?? "adventurer";
+      const appearance = hero.appearance === undefined ? "" : `; appearance: ${hero.appearance}`;
       const image = hero.origin === undefined ? undefined : await this.options.portraits?.forGame(hero.origin.libraryCharacterId).catch(() => undefined);
       if (image !== undefined) references.push({ name: hero.name, image });
-      const gear = hero.equipment.slice(0, 3).map((item) => item.replace(/^item:/, "").replace(/-/g, " ")).join(", ");
-      descriptions.push(`${hero.name}, a level ${hero.level} ${race} ${klass}${gear === "" ? "" : ` carrying ${gear}`}${image === undefined ? "" : ` (reference image ${references.length})`}`);
+      const gear = equipment.slice(0, 3).map((item) => item.replace(/^item:/, "").replace(/-/g, " ")).join(", ");
+      descriptions.push(`${hero.name}, a level ${level} ${race} ${klass}${appearance}${gear === "" ? "" : ` carrying ${gear}`}${image === undefined ? "" : ` (reference image ${references.length})`}`);
     }
     return { descriptions, references };
   }

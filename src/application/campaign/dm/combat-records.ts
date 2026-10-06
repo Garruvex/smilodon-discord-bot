@@ -32,6 +32,8 @@ export type CombatBeat =
       readonly actor: string;
       // Weapon, spell, or feature name in the campaign language.
       readonly using: string;
+      // What kind of thing it was, for the Activity to style: a spell reads differently from a sword swing.
+      readonly sourceKind?: "weapon" | "spell" | "area" | "item" | "feature";
       readonly opportunity: boolean;
       readonly targets: CombatTargetResult[];
       headline: RollMoment | null;
@@ -135,6 +137,7 @@ export function encounterRecords(events: readonly CampaignEvent[], names: Combat
           resolutionId: resolution.id,
           actor: nameOf(resolution.actorId),
           using: names.glossary.names[id] ?? id,
+          sourceKind: source.kind,
           opportunity: resolution.purpose === "opportunity",
           targets: [],
           headline: null,

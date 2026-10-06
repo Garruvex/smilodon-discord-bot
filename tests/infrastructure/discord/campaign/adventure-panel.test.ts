@@ -29,10 +29,37 @@ describe("the adventure panel", () => {
   it("shows the scene, round, deadline, and who has submitted", () => {
     const card = flatten(renderAdventurePanel(collecting, texts.en, "camp"));
     expect(card.accent).toBe(accents.green);
-    expect(card.text).toContain("## Old Watchtower · Exploration · Round 4");
-    expect(card.text).toContain("Submit an action or Pass. Closes <t:1800000000:R>.");
-    expect(card.text).toContain("Mira ✓ Submitted · Borin … Thinking · Elin — Away");
-    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:act:camp", "dnd:speak:camp", "dnd:pass:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:explore:camp", "dnd:safety:camp", "dnd:more:camp"]);
+    expect(card.text).toContain("## Old Watchtower\n-# Exploration — Round 4");
+    expect(card.text).toContain("Press Act / Edit to describe what you want to do");
+    expect(card.text).toContain("Closes <t:1800000000:R>.");
+    expect(card.text).toContain("Mira ✓ Submitted\nBorin … Thinking\nElin — Away");
+    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:act:camp", "dnd:speak:camp", "dnd:pass:camp", "dnd:myHero:camp", "dnd:explore:camp", "dnd:away:camp", "dnd:safety:camp", "dnd:more:camp"]);
+  });
+
+  it("says who wants a move when it names them", () => {
+    const view: PanelView = { ...collecting, pendingMove: { sceneTitle: "Ruined Chapel", wantedBy: ["Mira"], staying: [], stayingUserIds: [] } };
+    expect(flatten(renderAdventurePanel(view, texts.en, "camp")).text).toContain("Mira proposed **Ruined Chapel**");
+  });
+
+  it("names a fallen hero and points at My Hero", () => {
+    const card = flatten(renderAdventurePanel({ ...collecting, fallen: ["Borin"] }, texts.en, "camp"));
+    expect(card.text).toContain("Fallen: Borin. Press **My Hero** to take a new hero.");
+    expect(flatten(renderAdventurePanel(collecting, texts.en, "camp")).text).not.toContain("Fallen:");
+  });
+
+  it("shows the story's day, time and weather when the adventure keeps a clock, and nothing when it does not", () => {
+    const world = { day: 2, time: "dusk", weather: "rain" };
+    expect(flatten(renderAdventurePanel({ ...collecting, world }, texts.en, "camp")).text).toContain("Day 2 · dusk · rain");
+    expect(flatten(renderAdventurePanel({ ...collecting, world }, texts["zh-TW"], "camp")).text).toContain("第 2 天 · 黃昏 · 下雨");
+    expect(flatten(renderAdventurePanel(collecting, texts.en, "camp")).text).not.toContain("Day ");
+  });
+
+  it("links straight to the Party channel when it has one, in every live state", () => {
+    const url = "https://discord.com/channels/1/2";
+    const withLink = (view: PanelView): string[] => flatten(renderAdventurePanel(view, texts.en, "camp", url)).buttons.map((button) => button.label);
+    expect(withLink(collecting)).toContain("Party channel");
+    expect(withLink({ ...collecting, mode: "paused" })).toContain("Party channel");
+    expect(labels(collecting)).not.toContain("Party channel");
   });
 
   it("says so when there is no timer", () => {
@@ -40,11 +67,22 @@ describe("the adventure panel", () => {
   });
 
   it("changes its controls with the state", () => {
-    expect(labels({ ...collecting, mode: "planning" })).toEqual(["My Hero", "Away", "Explore", "Safety", "More…"]);
-    expect(labels({ ...collecting, mode: "awaitingRolls", pendingRolls: [{ characterId: "c-mira", userId: "1", heroName: "Mira" }] })).toEqual(["Roll", "My Hero", "Away", "Explore", "Safety", "More…"]);
-    expect(labels({ ...collecting, mode: "waiting" })).toEqual(["Continue", "I'm back", "My Hero", "Explore", "Safety", "More…"]);
-    expect(labels({ ...collecting, mode: "paused" })).toEqual(["My Hero", "Explore", "Safety", "More…"]);
+    expect(labels({ ...collecting, mode: "planning" })).toEqual(["My Hero", "Away / I'm back", "Safety", "More…"]);
+    expect(labels({ ...collecting, mode: "awaitingRolls", pendingRolls: [{ characterId: "c-mira", userId: "1", heroName: "Mira", test: { kind: "skill", skill: "persuasion" }, action: "talk the guard round" }] })).toEqual(["Roll", "My Hero", "Away / I'm back", "Safety", "More…"]);
+    expect(labels({ ...collecting, mode: "waiting" })).toEqual(["Continue", "My Hero", "Away / I'm back", "Safety", "More…"]);
+    expect(labels({ ...collecting, mode: "paused" })).toEqual(["My Hero", "Away / I'm back"]);
     expect(labels({ ...collecting, mode: "archived" })).toEqual([]);
+  });
+
+  it("says where the party is heading and who wants to stay, with one button to object or go along", () => {
+    const heading: PanelView = { ...collecting, pendingMove: { sceneTitle: "Ruined Chapel", staying: ["Borin"], stayingUserIds: ["2"] } };
+    const card = flatten(renderAdventurePanel(heading, texts.en, "camp")).text;
+    expect(card).toContain("may go to **Ruined Chapel**");
+    expect(card).toContain("Voting to stay: Borin");
+    expect(labels(heading)).toEqual(["Stay here", "My Hero", "Away / I'm back", "Safety", "More…"]);
+    expect(flatten(renderAdventurePanel(heading, texts["zh-TW"], "camp")).text).toContain("**Ruined Chapel**");
+    expect(flatten(renderAdventurePanel(collecting, texts.en, "camp")).text).not.toContain("may go to");
+    expect(labels({ ...heading, mode: "planning" })).not.toContain("Stay here / Go along");
   });
 
   it("asks everyone to press Ready after the opening, showing who has", () => {
@@ -60,10 +98,10 @@ describe("the adventure panel", () => {
     };
     const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
     expect(card.text).toContain("Getting ready");
-    expect(card.text).toContain("Press Ready");
-    expect(card.text).toContain("Mira ✓ Ready · Borin … Thinking");
-    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:ready:camp", "dnd:begin:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:explore:camp", "dnd:safety:camp", "dnd:more:camp"]);
-    expect(labels(view, "zh-TW")).toEqual(["準備好了", "立即開始", "我的英雄", "離開", "探索", "安全", "更多…"]);
+    expect(card.text).toContain("press Ready");
+    expect(card.text).toContain("Mira ✓ Ready\nBorin … Thinking");
+    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:ready:camp", "dnd:begin:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:safety:camp", "dnd:more:camp"]);
+    expect(labels(view, "zh-TW")).toEqual(["準備好了", "立即開始", "我的英雄", "離開／我回來了", "安全", "更多…"]);
   });
 
   it("explains a pause and a restart pause in words, on a gray card", () => {
@@ -74,21 +112,24 @@ describe("the adventure panel", () => {
     expect(flatten(renderAdventurePanel({ ...collecting, mode: "recovery" }, texts.en, "camp")).text).toContain("The organizer must resume play.");
   });
 
-  it("names who the rolls wait for, with Roll disabled when none", () => {
-    const view: PanelView = { ...collecting, mode: "awaitingRolls", pendingRolls: [{ characterId: "c-mira", userId: "1", heroName: "Mira" }] };
+  it("names who rolls, which check, and the action that called for it", () => {
+    const view: PanelView = { ...collecting, mode: "awaitingRolls", pendingRolls: [{ characterId: "c-mira", userId: "1", heroName: "Mira", test: { kind: "skill", skill: "persuasion" }, action: "talk the guard round" }] };
     const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
-    expect(card.accent).toBe(accents.amber);
-    expect(card.text).toContain("Waiting for rolls: Mira.");
-    expect(card.buttons[0]?.disabled).toBe(false);
-    expect(flatten(renderAdventurePanel({ ...view, pendingRolls: [] }, texts.en, "camp")).buttons[0]?.disabled).toBe(true);
+    // Its own colour, so a call for dice is not mistaken for the amber DM-is-working panel; the player is tagged.
+    expect(card.accent).toBe(accents.purple);
+    expect(card.text).toContain("If yours is listed, press Roll.");
+    expect(card.text).toContain("<@1> **Mira** · Persuasion (CHA)\nAttempt: talk the guard round");
+    expect(card.buttons.map((button) => button.label)).toContain("Roll");
   });
 
-  it("summarizes a fight with hero HP and monster bands, never monster HP", () => {
+  it("separates both sides with health bars, exact HP, and locations", () => {
     const view: PanelView = {
       ...collecting,
       mode: "combat",
       closesAt: null,
       combat: {
+        encounterId: "encounter:test",
+        allies: [],
         round: 2,
         activeName: "Borin",
         activeUserId: "2",
@@ -99,48 +140,122 @@ describe("the adventure panel", () => {
           { name: "Borin", hp: 12, maxHp: 12, tempHp: 0, condition: "active", zone: "Cellar", active: true },
         ],
         foes: [
-          { name: "Goblin A", band: "bloodied", zone: "Cellar", active: false },
-          { name: "Wolf", band: "unhurt", zone: "Stairs", active: false },
+          { name: "Goblin A", hp: 2, maxHp: 7, band: "bloodied", zone: "Cellar", active: false },
+          { name: "Wolf", hp: 11, maxHp: 11, band: "unhurt", zone: "Stairs", active: false },
         ],
       },
     };
     const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
     expect(card.accent).toBe(accents.red);
-    expect(card.text).toContain("Combat, round 2. Active: Borin.");
-    expect(card.text).toContain("📍 Cellar: Mira 4/9 · ▶ Borin 12/12 · Goblin A: bloodied");
-    expect(card.text).toContain("📍 Stairs: Wolf: unhurt");
+    expect(card.text).toContain("▶ **Borin** is taking their turn.");
+    expect(card.text).toContain("### Party (2)\n▶ **Borin**");
+    expect(card.text).toContain("▰▰▰▰▰▰▰▰ HP 12/12 · 📍 Cellar");
+    expect(card.text).toContain("• **Mira** · ▰▰▰▰▱▱▱▱ HP 4/9");
+    expect(card.text).toContain("### Enemies (2)\n• **Goblin A**");
+    expect(card.text).toContain("HP 2/7 · bloodied · 📍 Cellar");
+    expect(card.text).toContain("HP 11/11 · unhurt · 📍 Stairs");
     // On autopilot nobody takes turns, so there is only My Hero (and the safety row).
-    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:myHero:camp", "dnd:safety:camp", "dnd:more:camp"]);
+    expect(card.buttons.map((button) => button.id)).toEqual(["dnd:myHero:camp", "dnd:away:camp", "dnd:safety:camp", "dnd:more:camp"]);
   });
 
-  it("gives a fight the players play a Take turn and End turn button", () => {
+  it("leads with the active turn, the next three, and clear shared controls", () => {
     const view: PanelView = {
       ...collecting,
       mode: "combat",
       closesAt: 1_800_000_000_000,
       combat: {
+        encounterId: "encounter:test",
+        allies: [],
         round: 1,
         activeName: "Mira",
+        upcoming: ["Wolf", "Borin", "Goblin"],
         activeUserId: "1",
         playersControl: true,
         zones: ["Cellar"],
         party: [{ name: "Mira", hp: 9, maxHp: 9, tempHp: 0, condition: "active", zone: "Cellar", active: true }],
-        foes: [{ name: "Wolf", band: "unhurt", zone: "Cellar", active: false }],
+        foes: [{ name: "Wolf", hp: 11, maxHp: 11, band: "unhurt", zone: "Cellar", active: false }],
       },
     };
     const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
-    expect(card.text).toContain("Closes <t:1800000000:R>.");
+    expect(card.text).toMatch(/^## ▶ \*\*Mira\*\* is taking their turn\.\nUp next: \*\*Wolf\*\* → \*\*Borin\*\* → \*\*Goblin\*\*/);
+    expect(card.text).toContain("for the active player or their assigned substitute");
+    expect(card.buttons.map((button) => button.label)).toContain("Turn actions");
+    expect(card.text).toContain("\nTurn deadline: <t:1800000000:d> <t:1800000000:t>");
     expect(card.buttons.map((button) => button.id)).toEqual(["dnd:turn:camp", "dnd:endTurn:camp", "dnd:speak:camp", "dnd:myHero:camp", "dnd:away:camp", "dnd:safety:camp", "dnd:more:camp"]);
-    expect(labels(view, "zh-TW")).toEqual(["輪到我", "結束回合", "說話", "我的英雄", "離開", "安全", "更多…"]);
+    expect(labels(view, "zh-TW")).toEqual(["回合行動", "結束我的回合", "說話", "我的英雄", "離開／我回來了", "安全", "更多…"]);
+    expect(flatten(renderAdventurePanel(view, texts["zh-TW"], "camp")).text).toContain("接下來：**Wolf** → **Borin** → **Goblin**");
   });
 
   it("speaks Traditional Chinese with short labels, and stays within Discord's limits", () => {
     const card = flatten(renderAdventurePanel(collecting, texts["zh-TW"], "camp"));
-    expect(card.text).toContain("Old Watchtower · 探索 · 第 4 回合");
-    expect(card.text).toContain("Mira ✓ 已提交 · Borin … 思考中 · Elin — 離開");
-    expect(card.buttons.map((button) => button.label)).toEqual(["行動／修改", "說話", "跳過", "我的英雄", "離開", "探索", "安全", "更多…"]);
+    expect(card.text).toContain("Old Watchtower\n-# 探索 — 第 4 回合");
+    expect(card.text).toContain("Mira ✓ 已提交\nBorin … 思考中\nElin — 離開");
+    expect(card.buttons.map((button) => button.label)).toEqual(["行動／修改", "說話", "跳過", "我的英雄", "探索", "離開／我回來了", "安全", "更多…"]);
     expect(card.componentCount).toBeLessThan(cardLimits.components);
     expect(card.text.length).toBeLessThan(cardLimits.characters);
+  });
+
+  it("shows Chinese health, temporary HP and incapacitation with a separate deadline", () => {
+    const view: PanelView = {
+      ...collecting, mode: "combat", roundNumber: 1,
+      combat: {
+        encounterId: "encounter:test",
+        allies: [],
+        round: 1, activeName: "空虎", activeUserId: "1", playersControl: true, zones: ["辦公室"],
+        party: [
+          { name: "空虎", hp: 10, maxHp: 10, tempHp: 3, condition: "active", zone: "辦公室", active: true },
+          { name: "Onyx", hp: -2, maxHp: 8, tempHp: 0, condition: "unconscious", zone: "辦公室", active: false },
+        ],
+        foes: [{ name: "飛蛇", hp: 2, maxHp: 5, band: "bloodied", zone: "辦公室", active: false }],
+      },
+    };
+    const card = flatten(renderAdventurePanel(view, texts["zh-TW"], "camp"));
+    expect(card.text).toContain("## ▶ 輪到 **空虎** 行動");
+    expect(card.text).toContain("\n行動截止時間：<t:1800000000:d> <t:1800000000:t>");
+    expect(card.text).toContain("### 隊伍（2）\n▶ **空虎** · ▰▰▰▰▰▰▰▰ 生命 10/10 · +3 臨時生命值");
+    expect(card.text).toContain("• **Onyx** · ▱▱▱▱▱▱▱▱ 生命 0/8 · 倒地");
+    expect(card.text).toContain("### 敵方（1）\n• **飛蛇** · ▰▰▰▰▱▱▱▱ 生命 2/5 · 重傷");
+    expect(card.text).not.toContain(":R>");
+  });
+
+  it("shows held spells, death saves, conditions and who a summon belongs to", () => {
+    const view: PanelView = {
+      ...collecting, mode: "combat", roundNumber: 1,
+      combat: {
+        encounterId: "encounter:test",
+        round: 1, activeName: "Mira", activeUserId: "1", playersControl: true, zones: ["Hall"],
+        party: [
+          { name: "Mira", hp: 10, maxHp: 10, tempHp: 0, condition: "active", zone: "Hall", active: true, concentration: "Bless", statuses: ["Poisoned"] },
+          { name: "Borin", hp: 0, maxHp: 12, tempHp: 0, condition: "unconscious", zone: "Hall", active: false, deathSaves: { successes: 1, failures: 2, stable: false } },
+        ],
+        allies: [{ name: "Giant Badger", hp: 9, maxHp: 22, tempHp: 0, condition: "active", zone: "Hall", active: false, ownerName: "Mira", concentration: null, statuses: [] }],
+        foes: [{ name: "Husk", hp: 4, maxHp: 22, band: "bloodied", zone: "Hall", active: false, statuses: ["Prone"] }],
+      },
+    };
+    const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
+    expect(card.text).toContain("◎ Bless · Poisoned");
+    expect(card.text).toContain("☠ saves 1✓ 2✗");
+    expect(card.text).toContain("### Allies (1)\n• **Giant Badger** · belongs to Mira");
+    expect(card.text).toContain("Prone");
+  });
+
+  it("keeps a crowded fight within message limits with the active enemy visible", () => {
+    const view: PanelView = {
+      ...collecting, mode: "combat",
+      combat: {
+        encounterId: "encounter:test",
+        allies: [],
+        round: 1, activeName: "Last enemy", activeUserId: null, playersControl: true, zones: ["Cellar", "Stairs"],
+        party: Array.from({ length: 30 }, (_, i) => ({ name: `Hero ${i} with a long name`, hp: 5, maxHp: 10, tempHp: 0, condition: "active" as const, zone: "Cellar", active: false })),
+        foes: Array.from({ length: 100 }, (_, i) => ({ name: i === 99 ? "Last enemy" : `Enemy ${i} with a long name`, hp: 3, maxHp: 7, band: "bloodied" as const, zone: "Stairs", active: i === 99 })),
+      },
+    };
+    const card = flatten(renderAdventurePanel(view, texts.en, "camp"));
+    expect(card.text).toContain("### Party (30)");
+    expect(card.text).toContain("### Enemies (100)\n▶ **Last enemy**");
+    expect(card.text).toContain("more combatants");
+    expect(card.text.length).toBeLessThan(cardLimits.characters);
+    expect(card.componentCount).toBeLessThan(cardLimits.components);
   });
 });
 
@@ -179,7 +294,7 @@ describe("hero cards", () => {
     expect(card.text).toContain("Played by <@42>");
     expect(card.text).toContain("HP 4/9 · AC 14");
     expect(card.text).toContain("Prone · Present");
-    expect(card.buttons).toEqual([{ id: "dnd:details:camp:c-mira", label: "Details", disabled: false }]);
+    expect(card.buttons).toEqual([{ id: "dnd:details:camp:c-mira", label: "Details", disabled: false }, { id: "dnd:inspect:camp:c-mira", label: "Items & spells", disabled: false }]);
   });
 
   it("always shows gear, pack, gold, stash, spells, slots, and limited uses", () => {
@@ -242,5 +357,21 @@ describe("hero cards", () => {
     expect(hpBar(1, 9)).toBe("▰▱▱▱▱▱▱▱");
     expect(hpBar(20, 9)).toBe("▰▰▰▰▰▰▰▰");
     expect(hpBar(-3, 9)).toBe("▱▱▱▱▱▱▱▱");
+  });
+
+  it("keeps the Activity launcher out of the Adventure panel", () => {
+    expect(flatten(renderAdventurePanel(collecting, texts.en, "camp")).buttons.map((button) => button.label)).not.toContain("Play in Activity");
+    expect(flatten(renderAdventurePanel({ ...collecting, mode: "combat" }, texts.en, "camp", "https://discord.com/channels/1/2")).buttons.map((button) => button.id)).not.toContain("dnd:playActivity:camp");
+  });
+  it("separates play, navigation, and table controls into valid rows", () => {
+    const payload = renderAdventurePanel({ ...collecting, pendingMove: { sceneTitle: "Ruined Chapel", staying: [], stayingUserIds: [] } }, texts.en, "camp", "https://discord.com/channels/1/2");
+    const root = payload.components[0].toJSON() as unknown as { components: { type: number; components?: { custom_id?: string; url?: string }[] }[] };
+    const rows = root.components.filter((component) => component.type === 1).map((row) => row.components ?? []);
+    expect(rows.every((row) => row.length <= 5)).toBe(true);
+    expect(rows.map((row) => row.map((button) => button.custom_id ?? button.url))).toEqual([
+      ["dnd:stay:camp"],
+      ["dnd:myHero:camp", "https://discord.com/channels/1/2"],
+      ["dnd:away:camp", "dnd:safety:camp", "dnd:more:camp"],
+    ]);
   });
 });

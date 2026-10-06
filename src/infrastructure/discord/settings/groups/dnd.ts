@@ -24,14 +24,26 @@ export const dnd = group("dnd", [
   }),
 
   action("setup", {
-    params: {},
-    run: async ({ deps, request, text, path }) => {
+    params: { language: { kind: "choice", choices: ["en", "zh-TW"], required: true } },
+    run: async ({ deps, request, text, path, values }) => {
       if (deps.campaign === undefined) return { ok: false, message: text.message(path, "unavailable") };
-      const result = await deps.campaign.setUp(request.guildId, null);
+      const result = await deps.campaign.setUp(request.guildId, null, values.getString("language") === "zh-TW" ? "zh-TW" : "en");
       if (result.kind === "missingPermissions") {
         return { ok: false, message: text.message(path, "permissions", { missing: result.missing.join(", ") }) };
       }
       return { ok: true, message: text.message(path, "done", { channel: result.kind === "ok" && result.settings.hubChannelId !== null ? `<#${result.settings.hubChannelId}>` : "" }) };
+    },
+  }),
+
+  action("language", {
+    params: { language: { kind: "choice", choices: ["en", "zh-TW"], required: true } },
+    run: async ({ deps, request, text, path, values }) => {
+      if (deps.campaign === undefined) return { ok: false, message: text.message(path, "unavailable") };
+      const language = values.getString("language") === "zh-TW" ? "zh-TW" : "en";
+      const changed = await deps.campaign.setLanguage(request.guildId, language);
+      return changed
+        ? { ok: true, message: text.message(path, "done") }
+        : { ok: false, message: text.message(path, "notSetUp") };
     },
   }),
 

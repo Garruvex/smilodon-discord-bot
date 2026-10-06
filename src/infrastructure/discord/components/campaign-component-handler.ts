@@ -2,6 +2,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ChannelType,
   MessageFlags,
   ModalBuilder,
   StringSelectMenuBuilder,
@@ -33,7 +34,9 @@ import { maxSpeechLength } from "../../../domain/campaign/engine/speech.js";
 import type { CombatCommand } from "../../../domain/campaign/commands/campaign-command.js";
 import { abilities, type Ability } from "../../../domain/campaign/rules/effects.js";
 import { buildTurnView, type TurnView } from "../../../application/campaign/views/turn-view.js";
-import { encodeChoice, parseAim, parseChoice, renderEndConfirm, renderShapeMenu, renderSpellMenu, renderTargetMenu, renderTurnMenu, type TurnChoice, type TurnMenu } from "../campaign/turn-menu.js";
+import type { CampaignIcon, CampaignIcons } from "../campaign/campaign-icons.js";
+import { combatCommand } from "../../../application/campaign/views/turn-choice.js";
+import { encodeChoice, parseAim, parseChoice, renderAreaConfirm, renderEndConfirm, renderShapeMenu, renderSpellMenu, renderTargetMenu, renderTurnMenu, type TurnChoice, type TurnMenu } from "../campaign/turn-menu.js";
 import type { CampaignAction } from "../campaign/campaign-ids.js";
 import { campaignCustomId, campaignIdPrefix, parseCampaignId } from "../campaign/campaign-ids.js";
 import type { ContentId } from "../../../domain/campaign/rules/content-id.js";
@@ -42,13 +45,14 @@ import { isFallen } from "../../../domain/campaign/state/campaign-state.js";
 import { combatantName } from "../../../application/campaign/dm/combat-records.js";
 import { classLabel } from "../campaign/text-keys.js";
 import { giveMenu, packMenu, parseGift, parsePackChoice } from "../campaign/pack-menu.js";
+import { inspectMenu, inspectText } from "../campaign/info-menu.js";
 import { CampaignCardService } from "../campaign/campaign-card-service.js";
 import { renderHeroSheet } from "../campaign/hero-sheet.js";
 import type { HeroPictures } from "../campaign/hero-pictures.js";
 import type { CharacterLibrary } from "../../../application/campaign/library/character-library.js";
 import { libraryHeroRef, savedSnapshotIdOf } from "../../../application/campaign/library/library-types.js";
 import { conflictLines } from "./character-library-component-handler.js";
-import { buildJournal, buildRecap } from "../../../application/campaign/views/story-views.js";
+import { buildJournal, buildPlaces, buildRecap, type PlaceView } from "../../../application/campaign/views/story-views.js";
 import { actingHero } from "../../../domain/campaign/engine/members.js";
 import { renderRulesScreen, ruleLines } from "../campaign/rules-screen.js";
 import { houseRulePresets, levelingMode } from "../../../domain/campaign/rules/house-rules.js";
@@ -56,6 +60,18 @@ import { maxLevel } from "../../../domain/campaign/character/leveling.js";
 import { renderLevelForm } from "../campaign/level-up-form.js";
 import { ExploreFlow, isExploreAction } from "../campaign/explore-flow.js";
 import { refusalText } from "../campaign/refusal-text.js";
+
+// One stay in the journal: where and when, the opening of how it was told, what came of it, what was left.
+function placeLines(place: PlaceView, text: Texts): readonly string[] {
+  const t = text.campaign.journal;
+  const scene = place.sceneTitle;
+  return [
+    place.throughRound === null ? t.placeHere({ scene, from: place.fromRound }) : t.placeRounds({ scene, from: place.fromRound, through: place.throughRound }),
+    ...(place.told === null ? [] : [`  > ${place.told}`]),
+    ...(place.cluesFound === 0 && place.fights === 0 ? [] : [t.placeFacts({ clues: place.cluesFound, fights: place.fights })]),
+    ...(place.cluesLeft === 0 ? [] : [t.placeLeft({ count: place.cluesLeft })]),
+  ];
+}
 
 // Joins lines, dropping the earliest content lines when they do not fit, so the latest news survives.
 function fit(lines: readonly string[], limit: number): string {
@@ -77,60 +93,21 @@ export interface CampaignComponentDependencies {
   readonly library?: CharacterLibrary;
   // A hero's portrait for the full-size picture on their sheet; without it the sheet is text only.
   readonly pictures?: HeroPictures;
+  // Icons for the turn menus and the help legend; without them the menus are text only.
+  readonly icons?: CampaignIcons;
+}
+
+// A line under the help that says what each icon on the menus means; empty until the icons are uploaded.
+function iconLegend(icons: CampaignIcons | undefined, text: Texts): string {
+  const tag = (icon: CampaignIcon): string => icons?.tag(icon) ?? "";
+  if (icons === undefined || icons.tag("attack") === undefined) return "";
+  return `\n${text.campaign.more.iconLegend({ attack: tag("attack"), ranged: tag("ranged"), spell: tag("spell"), move: tag("move"), dodge: tag("dodge"), shield: tag("shield"), potion: tag("potion"), shape: tag("shape"), withdraw: tag("withdraw"), dash: tag("dash") })}`;
 }
 
 const maxActionLength = 500;
 const actionField = "action";
 
 type TurnInteraction = ButtonInteraction | StringSelectMenuInteraction;
-
-// The engine command for a picked action; null when a target it needs is missing.
-function combatCommand(choice: TurnChoice, targetIds: readonly string[]): ((combatantId: CharacterId) => CombatCommand) | null {
-  const first = targetIds[0];
-  switch (choice.kind) {
-    case "attack":
-      return first === undefined
-        ? null
-        : (combatantId): CombatCommand =>
-            choice.weapon.startsWith("offhand:")
-              ? { kind: "combatAttack", combatantId, targetId: first, weapon: choice.weapon.slice("offhand:".length) as ContentId<"item">, offHand: true }
-              : choice.weapon.startsWith("nonlethal:")
-                ? { kind: "combatAttack", combatantId, targetId: first, weapon: choice.weapon.slice("nonlethal:".length) as ContentId<"item">, nonlethal: true }
-                : { kind: "combatAttack", combatantId, targetId: first, weapon: choice.weapon as ContentId<"item"> };
-    case "cast":
-      return targetIds.length === 0 ? null : (combatantId): CombatCommand => ({ kind: "combatCast", combatantId, spellId: choice.spell as ContentId<"spell">, slotLevel: choice.slot, targetIds });
-    case "engage":
-      return first === undefined ? null : (combatantId): CombatCommand => ({ kind: "combatEngage", combatantId, targetId: first });
-    case "feature":
-      return (combatantId): CombatCommand => ({ kind: "combatUseFeature", combatantId, featureId: choice.feature as ContentId<"feature"> });
-    case "potion":
-      return (combatantId): CombatCommand => ({ kind: "combatUseItem", combatantId, itemId: choice.item as ContentId<"item"> });
-    case "move":
-      return (combatantId): CombatCommand => ({ kind: "combatMove", combatantId, zoneId: choice.zone });
-    case "teleport":
-      return (combatantId): CombatCommand => ({ kind: "combatCast", combatantId, spellId: choice.spell as ContentId<"spell">, slotLevel: choice.slot, targetIds: [combatantId], zoneId: choice.zone });
-    case "shield":
-      return (combatantId): CombatCommand => ({ kind: "combatShield", combatantId, itemId: choice.item as ContentId<"item">, on: choice.on });
-    case "withdraw":
-      return (combatantId): CombatCommand => ({ kind: "combatWithdraw", combatantId });
-    case "dodge":
-      return (combatantId): CombatCommand => ({ kind: "combatDodge", combatantId });
-    case "dash":
-      return (combatantId): CombatCommand => ({ kind: "combatDash", combatantId });
-    case "disengage":
-      return (combatantId): CombatCommand => ({ kind: "combatDisengage", combatantId });
-    case "end":
-      return (combatantId): CombatCommand => ({ kind: "endTurn", combatantId });
-    case "shape":
-      return (combatantId): CombatCommand => ({ kind: "combatWildShape", combatantId, monsterId: choice.monster as ContentId<"monster"> });
-    case "unshape":
-      return (combatantId): CombatCommand => ({ kind: "combatWildShape", combatantId });
-    case "spells":
-    case "shapes":
-    case "more":
-      return null;
-  }
-}
 
 // Which saved card a control must sit on to count as current. A control on any
 // other message (an old panel, a copied link) is obsolete and only gets a
@@ -146,6 +123,7 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "act":
     case "pass":
     case "roll":
+      return [];
     case "away":
     case "back":
     case "continue":
@@ -153,10 +131,13 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "begin":
     case "turn":
     case "speak":
+    case "stay":
     case "safety":
     case "more":
     case "explore":
       return ["adventure"];
+    case "playActivity":
+      return [];
     case "offerYes":
     case "offerNo":
     case "offerCancel":
@@ -170,6 +151,7 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "joinOngoing":
       return ["party"];
     case "details":
+    case "inspect":
       return [`hero:${argument ?? ""}`];
     case "heroChoice":
     case "lateHeroChoice":
@@ -178,8 +160,10 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "turnRefresh":
     case "pick":
     case "aim":
+    case "areaConfirm":
     case "pack":
     case "giveTo":
+    case "inspectPick":
     case "safetyPause":
     case "rulePreset":
     case "ruleOption":
@@ -211,6 +195,7 @@ function currentCards(action: CampaignAction, argument: string | null): readonly
     case "exploreHaggle":
     case "exploreCast":
     case "exploreCastPick":
+    case "exploreGo":
     case "exploreHealSlot":
     case "exploreHealWho":
     case "exploreConjureSlot":
@@ -260,14 +245,27 @@ export class CampaignComponentHandler implements ComponentHandler {
     const { record } = stored;
     const text = texts[record.language];
 
+    // Discord opens the Activity itself as the click's only response. A forum post cannot host one, so there the player is told how to start it.
+    if (parsed.action === "playActivity" && interaction.isButton()) {
+      const channel = interaction.channel;
+      if (channel?.isThread() === true && channel.parent?.type === ChannelType.GuildForum) {
+        await interaction.reply({ content: text.campaign.reply.activityNotHere, flags: MessageFlags.Ephemeral });
+        return;
+      }
+      await interaction.launchActivity();
+      return;
+    }
+
     if (interaction.isStringSelectMenu()) {
       if (parsed.action === "newHero") await this.joinReplacement(interaction, record, text);
       else if (parsed.action === "lateHeroChoice") await this.joinOngoingHero(interaction, record, text);
       else if (parsed.action === "gear") await this.changeGear(interaction, record, text);
       else if (parsed.action === "pack") await this.changePack(interaction, record, text);
       else if (parsed.action === "giveTo") await this.giveItem(interaction, record, text);
+      else if (parsed.action === "inspectPick") await this.inspectPick(interaction, record, text, parsed.argument);
       else if (parsed.action === "pick") await this.pickTurnAction(interaction, record, text);
       else if (parsed.action === "aim") await this.aimTurnAction(interaction, record, text);
+      else if (parsed.action === "areaConfirm") await this.confirmAreaSpell(interaction, record, text);
       else if (parsed.action === "proxy") await this.changeProxy(interaction, record, text);
       else if (parsed.action === "asiPick") await this.chooseAsi(interaction, record, text);
       else if (parsed.action === "stylePick") await this.chooseStyle(interaction, record, text);
@@ -375,9 +373,17 @@ export class CampaignComponentHandler implements ComponentHandler {
         return void (await this.outcome(await this.deps.play.pass(key, userId, interaction.id), text.campaign.reply.passed, reply, text));
       case "roll":
         return void (await this.outcome(await this.deps.play.roll(key, userId, interaction.id), text.campaign.reply.rolled, reply, text));
+      case "stay": {
+        const toggled = await this.deps.play.toggleMoveObjection(key, userId, interaction.id);
+        return void (await reply(toggled.kind === "ok" ? (toggled.staying === true ? text.campaign.reply.stayed : text.campaign.reply.wentAlong) : refusalText(text, toggled.reason)));
+      }
       case "away":
-        return void (await this.outcome(await this.deps.play.away(key, userId, interaction.id), text.campaign.reply.away, reply, text));
       case "back": {
+        // One toggle: a player who is away comes back, anyone else goes away ("back" is kept for panels posted before the merge).
+        const current = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(key));
+        if (current?.state.members[userId]?.availability !== "away" && parsed.action === "away") {
+          return void (await this.outcome(await this.deps.play.away(key, userId, interaction.id), text.campaign.reply.away, reply, text));
+        }
         const returned = await this.deps.play.back(key, userId, interaction.id);
         // Someone coming back is caught up on what they missed.
         return void (await reply(returned.kind === "ok" ? `${text.campaign.reply.back}\n\n${await this.recapText(record, text)}` : refusalText(text, returned.reason)));
@@ -452,7 +458,7 @@ export class CampaignComponentHandler implements ComponentHandler {
         return;
       case "more":
         await interaction.editReply({
-          content: `${text.campaign.more.help}\n\n**${text.campaign.rules.title}**\n${ruleLines(text, record.houseRules).join("\n")}`,
+          content: `${text.campaign.more.help}${iconLegend(this.deps.icons, text)}\n\n**${text.campaign.rules.title}**\n${ruleLines(text, record.houseRules).join("\n")}`,
           components: [this.storyRow(record, text), ...this.linkRow(record, text)],
         });
         return;
@@ -465,6 +471,11 @@ export class CampaignComponentHandler implements ComponentHandler {
       case "endTurn":
         await this.requestEndTurn(interaction, record, text);
         return;
+      case "inspect": {
+        const menu = await this.inspectOpen(record, text, parsed.argument);
+        await interaction.editReply(menu === null ? { content: text.campaign.info.nothing, components: [] } : { content: menu.content, components: [menu.row] });
+        return;
+      }
       case "myHero":
       case "details": {
         // A player whose hero fell is offered a new one instead of a sheet.
@@ -476,11 +487,12 @@ export class CampaignComponentHandler implements ComponentHandler {
         const sheet = await this.heroSheet(record, text, parsed.action === "details" ? parsed.argument : null, userId);
         // Only the player's own hero gets the gear controls.
         const gear = parsed.action === "myHero" ? await this.heroMenus(record, text, userId) : [];
-        const save = parsed.action === "myHero" ? await this.saveRow(record, text, userId) : [];
+        const roll = parsed.action === "myHero" ? await this.rollRow(record, text, userId) : [];
         const asi = parsed.action === "myHero" ? await this.levelRow(record, text, userId) : [];
         const proxy = parsed.action === "myHero" ? await this.proxyMenu(record, text, userId) : [];
         const portrait = await this.heroPortrait(record, parsed.action === "details" ? parsed.argument : null, userId);
-        await interaction.editReply({ content: sheet, components: [...gear, ...asi, ...proxy, ...save].slice(0, 5), ...(portrait === undefined ? {} : { files: [portrait] }) });
+        const scope = parsed.action === "myHero" && sheet !== text.campaign.refusal.noHero && sheet.length < 1750 ? `\n\n${text.campaign.chars.liveScope}` : "";
+        await interaction.editReply({ content: `${sheet}${scope}`, components: [...roll, ...gear, ...asi, ...proxy].slice(0, 5), ...(portrait === undefined ? {} : { files: [portrait] }) });
         return;
       }
       default:
@@ -609,7 +621,7 @@ export class CampaignComponentHandler implements ComponentHandler {
 
   private async joinReplacement(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {
     const presetId = interaction.values[0] ?? "";
-    const result = await this.deps.play.joinHero(record.key, interaction.user.id, presetId, interaction.id);
+    const result = await this.deps.lobby.replaceFallenHero(record.key, interaction.user.id, presetId, undefined, interaction.id);
     if (result.kind === "refused") {
       await interaction.update({ content: refusalText(text, result.reason), components: [] });
       return;
@@ -637,7 +649,11 @@ export class CampaignComponentHandler implements ComponentHandler {
     const result = await this.deps.lobby.joinOngoingHero(record.key, interaction.user.id, interaction.values[0] ?? "", interaction.id);
     if (result.kind === "refused") return void (await interaction.editReply({ content: refusalText(text, result.reason), components: [] }));
     this.deps.cards.refresh(record.key);
-    await interaction.editReply({ content: record.language === "zh-TW" ? "角色已加入隊伍。請查看冒險頻道的登場敘述。" : "Your character has joined the party. Watch the Adventure channel for their entrance.", components: [] });
+    const queued = result.value.joinRequests?.[interaction.user.id]?.status === "queued";
+    const content = queued
+      ? record.language === "zh-TW" ? "角色已選定，並已排入隊伍。這場戰鬥結束後就會加入，請查看冒險頻道的登場敘述。" : "Character selected and queued. You’ll join the party when this encounter ends; watch the Adventure channel for your entrance."
+      : record.language === "zh-TW" ? "角色已加入隊伍。請查看冒險頻道的登場敘述。" : "Your character has joined the party. Watch the Adventure channel for their entrance.";
+    await interaction.editReply({ content, components: [] });
   }
 
   // Every saved version of the player's characters, newest first, as picker options.
@@ -732,7 +748,7 @@ export class CampaignComponentHandler implements ComponentHandler {
       await interaction.editReply({ content: notice === null ? context.content : `${notice}\n\n${context.content}`, components: [] });
       return;
     }
-    const menu = renderTurnMenu(context.view, text, context.glossary, record.key.campaignId);
+    const menu = renderTurnMenu(context.view, text, context.glossary, record.key.campaignId, 0, this.deps.icons);
     await this.editMenu(interaction, menu, notice);
   }
 
@@ -758,15 +774,15 @@ export class CampaignComponentHandler implements ComponentHandler {
       return;
     }
     if (choice.kind === "spells") {
-      await this.editMenu(interaction, renderSpellMenu(context.view, choice.page, text, context.glossary, record.key.campaignId), null);
+      await this.editMenu(interaction, renderSpellMenu(context.view, choice.page, text, context.glossary, record.key.campaignId, this.deps.icons), null);
       return;
     }
     if (choice.kind === "more") {
-      await this.editMenu(interaction, renderTurnMenu(context.view, text, context.glossary, record.key.campaignId, choice.page), null);
+      await this.editMenu(interaction, renderTurnMenu(context.view, text, context.glossary, record.key.campaignId, choice.page, this.deps.icons), null);
       return;
     }
     if (choice.kind === "shapes") {
-      await this.editMenu(interaction, renderShapeMenu(context.view, choice.page, text, context.glossary, record.key.campaignId), null);
+      await this.editMenu(interaction, renderShapeMenu(context.view, choice.page, text, context.glossary, record.key.campaignId, this.deps.icons), null);
       return;
     }
     const aimed = choice.kind === "attack" || choice.kind === "cast" || choice.kind === "engage";
@@ -780,7 +796,7 @@ export class CampaignComponentHandler implements ComponentHandler {
     else await this.editMenu(interaction, menu, null);
   }
 
-  // Step two: the targets are picked and the action happens.
+  // Step two: the targets are picked. Area spells show everyone affected before casting.
   private async aimTurnAction(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {
     await interaction.deferUpdate();
     const aims = interaction.values.map((value) => parseAim(value));
@@ -789,7 +805,41 @@ export class CampaignComponentHandler implements ComponentHandler {
       await this.showTurn(interaction, record, text, text.campaign.refusal.generic);
       return;
     }
-    await this.runChoice(interaction, record, text, first.choice, aims.flatMap((aim) => (aim === null ? [] : [aim.targetId])));
+    const targetIds = aims.flatMap((aim) => (aim === null ? [] : [aim.targetId]));
+    if (first.choice.kind === "cast") {
+      const context = await this.turnContext(record, text, interaction.user.id);
+      if (context.kind === "message") {
+        await interaction.editReply({ content: context.content, components: [] });
+        return;
+      }
+      if (targetIds.length === 1) {
+        const menu = renderAreaConfirm(first.choice, first.targetId, context.view, text, context.glossary, record.key.campaignId);
+        if (menu !== null) {
+          await this.editMenu(interaction, menu, null);
+          return;
+        }
+      }
+    }
+    await this.runChoice(interaction, record, text, first.choice, targetIds);
+  }
+
+  private async confirmAreaSpell(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts): Promise<void> {
+    await interaction.deferUpdate();
+    const aim = parseAim(interaction.values[0] ?? "");
+    if (aim?.choice.kind !== "cast") {
+      await this.showTurn(interaction, record, text, text.campaign.refusal.generic);
+      return;
+    }
+    const context = await this.turnContext(record, text, interaction.user.id);
+    if (context.kind === "message") {
+      await interaction.editReply({ content: context.content, components: [] });
+      return;
+    }
+    if (renderAreaConfirm(aim.choice, aim.targetId, context.view, text, context.glossary, record.key.campaignId) === null) {
+      await this.showTurn(interaction, record, text, text.campaign.refusal.invalidTarget);
+      return;
+    }
+    await this.runChoice(interaction, record, text, aim.choice, [aim.targetId]);
   }
 
   private async runChoice(interaction: TurnInteraction, record: CampaignRecord, text: Texts, choice: TurnChoice, targetIds: readonly string[]): Promise<void> {
@@ -888,11 +938,13 @@ export class CampaignComponentHandler implements ComponentHandler {
     const story = await this.story(record);
     if (story === null) return t.empty;
     const journal = buildJournal(story.state, story.bible);
+    const places = buildPlaces(story.state, story.events, story.bible);
     const lines = [`**${t.title}**`, journal.sceneTitle === null ? "" : t.where({ scene: journal.sceneTitle })].filter((line) => line !== "");
     if (journal.chapters.length > 0) lines.push("", t.chapters, ...journal.chapters.map((chapter) => t.chapter({ from: chapter.fromRound, through: chapter.throughRound, text: chapter.text })));
+    if (places.length > 0) lines.push("", t.places, ...places.flatMap((place) => placeLines(place, text)));
     if (journal.people.length > 0) lines.push("", t.people, ...journal.people.map((person) => `• **${person.name}:** ${person.facts.join(" ")}`));
     if (journal.clues.length > 0) lines.push("", t.clues, ...journal.clues.map((clue) => `• ${clue}`));
-    if (journal.chapters.length === 0 && journal.people.length === 0 && journal.clues.length === 0) lines.push("", t.nothingYet);
+    if (journal.chapters.length === 0 && places.length === 0 && journal.people.length === 0 && journal.clues.length === 0) lines.push("", t.nothingYet);
     return fit(lines, 1900);
   }
 
@@ -910,15 +962,11 @@ export class CampaignComponentHandler implements ComponentHandler {
     return fit(lines, 1900);
   }
 
-  // Save progress, for a hero that came from the player's library.
-  private async saveRow(record: CampaignRecord, text: Texts, userId: string): Promise<ActionRowBuilder<ButtonBuilder>[]> {
-    if (this.deps.library === undefined) return [];
+  private async rollRow(record: CampaignRecord, text: Texts, userId: string): Promise<ActionRowBuilder<ButtonBuilder>[]> {
     const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
-    const heroId = loaded?.state.members[userId]?.characterId ?? null;
-    if (heroId === null || loaded?.state.characters[heroId]?.origin === undefined) return [];
-    return [
-      new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(campaignCustomId("saveProgress", record.key.campaignId)).setLabel(text.campaign.button.saveProgress).setStyle(ButtonStyle.Secondary)),
-    ];
+    const heroId = loaded?.state.members[userId]?.characterId;
+    if (heroId == null || !Object.values(loaded?.state.checks ?? {}).some((check) => check.characterId === heroId && check.status === "pending")) return [];
+    return [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(campaignCustomId("roll", record.key.campaignId)).setLabel(text.campaign.button.roll).setStyle(ButtonStyle.Primary))];
   }
 
   // Opens the level-up form. It says "Level Up" only when an Improvement is owed; otherwise it is a plan for the next level, and says so.
@@ -1127,6 +1175,29 @@ export class CampaignComponentHandler implements ComponentHandler {
     if (image === undefined) return undefined;
     const extension = image.mediaType === "image/jpeg" ? "jpg" : image.mediaType === "image/webp" ? "webp" : "png";
     return { attachment: image.bytes, name: `portrait.${extension}` };
+  }
+
+  // The look-up menu for a hero's spells, items and features (anyone may read a hero's public sheet).
+  private async inspectOpen(record: CampaignRecord, text: Texts, characterId: string | null): Promise<ReturnType<typeof inspectMenu>> {
+    const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
+    const sheet = characterId === null ? undefined : loaded?.state.characters[characterId];
+    const glossary = this.deps.glossaries[record.language];
+    return sheet === undefined || glossary === undefined ? null : inspectMenu(sheet, glossary, text, record.key.campaignId);
+  }
+
+  // One pick: its stats above the same menu, so a player can keep looking things up.
+  private async inspectPick(interaction: StringSelectMenuInteraction, record: CampaignRecord, text: Texts, characterId: string | null): Promise<void> {
+    await interaction.deferUpdate();
+    const loaded = await this.deps.unitOfWork.transaction((tx) => tx.loadCampaign(record.key));
+    const sheet = characterId === null ? undefined : loaded?.state.characters[characterId];
+    const glossary = this.deps.glossaries[record.language];
+    const menu = await this.inspectOpen(record, text, characterId);
+    if (loaded === undefined || sheet === undefined || glossary === undefined || menu === null) {
+      await interaction.editReply({ content: text.campaign.info.nothing, components: [] });
+      return;
+    }
+    const content = this.deps.rulesets.resolve(loaded.ruleset).content;
+    await interaction.editReply({ content: inspectText(sheet, interaction.values[0] ?? "", content, glossary, text), components: [menu.row] });
   }
 
   private async heroSheet(record: CampaignRecord, text: Texts, characterId: string | null, userId: string): Promise<string> {

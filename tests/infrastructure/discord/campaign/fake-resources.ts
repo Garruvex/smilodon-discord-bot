@@ -29,6 +29,7 @@ export interface FakeForumPost {
 
 export class FakeResources implements CampaignResourceGateway {
   public readonly categories = new Set<string>();
+  public readonly categoryNames: string[] = [];
   public readonly channels: FakeChannel[] = [];
   public readonly threads: { id: string; channelId: string; name: string }[] = [];
   public readonly roles = new Set<string>();
@@ -37,10 +38,11 @@ export class FakeResources implements CampaignResourceGateway {
   public failThreads = 0;
   private next = 0;
 
-  public createCategory(): Promise<string> {
+  public createCategory(_guildId: string, name: string): Promise<string> {
     this.next += 1;
     const id = `cat${this.next}`;
     this.categories.add(id);
+    this.categoryNames.push(name);
     return Promise.resolve(id);
   }
 
@@ -60,6 +62,13 @@ export class FakeResources implements CampaignResourceGateway {
     const id = `ch${this.next}`;
     this.channels.push({ id, options });
     return Promise.resolve(id);
+  }
+
+  public readonly locked: { channelId: string; roleId: string | null }[] = [];
+
+  public lockToPlayers(_guildId: string, channelId: string, roleId: string | null): Promise<void> {
+    this.locked.push({ channelId, roleId });
+    return Promise.resolve();
   }
 
   public readonly placedFirst: string[] = [];

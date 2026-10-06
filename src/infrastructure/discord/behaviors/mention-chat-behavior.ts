@@ -13,6 +13,7 @@ import type { ApplicationConfiguration } from "../../../config/configuration.js"
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
 import type { MessageReactionWatchStore } from "../../../application/chat/message-reaction-watch.js";
 import { ChatTurnSupport } from "./chat-turn-support.js";
+import { isInGameChannel, type IsGameChannel } from "./game-channel-guard.js";
 
 function createChatAccessDeniedLinkButton(url: string, label: string | null): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -43,6 +44,8 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     // this can be entirely absent for a test double / a persistence backend
     // that hasn't wired one — registration below just no-ops without it.
     private readonly messageReactionWatchStore: MessageReactionWatchStore | null = null,
+    // The narrator owns a D&D game's channels; chat stays out of them.
+    private readonly isGameChannel: IsGameChannel | null = null,
   ) {
     this.chatAccess = new ChatAccessService(configuration);
     this.turnSupport = new ChatTurnSupport(logger);
@@ -59,6 +62,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     if (!profile?.features.chatbot) return BehaviorResult.Continue;
     if (this.processedMessageIds.has(message.id)) return BehaviorResult.StopPropagation;
     this.rememberMessage(message.id);
+    if (await isInGameChannel(message, this.isGameChannel)) return BehaviorResult.Continue;
 
     if (!this.chatAccess.canUseMentionChat(profile, message.member, message.author.id, message.channelId)) {
       await message.reply({

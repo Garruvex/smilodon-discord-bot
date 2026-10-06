@@ -63,6 +63,11 @@ export class ApplicationEmojiCatalog {
     return `<${emoji.animated ? "a" : ""}:${emoji.name}:${emoji.id}>`;
   }
 
+  // An application emoji by name, or undefined until it has been uploaded (instance:emojis:sync).
+  public getEmoji(name: string): { readonly id: string; readonly name: string; readonly animated: boolean } | undefined {
+    return this.emojisByName.get(name);
+  }
+
   public getMissingYohtaEmojiNames(): string[] {
     return yohtaApplicationEmojiAssets
       .filter(({ name }) => !this.emojisByName.has(name))

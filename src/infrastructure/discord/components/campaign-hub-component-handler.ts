@@ -28,6 +28,7 @@ import { publicAccessPolicy } from "../../../domain/access/access-policy.js";
 import { abilities } from "../../../domain/campaign/rules/effects.js";
 import { maxIdeaChars } from "../../../application/campaign/adventures/adventure-author.js";
 import type { AdventureIntake, IntakeContext } from "../campaign/adventure-intake.js";
+import type { CampaignIcon, CampaignIcons } from "../campaign/campaign-icons.js";
 import type { CampaignAuthority } from "../campaign/campaign-authority.js";
 import type { CampaignCardService } from "../campaign/campaign-card-service.js";
 import { createGameText, type CampaignGameCreator } from "../campaign/campaign-game-creator.js";
@@ -56,11 +57,13 @@ export interface CampaignHubDependencies {
   readonly authority: CampaignAuthority;
   // Whether this bot can paint pictures. Without it the picture buttons are not shown. Unset counts as yes.
   readonly imagesEnabled?: boolean;
+  // Icons on the manage buttons; without them the buttons are text only.
+  readonly icons?: CampaignIcons;
   // The launcher's character and adventure buttons; without them those buttons say they are unavailable.
   readonly libraryScreens?: Pick<CharacterLibraryComponentHandler, "homeScreen" | "builderScreen" | "importFromFile">;
   readonly intake?: Pick<AdventureIntake, "uploadFile" | "authorFrom" | "canAuthor">;
   // The adventures this server can start from; without it the wizard offers only the bundled one.
-  readonly adventures?: { listForGuild(guildId: string): readonly { readonly id: string; readonly titles: Readonly<Partial<Record<"en" | "zh-TW", string>>> }[] };
+  readonly adventures?: { listForGuild(guildId: string): readonly { readonly id: string; readonly version?: string; readonly languages?: readonly ("en" | "zh-TW")[]; readonly titles: Readonly<Partial<Record<"en" | "zh-TW", string>>> }[] };
 }
 
 interface Screen {
@@ -68,11 +71,14 @@ interface Screen {
   readonly components: ActionRowBuilder<MessageActionRowComponentBuilder>[];
 }
 
+const adventuresPerPage = 25;
+
 const nameField = "name";
 const fileField = "file";
 const ideaField = "idea";
 const languageField = "language";
 const levelField = "level";
+const sizeField = "size";
 const whoField = "who";
 const abilityField = "ability";
 const dcField = "dc";
@@ -83,6 +89,9 @@ const entranceField = "entrance";
 // The hub's controls: the Create game wizard and each game's Manage view. All
 // replies are private. Who may do what is decided on every click from the
 // server's DnD Admin role and the game's organizer, never from the message.
+// How long Discord's own "started an activity" message stays in the hub before it is cleaned up.
+const launchMessageLifetimeMs = 30_000;
+
 export class CampaignHubComponentHandler implements ComponentHandler {
   public readonly customIdPrefix = hubIdPrefix;
   public readonly module = CommandModule.Campaign;
@@ -96,6 +105,15 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     if (parsed === null || !interaction.inCachedGuild()) return;
     const [first, second] = parsed.parts;
     switch (parsed.action) {
+      case "playActivity":
+        // Discord opens the Activity itself as the click's only response. If it also leaves a launch message in the hub, that is removed
+        // after a moment so the channel keeps only the control panel and the games.
+        if (interaction.isButton()) {
+          const launched = await interaction.launchActivity({ withResponse: true });
+          const message = launched.resource?.message;
+          if (message !== undefined && message !== null) setTimeout(() => void message.delete().catch(() => undefined), launchMessageLifetimeMs);
+        }
+        return;
       case "create":
         if (interaction.isButton()) await this.startWizard(interaction);
         return;
@@ -109,7 +127,13 @@ export class CampaignHubComponentHandler implements ComponentHandler {
         if (interaction.isButton()) await this.toggleVisibility(interaction, first);
         return;
       case "wizAdventure":
-        if (interaction.isButton()) await this.cycleAdventure(interaction, first);
+        if (interaction.isButton()) await this.showAdventures(interaction, first, 0);
+        return;
+      case "wizAdventurePage":
+        if (interaction.isButton()) await this.showAdventures(interaction, first, Number(second) || 0);
+        return;
+      case "wizAdventurePick":
+        if (interaction.isStringSelectMenu()) await this.pickAdventure(interaction, first);
         return;
       case "wizNext":
         if (interaction.isButton()) await this.askName(interaction, first);
@@ -125,6 +149,15 @@ export class CampaignHubComponentHandler implements ComponentHandler {
         return;
       case "joinApproveOpen":
         if (interaction.isButton() && first !== undefined) await this.openJoinForm(interaction, first, parsed.action, second);
+        return;
+      case "seatOpen":
+        if (interaction.isButton() && first !== undefined) await this.showAwaySeats(interaction, first);
+        return;
+      case "seatAsk":
+        if (interaction.isButton() && first !== undefined && second !== undefined) await this.askFreeSeat(interaction, first, second);
+        return;
+      case "seatYes":
+        if (interaction.isButton() && first !== undefined && second !== undefined) await this.freeSeat(interaction, first, second);
         return;
       case "joinRequests":
         if (interaction.isButton() && first !== undefined) await this.showJoinRequests(interaction, first);
@@ -155,6 +188,9 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       case "authorOpen":
         if (interaction.isButton()) await this.openAdventureForm(interaction, parsed.action);
         return;
+      case "sizeOpen":
+        if (interaction.isButton() && first !== undefined) await this.openSize(interaction, first);
+        return;
       case "levelOpen":
         if (interaction.isButton() && first !== undefined) await this.openLevel(interaction, first);
         return;
@@ -176,6 +212,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     if (parsed.action === "importSubmit") return void (await this.submitImport(interaction));
     if (parsed.action === "uploadSubmit") return void (await this.submitUpload(interaction));
     if (parsed.action === "authorSubmit") return void (await this.submitAuthor(interaction));
+    if (parsed.action === "sizeSubmit") return void (await this.submitSize(interaction, parsed.parts[0] ?? ""));
     if (parsed.action === "levelSubmit") return void (await this.submitLevel(interaction, parsed.parts[0] ?? ""));
     if (parsed.action === "hazardSubmit") return void (await this.submitHazard(interaction, parsed.parts[0] ?? ""));
     if (parsed.action === "hurtSubmit") return void (await this.submitHurt(interaction, parsed.parts[0] ?? ""));
@@ -206,7 +243,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
 
   // My Characters and New character: the same private screens /dnd characters opens.
   private async openLibrary(interaction: ButtonInteraction<"cached">, action: "characters" | "newCharacter"): Promise<void> {
-    const language = languageOf(interaction);
+    const language = await this.deps.authority.guildLanguage(interaction.guildId);
     if (this.deps.libraryScreens === undefined) {
       await interaction.reply({ content: texts[language].campaign.hub.unavailable, flags: MessageFlags.Ephemeral });
       return;
@@ -255,7 +292,14 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       return;
     }
     if (action === "uploadOpen") {
-      await interaction.showModal(this.fileModal(hubCustomId("uploadSubmit"), t.uploadTitle, t.uploadFileLabel, t.uploadFileHint, true));
+      await interaction.showModal(this.fileModal(hubCustomId("uploadSubmit"), t.uploadTitle, t.uploadFileLabel, t.uploadFileHint, true).addLabelComponents(
+        new LabelBuilder().setLabel(t.authorLanguageLabel).setStringSelectMenuComponent(
+          new StringSelectMenuBuilder().setCustomId(languageField).setRequired(true).addOptions([
+            { label: text.campaign.language.en, value: "en", default: language === "en" },
+            { label: text.campaign.language.zhTW, value: "zh-TW", default: language === "zh-TW" },
+          ]),
+        ),
+      ));
       return;
     }
     if (!this.deps.intake.canAuthor) {
@@ -303,7 +347,8 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     if (!(await this.deps.authority.isAdmin(interaction))) return void (await interaction.editReply({ content: text.campaign.cmd.adminOnly }));
     if (this.deps.intake === undefined) return void (await interaction.editReply({ content: text.campaign.hub.unavailable }));
     const file = interaction.fields.getUploadedFiles(fileField, false)?.first();
-    await this.deps.intake.uploadFile(this.intakeContext(interaction), file === undefined ? null : { url: file.url, size: file.size });
+    const selected = interaction.fields.getStringSelectValues(languageField)[0];
+    await this.deps.intake.uploadFile(this.intakeContext(interaction), file === undefined ? null : { url: file.url, size: file.size }, selected === "zh-TW" ? "zh-TW" : "en");
   }
 
   private async submitAuthor(interaction: ModalSubmitInteraction<"cached">): Promise<void> {
@@ -317,6 +362,46 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       gameLanguage: interaction.fields.getStringSelectValues(languageField)[0] === "zh-TW" ? "zh-TW" : "en",
       notes: notes === undefined ? null : { url: notes.url, size: notes.size },
     });
+  }
+
+  // ---- Party size (Manage) -------------------------------------------------
+
+  private async openSize(interaction: ButtonInteraction<"cached">, campaignId: string): Promise<void> {
+    const record = (await this.deps.lobby.get({ guildId: interaction.guildId, campaignId }))?.record;
+    if (record === undefined) {
+      await interaction.reply({ content: texts.en.campaign.manage.gone, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const text = texts[record.language];
+    if (!(await this.deps.authority.canManage(interaction, record))) {
+      await interaction.reply({ content: text.campaign.manage.notAllowed, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.showModal(
+      new ModalBuilder()
+        .setCustomId(hubCustomId("sizeSubmit", campaignId))
+        .setTitle(text.campaign.hub.sizeTitle)
+        .addLabelComponents(
+          new LabelBuilder()
+            .setLabel(text.campaign.hub.sizeLabel)
+            .setTextInputComponent(new TextInputBuilder().setCustomId(sizeField).setStyle(TextInputStyle.Short).setRequired(true).setMinLength(1).setMaxLength(1).setValue(String(record.lobby.maxPlayers))),
+        ),
+    );
+  }
+
+  private async submitSize(interaction: ModalSubmitInteraction<"cached">, campaignId: string): Promise<void> {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const record = (await this.deps.lobby.get({ guildId: interaction.guildId, campaignId }))?.record;
+    if (record === undefined) return void (await interaction.editReply({ content: texts.en.campaign.manage.gone }));
+    const text = texts[record.language];
+    // Checked again here: the form is only a request.
+    if (!(await this.deps.authority.canManage(interaction, record))) return void (await interaction.editReply({ content: text.campaign.manage.notAllowed }));
+    const players = Number(interaction.fields.getTextInputValue(sizeField).trim());
+    // A DnD Admin acts for the organizer: no user is named.
+    const result = await this.deps.lobby.setPartySize(record.key, null, Number.isInteger(players) ? players : 0);
+    if (result.kind === "refused") return void (await interaction.editReply({ content: refusalText(text, result.reason) }));
+    await this.deps.cards.sync(record.key);
+    await interaction.editReply({ content: text.campaign.cmd.sized({ count: players }) });
   }
 
   // ---- Raise level (Manage) -------------------------------------------------
@@ -479,7 +564,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       await interaction.reply({ content: text.campaign.cmd.noModel, flags: MessageFlags.Ephemeral });
       return;
     }
-    await interaction.reply({ ...this.screen(defaultWizardChoices, interaction.guildId), flags: MessageFlags.Ephemeral });
+    await interaction.reply({ ...this.screen({ ...defaultWizardChoices, language: await this.deps.authority.guildLanguage(interaction.guildId) }, interaction.guildId), flags: MessageFlags.Ephemeral });
   }
 
   private async chooseOption(interaction: StringSelectMenuInteraction<"cached">, action: "wizLanguage" | "wizPacing" | "wizPlayers" | "wizLoot", state: string | undefined): Promise<void> {
@@ -489,9 +574,15 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       return;
     }
     const value = interaction.values[0] ?? "";
+    const requestedLanguage = value === "zh-TW" ? "zh-TW" : "en";
+    const selectedAdventure = current.adventure === null ? undefined : this.deps.adventures?.listForGuild(interaction.guildId).find((entry) => entry.id === current.adventure);
+    if (action === "wizLanguage" && selectedAdventure?.languages !== undefined && !selectedAdventure.languages.includes(requestedLanguage)) {
+      await interaction.update(this.screen(current, interaction.guildId));
+      return;
+    }
     const next: WizardChoices =
       action === "wizLanguage"
-        ? { ...current, language: value === "zh-TW" ? "zh-TW" : "en" }
+        ? { ...current, language: requestedLanguage }
         : action === "wizPacing"
           ? { ...current, pacing: value === "playByPost" ? "playByPost" : "live" }
           : action === "wizLoot"
@@ -509,27 +600,69 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     await interaction.update(this.screen({ ...current, visibility: current.visibility === "open" ? "membersOnly" : "open" }, interaction.guildId));
   }
 
-  // Steps through the adventures the server can start from, the bundled one first.
-  private async cycleAdventure(interaction: ButtonInteraction<"cached">, state: string | undefined): Promise<void> {
+  // The adventures this server can start a game in this language from, the bundled one first.
+  private adventuresIn(language: WizardChoices["language"], guildId: string): readonly { readonly id: string; readonly version?: string; readonly languages?: readonly ("en" | "zh-TW")[]; readonly titles: Readonly<Partial<Record<"en" | "zh-TW", string>>> }[] {
+    return (this.deps.adventures?.listForGuild(guildId) ?? []).filter((entry) => entry.languages === undefined || entry.languages.includes(language));
+  }
+
+  // The list of adventures to choose from (a page of it, when there are many), instead of stepping through them one by one.
+  private async showAdventures(interaction: ButtonInteraction<"cached">, state: string | undefined, page: number): Promise<void> {
     const current = parseWizardState(state);
     if (!(await this.deps.authority.isAdmin(interaction))) {
       await interaction.update({ content: texts[current.language].campaign.wizard.notAllowed, components: [] });
       return;
     }
-    const ids = (this.deps.adventures?.listForGuild(interaction.guildId) ?? []).map((entry) => entry.id);
-    const at = ids.indexOf(current.adventure ?? ids[0] ?? "");
-    const next = ids[(at + 1) % Math.max(ids.length, 1)];
-    await interaction.update(this.screen({ ...current, adventure: next === undefined || next === ids[0] ? null : next }, interaction.guildId));
+    const t = texts[current.language].campaign.adventure;
+    const list = this.adventuresIn(current.language, interaction.guildId);
+    const pages = Math.max(1, Math.ceil(list.length / adventuresPerPage));
+    const at = Math.min(Math.max(0, page), pages - 1);
+    const shown = list.slice(at * adventuresPerPage, (at + 1) * adventuresPerPage);
+    // The picker's controls carry the wizard's choices without the adventure, which travels in the choice itself.
+    const base = wizardState({ ...current, adventure: null });
+    const rows: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [
+      new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+        new StringSelectMenuBuilder().setCustomId(hubCustomId("wizAdventurePick", base)).setPlaceholder(t.pickerPlaceholder).addOptions(
+          shown.map((entry, index) => ({
+            label: (entry.titles[current.language] ?? entry.titles.en ?? entry.id).slice(0, 100),
+            value: at === 0 && index === 0 ? "default" : entry.id,
+            description: `${entry.version === undefined ? "" : `v${entry.version} · `}${(entry.languages ?? [current.language]).join(" / ")}`.slice(0, 100),
+          })),
+        ),
+      ),
+    ];
+    if (pages > 1) {
+      rows.push(
+        row(
+          new ButtonBuilder().setCustomId(hubCustomId("wizAdventurePage", base, String(at - 1))).setLabel(t.pickerPrevious).setStyle(ButtonStyle.Secondary).setDisabled(at === 0),
+          new ButtonBuilder().setCustomId(hubCustomId("wizAdventurePage", base, String(at + 1))).setLabel(t.pickerNext({ page: at + 1, pages })).setStyle(ButtonStyle.Secondary).setDisabled(at + 1 >= pages),
+        ),
+      );
+    }
+    await interaction.update({ content: t.pickerPrompt({ count: list.length }), components: rows });
+  }
+
+  private async pickAdventure(interaction: StringSelectMenuInteraction<"cached">, state: string | undefined): Promise<void> {
+    const current = parseWizardState(state);
+    if (!(await this.deps.authority.isAdmin(interaction))) {
+      await interaction.update({ content: texts[current.language].campaign.wizard.notAllowed, components: [] });
+      return;
+    }
+    const value = interaction.values[0] ?? "default";
+    const list = this.adventuresIn(current.language, interaction.guildId);
+    const chosen = value === "default" || value === list[0]?.id ? null : list.find((entry) => entry.id === value)?.id ?? null;
+    await interaction.update(this.screen({ ...current, adventure: chosen }, interaction.guildId));
   }
 
   // The wizard, with the adventure's title and a way to change it when the server has more than one.
   private screen(choices: WizardChoices, guildId: string): Screen {
-    const list = this.deps.adventures?.listForGuild(guildId) ?? [];
+    const list = this.adventuresIn(choices.language, guildId);
+    const selected = choices.adventure === null ? undefined : this.deps.adventures?.listForGuild(guildId).find((entry) => entry.id === choices.adventure);
+    const unavailable = choices.adventure !== null && !list.some((entry) => entry.id === choices.adventure);
     const titleOf = (id: string | null): string | null => {
       const entry = list.find((candidate) => candidate.id === (id ?? list[0]?.id));
       return entry === undefined ? null : (entry.titles[choices.language] ?? entry.titles.en ?? entry.titles["zh-TW"] ?? entry.id);
     };
-    return wizardScreen(choices, list.length > 1 ? titleOf(choices.adventure) : null);
+    return wizardScreen(choices, list.length > 1 ? titleOf(choices.adventure) : null, unavailable, selected?.languages);
   }
 
   private async askName(interaction: ButtonInteraction<"cached">, state: string | undefined): Promise<void> {
@@ -537,6 +670,10 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     const text = texts[choices.language].campaign.wizard;
     if (!(await this.deps.authority.isAdmin(interaction))) {
       await interaction.update({ content: text.notAllowed, components: [] });
+      return;
+    }
+    if (choices.adventure !== null && !this.adventuresIn(choices.language, interaction.guildId).some((entry) => entry.id === choices.adventure)) {
+      await interaction.update(this.screen(choices, interaction.guildId));
       return;
     }
     await interaction.showModal(
@@ -622,6 +759,35 @@ export class CampaignHubComponentHandler implements ComponentHandler {
         new ButtonBuilder().setCustomId(hubCustomId("joinDecline", campaignId, userId)).setLabel(found.record.language === "zh-TW" ? "拒絕" : "Decline").setStyle(ButtonStyle.Secondary),
       )),
     });
+  }
+
+  // Who is away, as one button each; freeing a seat asks once more before it is done.
+  private async showAwaySeats(interaction: ButtonInteraction<"cached">, campaignId: string): Promise<void> {
+    const found = await this.allowed(interaction, campaignId);
+    if (found === null) return;
+    const zh = found.record.language === "zh-TW";
+    const away = (await this.deps.lobby.awaySeats(found.record.key)).slice(0, 5);
+    await interaction.update({
+      content: away.length === 0 ? (zh ? "目前沒有離開中的玩家。" : "Nobody is marked away right now.") : (zh ? "選擇要釋出座位的玩家（只限離開中的玩家，且不能在戰鬥中）。" : "Pick a player to free the seat of (only players marked away, and not during a fight)."),
+      components: away.map((seat) => row(new ButtonBuilder().setCustomId(hubCustomId("seatAsk", campaignId, seat.userId)).setLabel(`${seat.heroName ?? seat.userId}`.slice(0, 60)).setStyle(ButtonStyle.Secondary))),
+    });
+  }
+
+  private async askFreeSeat(interaction: ButtonInteraction<"cached">, campaignId: string, userId: string): Promise<void> {
+    const found = await this.allowed(interaction, campaignId);
+    if (found === null) return;
+    const zh = found.record.language === "zh-TW";
+    await interaction.update({
+      content: zh ? `要釋出 <@${userId}> 的座位嗎？他們的英雄會離開牌桌，座位開放給新的夥伴。` : `Free <@${userId}>'s seat? Their hero leaves the table and the seat opens for someone new.`,
+      components: [row(new ButtonBuilder().setCustomId(hubCustomId("seatYes", campaignId, userId)).setLabel(zh ? "釋出座位" : "Free the seat").setStyle(ButtonStyle.Danger))],
+    });
+  }
+
+  private async freeSeat(interaction: ButtonInteraction<"cached">, campaignId: string, userId: string): Promise<void> {
+    const found = await this.allowed(interaction, campaignId);
+    if (found === null) return;
+    const result = await this.deps.lobby.retireSeat(found.record.key, interaction.user.id, userId, interaction.id);
+    await interaction.update({ content: result.kind === "refused" ? refusalText(found.text, result.reason) : (found.record.language === "zh-TW" ? "已釋出座位。" : "Seat freed."), components: [] });
   }
 
   private async declineJoin(interaction: ButtonInteraction<"cached">, campaignId: string, userId: string): Promise<void> {
@@ -722,31 +888,33 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     const paused = mode === "paused" || mode === "recovery" || mode === "safety";
     const status = mode === null ? "" : text.campaign.mode[mode];
     const id = record.key.campaignId;
-    const verb = (action: ManageVerb, label: string): ButtonBuilder => new ButtonBuilder().setCustomId(hubCustomId("do", id, action)).setLabel(label).setStyle(ButtonStyle.Secondary);
-    const pictures = this.deps.imagesEnabled !== false;
+    const verb = (action: ManageVerb, label: string): ButtonBuilder => {
+      const button = new ButtonBuilder().setCustomId(hubCustomId("do", id, action)).setLabel(label).setStyle(ButtonStyle.Secondary);
+      const icon = manageIcons[action] === undefined ? undefined : this.deps.icons?.emoji(manageIcons[action]);
+      return icon === undefined ? button : button.setEmoji(icon);
+    };
     const rows: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
     if (record.lifecycle !== "lobby") {
       rows.push(
         row(
-          paused ? verb("resume", t.resume).setStyle(ButtonStyle.Success) : verb("pause", t.pause),
+          paused ? verb("resume", t.resume).setStyle(ButtonStyle.Primary) : verb("pause", t.pause),
           verb("closeRound", t.closeRound),
           verb("retry", t.retry),
-          ...(pictures ? [verb("redoPicture", record.lastPicture === undefined ? t.redoPicture : cut(t.redoPictureOf({ subject: pictureName(record.lastPicture) })))] : []),
           new ButtonBuilder().setCustomId(hubCustomId("levelOpen", id)).setLabel(t.levelButton).setStyle(ButtonStyle.Secondary),
         ),
-        row(verb("shortRest", t.shortRest), verb("longRest", t.longRest), verb("retryFight", t.retryFight), verb("retell", t.retell), ...(pictures ? [verb("illustrate", t.illustrate)] : [])),
+        row(verb("shortRest", t.shortRest), verb("longRest", t.longRest), verb("retryFight", t.retryFight), verb("retell", t.retell)),
       );
-      const failedPictures = Object.values(record.images ?? {}).filter((status) => status === "failed").length;
-      if (pictures) rows.push(row(verb("illustrateScene", t.illustrateScene), ...(failedPictures === 0 ? [] : [verb("retryPicture", t.retryPicture({ count: failedPictures })).setStyle(ButtonStyle.Primary)])));
       const pendingCount = Object.values(record.joinRequests ?? {}).filter((request) => request.status === "requested" && request.expiresAt > Date.now()).length;
       rows.push(row(
         new ButtonBuilder().setCustomId(hubCustomId("inviteOpen", id)).setLabel(record.language === "zh-TW" ? "邀請玩家" : "Invite player").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(hubCustomId("seatOpen", id)).setLabel(record.language === "zh-TW" ? "釋出座位" : "Free a seat").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId(hubCustomId("joinRequests", id)).setLabel(record.language === "zh-TW" ? `加入申請 (${pendingCount})` : `Join requests (${pendingCount})`).setStyle(ButtonStyle.Secondary),
       ));
     }
     rows.push(
       row(
         verb("repair", t.repair),
+        new ButtonBuilder().setCustomId(hubCustomId("sizeOpen", id)).setLabel(t.sizeButton).setStyle(ButtonStyle.Secondary),
         ...(record.lifecycle === "lobby"
           ? []
           : [
@@ -757,9 +925,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       ),
     );
     const problems = (record.issues ?? []).map((issue) => `⚠️ ${text.campaign.issue.short[issue.code]({ detail: issue.detail })}`);
-    const painted = Object.values(record.images ?? {});
-    const pictureLine = !pictures || painted.length === 0 ? "" : `\n${t.pictureStatus({ done: painted.filter((s) => s === "done").length, failed: painted.filter((s) => s === "failed").length, skipped: painted.filter((s) => s === "skipped").length })}`;
-    const title = `**${t.title({ name: record.name })}**${status === "" ? "" : ` · ${status}`}${pictureLine}`;
+    const title = `**${t.title({ name: record.name })}**${status === "" ? "" : ` · ${status}`}`;
     return { content: problems.length === 0 ? title : `${title}\n${t.needsAttention}\n${problems.join("\n")}`, components: rows };
   }
 
@@ -768,13 +934,17 @@ export class CampaignHubComponentHandler implements ComponentHandler {
   }
 }
 
-const cut = (label: string): string => (label.length <= 80 ? label : `${label.slice(0, 79)}…`);
-
-// A picture's subject in words a person reads: "scene:cheese-field" is "cheese field".
-function pictureName(subject: string): string {
-  const round = /^moment:round-(\d+)$/.exec(subject);
-  return round === null ? subject.replace(/^[a-z]+:/, "").replace(/-/g, " ") : `round ${round[1]}`;
-}
+// The icon a manage button carries.
+const manageIcons: Partial<Record<ManageVerb, CampaignIcon>> = {
+  pause: "pause",
+  resume: "play",
+  shortRest: "rest",
+  longRest: "rest",
+  illustrate: "picture",
+  illustrateScene: "picture",
+  redoPicture: "picture",
+  retryPicture: "picture",
+};
 
 function row(...buttons: ButtonBuilder[]): ActionRowBuilder<MessageActionRowComponentBuilder> {
   return new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(buttons);
@@ -804,6 +974,7 @@ function successText(verb: ManageVerb, text: Texts): string {
     case "retryPicture":
       return t.pictureRetried;
     case "shortRest":
+      return t.shortRested;
     case "longRest":
       return t.rested;
     case "repair":
@@ -813,7 +984,7 @@ function successText(verb: ManageVerb, text: Texts): string {
 
 // The wizard: the choices so far live in each control's custom ID.
 // `adventureTitle` is null when there is only the bundled adventure to choose.
-function wizardScreen(choices: WizardChoices, adventureTitle: string | null): Screen {
+function wizardScreen(choices: WizardChoices, adventureTitle: string | null, unavailable = false, allowedLanguages?: readonly ("en" | "zh-TW")[]): Screen {
   const text = texts[choices.language];
   const t = text.campaign.wizard;
   const state = wizardState(choices);
@@ -827,12 +998,12 @@ function wizardScreen(choices: WizardChoices, adventureTitle: string | null): Sc
   const language = choices.language === "en" ? text.campaign.language.en : text.campaign.language.zhTW;
   const pacing = choices.pacing === "live" ? text.campaign.pacing.live : text.campaign.pacing.playByPost;
   return {
-    content: `**${t.title}**\n${t.intro}\n\n${t.summary({ language, pacing, count: choices.players, loot: choices.loot === "split" ? t.lootSplit : t.lootPooled })}\n${t.visibilityLine({ who: choices.visibility === "membersOnly" ? t.visibilityPlayers : t.visibilityOpen })}${adventureTitle === null ? "" : `\n${text.campaign.adventure.wizardLine({ title: adventureTitle })}`}`,
+    content: `**${t.title}**\n${t.intro}\n\n${t.summary({ language, pacing, count: choices.players, loot: choices.loot === "split" ? t.lootSplit : t.lootPooled })}\n${t.visibilityLine({ who: choices.visibility === "membersOnly" ? t.visibilityPlayers : t.visibilityOpen })}${unavailable ? `\n⚠️ ${text.campaign.refusal.languageUnavailable}` : adventureTitle === null ? "" : `\n${text.campaign.adventure.wizardLine({ title: adventureTitle })}`}`,
     components: [
       select("wizLanguage", t.languagePlaceholder, [
         { label: text.campaign.language.en, value: "en", selected: choices.language === "en" },
         { label: text.campaign.language.zhTW, value: "zh-TW", selected: choices.language === "zh-TW" },
-      ]),
+      ].filter((option) => allowedLanguages === undefined || allowedLanguages.includes(option.value as "en" | "zh-TW"))),
       select("wizPacing", t.pacingPlaceholder, [
         { label: t.pacingLive, value: "live", selected: choices.pacing === "live" },
         { label: t.pacingPost, value: "playByPost", selected: choices.pacing === "playByPost" },
@@ -847,7 +1018,7 @@ function wizardScreen(choices: WizardChoices, adventureTitle: string | null): Sc
         { label: t.lootSplit, value: "split", selected: choices.loot === "split" },
       ]),
       row(
-        new ButtonBuilder().setCustomId(hubCustomId("wizNext", state)).setLabel(t.next).setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(hubCustomId("wizNext", state)).setLabel(t.next).setStyle(ButtonStyle.Primary).setDisabled(unavailable),
         new ButtonBuilder()
           .setCustomId(hubCustomId("wizVisibility", state))
           .setLabel(choices.visibility === "membersOnly" ? t.visibilityButtonPlayers : t.visibilityButtonOpen)

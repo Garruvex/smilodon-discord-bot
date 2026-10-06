@@ -138,6 +138,8 @@ export const birthdays = pgTable("birthdays", {
   memberId: uuid("member_id").references(() => guildMembers.id, { onDelete: "cascade" }),
   month: integer("month").notNull(),
   day: integer("day").notNull(),
+  birthYear: integer("birth_year"),
+  message: text("message"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [primaryKey({ columns: [table.guildId, table.userId] })]);
 

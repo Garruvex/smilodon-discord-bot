@@ -15,6 +15,14 @@ export const zhTWCommandDescriptions = {
   "birthday/set:user": "改為設定其他成員的生日（僅限機器人管理員）", // Set another member's birthday instead (bot administrators only).
   "birthday/view": "顯示成員的生日", // Shows a member's birthday.
   "birthday/view:user": "要查詢的成員，預設為你自己", // The member to look up; defaults to you.
+  "birthday/list": "顯示此伺服器所有已儲存的生日", // Shows all saved birthdays in this server.
+  "birthday/set:year": "選填出生年份，用於顯示年齡",
+  "birthday/set:message": "選填個人生日公告訊息，最多 1000 字元",
+  "birthday/set:clear-year": "移除已儲存的出生年份",
+  "birthday/set:clear-message": "移除個人訊息，改用伺服器訊息",
+  "birthday/template": "檢視或修改伺服器生日訊息（僅限機器人管理員）",
+  "birthday/template:message": "範本：{member}、{birthday}、{age}、{ordinal}、{date}、{days}，最多 1000 字元",
+  "birthday/template:reset": "還原預設生日公告訊息",
   "birthday/remove": "移除你的生日", // Removes your birthday.
   "birthday/remove:user": "改為移除其他成員的生日（僅限機器人管理員）", // Remove another member's birthday instead (bot administrators only).
   "birthday/next": "顯示接下來是誰的生日", // Shows whose birthday is coming up next.
@@ -168,6 +176,7 @@ export const zhTWCommandDescriptions = {
   "dnd/new": "建立新團務與專屬頻道", // Creates a new game with its own channels.
   "dnd/new:name": "團務名稱", // The game's name.
   "dnd/new:language": "遊玩語言（預設：English）", // The language the game is played in (default: English).
+  "dnd/new:adventure": "要玩的冒險：標題或標題的一部分（預設為機器人內建的冒險）", // The adventure to play: its title or part of it (default: the one that comes with the bot).
   "dnd/new:pacing": "回合節奏（預設：即時）", // How fast rounds go (default: live).
   "dnd/new:players": "桌上最多玩家數（預設 3）", // Most players at the table (default: 3).
   "dnd/new:visibility": "遊戲開始後誰可以觀看（預設為看得到分類的所有人）", // Who can watch once the game starts (default: everyone).
@@ -175,21 +184,37 @@ export const zhTWCommandDescriptions = {
   "dnd/pause": "暫停這場團務（主辦人）", // Pauses this game (organizer).
   "dnd/resume": "繼續已暫停的團務（主辦人）", // Resumes a paused game (organizer).
   "dnd/close-round": "不再等待，直接結束這一回合的收件（主辦人）", // Closes the current round without waiting (organizer).
-  "dnd/rest": "讓隊伍在戰鬥之間休息（主辦人）", // Has the party take a rest between fights (organizer).
+  "dnd/move": "決定隊伍等待中的場景轉換（主辦人）", // Settles a scene change the party is waiting on (organizer).
+  "dnd/move:decision": "立刻讓隊伍出發，或讓隊伍留在原地", // Send the party now, or keep it where it is.
+  "dnd/rest": "在戰鬥之間休息。玩家提議，由大家投票", // Take a rest between fights. Players propose it and the table votes.
+  "dnd/rest-vote": "回答玩家提議的休息", // Answer a rest a player has proposed.
+  "dnd/rest-vote:answer": "你同意休息嗎？", // Do you agree to rest?
+  "dnd/companions-away": "遣散你所有的同伴（戰鬥之間）", // Send all your companions away (between fights).
   "dnd/rest:type": "休息的長度", // How long the rest is.
+  "dnd/hit-dice": "短休後花費生命骰來恢復生命值（你自己的角色）", // Spend Hit Dice to heal after a short rest (your own hero).
+  "dnd/hit-dice:count": "要花費幾顆生命骰", // How many Hit Dice to spend.
   "dnd/level": "把所有存活的角色提升到指定等級，用於里程碑升級（主辦人）", // Raises every living hero to a level, for milestone leveling (organizer).
   "dnd/level:level": "隊伍要提升到的等級", // The level to raise the party to.
+  "dnd/time": "修正故事的天數、時段或天氣（主辦人）", // Corrects the story's day, time of day or weather (organizer).
+  "dnd/time:day": "故事的第幾天（第一天為 1）", // The day of the story (the first day is 1).
+  "dnd/time:time": "時段", // The time of day.
+  "dnd/time:weather": "天氣（none 為清除）", // The weather (none clears it).
+  "dnd/time:note": "修正的原因（會記在遊戲歷史中）", // Why it is being corrected (kept in the game's history).
   "dnd/retry": "請地下城主重新結算被擱置的回合（主辦人）", // Asks the DM to try the held round again (organizer).
   "dnd/characters": "開啟你的角色庫：建立、檢視、匯出與刪除角色", // Opens your character library: build, view, export and delete characters.
   "dnd/import-character": "從匯出的檔案把角色加入你的角色庫", // Adds a character from an exported file to your library.
   "dnd/import-character:file": "從「我的角色」匯出的角色檔案（.json）", // The character file (.json) exported from My Characters.
   "dnd/upload-adventure": "從檔案把冒險加入這個伺服器（經過檢查與你的核准）", // Adds an adventure from a file to this server, after checks and your approval.
   "dnd/upload-adventure:file": "冒險檔案（YAML 或 JSON）", // The adventure file (YAML or JSON).
+  "dnd/upload-adventure:language": "此冒險使用的語言", // The language of this adventure.
+  "dnd/setup:language": "龍與地下城頻道使用的語言", // Language for the D&D channels.
   "dnd/adventures": "列出這個伺服器的冒險：檢視草稿、移除或還原", // Lists this server's adventures: review a draft, remove one, or restore it.
   "dnd/author": "請冒險作者依你的點子或筆記寫一個冒險", // Has the Adventure Author write an adventure from an idea or your notes.
   "dnd/author:idea": "這個冒險在說什麼", // What the adventure is about.
   "dnd/author:language": "撰寫的語言（預設英文）", // The language to write it in (default: English).
   "dnd/author:notes": "你自己的筆記（文字或 Markdown）", // Your own notes to build from (text or Markdown).
   "dnd/repair": "檢查這場團務的頻道並重新繪製卡片（主辦人）", // Checks this game's channels and redraws its cards (organizer).
+  "dnd/size": "更改團務可容納的玩家人數（主辦人）", // Changes how many players the game takes (organizer).
+  "dnd/size:players": "座位數，1 到 6，不能少於已加入的玩家", // Seats in the game, 1 to 6. Never fewer than the players already in it.
   "dnd/reopen": "重新開啟已結束的團務，並暫停在結束的地方（主辦人）", // Opens a finished game again, paused where it stopped (organizer).
 } as const satisfies CommandDescriptionCatalog<keyof typeof jaCommandDescriptions>;

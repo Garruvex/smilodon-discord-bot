@@ -102,6 +102,8 @@ import { EightBallTool } from "../application/chat/tools/eightball-tool.js";
 import { BooruSearchTool } from "../application/chat/tools/booru-search-tool.js";
 import { MemoryLookupTool } from "../application/chat/tools/memory-lookup-tool.js";
 import { BirthdayLookupTool } from "../application/chat/tools/birthday-lookup-tool.js";
+import { BirthdaySetTool } from "../application/chat/tools/birthday-set-tool.js";
+import { BirthdayMemberSetTool } from "../application/chat/tools/birthday-member-set-tool.js";
 import { ReadLinkTool } from "../application/chat/tools/read-link-tool.js";
 import { GenerateSelfImageTool } from "../application/chat/tools/generate-self-image-tool.js";
 import { CachingEmbeddingsClient } from "../application/chat/caching-embeddings-client.js";
@@ -120,6 +122,7 @@ import { FilePersonaSource } from "../infrastructure/chat/file-persona-source.js
 import { OpenAiEmbeddingsClient } from "../infrastructure/chat/openai-embeddings-client.js";
 import { GeminiEmbeddingsClient } from "../infrastructure/chat/gemini-embeddings-client.js";
 import { embeddingDimensions } from "../infrastructure/database/schema.js";
+import { applicationIcons } from "../infrastructure/discord/campaign/campaign-icons.js";
 import { ApplicationEmojiCatalog } from "../infrastructure/discord/application-emoji-catalog.js";
 import type { AuditLogService } from "../application/audit/audit-log-service.js";
 import { MemberProfileService } from "../application/members/member-profile-service.js";
@@ -408,7 +411,7 @@ export function registerCommands(
     guildConfigurationProvider,
   );
   commandRegistry.register(new HelpCommand(commandRegistry, accessPolicyService, guildConfigurationProvider));
-  const campaign = createCampaignModule({ configuration, logger, client: discordClient, accessPolicyService });
+  const campaign = createCampaignModule({ configuration, logger, client: discordClient, accessPolicyService, icons: applicationIcons((name) => applicationEmojiCatalog.getEmoji(name)) });
   commandRegistry.register(campaign.command);
   componentRegistry.register(campaign.handler);
   componentRegistry.register(campaign.hubHandler);
@@ -614,7 +617,14 @@ export function createDependencies(
     new EightBallTool(),
     new BooruSearchTool(),
     new MemoryLookupTool(memoryEngine),
-    new BirthdayLookupTool(birthdayStore),
+    new BirthdayLookupTool(birthdayStore, guildConfigurationProvider),
+    new BirthdaySetTool(birthdayStore, guildConfigurationProvider),
+    new BirthdayMemberSetTool(birthdayStore, guildConfigurationProvider, async (guildId, userId) => {
+      const guild = discordClient.guilds.cache.get(guildId);
+      if (!guild) return null;
+      const member = await guild.members.fetch({ user: userId, force: true }).catch(() => null);
+      return member ? [...member.roles.cache.keys()] : null;
+    }),
     new ReadLinkTool(),
     // Needs a real ChatProvider to make its own isolated image-generation
     // request (see ChatProvider.generateReferenceImage) — omitted entirely
@@ -661,6 +671,7 @@ export function createDependencies(
     personaSource,
     logger.child({ component: "chat" }),
     messageReactionWatchStore,
+    campaign.isGameChannel,
   ));
   behaviorRegistry.register(new AmbientChatBehavior(
     () => discordClient.user?.id ?? null,
@@ -670,6 +681,7 @@ export function createDependencies(
     personaSource,
     logger.child({ component: "ambient-chat" }),
     messageReactionWatchStore,
+    campaign.isGameChannel,
   ));
   behaviorRegistry.register(new ReactionArmBehavior(
     () => discordClient.user?.id ?? null,
@@ -685,6 +697,7 @@ export function createDependencies(
     guildConfigurationProvider,
     new BilibiliEmbedService(logger.child({ component: "bilibili-embed" })),
     logger.child({ component: "link-fix" }),
+    campaign.isGameChannel,
   ));
 
   return {

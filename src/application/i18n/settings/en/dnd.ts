@@ -30,6 +30,13 @@ export const enDnd: SettingsTextCatalog = {
       done: "D&D is set up. The games hub is {channel}; anything missing was made again.",
     },
   },
+  "dnd.setup.language": { label: "Language", description: "Language for the D&D hub and newly created channels.", choices: { en: "English", "zh-TW": "Traditional Chinese" } },
+
+  "dnd.language": {
+    label: "D&D language", description: "Choose the hub language and default language for new games.",
+    messages: { unavailable: "D&D is not available on this bot.", notSetUp: "Set up D&D first, then choose its language.", done: "D&D language updated. Existing games keep their language." },
+  },
+  "dnd.language.language": { label: "Language", description: "Choose the hub language and default language for new games.", choices: { en: "English", "zh-TW": "Traditional Chinese" } },
 
   "dnd.hub-channel": {
     label: "Move the hub",

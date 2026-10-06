@@ -402,11 +402,11 @@ export class Application {
     // Filtered to message routes only to avoid flooding the log with every
     // other REST call the bot makes (interactions, commands, etc.). Even so,
     // the lyrics panel alone makes one of these every second or two, so
-    // successes are trace-only and 429s debug — set LOG_LEVEL accordingly
+    // successes are trace-only and 429s warnings — keep failures visible
     // when chasing edit latency or rate limits.
     this.client.rest.on("response", (request, response) => {
       if (!request.route.includes("/messages/")) return;
-      const level = response.status === 429 ? "debug" : "trace";
+      const level = response.status === 429 ? "warn" : "trace";
       this.logger[level](
         {
           method: request.method,
@@ -415,6 +415,8 @@ export class Application {
           time: Date.now(),
           remaining: response.headers.get("x-ratelimit-remaining"),
           resetAfter: response.headers.get("x-ratelimit-reset-after"),
+          retryAfter: response.headers.get("retry-after"),
+          scope: response.headers.get("x-ratelimit-scope"),
           bucket: response.headers.get("x-ratelimit-bucket"),
         },
         "Discord REST response for a message route",

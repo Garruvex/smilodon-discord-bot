@@ -92,7 +92,7 @@ describe("creating a campaign", () => {
     expect(refusal(await service.create(input({ pacing: { preset: "custom", pacing: { roundSeconds: 5, rollSeconds: null, turnSeconds: null, awayAfterMisses: 2 } } })))).toBe("invalidPacing");
     expect(refusal(await service.create(input({ houseRules: { "no-such-rule": "x" } })))).toBe("invalidHouseRules");
     expect(refusal(await service.create(input({ minPlayers: 3, maxPlayers: 2 })))).toBe("invalidLimits");
-    expect(refusal(await service.create(input({ maxPlayers: 5 })))).toBe("invalidLimits");
+    expect((await service.create(input({ maxPlayers: 5 }))).kind).toBe("ok");
   });
 
   it("keeps names unique among unfinished campaigns, ignoring case", async () => {
@@ -106,6 +106,33 @@ describe("creating a campaign", () => {
 });
 
 describe("the lobby", () => {
+  it("requires an invitation for private Activity seats and consumes that reservation", async () => {
+    const { service } = setup();
+    const { key } = value(await service.create(input({ visibility: "membersOnly", maxPlayers: 1 })));
+    expect(refusal(await service.joinFromActivity(key, "u-b"))).toBe("privateInviteOnly");
+    expect(await service.activityGames(guildId, "u-b")).toEqual([]);
+    expect(refusal(await service.inviteLobby(key, "u-b", "u-c"))).toBe("notOrganizer");
+    value(await service.inviteLobby(key, "u-org", "u-b"));
+    expect((await service.activityGames(guildId, "u-b"))[0]).toMatchObject({ action: "join", canWatch: true });
+    expect(refusal(await service.joinFromActivity(key, "u-org"))).toBe("full");
+    value(await service.joinFromActivity(key, "u-b"));
+    expect((await service.get(key))?.record.joinRequests?.["u-b"]).toBeUndefined();
+    expect(refusal(await service.joinFromActivity(key, "u-c"))).toBe("privateInviteOnly");
+  });
+
+  it("reserves invitations against public joining and resizing, releasing withdrawn seats", async () => {
+    const { service } = setup();
+    const { key } = value(await service.create(input({ maxPlayers: 2 })));
+    value(await service.joinFromActivity(key, "u-org"));
+    value(await service.inviteLobby(key, "u-org", "u-b"));
+    expect(refusal(await service.joinFromActivity(key, "u-c"))).toBe("full");
+    expect((await service.activityGames(guildId, "u-c"))[0]?.action).toBe("full");
+    expect((await service.setPartySize(key, "u-org", 1)).kind).toBe("refused");
+    value(await service.leave(key, "u-org"));
+    value(await service.joinFromActivity(key, "u-c"));
+    value(await service.joinFromActivity(key, "u-b"));
+    expect((await service.get(key))?.record.lobby.members.filter((member) => member.status !== "withdrawn")).toHaveLength(2);
+  });
   it("seats players, lets them pick preset heroes, and lists them in order", async () => {
     const { service } = setup();
     const { key } = value(await service.create(input()));
@@ -226,6 +253,7 @@ describe("joining an ongoing campaign", () => {
     const { service, store, key } = await running();
     expect(refusal(await service.joinOngoingHero(key, "u-b", heroIds[1] ?? "", "before"))).toBe("joinNotApproved");
     value(await service.requestOngoingJoin(key, "u-b"));
+    expect((await service.activityGames(guildId, "u-b")).find((game) => game.campaignId === key.campaignId)?.action).toBe("requested");
     expect((await service.get(key))?.record.joinRequests?.["u-b"]?.status).toBe("requested");
     value(await service.decideOngoingJoin(key, "u-org", "u-b", true, "The party meets them at the inn."));
     value(await service.joinOngoingHero(key, "u-b", heroIds[1] ?? "", "joining"));
@@ -248,6 +276,60 @@ describe("joining an ongoing campaign", () => {
     expect((await service.get(key))?.record.joinRequests?.["u-b"]?.status).toBe("approved");
     value(await service.inviteOngoing(key, "u-org", "u-c", "They arrive later."));
     expect(refusal(await service.inviteOngoing(key, "u-org", "u-d", "They arrive later."))).toBe("gameFull");
+  });
+  it("shows a run-out invitation as expired and lets the player ask again, even in a private game", async () => {
+    const { service, key, store } = await running("membersOnly");
+    value(await service.inviteOngoing(key, "u-org", "u-b", "They arrive."));
+    const stored = await store.transaction((tx) => tx.loadRecord(key));
+    await store.transaction((tx) => tx.saveRecord({ ...stored!.record, joinRequests: { "u-b": { ...stored!.record.joinRequests!["u-b"]!, expiresAt: 0 } } }, stored!.revision));
+    expect((await service.activityGames(guildId, "u-b")).find((game) => game.campaignId === key.campaignId)?.action).toBe("expired");
+    value(await service.requestOngoingJoin(key, "u-b"));
+    expect((await service.get(key))?.record.joinRequests?.["u-b"]?.status).toBe("requested");
+  });
+});
+
+describe("replacing a fallen hero", () => {
+  async function fallen(): Promise<{ service: ReturnType<typeof setup>["service"]; store: ReturnType<typeof setup>["store"]; key: CampaignKey }> {
+    const { service, store } = setup();
+    const { key } = value(await service.create(input({ maxPlayers: 3 })));
+    value(await service.join(key, "u-org"));
+    value(await service.chooseHero(key, "u-org", heroIds[0] ?? ""));
+    value(await service.start(key, "u-org"));
+    return { service, store, key };
+  }
+  const kill = async (store: ReturnType<typeof setup>["store"], key: CampaignKey): Promise<void> => {
+    const stored = await store.transaction((tx) => tx.loadCampaign(key));
+    if (stored === undefined) throw new Error("no campaign");
+    const id = heroIds[0] ?? "";
+    const status = { ...(stored.state.heroStatus[id] ?? {}), hp: 0, dead: true } as never;
+    await store.transaction((tx) => tx.saveCampaign(key, { ...stored.state, heroStatus: { ...stored.state.heroStatus, [id]: status } }, stored.revision));
+  };
+
+  it("is for a player whose hero has fallen, and for no one else", async () => {
+    const { service, key } = await fallen();
+    expect(refusal(await service.replaceFallenHero(key, "u-org", heroIds[1] ?? "", undefined, "early"))).toBe("heroNotReplaceable");
+    expect(refusal(await service.replaceFallenHero(key, "u-nobody", heroIds[1] ?? "", undefined, "stranger"))).toBe("heroNotReplaceable");
+  });
+
+  it("gives the player a new hero in the engine and in the lobby record, with the arrival told", async () => {
+    const { service, store, key } = await fallen();
+    await kill(store, key);
+    value(await service.replaceFallenHero(key, "u-org", heroIds[1] ?? "", "  She steps out of the mist.  ", "swap"));
+    const state = (await store.transaction((tx) => tx.loadCampaign(key)))?.state;
+    expect(state?.members["u-org"]?.characterId).toBe(`${heroIds[1]}-1`);
+    expect((await service.get(key))?.record.lobby.members.find((member) => member.userId === "u-org")?.heroId).toBe(heroIds[1]);
+    expect((await store.transaction((tx) => tx.readEvents(key))).map((entry) => entry.event)).toContainEqual(expect.objectContaining({ kind: "heroJoined", entrance: "She steps out of the mist." }));
+  });
+
+  it("numbers a hero played again from the same preset, and refuses an arrival that is too long", async () => {
+    const { service, store, key } = await fallen();
+    await kill(store, key);
+    expect(refusal(await service.replaceFallenHero(key, "u-org", heroIds[0] ?? "", "x".repeat(501), "long"))).toBe("invalidEntrance");
+    value(await service.replaceFallenHero(key, "u-org", heroIds[0] ?? "", undefined, "again"));
+    const state = (await store.transaction((tx) => tx.loadCampaign(key)))?.state;
+    const joined = state?.characters[state.members["u-org"]?.characterId ?? ""];
+    expect(joined?.id).toBe(`${heroIds[0]}-2`);
+    expect(joined?.name.endsWith(" II")).toBe(true);
   });
 });
 
@@ -299,5 +381,30 @@ describe("an adventure that changes after the lobby opened", () => {
     expect(library.document("uploaded-tale", "en")?.bible.version).toBe("2");
     expect([...(library.list().find((entry) => entry.id === "uploaded-tale")?.languages ?? [])].sort()).toEqual(["en", "zh-TW"]);
     expect(library.documentAt("uploaded-tale", "2", "zh-TW")).toBeUndefined();
+  });
+});
+
+describe("changing the party size", () => {
+  it("lets the organizer (or an admin) change it, and nobody else", async () => {
+    const { service } = setup();
+    const created = value(await service.create(input({ maxPlayers: 3 })));
+    const key = created.key;
+    expect(value(await service.setPartySize(key, "u-org", 5)).lobby.maxPlayers).toBe(5);
+    expect(value(await service.setPartySize(key, null, 4)).lobby.maxPlayers).toBe(4);
+    expect(await service.setPartySize(key, "u-other", 2)).toEqual({ kind: "refused", reason: "notOrganizer" });
+    expect(await service.setPartySize(key, "u-org", 9)).toEqual({ kind: "refused", reason: "invalidLimits" });
+  });
+});
+
+describe("opening the Activity from a channel that is not a game's", () => {
+  it("goes straight into the one game the player is in, and lists when there are several or none", async () => {
+    const { service } = setup();
+    const first = value(await service.create(input({ name: "First" }))).key;
+    value(await service.join(first, "u-a"));
+    expect((await service.activityGameForChannel(guildId, "u-a", "hub"))?.campaignId).toBe(first.campaignId);
+    expect(await service.activityGameForChannel(guildId, "u-stranger", "hub")).toBeNull();
+    const second = value(await service.create(input({ name: "Second", organizerId: "u-other" }))).key;
+    value(await service.join(second, "u-a"));
+    expect(await service.activityGameForChannel(guildId, "u-a", "hub")).toBeNull();
   });
 });

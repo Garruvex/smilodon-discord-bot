@@ -30,9 +30,9 @@ function campaignWithSable(): CampaignState {
 describe("buyItem", () => {
   it("deducts the party purse and gives the hero the item, then queues a trade narration", () => {
     const state = { ...campaignWithSable(), gold: 100 };
-    const step = run(state, jamie, { kind: "buyItem", characterId: "c-borin", npcId: "npc:smith", itemId: "item:dagger", price: 20 });
+    const step = run(state, jamie, { kind: "buyItem", characterId: "c-borin", npcId: "npc:smith", itemId: "item:handaxe", price: 20 });
     expect(step.state.gold).toBe(80);
-    expect(step.state.characters["c-borin"]?.equipment).toContain("item:dagger");
+    expect(step.state.characters["c-borin"]?.equipment).toContain("item:handaxe");
     const tradeId = Object.keys(step.state.trades)[0];
     expect(tradeId).toBeDefined();
     expect(step.state.trades[tradeId ?? ""]).toMatchObject({ direction: "buy", listedPrice: 20, finalPrice: 20, outcome: "completed", haggle: null });
@@ -41,7 +41,7 @@ describe("buyItem", () => {
 
   it("rejects a purchase the party can't afford", () => {
     const state = { ...campaignWithSable(), gold: 5 };
-    expect(reject(state, jamie, { kind: "buyItem", characterId: "c-borin", npcId: "npc:smith", itemId: "item:dagger", price: 20 })).toEqual({
+    expect(reject(state, jamie, { kind: "buyItem", characterId: "c-borin", npcId: "npc:smith", itemId: "item:handaxe", price: 20 })).toEqual({
       code: "insufficientGold",
     });
   });
@@ -55,14 +55,14 @@ describe("buyItem", () => {
 
   it("draws from the hero's own share under the split loot house rule", () => {
     const base = { ...campaignWithSable(), gold: 0, heroGold: { "c-borin": 50 } };
-    const step = run(base, jamie, { kind: "buyItem", characterId: "c-borin", npcId: "npc:smith", itemId: "item:dagger", price: 20 }, { rules: ruleset({ "loot-gold": "split" }) });
+    const step = run(base, jamie, { kind: "buyItem", characterId: "c-borin", npcId: "npc:smith", itemId: "item:handaxe", price: 20 }, { rules: ruleset({ "loot-gold": "split" }) });
     expect(step.state.heroGold?.["c-borin"]).toBe(30);
     expect(step.state.gold).toBe(0);
   });
 
   it("rejects someone else spending a hero's gold", () => {
     const state = { ...campaignWithSable(), gold: 100 };
-    expect(reject(state, organizer, { kind: "buyItem", characterId: "c-borin", npcId: "npc:smith", itemId: "item:dagger", price: 20 })).toEqual({
+    expect(reject(state, organizer, { kind: "buyItem", characterId: "c-borin", npcId: "npc:smith", itemId: "item:handaxe", price: 20 })).toEqual({
       code: "notYourCharacter",
     });
   });
@@ -87,13 +87,13 @@ describe("sellItem", () => {
 describe("hagglePrice", () => {
   function haggle(gold: number, direction: "buy" | "sell"): Step {
     const state = { ...campaignWithSable(), gold };
-    return run(state, jamie, { kind: "hagglePrice", characterId: "c-borin", npcId: "npc:smith", itemId: "item:dagger", direction, listedPrice: 20, skill: "persuasion" });
+    return run(state, jamie, { kind: "hagglePrice", characterId: "c-borin", npcId: "npc:smith", itemId: "item:handaxe", direction, listedPrice: 20, skill: "persuasion" });
   }
 
   it("rejects a skill that isn't Persuasion, Deception, or Intimidation", () => {
     const state = { ...campaignWithSable(), gold: 100 };
     expect(
-      reject(state, jamie, { kind: "hagglePrice", characterId: "c-borin", npcId: "npc:smith", itemId: "item:dagger", direction: "buy", listedPrice: 20, skill: "athletics" }),
+      reject(state, jamie, { kind: "hagglePrice", characterId: "c-borin", npcId: "npc:smith", itemId: "item:handaxe", direction: "buy", listedPrice: 20, skill: "athletics" }),
     ).toEqual({ code: "invalidHaggleSkill" });
   });
 
@@ -104,7 +104,7 @@ describe("hagglePrice", () => {
         kind: "hagglePrice",
         characterId: "c-borin",
         npcId: "npc:smith",
-        itemId: "item:dagger",
+        itemId: "item:handaxe",
         direction: "buy",
         listedPrice: 20,
         skill: "persuasion",
@@ -127,7 +127,7 @@ describe("hagglePrice", () => {
     const settled = run(declared.state, system, { kind: "recordRoll", rollId, result: { kind: "d20Test", roll } });
     expect(settled.state.hagglePending?.["c-borin"]).toBeUndefined();
     expect(settled.state.gold).toBe(100 - 18); // 20 * 0.90 = 18.
-    expect(settled.state.characters["c-borin"]?.equipment).toContain("item:dagger");
+    expect(settled.state.characters["c-borin"]?.equipment).toContain("item:handaxe");
     const tradeId = Object.keys(settled.state.trades)[0] ?? "";
     expect(settled.state.trades[tradeId]).toMatchObject({ finalPrice: 18, outcome: "completed" });
     expect(settled.state.trades[tradeId]?.haggle).toMatchObject({ success: true, total: 20, dc: 15 });
@@ -151,7 +151,7 @@ describe("hagglePrice", () => {
     const roll = d20Roll("normal", [15], 5); // A real 10% discount (total 20, DC 15) still leaves 18 to find.
     const settled = run(declared.state, system, { kind: "recordRoll", rollId, result: { kind: "d20Test", roll } });
     expect(settled.state.gold).toBe(15); // Nothing spent.
-    expect(settled.state.characters["c-borin"]?.equipment).not.toContain("item:dagger");
+    expect(settled.state.characters["c-borin"]?.equipment).not.toContain("item:handaxe");
     const tradeId = Object.keys(settled.state.trades)[0] ?? "";
     expect(settled.state.trades[tradeId]?.outcome).toBe("cannotAfford");
   });
@@ -177,7 +177,7 @@ describe("hagglePrice", () => {
 describe("recordTradeNarration", () => {
   it("is system-only and clears the settled trade once narrated", () => {
     const state = { ...campaignWithSable(), gold: 100 };
-    const bought = run(state, jamie, { kind: "buyItem", characterId: "c-borin", npcId: "npc:smith", itemId: "item:dagger", price: 20 });
+    const bought = run(state, jamie, { kind: "buyItem", characterId: "c-borin", npcId: "npc:smith", itemId: "item:handaxe", price: 20 });
     const tradeId = Object.keys(bought.state.trades)[0] ?? "";
     expect(reject(bought.state, jamie, { kind: "recordTradeNarration", tradeId, text: "The smith nods." })).toEqual({ code: "systemOnly" });
     const narrated = run(bought.state, system, { kind: "recordTradeNarration", tradeId, text: "The smith nods." });

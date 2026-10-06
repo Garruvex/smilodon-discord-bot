@@ -153,7 +153,7 @@ describe("runHarness", () => {
       expect(report.roundsPlayed).toBe(6);
       expect(report.stoppedBecause).toBe("roundLimit");
       expect(report.checks.total).toBeGreaterThan(0);
-      // Round 4 travels to the chapel; round 5 charges Skarn and the fight plays out.
+      // Round 4 travels to the chapel; the fight plays out before the configured round loop ends.
       expect(run.finalState.sceneId).toBe("scene:ruined-chapel");
       expect(report.fights).toHaveLength(1);
       const [fight] = report.fights;

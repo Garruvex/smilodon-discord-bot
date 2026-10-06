@@ -1,0 +1,9 @@
+# Overlay included by stack lifecycle commands so the tunnel is part of the
+# same Compose project even though compose.yaml is machine-specific/ignored.
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in .env}

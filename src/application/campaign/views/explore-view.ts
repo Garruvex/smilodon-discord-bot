@@ -1,4 +1,5 @@
 import type { AdventureBible, BibleNpc } from "../../../domain/campaign/adventure/adventure-bible.js";
+import { reachableScenes } from "../dm/interactions.js";
 import type { Skill } from "../../../domain/campaign/character/character-sheet.js";
 import type { CharacterId } from "../../../domain/campaign/core/ids.js";
 import type { Glossary, SealedContent } from "../../../domain/campaign/rules/content-registry.js";
@@ -26,6 +27,7 @@ export interface ExploreNpc {
   readonly trades: boolean;
   // Their secret was already won: pressing them again is refused.
   readonly secretKnown: boolean;
+  readonly pressAttempted: boolean;
 }
 
 export interface ExploreSpell {
@@ -48,8 +50,18 @@ export interface HurtHero {
   readonly maxHp: number;
 }
 
+// A place the party can head to from here.
+export interface PlaceChoice {
+  readonly id: string;
+  readonly title: string;
+  // The party has been there before.
+  readonly visited: boolean;
+}
+
 export interface ExploreView {
   readonly npcs: readonly ExploreNpc[];
+  // Where the party can go from here (the scene's open exits). Empty during a fight.
+  readonly places: readonly PlaceChoice[];
   readonly spells: readonly ExploreSpell[];
   // Healing spells the hero can cast now (a slot is left), and the friends who are hurt.
   readonly healing: readonly HealingSpell[];
@@ -84,7 +96,7 @@ export const haggleSkills: readonly Skill[] = ["persuasion", "deception", "intim
 // The NPCs the party can reach: those the current scene lists.
 export function sceneNpcs(state: CampaignState, bible: AdventureBible): readonly BibleNpc[] {
   const scene = bible.scenes.find((candidate) => candidate.id === state.sceneId);
-  return (scene?.npcIds ?? []).flatMap((id) => bible.npcs.filter((npc) => npc.id === id));
+  return (scene?.npcIds ?? []).filter((id) => state.npcsDown?.includes(id) !== true).flatMap((id) => bible.npcs.filter((npc) => npc.id === id));
 }
 
 function exploreNpc(state: CampaignState, npc: BibleNpc): ExploreNpc {
@@ -94,6 +106,7 @@ function exploreNpc(state: CampaignState, npc: BibleNpc): ExploreNpc {
     description: npc.publicDescription,
     trades: npc.shop !== undefined,
     secretKnown: state.npcSecretsRevealed?.[npc.id] === true,
+    pressAttempted: state.npcPressAttempts?.includes(npc.id) === true,
   };
 }
 
@@ -163,9 +176,19 @@ export function hurtHeroes(state: CampaignState): readonly HurtHero[] {
   });
 }
 
+function placesToGo(state: CampaignState, bible: AdventureBible): readonly PlaceChoice[] {
+  if (state.encounter !== null && state.encounter.status !== "ended") return [];
+  const been = new Set((state.visits ?? []).map((visit) => visit.sceneId));
+  return reachableScenes(bible, state).flatMap((id) => {
+    const scene = bible.scenes.find((candidate) => candidate.id === id);
+    return scene === undefined || scene.id === state.sceneId ? [] : [{ id: scene.id, title: scene.title, visited: been.has(scene.id) }];
+  });
+}
+
 export function buildExploreView(state: CampaignState, bible: AdventureBible, content: SealedContent, glossary: Glossary, characterId: CharacterId): ExploreView {
   return {
     npcs: sceneNpcs(state, bible).map((npc) => exploreNpc(state, npc)),
+    places: placesToGo(state, bible),
     spells: castableSpells(state, characterId, content, glossary),
     healing: healingSpells(state, characterId, content, glossary),
     conjuring: conjuringSpells(state, characterId, content, glossary),

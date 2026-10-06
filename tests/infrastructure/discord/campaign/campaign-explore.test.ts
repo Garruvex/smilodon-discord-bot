@@ -105,7 +105,8 @@ describe("Explore: the people in the scene", () => {
     });
     const home = screenOf(await t.press("explore", "u-org"));
     expect(home.content).toContain("nobody here to talk to");
-    expect(home.menus).toEqual([]);
+    // No people and nothing to cast: only the places the party can go remain.
+    expect(home.menus.map((menu) => menu.id)).toEqual([id(t, "exploreGo")]);
     expect(home.buttons).toEqual([]);
   });
 
@@ -433,7 +434,7 @@ describe("what the table is told", () => {
     await g.settle();
     const said = g.said().join("\n");
     expect(said).toContain("**Borin** asks **Garrick**: “Seen anything odd on the road?”");
-    expect(said).toMatch(/\*\*Borin\*\* presses \*\*Garrick\*\* with Insight \(WIS\)\. \*\d+ against DC 20: (success|failure)\.\*/);
+    expect(said).toMatch(/\*\*Borin\*\* presses \*\*Garrick\*\* with Insight \(WIS\)\. \*🎲 d20 \d+ [+-] \d+ = \d+ against DC 20: (success|failure)\.\*/);
   });
 
   it("tells a spell cast between fights", async () => {
@@ -552,5 +553,36 @@ describe("Explore: bringing back a fallen hero", () => {
     expect(state.heroStatus["c-ghost"]).toMatchObject({ hp: 1 });
     expect(state.heroStatus["c-ghost"]?.dead).toBeUndefined();
     expect(state.heroStatus[heroId]?.resources.spellSlots[3]).toBe(0);
+  });
+});
+
+describe("Explore: where the party can go", () => {
+  it("offers the other places, and marks the ones the party has been to", async () => {
+    const { t } = await table();
+    const places = screenOf(await t.press("explore", "u-org")).menus.find((menu) => menu.id === id(t, "exploreGo"));
+    expect(places?.options.map((option) => option.label)).toEqual(["The Old Watchtower", "The Ruined Chapel"]);
+    expect(places?.options.some((option) => option.description !== undefined)).toBe(false);
+    await t.r.store.transaction(async (tx) => {
+      const latest = await tx.loadCampaign(t.key);
+      if (latest === undefined) throw new Error("state");
+      await tx.saveCampaign(t.key, { ...latest.state, visits: [{ id: "visit-1", sceneId: "scene:old-watchtower", arrivedRound: 1, leftRound: 2 }, { id: "visit-2", sceneId: "scene:crossroads-inn", arrivedRound: 2 }] }, latest.revision);
+    });
+    const again = screenOf(await t.press("explore", "u-org")).menus.find((menu) => menu.id === id(t, "exploreGo"));
+    expect(again?.options.find((option) => option.value === "scene:old-watchtower")?.description).toBe("You have been here");
+  });
+
+  it("suggests a move that waits for the table, and says so", async () => {
+    const { t } = await table();
+    const screen = screenOf(await choose(t, id(t, "exploreGo"), "scene:old-watchtower"));
+    expect(screen.content).toContain("You suggested heading to **The Old Watchtower**");
+    expect((await stateOf(t)).state.pendingMove).toMatchObject({ sceneId: "scene:old-watchtower", objectors: [] });
+    expect((await stateOf(t)).state.sceneId).toBe("scene:crossroads-inn");
+  });
+
+  it("refuses a place that is not on offer", async () => {
+    const { t } = await table();
+    const screen = screenOf(await choose(t, id(t, "exploreGo"), "scene:nowhere"));
+    expect(screen.content).toContain("cannot go there");
+    expect((await stateOf(t)).state.pendingMove).toBeUndefined();
   });
 });

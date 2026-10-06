@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { adventurePreview, validateAdventure } from "../../../src/application/campaign/adventures/adventure-validator.js";
+import { adventurePreview, routeWarnings, validateAdventure } from "../../../src/application/campaign/adventures/adventure-validator.js";
+import { raiseToLevel } from "../../../src/domain/campaign/character/leveling.js";
 import { rehearseEncounter } from "../../../src/application/campaign/adventures/adventure-smoke.js";
 import { ruleset } from "../../domain/campaign/campaign-fixtures.js";
 import { starter } from "./campaign-rig.js";
@@ -93,5 +94,53 @@ describe("fights that cannot be played", () => {
     expect(report.errors).toEqual([]);
     expect(report.ok).toBe(true);
     expect(report.warnings).toContain("encounter:chapel-fight defeated the adventure's own heroes in every rehearsal; it may be too hard.");
+  });
+});
+
+describe("checking the routes between scenes", () => {
+  const [first, second, third] = starter.en.bible.scenes;
+  if (first === undefined || second === undefined || third === undefined) throw new Error("scenes");
+  const withScenes = (scenes: typeof starter.en.bible.scenes): typeof starter.en => ({ ...starter.en, bible: { ...starter.en.bible, startScene: first.id, scenes } });
+
+  it("has nothing to say about an adventure that lists no exits", () => {
+    expect(routeWarnings(withScenes([first, second, third]))).toEqual([]);
+  });
+
+  it("flags a scene nothing leads to, a scene with no way out, and a one-way exit", () => {
+    const warnings = routeWarnings(withScenes([{ ...first, exits: [{ to: second.id }] }, { ...second, exits: [] }, { ...third, exits: [{ to: first.id }] }]));
+    expect(warnings).toContain(`${third.id} cannot be reached from the start scene by its exits.`);
+    expect(warnings).toContain(`${second.id} has no way out; the party would be stuck there.`);
+  });
+
+  it("flags an exit that cannot be undone, but not one that can", () => {
+    const oneWay = routeWarnings(withScenes([{ ...first, exits: [{ to: second.id }] }, { ...second, exits: [{ to: third.id }] }, { ...third, exits: [{ to: second.id }] }]));
+    expect(oneWay).toContain(`${first.id} leads to ${second.id}, but there is no way back.`);
+    const both = routeWarnings(withScenes([{ ...first, exits: [{ to: second.id }] }, { ...second, exits: [{ to: first.id }, { to: third.id }] }, { ...third, exits: [{ to: second.id }] }]));
+    expect(both).toEqual([]);
+    const chain = withScenes([{ ...first, exits: [{ to: second.id }] }, { ...second, exits: [{ to: third.id }] }, { ...third, exits: [{ to: second.id }] }]);
+    expect(routeWarnings({ ...chain, bible: { ...chain.bible, linear: true } })).toEqual([]);
+  });
+});
+
+describe("routes and authored jumps", () => {
+  it("counts a scene an authored goto leads to as reachable", () => {
+    const [first, second, third] = starter.en.bible.scenes;
+    if (first === undefined || second === undefined || third === undefined) throw new Error("scenes");
+    const scenes = [{ ...first, exits: [{ to: second.id }] }, { ...second, exits: [{ to: first.id }] }, { ...third, exits: [{ to: second.id }] }];
+    const base = { ...starter.en, bible: { ...starter.en.bible, startScene: first.id, scenes, encounters: [], interactions: [] } };
+    expect(routeWarnings(base)).toContain(`${third.id} cannot be reached from the start scene by its exits.`);
+    const jump = { kind: "goto", scene: third.id };
+    expect(routeWarnings({ ...base, bible: { ...base.bible, interactions: [{ onSuccess: [jump] }] as unknown as typeof base.bible.interactions } })).not.toContain(`${third.id} cannot be reached from the start scene by its exits.`);
+  });
+});
+
+describe("a replacement hero raised to the party's level", () => {
+  it("gives a caster the slots and hit points of that level", () => {
+    const { class: className, ...cleric } = starter.en.heroes.find((hero) => hero.class === "cleric") ?? (() => { throw new Error("cleric"); })();
+    const raised = raiseToLevel({ ...cleric, className, ownerUserId: "u-1" }, 5);
+    expect(raised.level).toBe(5);
+    expect(raised.maxHp).toBeGreaterThan(cleric.maxHp);
+    expect(raised.spellcasting?.slots[3]).toBeGreaterThan(0);
+    expect(raised.spellcasting?.slots[1]).toBeGreaterThan(cleric.spellcasting?.slots[1] ?? 0);
   });
 });

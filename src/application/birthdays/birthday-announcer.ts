@@ -4,6 +4,7 @@ import type { Logger } from "pino";
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import { texts } from "../i18n/texts.js";
 import type { BirthdayStore } from "./birthday-store.js";
+import { birthdayOccurrence, guildCalendarDate, renderBirthdayMessage } from "./birthday-message.js";
 
 const checkIntervalMs = 60 * 60 * 1_000;
 
@@ -53,7 +54,11 @@ export class BirthdayAnnouncer {
         const { month, day, date } = resolveGuildDate(now, profile.timezone);
         if (await this.birthdayStore.hasAnnounced(profile.guildId, date)) continue;
 
-        const userIds = await this.birthdayStore.listForGuildOnDate(profile.guildId, month, day);
+        const userIds = [...await this.birthdayStore.listForGuildOnDate(profile.guildId, month, day)];
+        const today = guildCalendarDate(now, profile.timezone);
+        if (month === 3 && day === 1 && new Date(Date.UTC(today.year, 1, 29)).getUTCMonth() !== 1) {
+          userIds.push(...await this.birthdayStore.listForGuildOnDate(profile.guildId, 2, 29));
+        }
         if (userIds.length === 0) continue;
 
         const channel = await this.client.channels.fetch(profile.channels.birthdayAnnouncements).catch(() => null);
@@ -72,15 +77,24 @@ export class BirthdayAnnouncer {
         }
 
         const text = texts[profile.language].birthday.announce;
-        const embed = new EmbedBuilder()
-          .setColor(profile.embedColor as `#${string}`)
-          .setTitle(text.title)
-          .setDescription(
-            userIds.length === 1
-              ? text.one({ user: `<@${userIds[0]}>` })
-              : text.many({ users: userIds.map((userId) => `<@${userId}>`).join("\n") }),
-          );
-        await (channel as TextChannel).send({ embeds: [embed] });
+        let description = "";
+        const sendPage = async (): Promise<void> => {
+          const embed = new EmbedBuilder().setColor(profile.embedColor as `#${string}`).setTitle(text.title).setDescription(description);
+          await (channel as TextChannel).send({ embeds: [embed], allowedMentions: { parse: [] } });
+        };
+        for (const userId of new Set(userIds)) {
+          const record = await this.birthdayStore.getBirthday(profile.guildId, userId) ?? { userId, month, day };
+          const template = record.message ?? profile.birthdayMessageTemplate;
+          const line = template
+            ? renderBirthdayMessage(template, record, birthdayOccurrence(record, today), profile.language)
+            : text.one({ user: `<@${userId}>` });
+          if (description.length + line.length + 2 > 4_000 && description) {
+            await sendPage();
+            description = "";
+          }
+          description += (description ? "\n\n" : "") + line;
+        }
+        await sendPage();
         await this.birthdayStore.markAnnounced(profile.guildId, date);
       } catch (error) {
         this.logger.error({ error, guildId: profile.guildId }, "Birthday announcement check failed");

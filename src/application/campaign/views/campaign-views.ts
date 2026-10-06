@@ -2,9 +2,10 @@ import { conditionLookup, conditionsOf } from "../../../domain/campaign/effects/
 import { featureUsesOf } from "../../../domain/campaign/rules/content-definitions.js";
 import type { AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
 import { findScene } from "../../../domain/campaign/adventure/adventure-bible.js";
-import { abilityModifier, type CharacterSheet } from "../../../domain/campaign/character/character-sheet.js";
+import { abilityModifier, type CharacterSheet, type CheckTest } from "../../../domain/campaign/character/character-sheet.js";
 import { armorClassFrom, heroTraits, isWorn, unarmoredModifier } from "../../../domain/campaign/combat/combatant-profile.js";
 import type { Combatant } from "../../../domain/campaign/combat/combat-state.js";
+import { isPresent } from "../../../domain/campaign/combat/combat-state.js";
 import type { Glossary, SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import { isFallen, type CampaignState, type Submission } from "../../../domain/campaign/state/campaign-state.js";
 import { activeMembers, readyToStart, type LobbyMember } from "../../../domain/campaign/lobby/lobby.js";
@@ -64,6 +65,7 @@ export type PanelMode =
   | "awaitingRolls"
   | "combat"
   | "waiting"
+  | "resting"
   | "paused"
   | "safety"
   | "recovery"
@@ -77,8 +79,13 @@ export interface RosterEntry {
 }
 
 export interface CombatView {
+  readonly encounterId: string;
   readonly round: number;
   readonly activeName: string | null;
+  // Next distinct participants in initiative order, wrapping at the round boundary.
+  readonly upcoming?: readonly string[];
+  // Everyone still in the fight in turn order, starting with whoever is up: the strip across the top of the table.
+  readonly order?: readonly { readonly name: string; readonly side: "party" | "foes"; readonly rank?: "boss" | "elite" | "minion" | "standard"; readonly down: boolean; readonly active: boolean }[];
   // Whose turn it is, when a player's hero has it.
   readonly activeUserId: string | null;
   // Players take their heroes' turns (false: the engine plays them on autopilot).
@@ -93,14 +100,42 @@ export interface CombatView {
     readonly condition: Combatant["condition"];
     readonly zone: string;
     readonly active: boolean;
+    readonly concentration?: string | null;
+    readonly deathSaves?: DeathSavesView | null;
+    readonly statuses?: readonly string[];
   }[];
-  // Monsters show a health band, never exact HP.
+  // Creatures fighting on the party's side that are not heroes: a conjured beast, a companion brought along. Each says whose it is.
+  readonly allies: readonly {
+    readonly name: string;
+    readonly hp: number;
+    readonly maxHp: number;
+    readonly tempHp: number;
+    readonly condition: Combatant["condition"];
+    readonly zone: string;
+    readonly active: boolean;
+    readonly ownerName: string | null;
+    readonly concentration?: string | null;
+    readonly statuses?: readonly string[];
+  }[];
+  // Health is shown numerically on the shared combat panel, with a short status.
   readonly foes: readonly {
     readonly name: string;
+    readonly rank?: "boss" | "elite" | "minion" | "standard";
+    readonly hp: number;
+    readonly maxHp: number;
     readonly band: "unhurt" | "hurt" | "bloodied" | "down";
     readonly zone: string;
     readonly active: boolean;
+    // What is on it that the table can see, such as Prone or Poisoned. Its concentration is not shown.
+    readonly statuses?: readonly string[];
   }[];
+}
+
+// A downed hero's death saves so far; stable once they stop.
+export interface DeathSavesView {
+  readonly successes: number;
+  readonly failures: number;
+  readonly stable: boolean;
 }
 
 // An item one hero offers another, waiting for an answer.
@@ -153,14 +188,20 @@ export interface OpportunityAttackView {
 export interface PanelView {
   readonly campaignName: string;
   readonly sceneTitle: string;
+  // The story's day, time and weather; absent when the adventure keeps no clock.
+  readonly world?: { readonly day: number; readonly time: string; readonly weather?: string };
   readonly mode: PanelMode;
   readonly roundNumber: number | null;
   // When the current window or turn closes; null means no timer.
   readonly closesAt: number | null;
   readonly roster: readonly RosterEntry[];
   // Heroes whose check is waiting for a click (or its auto-roll).
-  readonly pendingRolls: readonly { readonly characterId: string; readonly userId: string; readonly heroName: string }[];
+  readonly pendingRolls: readonly { readonly characterId: string; readonly userId: string; readonly heroName: string; readonly test: CheckTest; readonly action: string | null }[];
   readonly combat: CombatView | null;
+  // A scene change waiting for the table: where to, and which heroes pressed Stay.
+  // Heroes who fell for good whose players have not taken a new one yet.
+  readonly fallen?: readonly string[];
+  readonly pendingMove?: { readonly sceneTitle: string; readonly wantedBy?: readonly string[]; readonly staying: readonly string[]; readonly stayingUserIds: readonly string[] };
 }
 
 export type LobbyMissing = "notEnoughPlayers" | "notReady" | null;
@@ -373,20 +414,50 @@ export function buildPanelView(record: CampaignRecord, state: CampaignState, bib
   const fight = state.encounter !== null && state.encounter.status !== "ended" ? state.encounter : null;
   const pendingRolls = Object.values(state.checks)
     .filter((check) => check.status === "pending" || check.status === "rolling")
-    .map((check) => ({
-      characterId: check.characterId,
-      userId: state.characters[check.characterId]?.ownerUserId ?? "",
-      heroName: state.characters[check.characterId]?.name ?? check.characterId,
-    }));
+    .map((check) => {
+      const submission = state.round?.submissions[check.characterId];
+      return {
+        characterId: check.characterId,
+        userId: state.characters[check.characterId]?.ownerUserId ?? "",
+        heroName: state.characters[check.characterId]?.name ?? check.characterId,
+        test: check.test,
+        // What the player asked to do: the reason the dice are called for.
+        action: submission?.kind === "action" ? submission.text : null,
+      };
+    });
   return {
     campaignName: record.name,
     sceneTitle: scene?.title ?? bible.title,
+    ...(state.world === undefined ? {} : { world: state.world }),
     mode: modeOf(record, state, fight !== null, pendingRolls.length > 0),
     roundNumber: fight?.round ?? state.round?.number ?? null,
     closesAt: fight?.turnEndsAt ?? state.round?.closesAt ?? null,
     roster,
     pendingRolls,
     combat: fight === null ? null : combatViewOf({ state, bible, glossary }, fight, record.houseRules[combatModeId] !== "autopilot"),
+    ...(fallenNames(state).length === 0 ? {} : { fallen: fallenNames(state) }),
+    ...(state.pendingMove === undefined || fight !== null ? {} : { pendingMove: pendingMoveOf(state, bible) }),
+  };
+}
+
+function fallenNames(state: CampaignState): readonly string[] {
+  return Object.values(state.members).flatMap((member) => {
+    const sheet = member.characterId === null ? undefined : state.characters[member.characterId];
+    return sheet !== undefined && isFallen(state, sheet.id) ? [sheet.name] : [];
+  });
+}
+
+function pendingMoveOf(state: CampaignState, bible: AdventureBible): NonNullable<PanelView["pendingMove"]> {
+  const move = state.pendingMove;
+  const objectors = move?.objectors ?? [];
+  return {
+    sceneTitle: findScene(bible, move?.sceneId ?? null)?.title ?? move?.sceneId ?? "",
+    wantedBy: (move?.heroes ?? []).map((characterId) => state.characters[characterId]?.name ?? characterId),
+    staying: objectors.flatMap((userId) => {
+      const characterId = state.members[userId]?.characterId;
+      return characterId === null || characterId === undefined ? [] : [state.characters[characterId]?.name ?? characterId];
+    }),
+    stayingUserIds: objectors,
   };
 }
 
@@ -396,6 +467,7 @@ function modeOf(record: CampaignRecord, state: CampaignState, inFight: boolean, 
   if (state.pausedBy === "safety") return "safety";
   if (state.pausedBy === "organizer" || record.lifecycle === "paused") return "paused";
   if (state.status === "waitingForPlayers") return "waiting";
+  if (state.resting !== undefined && !inFight) return "resting";
   if (state.opening === "pending") return "opening";
   if (state.opening === "waiting") return "readyCheck";
   if (inFight) return "combat";
@@ -439,22 +511,55 @@ function combatViewOf(names: CombatNames, fight: NonNullable<CampaignState["enco
   const zoneName = (zoneId: string): string => fight.zones.find((zone) => zone.id === zoneId)?.name ?? zoneId;
   const active = fight.status === "active" && current !== undefined ? fight.combatants[current] : undefined;
   const owner = active?.source.kind === "hero" ? names.state.characters[active.source.characterId]?.ownerUserId ?? null : null;
+  const upcoming: string[] = [];
+  if (active !== undefined) {
+    for (let offset = 1; offset < fight.order.length && upcoming.length < 3; offset += 1) {
+      const candidate = fight.combatants[fight.order[(fight.turnIndex + offset) % fight.order.length] ?? ""];
+      if (candidate !== undefined && isPresent(candidate)) upcoming.push(name(candidate));
+    }
+  }
+  const wording = (id: string): string => names.glossary.names[id] ?? id.replace(/^[a-z]+:/, "").replaceAll("-", " ");
+  // The conditions and lasting spells on a creature, once each. A stance such as Dodge is not one.
+  const statusesOf = (combatant: Combatant): readonly string[] => [...new Set(combatant.effects.filter((effect) => !effect.definition.startsWith("action:")).map((effect) => wording(effect.definition)))];
+  const concentrationOf = (combatant: Combatant): string | null => (combatant.concentration === null ? null : wording(combatant.concentration.spellId));
+  const turnOrder = fight.order.map((_, offset) => fight.combatants[fight.order[(fight.turnIndex + offset) % fight.order.length] ?? ""]).filter((combatant): combatant is Combatant => combatant !== undefined && isPresent(combatant));
   return {
+    encounterId: fight.id,
+    order: fight.status !== "active" ? [] : turnOrder.map((combatant) => ({ name: name(combatant), side: combatant.side, ...(combatant.side === "foes" ? { rank: combatant.rank ?? "standard" } : {}), down: combatant.hp <= 0, active: combatant === active })),
     round: fight.round,
     activeName: active === undefined ? null : name(active),
     activeUserId: owner,
+    upcoming,
     playersControl,
     zones: fight.zones.map((zone) => zone.name),
     party: combatants
       .filter((combatant) => combatant.side === "party")
-      .map((combatant) => ({ name: name(combatant), hp: combatant.hp, maxHp: combatant.maxHp, tempHp: combatant.tempHp ?? 0, condition: combatant.condition, zone: zoneName(combatant.zoneId), active: combatant === active })),
+      .map((combatant) => ({ name: name(combatant), hp: combatant.hp, maxHp: combatant.maxHp, tempHp: combatant.tempHp ?? 0, condition: combatant.condition, zone: zoneName(combatant.zoneId), active: combatant === active, concentration: concentrationOf(combatant), deathSaves: combatant.source.kind === "hero" && (combatant.condition === "unconscious" || combatant.condition === "stable") ? { ...combatant.deathSaves, stable: combatant.condition === "stable" } : null, statuses: statusesOf(combatant) })),
+    allies: combatants
+      .filter((combatant) => combatant.side === "party" && combatant.source.kind === "monster" && isPresent(combatant))
+      .map((combatant) => ({
+        name: name(combatant),
+        hp: combatant.hp,
+        maxHp: combatant.maxHp,
+        tempHp: combatant.tempHp ?? 0,
+        condition: combatant.condition,
+        zone: zoneName(combatant.zoneId),
+        active: combatant === active,
+        concentration: concentrationOf(combatant),
+        statuses: statusesOf(combatant),
+        ownerName: combatant.summonedBy === undefined || fight.combatants[combatant.summonedBy] === undefined ? null : name(fight.combatants[combatant.summonedBy]!),
+      })),
     foes: combatants
       .filter((combatant) => combatant.side === "foes")
       .map((combatant) => ({
         name: name(combatant),
+        rank: combatant.rank ?? "standard",
+        hp: combatant.hp,
+        maxHp: combatant.maxHp,
         band: combatant.hp <= 0 ? "down" : combatant.hp >= combatant.maxHp ? "unhurt" : combatant.hp * 2 > combatant.maxHp ? "hurt" : "bloodied",
         zone: zoneName(combatant.zoneId),
         active: combatant === active,
+        statuses: statusesOf(combatant),
       })),
   };
 }

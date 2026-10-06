@@ -42,6 +42,10 @@ const environmentSchema = z.object({
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
   DISCORD_TOKEN: z.string().min(1),
   DISCORD_APPLICATION_ID: z.string().regex(discordSnowflake),
+  DISCORD_CLIENT_SECRET: optionalNonEmptyString,
+  ACTIVITY_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  ACTIVITY_HOST: z.string().min(1).default("127.0.0.1"),
+  ACTIVITY_PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
   BOT_OWNER_IDS: requiredSnowflakeList,
   GUILD_CONFIG_DIRECTORY: z.string().min(1).default("./config/local/guilds"),
   RUNTIME_DATA_DIRECTORY: z.string().min(1).default("./data/local"),
@@ -143,6 +147,8 @@ const environmentSchema = z.object({
   CAMPAIGN_IMAGE_API_KEY: optionalNonEmptyString,
   CAMPAIGN_IMAGE_BASE_URL: z.preprocess((value) => (value === "" ? undefined : value), z.string().url().optional()),
   CAMPAIGN_IMAGE_QUALITY: z.preprocess((value) => (value === "" ? undefined : value), z.enum(["low", "medium", "high", "auto"]).optional()),
+  CAMPAIGN_PORTRAIT_MAX_PER_WINDOW: z.coerce.number().int().min(1).max(100).default(6),
+  CAMPAIGN_PORTRAIT_WINDOW_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
 
   // See MemoryEngineLimits in memory-engine.ts for what each of these
   // actually gates and the reasoning behind the defaults — the similarity
@@ -257,6 +263,12 @@ export function loadConfiguration(
     discord: {
       token: parsed.data.DISCORD_TOKEN,
       applicationId: parsed.data.DISCORD_APPLICATION_ID,
+      clientSecret: parsed.data.DISCORD_CLIENT_SECRET ?? null,
+    },
+    activity: {
+      enabled: parsed.data.ACTIVITY_ENABLED,
+      host: parsed.data.ACTIVITY_HOST,
+      port: parsed.data.ACTIVITY_PORT,
     },
     ownerUserIds: new Set(parsed.data.BOT_OWNER_IDS),
     guildConfigurationDirectory: parsed.data.GUILD_CONFIG_DIRECTORY,
@@ -275,6 +287,7 @@ export function loadConfiguration(
     utilityChat: buildUtilityChatConfiguration(parsed.data),
     campaign: buildCampaignConfiguration(parsed.data),
     campaignImages: buildCampaignImages(parsed.data),
+    portraitGenerationLimit: { maxPerWindow: parsed.data.CAMPAIGN_PORTRAIT_MAX_PER_WINDOW, windowMinutes: parsed.data.CAMPAIGN_PORTRAIT_WINDOW_MINUTES },
     chatDelivery: {
       maxGeneratedImageAggregateBytes: parsed.data.CHATBOT_MAX_GENERATED_IMAGE_BYTES,
     },

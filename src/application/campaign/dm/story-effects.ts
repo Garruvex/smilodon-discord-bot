@@ -8,20 +8,28 @@ import { availableInteractions, doneFlag, goldOf, reachableScenes, triedFlag, ty
 
 // The IDs a proposal's story effects may name right now.
 export function plannerStory(bible: AdventureBible, state: CampaignState): PlannerRequest["story"] {
+  const sceneIds = reachableScenes(bible, state);
+  // A proposed move has not passed the table vote. Until it settles, only the
+  // current scene's encounters, clocks, clues and interactions may be planned.
+  const votedMove = state.pendingMove ?? (state.sceneMoveSettledRound === state.lastRoundNumber && state.sceneMoveSettledDestination != null ? { sceneId: state.sceneMoveSettledDestination } : undefined);
+  const moveNotYetResolved = state.pendingMove !== undefined;
+  const here = new Set<string>([...(state.sceneId === null ? [] : [state.sceneId]), ...(votedMove === undefined || moveNotYetResolved ? [] : [votedMove.sceneId])]);
+  const canResolveScene = (sceneId: string): boolean => sceneId === state.sceneId || (!moveNotYetResolved && votedMove?.sceneId === sceneId);
   return {
     sceneId: state.sceneId,
-    sceneIds: reachableScenes(bible, state),
+    ...(state.pendingMove === undefined ? {} : { pendingMoveTo: state.pendingMove.sceneId }),
+    sceneIds,
     encounters: bible.encounters
-      .filter((encounter) => !state.encounterHistory.includes(encounter.id))
+      .filter((encounter) => here.has(encounter.sceneId) && !state.encounterHistory.includes(encounter.id))
       .map((encounter) => ({ id: encounter.id, sceneId: encounter.sceneId })),
-    clocks: bible.clocks.map((clock) => ({
+    clocks: bible.clocks.filter((clock) => here.has(clock.sceneId)).map((clock) => ({
       id: clock.id,
       sceneId: clock.sceneId,
       filled: state.clocks[clock.id]?.filled ?? 0,
       segments: clock.segments,
     })),
-    clues: bible.clues.filter((clue) => !state.clues.some((known) => known.id === clue.id)).map((clue) => ({ id: clue.id, sceneId: clue.sceneId })),
-    interactions: availableInteractions(bible, state).map((interaction) => ({ id: interaction.id, sceneId: interaction.sceneId, label: interaction.label })),
+    clues: bible.clues.filter((clue) => here.has(clue.sceneId) && !state.clues.some((known) => known.id === clue.id)).map((clue) => ({ id: clue.id, sceneId: clue.sceneId })),
+    interactions: availableInteractions(bible, state).filter((interaction) => canResolveScene(interaction.sceneId)).map((interaction) => ({ id: interaction.id, sceneId: interaction.sceneId, label: interaction.label })),
   };
 }
 
@@ -44,43 +52,55 @@ export function resolveStoryEffects(
 ): { readonly kind: "resolved"; readonly proposal: RoundPlanProposal } | { readonly kind: "invalid"; readonly problems: readonly string[] } {
   const problems: string[] = [];
   const effects: PlannedEffect[] = [];
-  // A fight may be in the current scene or in the one this round moves to.
-  const reachable = new Set<string>(state.sceneId === null ? [] : [state.sceneId]);
+  const moveNotYetResolved = state.pendingMove !== undefined;
+  // A fight may be in the current scene or a destination approved before this round.
+  const settledDestination = state.sceneMoveSettledRound === state.lastRoundNumber ? state.sceneMoveSettledDestination : undefined;
+  const reachable = new Set<string>([...(state.sceneId === null ? [] : [state.sceneId]), ...(settledDestination == null ? [] : [settledDestination])]);
   for (const effect of proposal.effects) if (effect.kind === "transitionScene") reachable.add(effect.sceneId);
   const exits = new Set(reachableScenes(bible, state));
+  // The scene the model moves the party to: what is set there (its fight, clock or clue) waits with the move.
+  const movedTo = proposal.effects.find((effect) => effect.kind === "transitionScene" && effect.sceneId !== state.sceneId && exits.has(effect.sceneId));
+  const arrival = movedTo?.kind === "transitionScene" ? bible.scenes.find((scene) => scene.id === movedTo.sceneId)?.id : settledDestination ?? undefined;
+  const arrivesWith = (sceneId: string): Partial<Pick<PlannedEffect, "arrivalOf">> => (arrival !== undefined && sceneId === arrival ? { arrivalOf: arrival } : {});
+
+  // An authored interaction that moves the party or starts a fight already says so; the model's own proposal of the same kind
+  // would be a second one, which the engine refuses (one scene change and one fight per round), so the authored one stands.
+  const resolvedInteractions = resolveInteractions(proposal, bible, state, options, problems);
+  const authored = new Set(resolvedInteractions.interactionEffects.map(({ effect }) => effect.kind));
 
   for (const effect of proposal.effects) {
+    if ((effect.kind === "transitionScene" || effect.kind === "startEncounter") && authored.has(effect.kind)) continue;
     switch (effect.kind) {
       case "transitionScene": {
         const scene = bible.scenes.find((candidate) => candidate.id === effect.sceneId);
         if (scene === undefined) problems.push(`Unknown scene "${effect.sceneId}".`);
         else if (scene.id === state.sceneId) problems.push(`The party is already in ${scene.id}; drop the transition.`);
         else if (!exits.has(scene.id)) problems.push(`${scene.id} cannot be reached from ${state.sceneId ?? "here"}; the way on is ${[...exits].join(", ") || "closed"}.`);
-        else effects.push(...withArrival({ kind: "transitionScene", sceneId: scene.id }, bible).map((planned) => ({ effect: planned, when: effect.when })));
+        // The model's move waits for the table, with the effects of arriving; an authored one (below) happens at once.
+        else effects.push(...withArrival({ kind: "transitionScene", sceneId: scene.id }, bible).map((planned) => ({ effect: planned, when: effect.when, ...(planned.kind === "transitionScene" ? (effect.movers === undefined ? {} : { movers: effect.movers }) : { arrivalOf: scene.id }) })));
         break;
       }
       case "startEncounter": {
         const encounter = findEncounter(bible, effect.encounterId);
         if (encounter === undefined) problems.push(`Unknown encounter "${effect.encounterId}".`);
-        else if (state.encounterHistory.includes(encounter.id)) problems.push(`${encounter.id} has already been fought.`);
-        else if (!reachable.has(encounter.sceneId)) problems.push(`${encounter.id} belongs to ${encounter.sceneId}, where the party is not.`);
-        else effects.push({ effect: { kind: "startEncounter", encounter: encounterSpec(encounter, bible) }, when: effect.when });
+        // A fight that is already over or belongs to another scene is left out rather than holding the round: the players' actions still resolve.
+        else if (state.encounterHistory.includes(encounter.id) || !reachable.has(encounter.sceneId) || (moveNotYetResolved && state.pendingMove?.sceneId === encounter.sceneId)) break;
+        else effects.push({ effect: { kind: "startEncounter", encounter: encounterSpec(encounter, bible) }, when: effect.when, ...(encounter.sceneId === state.pendingMove?.sceneId ? { arrivalOf: encounter.sceneId } : arrivesWith(encounter.sceneId)) });
         break;
       }
       case "advanceClock": {
         const clock = findClock(bible, effect.clockId);
         if (clock === undefined) problems.push(`Unknown clock "${effect.clockId}".`);
-        else if (!reachable.has(clock.sceneId)) problems.push(`${clock.id} belongs to ${clock.sceneId}, where the party is not.`);
+        else if (!reachable.has(clock.sceneId)) break;
         else if (!Number.isInteger(effect.by) || effect.by < 1 || effect.by > 3) problems.push(`${clock.id} may advance by 1 to 3 segments.`);
-        else effects.push({ effect: clockEffect(bible, state, clock.id, effect.by), when: effect.when });
+        else effects.push({ effect: clockEffect(bible, state, clock.id, effect.by), when: effect.when, ...arrivesWith(clock.sceneId) });
         break;
       }
       case "revealClue": {
         const clue = findClue(bible, effect.clueId);
         if (clue === undefined) problems.push(`Unknown clue "${effect.clueId}".`);
-        else if (state.clues.some((known) => known.id === clue.id)) problems.push(`${clue.id} was already revealed.`);
-        else if (!reachable.has(clue.sceneId)) problems.push(`${clue.id} belongs to ${clue.sceneId}, where the party is not.`);
-        else effects.push({ effect: { kind: "revealClue", clueId: clue.id, text: clue.publicText }, when: effect.when });
+        else if (state.clues.some((known) => known.id === clue.id) || !reachable.has(clue.sceneId)) break;
+        else effects.push({ effect: { kind: "revealClue", clueId: clue.id, text: clue.publicText }, when: effect.when, ...arrivesWith(clue.sceneId) });
         break;
       }
       default:
@@ -88,7 +108,7 @@ export function resolveStoryEffects(
     }
   }
 
-  const { actions, interactionEffects } = resolveInteractions(proposal, bible, state, options, problems);
+  const { actions, interactionEffects } = resolvedInteractions;
   effects.push(...interactionEffects);
   if (problems.length > 0) return { kind: "invalid", problems };
   return { kind: "resolved", proposal: { roundNumber: proposal.roundNumber, actions, effects } };
@@ -175,6 +195,7 @@ interface EffectContext {
 // known, a fight already fought). A random table is decided here, once, and the choice is what the plan carries.
 function plannedEffects(effect: BibleEffect, scopeId: string, context: EffectContext): readonly PlannedEffect[] {
   const { bible, state, problems, when } = context;
+  const moveNotYetResolved = state.pendingMove !== undefined;
   switch (effect.kind) {
     case "random": {
       const weights = effect.options.map((option) => option.weight ?? 1);
@@ -193,14 +214,14 @@ function plannedEffects(effect: BibleEffect, scopeId: string, context: EffectCon
     case "reveal": {
       const clue = findClue(bible, effect.clue);
       if (clue === undefined) problems.push(`Unknown clue "${effect.clue}".`);
-      return clue === undefined || state.clues.some((known) => known.id === clue.id) ? [] : [{ effect: { kind: "revealClue", clueId: clue.id, text: clue.publicText }, when }];
+      return clue === undefined || state.clues.some((known) => known.id === clue.id) || (moveNotYetResolved && state.pendingMove?.sceneId === clue.sceneId) ? [] : [{ effect: { kind: "revealClue", clueId: clue.id, text: clue.publicText }, when }];
     }
     case "goto":
-      return effect.scene === state.sceneId ? [] : withArrival({ kind: "transitionScene", sceneId: effect.scene }, bible).map((planned) => ({ effect: planned, when }));
+      return effect.scene === state.sceneId ? [] : withArrival({ kind: "transitionScene", sceneId: effect.scene }, bible).map((planned) => ({ effect: planned, when, ...(planned.kind === "transitionScene" ? { forced: true } : {}) }));
     case "encounter": {
       const encounter = findEncounter(bible, effect.encounter);
       if (encounter === undefined) problems.push(`Unknown encounter "${effect.encounter}".`);
-      return encounter === undefined || state.encounterHistory.includes(encounter.id) ? [] : [{ effect: { kind: "startEncounter", encounter: encounterSpec(encounter, bible) }, when }];
+      return encounter === undefined || state.encounterHistory.includes(encounter.id) || (moveNotYetResolved && state.pendingMove?.sceneId === encounter.sceneId) ? [] : [{ effect: { kind: "startEncounter", encounter: encounterSpec(encounter, bible) }, when, ...(encounter.sceneId === state.pendingMove?.sceneId ? { arrivalOf: encounter.sceneId } : {}) }];
     }
     case "clock": {
       const clock = findClock(bible, effect.clock);

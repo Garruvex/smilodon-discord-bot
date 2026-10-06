@@ -1,6 +1,6 @@
 {
-  "id": "5604a978-8a60-4a0b-85ff-66eb78d66814",
-  "prevId": "b7c9cc9d-796e-45c6-ab0d-7c75f5095714",
+  "id": "df4490c4-fc15-4cca-a3b1-53d7c2278e98",
+  "prevId": "5604a978-8a60-4a0b-85ff-66eb78d66814",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -115,6 +115,18 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true
+        },
+        "birth_year": {
+          "name": "birth_year",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "updated_at": {
           "name": "updated_at",

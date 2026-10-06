@@ -5,7 +5,8 @@ import { alex, jamie, kinds, newCampaign, organizer, reject, run, system } from 
 
 // Round 1 resolved without checks: waiting for narration.
 function resolvedRound(): CampaignState {
-  let state = run(newCampaign(), system, { kind: "openRound" }).state;
+  let state: CampaignState = { ...newCampaign(), sceneId: "scene:tavern" };
+  state = run(state, system, { kind: "openRound" }).state;
   state = run(state, alex, { kind: "submitAction", characterId: "c-mira", text: "I open the door." }).state;
   state = run(state, jamie, { kind: "pass", characterId: "c-borin" }).state;
   return run(state, system, {
@@ -28,6 +29,26 @@ describe("narration", () => {
     expect(step.requests[0]).toEqual({ kind: "deliver", delivery: { kind: "narration", roundNumber: 1 } });
     expect(step.state.round?.number).toBe(2);
     expect(reject(step.state, system, { kind: "recordNarration", roundNumber: 1, text: "Again." })).toEqual({ code: "staleNarration" });
+  });
+
+  it("stores the narrator note as unverified scene-tagged work without waiting", () => {
+    const step = run(resolvedRound(), system, { kind: "recordNarration", roundNumber: 1, text: "The door creaks open.", note: "The door now hangs open." });
+    expect(kinds(step.events)).toEqual(["narrationRecorded", "sceneNoteProposed", "roundOpened"]);
+    expect(step.state.sceneNotes ?? []).toEqual([]);
+    expect(step.state.pendingSceneNotes).toEqual([{ roundNumber: 1, sceneId: "scene:tavern", noteIndex: 0, text: "The door now hangs open." }]);
+    expect(step.requests).toContainEqual({ kind: "judgeSceneNotes", roundNumber: 1, sceneId: "scene:tavern" });
+    expect(step.state.round?.number).toBe(2);
+  });
+
+  it("admits only reviewed notes and schedules compaction by text size", () => {
+    let state = run(resolvedRound(), system, { kind: "recordNarration", roundNumber: 1, text: "The door creaks open.", note: "The door now hangs open." }).state;
+    state = run(state, system, { kind: "reviewSceneNotes", roundNumber: 1, sceneId: "scene:tavern", results: [{ noteIndex: 0, decision: "keep", text: "", reason: "Supported by the committed outcome." }] }).state;
+    expect(state.sceneNotes).toEqual([{ roundNumber: 1, sceneId: "scene:tavern", text: "The door now hangs open." }]);
+    expect(state.pendingSceneNotes).toEqual([]);
+
+    const crowded = { ...state, sceneNotes: Array.from({ length: 4 }, (_, roundNumber) => ({ roundNumber: roundNumber + 2, sceneId: "scene:tavern" as const, text: "x".repeat(400) })), pendingSceneNotes: [{ roundNumber: 1, sceneId: "scene:tavern" as const, noteIndex: 0, text: "The door now hangs open." }] };
+    const compact = run(crowded, system, { kind: "reviewSceneNotes", roundNumber: 1, sceneId: "scene:tavern", results: [{ noteIndex: 0, decision: "keep", text: "", reason: "Supported." }] });
+    expect(compact.requests).toContainEqual({ kind: "compactSceneNotes", sceneId: "scene:tavern", throughRound: 1 });
   });
 
   it("refuses narration for a round that is not resolved yet, and from players", () => {
@@ -171,7 +192,7 @@ describe("the opening", () => {
     const told = run(paused, system, { kind: "recordOpening", text: "The inn is warm." });
     expect(kinds(told.events)).toEqual(["openingRecorded"]);
     expect(told.state.round).toBeNull();
-    expect(reject(told.state, alex, { kind: "ready" })).toEqual({ code: "campaignWaiting" });
+    expect(reject(told.state, alex, { kind: "ready" })).toEqual({ code: "campaignPaused" });
     const resumed = run(told.state, organizer, { kind: "continue" });
     expect(resumed.state).toMatchObject({ opening: "waiting", round: null });
   });

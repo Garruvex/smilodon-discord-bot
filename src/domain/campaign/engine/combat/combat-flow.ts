@@ -94,10 +94,15 @@ export function handleCombatCommand(decision: Decision, command: CombatCommand):
     case "combatWildShape":
       return withHeroTurn(decision, command.combatantId, (hero) => wildShape(decision, hero, command.monsterId));
     case "endTurn":
-      return withHeroTurn(decision, command.combatantId, () => {
-        endTurn(decision);
-        return null;
-      });
+      return withHeroTurn(
+        decision,
+        command.combatantId,
+        () => {
+          endTurn(decision);
+          return null;
+        },
+        true,
+      );
     case "combatReact":
       return answerReaction(decision, command.combatantId, command.spellId, "player");
     case "combatOpportunityAttack":
@@ -162,6 +167,8 @@ export function withHeroTurn(
   decision: Decision,
   combatantId: string,
   act: (hero: Combatant, encounter: EncounterState) => Rejection | null,
+  // A hero who went down on their own turn has nothing left to do but end it.
+  allowDowned = false,
 ): Rejection | null {
   const { state, ctx } = decision;
   const encounter = activeEncounter(decision);
@@ -173,9 +180,14 @@ export function withHeroTurn(
   if (ctx.actor.kind !== "user" || owner === undefined || !actsForOwner(state, ctx.actor.userId, owner)) {
     return { code: "notYourCharacter" };
   }
-  if (currentCombatant(encounter)?.id !== hero.id || !isActive(hero)) return { code: "notYourTurn" };
+  if (currentCombatant(encounter)?.id !== hero.id || !(isActive(hero) || (allowDowned && !awaitingDeathSave(encounter, hero.id)))) return { code: "notYourTurn" };
   if (encounter.resolution !== null || encounter.pendingMove !== null || encounter.pendingTriggers !== null) return { code: "attackInProgress" };
   return act(hero, encounter);
+}
+
+// A hero whose death save is still to be rolled keeps their turn until it is.
+function awaitingDeathSave(encounter: EncounterState, combatantId: string): boolean {
+  return Object.values(encounter.pendingRolls).some((pending) => pending.purpose === "deathSave" && pending.combatantId === combatantId);
 }
 
 // Whether the actor of this command may act for this hero: its owner, or the player

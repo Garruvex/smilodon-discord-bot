@@ -22,6 +22,9 @@ export const campaignActions = [
   "back",
   "continue",
   "details",
+  // Look up a hero's spell, item or feature: open the list (on a hero card), then pick one.
+  "inspect",
+  "inspectPick",
   "ready",
   "begin",
   "gear",
@@ -31,6 +34,7 @@ export const campaignActions = [
   "turnRefresh",
   "pick",
   "aim",
+  "areaConfirm",
   "endTurn",
   // Inventory: the pack menu, choosing who gets a gift, and answering an offer.
   "pack",
@@ -40,9 +44,12 @@ export const campaignActions = [
   "offerCancel",
   // Speak in character, the anonymous pause, and the help and links menu.
   "speak",
+  "stay",
   "safety",
   "safetyPause",
   "more",
+  // Opens the Discord Activity (the in-app game screen) for this game.
+  "playActivity",
   // The Table rules screen (a private view): open it, pick a bundle, pick an
   // option, pick its value.
   "rules",
@@ -94,6 +101,7 @@ export const campaignActions = [
   "exploreHaggle",
   "exploreCast",
   "exploreCastPick",
+  "exploreGo",
   "exploreHealSlot",
   "exploreHealWho",
   "exploreConjureSlot",

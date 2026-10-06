@@ -2,6 +2,7 @@ import { appliedCondition } from "../../domain/campaign/effect-fixtures.js";
 import { describe, expect, it } from "vitest";
 
 import { emptyChannels, type CampaignRecord } from "../../../src/application/campaign/ports/campaign-record.js";
+import { buildActivityLobbyView } from "../../../src/application/campaign/activity-view.js";
 import {
   buildHeroView,
   buildLobbyView,
@@ -60,6 +61,14 @@ const inStory = (state: CampaignState): CampaignState => ({ ...state, sceneId: s
 const heroIds = presets.map((preset) => preset.id);
 
 describe("the lobby view", () => {
+  it("offers the viewer's saved character in the Activity waiting room", () => {
+    const lobby = lobbyOf((l) => join(l, "u-a"));
+    const saved = [{ id: "lib:ls-1", name: "Elara", className: "wizard", imageUrl: "/api/activity/characters/lc-1/portrait" }];
+    const view = buildActivityLobbyView(record(lobby, { lifecycle: "lobby" }), starter.bible, "u-a", starter.heroes, saved);
+    expect(view.savedHeroChoices).toEqual(saved);
+    expect(view.heroChoices.length).toBeGreaterThan(0);
+  });
+
   it("lists members with their chosen heroes and says what is missing to start", () => {
     const lobby = lobbyOf((l) => join(l, "u-a"), (l) => join(l, "u-b"), (l) => chooseHero(l, "u-a", heroIds[0] ?? "", heroIds));
     const view = buildLobbyView(record(lobby, { lifecycle: "lobby" }), starter.bible.title, presets);
@@ -162,7 +171,7 @@ describe("the adventure panel view", () => {
     }).state;
     const view = buildPanelView(record(lobbyOf()), state, starter.bible, enSrd51Glossary);
     expect(view.mode).toBe("awaitingRolls");
-    expect(view.pendingRolls).toEqual([{ characterId: "c-mira", userId: "u-alex", heroName: "Mira" }]);
+    expect(view.pendingRolls).toEqual([{ characterId: "c-mira", userId: "u-alex", heroName: "Mira", test: { kind: "skill", skill: "stealth" }, action: "I sneak." }]);
   });
 
   it("summarizes a fight with monster health bands and the active fighter", () => {
@@ -171,8 +180,55 @@ describe("the adventure panel view", () => {
     expect(view.mode).toBe("combat");
     expect(view.combat).toMatchObject({ round: 1, activeName: "Mira" });
     expect(view.combat?.foes.map((foe) => foe.band)).toEqual(["unhurt", "unhurt"]);
+    expect(view.combat?.foes.map((foe) => ({ hp: foe.hp, maxHp: foe.maxHp }))).toEqual(Object.values(fight.state.encounter!.combatants).filter((foe) => foe.side === "foes").map((foe) => ({ hp: foe.hp, maxHp: foe.maxHp })));
     expect(view.combat?.party.map((hero) => hero.name)).toEqual(["Mira", "Borin"]);
   });
+});
+
+it("previews initiative across the round boundary and skips creatures out of combat", () => {
+  const fight = startedFight();
+  const encounter = fight.state.encounter!;
+  const foes = Object.values(encounter.combatants).filter((creature) => creature.side === "foes");
+  const first = foes[0]!;
+  const last = foes[1]!;
+  const ordered = { ...encounter, order: ["c-mira", "c-borin", first.id, last.id], turnIndex: 3 };
+  const state = { ...fight.state, encounter: ordered };
+  const panel = buildPanelView(record(lobbyOf()), state, starter.bible, enSrd51Glossary);
+  expect(panel.combat?.upcoming).toEqual(["Mira", "Borin", panel.combat!.foes.find((foe) => !foe.active)!.name]);
+  const removed = { ...state, encounter: { ...ordered, combatants: { ...ordered.combatants, "c-borin": { ...ordered.combatants["c-borin"]!, condition: "dead" as const }, [first.id]: { ...first, condition: "fled" as const } } } };
+  expect(buildPanelView(record(lobbyOf()), removed, starter.bible, enSrd51Glossary).combat?.upcoming).toEqual(["Mira"]);
+});
+
+it("shows the whole turn order, concentration, death saves and conditions in a fight", () => {
+  const fight = startedFight();
+  const encounter = fight.state.encounter!;
+  const foes = Object.values(encounter.combatants).filter((creature) => creature.side === "foes");
+  const mira = encounter.combatants["c-mira"]!;
+  const borin = encounter.combatants["c-borin"]!;
+  const state = {
+    ...fight.state,
+    encounter: {
+      ...encounter,
+      order: ["c-mira", foes[0]!.id, "c-borin", foes[1]!.id],
+      turnIndex: 2,
+      combatants: {
+        ...encounter.combatants,
+        "c-mira": { ...mira, concentration: { resolutionId: "r1", spellId: "spell:bless" as const } },
+        "c-borin": { ...borin, hp: 0, condition: "unconscious" as const, deathSaves: { successes: 1, failures: 2 } },
+        [foes[0]!.id]: { ...foes[0]!, effects: [appliedCondition("condition:prone")], concentration: { resolutionId: "r2", spellId: "spell:bless" as const } },
+      },
+    },
+  };
+  const combat = buildPanelView(record(lobbyOf()), state, starter.bible, enSrd51Glossary).combat!;
+  expect(combat.order?.[0]).toMatchObject({ name: "Borin", active: true, down: true });
+  expect(combat.order).toHaveLength(4);
+  expect(combat.party.find((hero) => hero.name === "Mira")?.concentration).toBe("Bless");
+  expect(combat.party.find((hero) => hero.name === "Borin")?.deathSaves).toEqual({ successes: 1, failures: 2, stable: false });
+  expect(combat.party.find((hero) => hero.name === "Mira")?.deathSaves).toBeNull();
+  const prone = combat.foes.find((foe) => foe.statuses?.length === 1);
+  expect(prone?.statuses).toEqual(["Prone"]);
+  // A foe's concentration stays hidden from the table.
+  expect(JSON.stringify(combat.foes)).not.toContain("Bless");
 });
 
 describe("buildReactionView", () => {

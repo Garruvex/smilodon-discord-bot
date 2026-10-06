@@ -70,6 +70,7 @@ export function applyRoundPlan(decision: Decision, proposal: RoundPlanProposal, 
   }
 
   decision.emit({ kind: "roundPlanApplied", roundNumber: round.number, resolutions, checks, effects: proposal.effects ?? [] });
+  if (checks.length > 0) decision.request({ kind: "deliver", delivery: { kind: "rollsCalled", roundNumber: round.number } });
   for (const check of checks) {
     if (check.deadline !== null) {
       decision.request({
@@ -109,7 +110,8 @@ function effectProblems(decision: Decision, proposal: RoundPlanProposal, checkEn
   const effects = proposal.effects ?? [];
   const problems: string[] = [];
   const count = (kind: PlannedEffect["effect"]["kind"]): number => effects.filter((planned) => planned.effect.kind === kind).length;
-  if (count("transitionScene") > 1) problems.push("Only one scene transition per round.");
+  // Several moves are fine when the checks decide between them (success one way, failure another); only one may fire, see rounds.ts.
+  if (effects.filter((planned) => planned.effect.kind === "transitionScene" && planned.when.kind === "always").length > 1) problems.push("Only one scene transition per round.");
   if (count("startEncounter") > 1) problems.push("Only one encounter per round.");
   const clocks = effects.flatMap(({ effect }) => (effect.kind === "advanceClock" ? [effect.clockId] : []));
   if (new Set(clocks).size !== clocks.length) problems.push("Advance each clock at most once per round.");
@@ -154,6 +156,12 @@ function effectProblems(decision: Decision, proposal: RoundPlanProposal, checkEn
         break;
       case "grantKeepsake":
         if (!/^[a-z0-9-]{1,60}$/.test(effect.keepsake.id) || effect.keepsake.name.trim().length === 0 || effect.keepsake.description.trim().length === 0) problems.push(`Keepsake ${effect.keepsake.id} needs an id, a name and a description.`);
+        break;
+      case "advanceTime":
+        problems.push(...[decision.worldProblem({ kind: "advance", steps: effect.steps })].filter((problem) => problem !== null));
+        break;
+      case "setWeather":
+        problems.push(...[decision.worldProblem({ kind: "weather", weather: effect.weather })].filter((problem) => problem !== null));
         break;
       case "hurt":
         if (!Number.isInteger(effect.count) || effect.count < 1 || effect.count > 20 || ![4, 6, 8, 10, 12].includes(effect.sides)) problems.push(`Harm of ${effect.count}d${effect.sides} is out of range.`);

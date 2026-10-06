@@ -59,6 +59,10 @@ function describeEffect(effect: BibleEffect): string {
       return `the table is told: "${effect.text}"`;
     case "keepsake":
       return `the party receives ${effect.name}`;
+    case "time":
+      return `time passes: ${effect.advance} phase${effect.advance === 1 ? "" : "s"} of the day`;
+    case "weather":
+      return `the weather turns ${effect.weather}`;
     case "hurt":
       return `${effect.who === "party" ? "every hero" : "the hero"} takes ${effect.count}d${effect.sides} ${effect.damageType} damage`;
     case "random":

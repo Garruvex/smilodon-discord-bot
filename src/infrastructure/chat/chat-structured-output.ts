@@ -523,7 +523,8 @@ export function buildChatContext(request: ChatRequest): string {
   // kept separate from <user_memories> since these aren't model-inferred
   // claims and don't need untrusted-text fencing (no free text involved).
   const profile = request.birthday
-    ? `birthday: month=${request.birthday.month} day=${request.birthday.day}`
+    ? `birthday: month=${request.birthday.month} day=${request.birthday.day}` +
+      (request.birthday.birthYear == null ? " (birth year unknown; do not guess age)" : ` birthYear=${request.birthday.birthYear}`)
     : "none";
   return (
     `<guild_context>\nguild id: ${request.guildId}\nchannel id: ${request.channelId}\n</guild_context>\n\n` +

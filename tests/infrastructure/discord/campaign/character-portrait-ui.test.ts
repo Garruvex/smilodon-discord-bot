@@ -4,7 +4,7 @@ import { CharacterPortraits } from "../../../../src/application/campaign/library
 import { enSrd51Glossary } from "../../../../src/application/i18n/campaign/glossary/en/srd-5.1.js";
 import { zhTwSrd51Glossary } from "../../../../src/application/i18n/campaign/glossary/zh-TW/srd-5.1.js";
 import type { BuildChoices } from "../../../../src/domain/campaign/character/character-build.js";
-import { libraryCustomId } from "../../../../src/infrastructure/discord/campaign/library-ids.js";
+import { libraryCustomId, withLanguage } from "../../../../src/infrastructure/discord/campaign/library-ids.js";
 import { CharacterLibraryComponentHandler } from "../../../../src/infrastructure/discord/components/character-library-component-handler.js";
 import { MemoryPortraitStore, Painter, pngBytes, Stylizer } from "../../../application/campaign/portrait-fakes.js";
 import { quiet, rig, type Rig } from "../../../application/campaign/campaign-rig.js";
@@ -125,7 +125,7 @@ describe("portraits on My Characters", () => {
     const r = rig();
     const { handler, characterId } = await table(r);
     const view = screenOf(await click(handler, "dndchar:view", "u-alice", { values: [characterId] }));
-    expect(view.buttons.map((button) => button.label)).toEqual(["Portrait", "Export", "Delete", "Back"]);
+    expect(view.buttons.map((button) => button.label)).toEqual(["Portrait", "Edit character", "Export", "Delete", "Back"]);
     const home = screenOf(await click(handler, libraryCustomId("pHome", characterId)));
     expect(home.content).toContain("**Portrait for Aldric**");
     expect(home.content).toContain("not kept");
@@ -139,7 +139,7 @@ describe("portraits on My Characters", () => {
     const sent = await click(handler, libraryCustomId("pUpload", characterId));
     const modal = sent.find((entry) => entry.kind === "modal")?.payload as { toJSON(): { custom_id: string; components: { label: string; component: { custom_id: string } }[] } };
     const json = modal.toJSON();
-    expect(json.custom_id).toBe(libraryCustomId("pSubmit", characterId));
+    expect(json.custom_id).toBe(withLanguage(libraryCustomId("pSubmit", characterId), "en"));
     expect(json.components.map((row) => row.label)).toEqual(["Your picture", "Style", "Anything to add? (optional)"]);
     expect(json.components.map((row) => row.component.custom_id)).toEqual(["file", "style", "note"]);
   });
@@ -150,7 +150,7 @@ describe("portraits on My Characters", () => {
     const preview = screenOf(await submitUpload(handler, characterId, { style: "ink", note: "a red cloak" }));
     expect(preview.content).toContain("**Aldric** in *Comic-book ink*");
     expect(preview.files).toBe(1);
-    expect(preview.menus[0]?.id).toBe(libraryCustomId("pStyle", characterId));
+    expect(preview.menus[0]?.id).toBe(withLanguage(libraryCustomId("pStyle", characterId), "en"));
     expect(preview.menus[0]?.options.map((option) => option.label)).toContain("Comic-book ink");
     expect(preview.buttons.map((button) => button.label)).toEqual(["Use this portrait", "Try again", "Discard"]);
     expect(stylizer.requests[0]?.prompt).toContain("a red cloak");

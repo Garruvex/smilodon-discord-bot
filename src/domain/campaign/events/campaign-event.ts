@@ -6,7 +6,7 @@ import type { CombatEvent } from "../combat/combat-events.js";
 import type { HeroStatus } from "../combat/combatant-profile.js";
 import type { LedgerVisibility } from "../ledger/ledger.js";
 import type { SceneId } from "../adventure/adventure-bible.js";
-import type { EncounterSpec, PlannedEffect } from "../commands/campaign-command.js";
+import type { EncounterSpec, PartyEffect, PlannedEffect } from "../commands/campaign-command.js";
 import type { CharacterSheet } from "../character/character-sheet.js";
 import type { Ability } from "../rules/effects.js";
 import type { ContentId } from "../rules/content-id.js";
@@ -27,8 +27,10 @@ import type {
   EnvironmentalDamageRecord,
   HealingRecord,
   PendingHealing,
+  PendingHitDice,
 } from "../state/campaign-state.js";
 import type { Skill } from "../rules/skills.js";
+import type { WorldState } from "../state/world-state.js";
 
 // The version of the event shapes below. It goes up whenever a change to an
 // event could not be read by code written for the old shape, and every recorded
@@ -74,19 +76,37 @@ export type CampaignEvent =
   | { readonly kind: "checkResolved"; readonly checkId: CheckId; readonly result: CheckResult }
   | { readonly kind: "roundResolved"; readonly roundNumber: number; readonly quiet: boolean }
   // Story effects that fired when a round resolved.
-  | { readonly kind: "sceneTransitioned"; readonly roundNumber: number; readonly sceneId: SceneId }
+  | { readonly kind: "sceneTransitioned"; readonly roundNumber: number; readonly sceneId: SceneId; readonly reason?: "agreed" | "organizer" | "story" }
+  | { readonly kind: "sceneVisitStarted"; readonly sceneId: SceneId; readonly roundNumber: number }
+  | { readonly kind: "sceneVisitNarrationClosed"; readonly sceneId: SceneId; readonly roundNumber: number }
+  // A move the Planner proposed waits for the table: the effects are what
+  // arriving brings (the scene change first), applied if the party goes.
+  | { readonly kind: "sceneMoveProposed"; readonly roundNumber: number; readonly sceneId: SceneId; readonly effects: readonly PartyEffect[]; readonly by?: UserId; readonly heroes?: readonly CharacterId[] }
+  | { readonly kind: "sceneMoveObjected"; readonly userId: UserId }
+  | { readonly kind: "sceneMoveObjectionWithdrawn"; readonly userId: UserId }
+  | { readonly kind: "sceneMoveSupported"; readonly userId: UserId }
+  | { readonly kind: "sceneMoveSupportWithdrawn"; readonly userId: UserId }
+  | { readonly kind: "sceneMoveAgreed"; readonly roundNumber: number; readonly sceneId: SceneId; readonly objectors: readonly UserId[]; readonly by: "table" | "organizer" }
+  | { readonly kind: "sceneMoveDeclined"; readonly roundNumber: number; readonly sceneId: SceneId; readonly objectors: readonly UserId[]; readonly by: "table" | "organizer" }
   | { readonly kind: "encounterQueued"; readonly roundNumber: number; readonly encounter: EncounterSpec }
   | { readonly kind: "clockAdvanced"; readonly roundNumber: number; readonly clockId: string; readonly segments: number; readonly filled: number }
   | { readonly kind: "clueRevealed"; readonly roundNumber: number; readonly clueId: string; readonly text: string }
   | { readonly kind: "flagSet"; readonly roundNumber: number; readonly flag: string; readonly value: number }
   | { readonly kind: "keepsakeGained"; readonly roundNumber: number; readonly keepsake: Keepsake }
+  // The story's day, time or weather changed; the event carries the whole world after. Why: the story moved it, a rest did, or the organizer corrected it.
+  | { readonly kind: "worldChanged"; readonly roundNumber: number; readonly world: WorldState; readonly reason: "story" | "rest" | "correction"; readonly note?: string }
   | { readonly kind: "goldSpent"; readonly roundNumber: number; readonly characterId: CharacterId; readonly amount: number; readonly wallet: "pool" | "hero" }
   | { readonly kind: "memberMarkedAway"; readonly userId: UserId; readonly reason: AwayReason }
   | { readonly kind: "memberReturned"; readonly userId: UserId }
+  // An away player's seat was freed by the organizer. The hero's name stays, for the story already told about them.
+  | { readonly kind: "memberRetired"; readonly userId: UserId; readonly characterId: CharacterId | null; readonly name: string | null }
   | { readonly kind: "waitingForPlayers" }
   | { readonly kind: "plannerFailed"; readonly roundNumber: number; readonly problems: readonly string[] }
   | { readonly kind: "planRetryRequested"; readonly roundNumber: number }
   | { readonly kind: "narrationRecorded"; readonly roundNumber: number; readonly text: string }
+  | { readonly kind: "sceneNoteProposed"; readonly roundNumber: number; readonly sceneId: SceneId; readonly noteIndex: number; readonly text: string }
+  | { readonly kind: "sceneNoteReviewed"; readonly roundNumber: number; readonly sceneId: SceneId; readonly noteIndex: number; readonly decision: "keep" | "reword" | "drop"; readonly text: string; readonly reason: string }
+  | { readonly kind: "sceneNotesCompacted"; readonly sceneId: SceneId; readonly throughRound: number; readonly text: string }
   | { readonly kind: "proxyGranted"; readonly ownerUserId: string; readonly proxyUserId: string }
   | { readonly kind: "proxyRevoked"; readonly ownerUserId: string }
   | { readonly kind: "summaryRecorded"; readonly throughRound: number; readonly visibility: "public" | "private"; readonly text: string }
@@ -111,7 +131,14 @@ export type CampaignEvent =
     }
   | { readonly kind: "campaignPaused"; readonly reason: "organizer" | "recovery" | "safety" }
   | { readonly kind: "heroSpoke"; readonly characterId: CharacterId; readonly roundNumber: number; readonly text: string }
-  | { readonly kind: "restTaken"; readonly rest: "short" | "long"; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>> }
+  | { readonly kind: "restTaken"; readonly rest: "short" | "long"; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>>; readonly longRestAt?: number }
+  // The organizer asked for a rest at the end of the round (rest null: asked no more).
+  | { readonly kind: "restProposed"; readonly rest: "short" | "long"; readonly by: UserId; readonly closesAt: Instant; readonly sceneId: string | null; readonly story: readonly PartyEffect[] }
+  | { readonly kind: "restVoteCast"; readonly userId: UserId; readonly agree: boolean }
+  | { readonly kind: "restVoteClosed"; readonly outcome: "passed" | "declined" | "expired" }
+  | { readonly kind: "restQueued"; readonly rest: "short" | "long" | null; readonly sceneId?: string | null; readonly story?: readonly PartyEffect[] }
+  // The organizer finished the rest: the next round can open.
+  | { readonly kind: "restEnded" }
   | { readonly kind: "itemOffered"; readonly offer: ItemOffer }
   // The offer was accepted: the items change hands.
   | { readonly kind: "offerAccepted"; readonly offerId: string }
@@ -202,6 +229,9 @@ export type CampaignEvent =
   // A fallen hero rises again (engine/revival-magic.ts); `heroStatus` holds the hero, alive, and the caster with the slot spent.
   | { readonly kind: "heroRevived"; readonly characterId: CharacterId; readonly heroStatus: Readonly<Record<CharacterId, HeroStatus>> }
   | { readonly kind: "companionDismissed"; readonly companionId: string }
+  | { readonly kind: "hitDiceStarted"; readonly pending: PendingHitDice }
+  // The dice landed: what was rolled, how much it healed, and the hero's new hit points and Hit Dice left.
+  | { readonly kind: "hitDiceSettled"; readonly characterId: CharacterId; readonly count: number; readonly rolled: number; readonly healed: number; readonly heroStatus: HeroStatus }
   | { readonly kind: "healingStarted"; readonly healing: PendingHealing }
   // The healing dice landed: the slot is spent and the hit points restored,
   // both carried as the statuses of the caster and (if another) the target.

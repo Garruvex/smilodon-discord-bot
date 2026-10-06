@@ -12,8 +12,13 @@ export const libraryIdPrefix = "dndchar";
 
 export const libraryActions = [
   "home",
+  // The language switch on the home screen: the target language is its one part.
+  "lang",
   "view",
   "new",
+  "edit",
+  "eStep",
+  "sync",
   "bClass",
   "bRace",
   "bRaceAbility",
@@ -23,6 +28,7 @@ export const libraryActions = [
   "bExpert",
   "bScore",
   "bRecommended",
+  "bBack",
   "bName",
   "export",
   "deleteAsk",
@@ -49,10 +55,23 @@ export function libraryCustomId(action: LibraryAction, ...parts: readonly string
   return id;
 }
 
-export function parseLibraryId(customId: string): { readonly action: LibraryAction; readonly parts: readonly string[] } | null {
-  const [prefix, action, ...parts] = customId.split(":");
+export type LibraryLanguage = "en" | "zh-TW";
+const languageMarks: Readonly<Record<LibraryLanguage, string>> = { en: "~en", "zh-TW": "~zh" };
+
+// A control carries the language its screen was shown in as a last part, so every later screen (and the form it opens)
+// speaks the same language whatever the person's Discord client says. A control too long to carry it keeps its default.
+export function withLanguage(customId: string, language: LibraryLanguage): string {
+  const tagged = `${customId}:${languageMarks[language]}`;
+  return tagged.length <= maxLength ? tagged : customId;
+}
+
+export function parseLibraryId(customId: string): { readonly action: LibraryAction; readonly parts: readonly string[]; readonly language?: LibraryLanguage } | null {
+  const [prefix, action, ...all] = customId.split(":");
   if (prefix !== libraryIdPrefix || action === undefined || !(libraryActions as readonly string[]).includes(action)) return null;
-  return { action: action as LibraryAction, parts };
+  const last = all.at(-1);
+  const language = (Object.keys(languageMarks) as LibraryLanguage[]).find((candidate) => languageMarks[candidate] === last);
+  const parts = language === undefined ? all : all.slice(0, -1);
+  return { action: action as LibraryAction, parts, ...(language === undefined ? {} : { language }) };
 }
 
 // The builder's choices so far. Every field is optional until chosen; a token

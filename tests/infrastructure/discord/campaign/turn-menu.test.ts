@@ -4,7 +4,8 @@ import { enSrd51Glossary } from "../../../../src/application/i18n/campaign/gloss
 import { zhTwSrd51Glossary } from "../../../../src/application/i18n/campaign/glossary/zh-TW/srd-5.1.js";
 import type { TurnView } from "../../../../src/application/campaign/views/turn-view.js";
 import { texts } from "../../../../src/application/i18n/texts.js";
-import { encodeAim, encodeChoice, parseAim, parseChoice, renderEndConfirm, renderSpellMenu, renderTargetMenu, renderTurnMenu, type TurnChoice } from "../../../../src/infrastructure/discord/campaign/turn-menu.js";
+import { applicationIcons } from "../../../../src/infrastructure/discord/campaign/campaign-icons.js";
+import { encodeAim, encodeChoice, parseAim, parseChoice, renderAreaConfirm, renderEndConfirm, renderSpellMenu, renderTargetMenu, renderTurnMenu, type TurnChoice } from "../../../../src/infrastructure/discord/campaign/turn-menu.js";
 
 const goblin = { id: "goblin-a", name: "Goblin A", zone: "Yard", side: "foes", hp: 5, maxHp: 7, band: "bloodied", self: false } as const;
 const ally = { id: "c-mira", name: "Mira", zone: "Yard", side: "party", hp: 6, maxHp: 9, band: "hurt", self: false } as const;
@@ -106,6 +107,14 @@ describe("the turn menu", () => {
     expect(labels).toHaveLength(new Set(labels).size);
   });
 
+  it("offers an attack once when the hero carries two of the same weapon", () => {
+    const twoDaggers: TurnView = { ...view, attacks: ["item:dagger", "item:dagger"].map((weapon) => ({ weapon, toHit: 4, damage: "1d4+2", ranged: false, targets: [goblin] })) };
+    const select = json(renderTurnMenu(twoDaggers, texts.en, enSrd51Glossary, "camp")).find((component) => Array.isArray(component.options));
+    const values = (select?.options as { value: string }[]).map((option) => option.value);
+    expect(values).toHaveLength(new Set(values).size);
+    expect(values.filter((value) => value === "attack|item:dagger")).toHaveLength(1);
+  });
+
   it("aims at the legal targets only, allowing several for a spell that has several", () => {
     const single = renderTargetMenu({ kind: "attack", weapon: "item:mace" }, view, texts.en, enSrd51Glossary, "camp");
     const select = single === null ? undefined : json(single).find((component) => Array.isArray(component.options));
@@ -121,6 +130,19 @@ describe("the turn menu", () => {
     // A choice that is not in the view (stale) has no menu.
     expect(renderTargetMenu({ kind: "attack", weapon: "item:longsword" }, view, texts.en, enSrd51Glossary, "camp")).toBeNull();
     expect(renderTargetMenu({ kind: "dodge" }, view, texts.en, enSrd51Glossary, "camp")).toBeNull();
+  });
+
+  it("shows the full area hit list before confirming a cast", () => {
+    const choice = { kind: "cast", spell: "spell:fireball", slot: 3 } as const;
+    const area: TurnView = { ...view, spells: [{ spellId: choice.spell, slotLevel: 3, slotsLeft: 1, bonusAction: false, maxTargets: 1, targets: [goblin], affectedByTarget: { [goblin.id]: [goblin, ally] } }] };
+    const targetMenu = renderTargetMenu(choice, area, texts.en, enSrd51Glossary, "camp");
+    const select = targetMenu === null ? undefined : json(targetMenu).find((component) => Array.isArray(component.options));
+    expect((select?.options as { description: string }[])[0]?.description).toContain("Mira (ally)");
+    const confirmation = renderAreaConfirm(choice, goblin.id, area, texts.en, enSrd51Glossary, "camp");
+    expect(confirmation?.content).toContain("Goblin A");
+    expect(confirmation?.content).toContain("Mira (ally)");
+    expect(json(confirmation!).find((component) => component.custom_id === "dnd:areaConfirm:camp")).toBeDefined();
+    expect(renderAreaConfirm(choice, "missing", area, texts.en, enSrd51Glossary, "camp")).toBeNull();
   });
 
   it("lists a spell at every slot level it could be upcast to, as separate choices", () => {
@@ -181,5 +203,31 @@ describe("the turn menu", () => {
     const labels = (json(zh).find((component) => Array.isArray(component.options))?.options as { label: string }[]).map((option) => option.label);
     expect(labels.at(-1)).toBe("結束回合");
     expect(json(renderEndConfirm(texts["zh-TW"], "camp")).map((component) => component.label)).toEqual(["仍然結束回合", "返回"]);
+  });
+});
+
+describe("icons on the turn menu", () => {
+  const icons = applicationIcons((name) => ({ id: `id-${name}`, name }));
+  const options = (menu: ReturnType<typeof renderTurnMenu>): { label: string; emoji?: { id: string; name: string } }[] => {
+    const select = json(menu).find((component) => Array.isArray(component.options));
+    return (select?.options ?? []) as { label: string; emoji?: { id: string; name: string } }[];
+  };
+
+  it("marks each kind of action with its icon, and leaves entries without one alone", () => {
+    const menu = options(renderTurnMenu(view, texts.en, enSrd51Glossary, "camp-1", 0, icons));
+    expect(menu[0]?.emoji?.name).toBe("dnd_attack");
+    expect(menu.some((option) => option.emoji?.name === "dnd_spell")).toBe(true);
+    expect(menu.some((option) => option.emoji?.name === "dnd_potion")).toBe(true);
+    expect(menu.some((option) => option.emoji?.name === "dnd_move")).toBe(true);
+    expect(menu.some((option) => option.emoji?.name === "dnd_dodge")).toBe(true);
+    expect(menu.at(-1)?.emoji).toBeUndefined();
+  });
+
+  it("is plain text without icons, or before they are uploaded", () => {
+    expect(options(renderTurnMenu(view, texts.en, enSrd51Glossary, "camp-1")).every((option) => option.emoji === undefined)).toBe(true);
+    const missing = applicationIcons(() => undefined);
+    expect(options(renderTurnMenu(view, texts.en, enSrd51Glossary, "camp-1", 0, missing)).every((option) => option.emoji === undefined)).toBe(true);
+    expect(missing.tag("attack")).toBeUndefined();
+    expect(icons.tag("attack")).toBe("<:dnd_attack:id-dnd_attack>");
   });
 });

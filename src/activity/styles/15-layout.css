@@ -1,0 +1,197 @@
+/* The party, the map and the story live in panels that slide in from the screen's edges, so the page itself is the scene and your hero.
+   Story is a compact overlay on desktop and a short sheet in smaller windows. */
+:root {
+  --drawer-gutter: clamp(16px, 3.5vw, 48px);
+  --drawer-side-h: calc(100% - 24px);
+  --drawer-map-h: min(68vh, 520px);
+  --drawer-left-w: 320px;
+  --drawer-right-w: 340px;
+  --drawer-story-h: min(40vh, 360px);
+  /* As wide as the page's own panels: the shell is 1120px with a gutter on each side. */
+  --drawer-map-w: min(calc(1120px - 2 * var(--drawer-gutter)), calc(100vw - 2 * var(--drawer-gutter)));
+}
+
+/* The roster is out of the page, so the hero page takes the whole row. */
+.live-feature-grid { grid-template-columns: minmax(0, 1fr); }
+.live-feature-grid > .live-hero { grid-column: 1; grid-row: 1; }
+
+.drawer-tab { position: fixed; z-index: 58; top: 50%; display: flex; align-items: center; gap: 8px; padding: 14px 7px; border: 1px solid #796546; background: #211e1bf2; color: #eee7d9; font-weight: 800; font-size: 12px; line-height: 1; font-family: inherit; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; writing-mode: vertical-rl; box-shadow: 0 6px 24px #0008; transform: translateY(-50%); transition: left .22s ease, right .22s ease, bottom .22s ease; }
+.drawer-tab[data-side="left"] { left: 0; border-left: 0; border-radius: 0 10px 10px 0; }
+.drawer-tab[data-side="right"] { right: 0; border-right: 0; border-radius: 10px 0 0 10px; }
+.drawer-tab[data-side="bottom"] { top: auto; bottom: 0; left: 50%; padding: 8px 18px; border-bottom: 0; border-radius: 10px 10px 0 0; writing-mode: horizontal-tb; transform: translateX(-50%); }
+.drawer-tab[aria-expanded="true"] { border-color: #e5c988; background: #4a3b27; }
+/* The party tab on the left reads downward. The story tab on the right reads upward, from the bottom to the top, with the count above it. */
+.drawer-tab[data-side="right"] { flex-direction: row-reverse; }
+.drawer-tab[data-side="right"] > span:first-child { transform: rotate(180deg); }
+/* Chinese stands upright and reads downward in a vertical tab; turning it over would put every character upside down, so the story tab reads the same way as the party tab. */
+html[lang^="zh"] .drawer-tab[data-side="right"] { flex-direction: row; }
+html[lang^="zh"] .drawer-tab[data-side="right"] > span:first-child { transform: none; }
+.drawer-tab:focus-visible { outline: 2px solid #e5c988; outline-offset: 2px; }
+/* A tab rides the edge of its panel: out to the panel's edge when it opens, back to the screen's edge when it closes. */
+body.drawer-open-left .drawer-tab[data-side="left"] { left: var(--drawer-left-w); }
+body.drawer-open-right .drawer-tab[data-side="right"] { right: var(--drawer-right-w); }
+.drawer-tab[data-side="bottom"][aria-expanded="true"] { bottom: var(--drawer-map-h); }
+.drawer-badge { min-width: 18px; padding: 3px 5px; border-radius: 999px; background: #a43c31; color: #fff0d4; font-weight: 800; font-size: 10px; line-height: 1; font-family: inherit; text-align: center; letter-spacing: 0; writing-mode: horizontal-tb; }
+.drawer-badge[hidden] { display: none; }
+/* One dot per hero on the party tab: green well, orange down, red fallen, grey away. */
+.drawer-dots { display: inline-flex; flex-direction: column; gap: 3px; writing-mode: horizontal-tb; }
+.drawer-dots i { width: 8px; height: 8px; border-radius: 50%; background: #7a9a62; }
+.drawer-dots i[data-state="down"] { background: #d7873a; }
+.drawer-dots i[data-state="dead"] { background: #b4584c; }
+.drawer-dots i[data-state="away"] { background: #6b6358; }
+
+.drawer { position: fixed; z-index: 57; top: calc((100% - var(--drawer-side-h)) / 2); height: var(--drawer-side-h); display: flex; flex-direction: column; border: 1px solid var(--ui-border-strong, #9c7a4b); background: var(--ui-paper-raised, #f3e7cb); color: var(--ui-ink, #33241a); box-shadow: 0 10px 40px #000a; transition: transform .22s ease; }
+.drawer[data-side="left"] { --left-h: min(var(--drawer-fit, var(--drawer-side-h)), var(--drawer-side-h)); top: calc((100% - var(--left-h)) / 2); height: var(--left-h); left: 0; width: min(var(--drawer-left-w), 92vw); border-left: 0; border-radius: 0 12px 12px 0; transform: translateX(-104%); }
+.drawer[data-side="right"] { right: 0; width: min(var(--drawer-right-w), 92vw); border-right: 0; border-radius: 12px 0 0 12px; transform: translateX(104%); }
+.drawer[data-side="bottom"] { z-index: 55; top: auto; bottom: 0; left: 50%; width: var(--drawer-map-w); height: var(--drawer-map-h); border-bottom: 0; border-radius: 12px 12px 0 0; transform: translate(-50%, 104%); }
+.drawer[data-open="true"] { transform: none; }
+.drawer[data-side="bottom"][data-open="true"] { transform: translate(-50%, 0); }
+.drawer-body { flex: 1; min-height: 0; overflow: auto; }
+.drawer[data-side="left"] .drawer-body { scrollbar-gutter: stable; }
+.drawer[data-side="left"] .party-section { margin: 0; padding: 8px; border: 0; background: transparent; box-shadow: none; }
+.drawer[data-side="left"] .section-heading { display: none; }
+.party-free-seat { position: absolute; z-index: 6; right: 8px; bottom: 6px; padding: 3px 10px; font-size: 11px; font-weight: 700; }
+.party-free-seat[data-armed="true"] { background: #a8362c; border-color: #a8362c; color: #fff0d4; }
+.party-open-seat { display: flex; align-items: center; justify-content: center; box-sizing: border-box; height: var(--seat-h, 96px); min-height: 0; border: 2px dashed #b39a70; border-radius: 10px; background: transparent; color: #8a7350; font-size: 13px; font-weight: 700; letter-spacing: .06em; }
+.drawer[data-side="left"] .live-party-grid { grid-template-columns: minmax(0, 1fr); }
+/* Keep the class and level on one line; the roster scrolls only when it cannot fit the viewport. */
+.drawer[data-side="left"] .party-class-line { display: flex; gap: 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.drawer[data-side="right"] .drawer-body { display: flex; flex-direction: column; overflow: hidden; }
+/* The map fills its sheet: the tab already names it, so no title or fold control; the key is one quiet row, and the map takes all the rest. */
+.drawer[data-side="bottom"] .drawer-body { display: flex; flex-direction: column; overflow: hidden; }
+.drawer[data-side="bottom"] .adventure-map-panel { display: flex; flex: 1; min-height: 0; flex-direction: column; margin: 0; padding: 10px 14px 14px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.drawer[data-side="bottom"] .adventure-map-panel::before, .drawer[data-side="bottom"] .adventure-map-panel::after { display: none; }
+.drawer[data-side="bottom"] .map-summary { flex: none; justify-content: flex-start; padding: 0 0 8px; pointer-events: none; }
+.drawer[data-side="bottom"] .map-summary > span:first-child, .drawer[data-side="bottom"] .map-summary::after { display: none; }
+.drawer[data-side="bottom"] .map-toolbar { flex: none; margin-bottom: 8px; }
+/* The sheet's height is known, so the map is given what is left of it (a details box does not stretch its content). */
+.drawer[data-side="bottom"] .live-map-viewport { height: calc(var(--drawer-map-h) - 78px); max-height: none; }
+.drawer[data-side="bottom"] .adventure-map-panel:has(#map-toolbar:not([hidden])) .live-map-viewport { height: calc(var(--drawer-map-h) - 122px); }
+.drawer[data-side="bottom"] .adventure-map-panel[open] .live-map { margin-top: 0; padding-bottom: 0; }
+
+/* The story feed. */
+.story-panel { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.story-tabs { display: flex; gap: 4px; padding: 8px 10px 6px; border-bottom: 1px solid var(--ui-border, #c4a874); }
+.story-tabs[hidden] { display: none; }
+.story-tab { flex: 1; min-height: 30px; padding: 4px 8px; font-size: 11px; font-weight: 700; }
+.story-tab[aria-pressed="true"] { border-color: var(--ui-accent, #87332b); background: var(--ui-accent, #a43c31); color: #fff0d4; }
+.story-feed { position: relative; display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 8px; padding: 8px 12px; overflow-y: auto; scroll-behavior: smooth; }
+.story-empty { display: none; margin: 0; color: var(--ui-ink-soft, #7a6244); font-style: italic; }
+.story-feed[data-empty="true"] .story-empty { display: block; }
+.story-feed { gap: 10px; }
+.story-entry { margin: 0; font-size: 15px; line-height: 1.5; }
+.story-entry[hidden] { display: none; }
+/* The Narrator: a wide serif block with a thick bar. What the heroes do and say sits indented in small type, so the two read apart at a glance. */
+.story-entry[data-kind="narration"] { margin-top: 4px; padding: 10px 12px 10px 14px; border-left: 4px solid #a98550; border-radius: 0 8px 8px 0; background: rgba(169, 133, 80, .16); font: italic 15px/1.55 Georgia, "Noto Serif TC", serif; }
+.story-entry[data-kind="action"], .story-entry[data-kind="speech"] { margin-left: 16px; padding: 5px 10px; border-radius: 8px; font: 13px/1.45 system-ui, sans-serif; }
+.story-entry[data-kind="action"] { background: var(--ui-paper-inset, #efe0bd); }
+.story-entry[data-kind="action"]::before { content: "▸ "; color: #87332b; }
+.story-entry[data-kind="speech"] { border: 1px solid var(--ui-border, #b39a70); border-radius: 12px 12px 12px 2px; }
+.story-entry[data-kind="action"] b, .story-entry[data-kind="speech"] b { color: #87332b; }
+.story-entry[data-kind="talk"] { margin-left: 16px; padding: 8px 12px; border-left: 4px solid #2f6b6b; border-radius: 0 8px 8px 0; background: rgba(47, 107, 107, .10); font: 13px/1.5 system-ui, sans-serif; }
+.story-entry[data-kind="talk"] b { display: block; margin-bottom: 2px; color: #1f4f4f; }
+.story-entry[data-kind="talk"] b::before { content: "💬 "; }
+.story-entry[data-kind="talk"] span { font-style: italic; font-family: Georgia, "Noto Serif TC", serif; font-size: 14px; }
+.story-entry[data-kind="cast"] { margin-left: 16px; padding: 8px 12px; border-left: 4px solid #6a4aa8; border-radius: 0 8px 8px 0; background: rgba(106, 74, 168, .10); font: 13px/1.5 system-ui, sans-serif; }
+.story-entry[data-kind="cast"] b { display: block; margin-bottom: 2px; color: #4d3380; }
+.story-entry[data-kind="cast"] b::before { content: "✦ "; }
+.story-entry[data-kind="cast"] span { font-style: italic; font-family: Georgia, "Noto Serif TC", serif; font-size: 14px; }
+.story-entry[data-kind="clue"] { padding: 6px 10px; border: 1px dashed #a98550; border-radius: 8px; background: rgba(255, 255, 255, .35); font: 13px/1.45 system-ui, sans-serif; }
+.story-entry[data-kind="roll"] { align-self: flex-start; padding: 4px 10px; border: 1px solid var(--ui-border, #b39a70); border-radius: 999px; background: var(--ui-paper-inset, #efe0bd); font-size: 12px; line-height: 1.3; }
+.story-entry[data-kind="roll"] i { font-style: normal; font-weight: 800; }
+.story-entry[data-kind="roll"][data-ok="true"] i { color: #2f6b3a; }
+.story-entry[data-kind="roll"][data-ok="false"] i { color: #9b2f26; }
+.story-entry[data-kind="combat"] { font-size: 13px; line-height: 1.4; }
+.story-entry[data-kind="combat"] { padding: 4px 8px 4px 10px; border-left: 3px solid #b39a70; }
+.story-entry[data-kind="combat"][data-source="spell"] { border-left-color: #6a4aa8; background: rgba(106, 74, 168, .10); }
+.story-entry[data-kind="combat"][data-source="spell"] b::before { content: "✦ "; color: #6a4aa8; }
+.story-entry[data-kind="combat"][data-source="weapon"] b::before, .story-entry[data-kind="combat"][data-source="area"] b::before { content: "⚔ "; color: #7a6244; }
+.story-entry[data-kind="combat"][data-source="item"] b::before { content: "◆ "; color: #7a6244; }
+.story-entry[data-kind="combat"] small { display: block; color: var(--ui-ink-soft, #7a6244); font-size: 11px; }
+.story-entry[data-kind="system"] { align-self: center; padding: 2px 12px; border-radius: 999px; background: #d9c48f; color: #5c4128; font-size: 10px; font-weight: 800; letter-spacing: .08em; line-height: 1.6; text-transform: uppercase; }
+.story-entry[data-kind="system"][data-code="combatBegins"] { background: #a8362c; color: #fff0d4; }
+.story-entry[data-kind="system"][data-code="victory"] { background: #5d7a3c; color: #f3f6e4; }
+.story-entry[data-kind="system"][data-code="defeat"] { background: #3a1411; color: #f1c5bd; }
+.story-entry[data-mine="true"] b::after { content: attr(data-you); margin-left: 6px; padding: 0 5px; border-radius: 999px; background: #87332b; color: #fff0d4; font-size: 9px; font-weight: 800; letter-spacing: .06em; vertical-align: 1px; }
+.story-entry[data-mine="true"][data-kind="action"] { box-shadow: inset 3px 0 0 #87332b; }
+.story-entry[data-mine="true"][data-kind="speech"] { border-color: #87332b; }
+.story-entry[data-mine="true"][data-kind="cast"], .story-entry[data-mine="true"][data-kind="talk"] { border-left-width: 6px; }
+.story-entry[data-kind="alert"] { align-self: flex-start; padding: 3px 10px; border-radius: 6px; background: #f1c5bd; color: #7a1f17; font-size: 12px; font-weight: 800; line-height: 1.4; }
+.story-entry[data-kind="alert"][data-tone="slain"] { background: #f0dba4; color: #5a430c; }
+.story-entry.is-new { animation: story-new 1.6s ease-out; }
+@keyframes story-new { from { background: #f5d98a; } to { background: transparent; } }
+.story-jump { position: sticky; bottom: 0; align-self: center; padding: 5px 12px; border: 0; border-radius: 999px; background: #a43c31; color: #fff0d4; font-size: 11px; font-weight: 800; box-shadow: 0 3px 10px #0006; cursor: pointer; }
+.story-jump[hidden] { display: none; }
+
+/* The newest line, in a strip of its own under the scene, never over the art. */
+.story-now { order: 1; display: flex; align-items: center; gap: 14px; min-height: 62px; margin: 8px 0 0; padding: 10px 14px; border: 1px solid #5d4d38; border-left: 4px solid #a98550; border-radius: 8px; background: #211e1b; color: #f2e8d2; font: 15px/1.45 Georgia, "Noto Serif TC", serif; text-align: left; box-sizing: border-box; cursor: pointer; transition: opacity .6s ease; }
+.story-now[hidden] { display: none; }
+.story-now[data-dim="true"] { opacity: .55; }
+.story-now-text { display: -webkit-box; flex: 1; min-width: 0; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.story-now[data-kind="narration"] .story-now-text { font-style: italic; }
+.story-now[data-kind="combat"] .story-now-text { font-size: 13px; line-height: 1.4; font-family: system-ui, sans-serif; }
+.story-now-more { flex: none; color: #d9c48f; font-weight: 700; font-size: 10px; line-height: 1.2; font-family: inherit; letter-spacing: .06em; text-transform: uppercase; }
+.story-now[data-kind="alert"] { border-color: #b4584c; border-left-color: #e0897c; background: #3a1411; font-weight: 800; font-size: 16px; line-height: 1.35; font-family: inherit; }
+.story-now[data-kind="alert"][data-tone="slain"] { border-color: #c9a24a; background: #352a0c; }
+.story-now.is-new { animation: story-in .45s ease-out; }
+@keyframes story-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .drawer, .drawer-tab, .story-now, .story-now.is-new, .story-entry.is-new { transition: none; animation: none; } }
+
+/* The panels and their tabs belong to a table being played: not the list of games, not the characters, not a game still in its lobby. They are shown only while the game page is up and holds a table. */
+.drawer, .drawer-tab { display: none; }
+body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer { display: flex; }
+body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab { display: flex; }
+body[data-game-kind="lobby"] .story-now { display: none; }
+
+/* A compact overlay keeps the page in place while the story is open. */
+@media (min-width: 901px) {
+  :root { --drawer-right-w: 300px; }
+  .drawer[data-side="right"] { --story-panel-h: min(55vh, 480px); top: calc((100% - var(--story-panel-h)) / 2); height: var(--story-panel-h); }
+}
+
+/* Below 900px: one bottom dock, Party | Map | Story, and each panel is a sheet above it. */
+@media (max-width: 900px) {
+  .drawer[data-side="bottom"] .live-map-viewport { height: calc(62vh - 78px); }
+  .drawer[data-side="bottom"] .adventure-map-panel:has(#map-toolbar:not([hidden])) .live-map-viewport { height: calc(62vh - 122px); }
+  .drawer-tab { top: auto; bottom: 0; width: 33.34%; justify-content: center; padding: 12px 8px; border: 1px solid #796546; border-radius: 0; writing-mode: horizontal-tb; transform: none; }
+  .drawer-tab[data-side="right"] { flex-direction: row; }
+  .drawer-tab > span:first-child { transform: none !important; }
+  .drawer-tab[data-side="left"] { left: 0; right: auto; }
+  .drawer-tab[data-side="bottom"] { left: 33.33%; right: auto; padding: 12px 8px; border-bottom: 1px solid #796546; border-radius: 0; transform: none; }
+  .drawer-tab[data-side="right"] { right: 0; left: auto; }
+  body.drawer-open-left .drawer-tab[data-side="left"] { left: 0; }
+  body.drawer-open-right .drawer-tab[data-side="right"] { right: 0; }
+  .drawer-tab[data-side="bottom"][aria-expanded="true"] { bottom: 0; }
+  .drawer-dots { flex-direction: row; }
+  .drawer, .drawer[data-side="left"], .drawer[data-side="right"], .drawer[data-side="bottom"] { top: auto; bottom: 44px; left: 0; right: 0; width: auto; height: 62vh; border: 1px solid var(--ui-border-strong, #9c7a4b); border-radius: 12px 12px 0 0; transform: translateY(110%); }
+  .drawer[data-side="left"] { height: min(var(--drawer-fit, 62vh), calc(100% - 56px)); }
+  .drawer[data-side="right"] { height: var(--drawer-story-h); }
+  .drawer[data-open="true"], .drawer[data-side="bottom"][data-open="true"] { transform: none; }
+  .live-shell { padding-bottom: 60px; }
+  .story-now { min-height: 0; padding: 8px 10px; font-size: 14px; }
+  .story-now-more { display: none; }
+}
+
+.action-hint { flex: 1 1 100%; margin: -2px 0 0; color: var(--ui-muted, #7a6244); font-size: 12px; line-height: 1.4; }
+
+/* Away: the hero's panels go grey and stay still, with one line saying why and the way back. */
+.away-lock { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; padding: 8px 12px; border: 1px solid var(--ui-border-strong, #9c7a4b); border-radius: var(--ui-radius-small, 7px); background: #e0d4bb; color: var(--ui-ink, #33241a); font-size: 13px; }
+.away-lock[hidden] { display: none; }
+.away-lock-back { flex: none; }
+.hero-tab-panel.is-away-locked, #hero-panel-actions .is-away-locked { opacity: .45; filter: grayscale(1); pointer-events: none; user-select: none; }
+
+/* One frame per card: the border and its corner radius. The extra square line and the soft inner rings made a double frame that did not follow the rounded corners. */
+.live-scene, .live-scene.has-enemies, .live-hero, .adventure-map-panel, .live-feature-grid > .live-hero { border-radius: var(--ui-radius); box-shadow: 0 10px 24px #0c070650; }
+.live-scene::before, .live-hero::before, .adventure-map-panel::before { display: none; }
+
+/* Creatures in a fight are drawn like heroes: name, who they are, where they stand, and a health bar. */
+.live-enemy .live-party-copy > *, .live-ally .live-party-copy > * { grid-row: auto; grid-column: 1 / -1; }
+.live-enemy .live-party-copy > .party-class-line, .live-ally .live-party-copy > .party-class-line { display: block; }
+.combat-place { color: var(--ui-muted); }
+.combat-place::before { content: "◎ "; }
+.combat-turn { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--ui-accent); color: #fff4dc; font-size: 10px; font-weight: 700; }
+.live-allies-heading { margin-top: 4px; }
+.live-ally { cursor: default; border-left: 3px solid #6c7d4c; }
+.live-ally .ally-sigil img { position: absolute; inset: 9px; width: 18px; height: 18px; filter: brightness(0) opacity(.68); }
+.live-ally .live-party-sigil { background: #d7e0bd; }
+.live-ally[data-condition="down"], .live-enemy[data-condition="down"], .live-enemy[data-condition="fled"] { opacity: .55; }

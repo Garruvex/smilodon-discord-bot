@@ -2,6 +2,7 @@ import type { CampaignLanguage } from "../../../domain/campaign/adventure/advent
 import type { Instant, UserId } from "../../../domain/campaign/core/ids.js";
 import type { LobbyState } from "../../../domain/campaign/lobby/lobby.js";
 import type { Pacing } from "../../../domain/campaign/state/campaign-state.js";
+import type { CharacterSheet } from "../../../domain/campaign/character/character-sheet.js";
 import type { AdventurePin, CampaignKey } from "./campaign-store.js";
 
 // The campaign as the server knows it: who runs it, what it is, where it
@@ -66,6 +67,8 @@ export interface CardReference {
 // written back into the human-managed guild profile.
 export interface GuildCampaignSettings {
   readonly guildId: string;
+  // Language chosen for this server's D&D hub and newly created games.
+  readonly language?: "en" | "zh-TW";
   readonly categoryId: string | null;
   readonly hubChannelId: string | null;
   // The four forums a campaign's Games/Parties posts go into, chosen by
@@ -124,13 +127,15 @@ export interface CampaignRecord {
   readonly issues?: readonly CampaignIssue[];
   readonly visibility?: CampaignVisibility;
   // Requests and invitations for people joining after play has started.
-  readonly joinRequests?: Readonly<Record<UserId, { readonly status: "requested" | "invited" | "approved"; readonly entrance?: string; readonly expiresAt: number }>>;
+  readonly joinRequests?: Readonly<Record<UserId, { readonly status: "requested" | "invited" | "approved" | "queued"; readonly entrance?: string; readonly expiresAt: number; readonly queuedHero?: CharacterSheet; readonly queueId?: string }>>;
   // What became of each picture.
   readonly images?: Readonly<Record<string, "made" | "done" | "skipped" | "failed">>;
   // Legacy counters from campaigns created before picture budgets were removed.
   readonly imageBudget?: { readonly limit: number; readonly used: number };
   // The subject of the picture posted last, which the organizer's Redo repaints.
   readonly lastPicture?: string;
+  // One automatic dramatic moment per scene; the subject also identifies a retry.
+  readonly automaticMomentScenes?: Readonly<Record<string, string>>;
 }
 
 export interface StoredRecord {

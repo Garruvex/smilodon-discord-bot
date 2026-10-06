@@ -105,6 +105,16 @@ const validPlan = JSON.stringify({
 });
 
 describe("planner prompt and schema", () => {
+  it("keeps declared intent separate from outcomes and narrative presentation", () => {
+    expect(buildPlannerPrompt(plannerRequest).system).toContain("an attempt is not a completed success");
+    const prompt = buildNarratorPrompt(narratorRequest);
+    expect(prompt.system).toContain("professional Dungeon Master");
+    expect(prompt.system).toContain("never invent traversable routes");
+    expect(prompt.system).toContain("separate cards");
+    expect(prompt.user).toContain("我悄悄溜過去");
+    const opening = buildNarratorPrompt({ ...narratorRequest, opening: { heroes: [{ name: "Mira", className: "Rogue" }] } });
+    expect(opening.system).toContain("professional Dungeon Master");
+  });
   it("puts stable context in the system prompt and fences player text as untrusted", () => {
     const prompt = buildPlannerPrompt(plannerRequest);
     expect(prompt.system).toContain("## A. DM instructions\nBe fair.");
@@ -130,6 +140,14 @@ describe("planner prompt and schema", () => {
     expect(buildPlannerPrompt(later).system).toBe(buildPlannerPrompt(plannerRequest).system);
     expect(buildPlannerPrompt(later).user).toContain("Round 2");
     expect(buildPlannerPrompt(plannerRequest).system).not.toContain("Current scene");
+  });
+
+  it("can plan actions when no story effect targets remain", () => {
+    const request = { ...plannerRequest, story: { sceneId: "scene:ending", sceneIds: [], encounters: [], clocks: [], clues: [] } };
+    const schema = plannerJsonSchema(request) as { properties: { effects: { maxItems?: number; items: { properties: Record<string, unknown> } } } };
+    expect(schema.properties.effects.maxItems).toBe(0);
+    expect(schema.properties.effects.items.properties.target).toEqual({ type: "string" });
+    expect(parsePlannerOutput(validPlan, request.roundNumber).actions).toHaveLength(1);
   });
 
   it("limits story effects to known scenes and unfought encounters", () => {
@@ -160,19 +178,31 @@ describe("parsePlannerOutput", () => {
   it("maps story effects, keyed to a check outcome when asked", () => {
     const plan = JSON.parse(validPlan) as Record<string, unknown>;
     plan.effects = [
-      { kind: "transitionScene", target: "scene:ruined-chapel", amount: null, when: "always", characterId: null },
+      { kind: "transitionScene", target: "scene:ruined-chapel", amount: null, when: "always", characterId: null, movers: ["c-mira"] },
       { kind: "startEncounter", target: "encounter:chapel-fight", amount: null, when: "onFailure", characterId: "c-mira" },
       { kind: "advanceClock", target: "clock:scouts-return", amount: 2, when: "onFailure", characterId: "c-mira" },
       { kind: "revealClue", target: "clue:chapel-map", amount: null, when: "onSuccess", characterId: "c-mira" },
     ];
     expect(parsePlannerOutput(JSON.stringify(plan), 3).effects).toEqual([
-      { kind: "transitionScene", sceneId: "scene:ruined-chapel", when: { kind: "always" } },
+      { kind: "transitionScene", sceneId: "scene:ruined-chapel", when: { kind: "always" }, movers: ["c-mira"] },
       { kind: "startEncounter", encounterId: "encounter:chapel-fight", when: { kind: "checkOutcome", characterId: "c-mira", success: false } },
       { kind: "advanceClock", clockId: "clock:scouts-return", by: 2, when: { kind: "checkOutcome", characterId: "c-mira", success: false } },
       { kind: "revealClue", clueId: "clue:chapel-map", when: { kind: "checkOutcome", characterId: "c-mira", success: true } },
     ]);
     plan.effects = [{ kind: "startEncounter", target: "encounter:chapel-fight", amount: null, when: "onSuccess", characterId: null }];
     expect(() => parsePlannerOutput(JSON.stringify(plan), 3)).toThrow("needs the characterId whose check decides it");
+  });
+
+  it("drops a scene change that no hero's action asked for", () => {
+    const plan = JSON.parse(validPlan) as Record<string, unknown>;
+    plan.effects = [{ kind: "transitionScene", target: "scene:ruined-chapel", amount: null, when: "always", characterId: null, movers: [] }];
+    expect(parsePlannerOutput(JSON.stringify(plan), 3).effects).toEqual([]);
+  });
+
+  it("reads an effect by its target's own prefix when the model labels it with the wrong kind", () => {
+    const plan = JSON.parse(validPlan) as Record<string, unknown>;
+    plan.effects = [{ kind: "transitionScene", target: "encounter:sublee-gang", amount: null, when: "always", characterId: null }];
+    expect(parsePlannerOutput(JSON.stringify(plan), 3).effects).toEqual([{ kind: "startEncounter", encounterId: "encounter:sublee-gang", when: { kind: "always" } }]);
   });
 
   it("rejects malformed output with problems the retry can use", () => {
@@ -194,18 +224,20 @@ describe("LLM DM", () => {
     expect(proposal.actions).toHaveLength(1);
     expect(client.requests[0]?.schemaName).toBe("campaign_round_plan");
     expect(observed).toEqual([
-      { call: "planner", model: "fake-model", promptVersion: "planner-7", usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 60 } },
+      { call: "planner", model: "fake-model", promptVersion: "planner-9", usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 60 } },
     ]);
   });
 
   it("asks for Traditional Chinese narration with the right length and spotlight", async () => {
     const prompt = buildNarratorPrompt(narratorRequest);
-    expect(prompt.system).toContain("150-300 Traditional Chinese characters");
+    expect(prompt.system).toContain("80-180 Traditional Chinese characters");
+    expect(prompt.system).toContain("natural Taiwan conversational phrasing");
+    expect(prompt.system).toContain("one idea per sentence");
     expect(prompt.user).toContain('米拉 attempted: "我悄悄溜過去。" -> stealth check, SUCCESS (moment: natural20).');
     expect(prompt.user).toContain("Quiet heroes to invite: 波林.");
     expect(prompt.user).not.toContain("17");
 
-    const narrator = new LlmCampaignNarrator({ client: new FakeClient([JSON.stringify({ narration: " 米拉消失在陰影中。 " })]) });
+    const narrator = new LlmCampaignNarrator({ client: new FakeClient([JSON.stringify({ narration: " 米拉消失在陰影中。 ", note: "" })]) });
     expect(await narrator.narrate(narratorRequest)).toEqual({ text: "米拉消失在陰影中。" });
     await expect(new LlmCampaignNarrator({ client: new FakeClient(['{"narration":""}']) }).narrate(narratorRequest)).rejects.toThrow();
   });
@@ -220,7 +252,7 @@ describe("LLM DM", () => {
       opening: { heroes: [{ name: "Mira", className: "Rogue" }, { name: "Borin", className: null }] },
     });
     expect(prompt.user).toContain("Open the adventure. The party: Mira (Rogue), Borin.");
-    expect(prompt.system).toContain("180-260 words of English");
+    expect(prompt.system).toContain("80-130 words of English");
     expect(prompt.system).toContain("ask what the heroes do");
     expect(prompt.system).toContain("Never invent new threats");
     expect(prompt.user).not.toContain("outcomes:");
@@ -264,7 +296,7 @@ describe("LLM DM", () => {
       },
     });
     expect(await narrator.narrateCombat(request)).toEqual({ text: "Borin's blade flashes." });
-    expect(observed).toMatchObject([{ call: "flourish", promptVersion: "flourish-5" }]);
+    expect(observed).toMatchObject([{ call: "flourish", promptVersion: "flourish-8" }]);
     expect(buildCombatNarratorPrompt({ ...request, final: true, outcome: "victory", language: "zh-TW" }).system).toContain("100-200 Traditional Chinese");
   });
 });

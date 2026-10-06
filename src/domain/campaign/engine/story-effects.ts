@@ -3,21 +3,24 @@
 import type { EncounterSpec, PartyEffect } from "../commands/campaign-command.js";
 import { assertNever } from "../core/assert-never.js";
 import { lootGold } from "../rules/house-rules.js";
-import { isFallen, type CampaignState } from "../state/campaign-state.js";
+import { isFallen, type CampaignState, type MoveReason } from "../state/campaign-state.js";
 import type { Decision } from "./decision.js";
 
 
 // One fired effect. A fight can be queued only once at a time, and one that
 // was already fought is not queued again (a filled clock may name it).
-export function applyStoryEffect(decision: Decision, roundNumber: number, effect: PartyEffect): void {
+export function applyStoryEffect(decision: Decision, roundNumber: number, effect: PartyEffect, moveReason?: MoveReason): void {
   const { state } = decision;
   switch (effect.kind) {
     case "transitionScene":
-      decision.emit({ kind: "sceneTransitioned", roundNumber, sceneId: effect.sceneId });
-      decision.request({ kind: "sceneImage", sceneId: effect.sceneId, roundNumber });
+      decision.emit({ kind: "sceneTransitioned", roundNumber, sceneId: effect.sceneId, ...(moveReason === undefined ? {} : { reason: moveReason }) });
+      decision.request({ kind: "deliver", delivery: { kind: "sceneArrival", sceneId: effect.sceneId, roundNumber } });
+      decision.request({ kind: "sceneImage", sceneId: effect.sceneId, roundNumber, snapshot: decision.pictureSnapshot() });
       return;
     case "revealClue":
-      if (!state.clues.some((clue) => clue.id === effect.clueId)) decision.emit({ kind: "clueRevealed", roundNumber, clueId: effect.clueId, text: effect.text });
+      if (state.clues.some((clue) => clue.id === effect.clueId)) return;
+      decision.emit({ kind: "clueRevealed", roundNumber, clueId: effect.clueId, text: effect.text });
+      decision.request({ kind: "deliver", delivery: { kind: "clueFound", text: effect.text } });
       return;
     case "advanceClock": {
       const before = state.clocks[effect.clockId]?.filled ?? 0;
@@ -53,6 +56,12 @@ export function applyStoryEffect(decision: Decision, roundNumber: number, effect
       if (state.keepsakes?.[effect.keepsake.id] !== undefined) return;
       decision.emit({ kind: "keepsakeGained", roundNumber, keepsake: effect.keepsake });
       decision.request({ kind: "deliver", delivery: { kind: "keepsakeGained", keepsakeId: effect.keepsake.id } });
+      return;
+    case "advanceTime":
+      decision.changeWorld(roundNumber, { kind: "advance", steps: effect.steps }, "story");
+      return;
+    case "setWeather":
+      decision.changeWorld(roundNumber, { kind: "weather", weather: effect.weather }, "story");
       return;
     case "spendGold": {
       const split = decision.ctx.rules.houseRules.option(lootGold) === "split";

@@ -3,9 +3,10 @@ import { describe, expect, it } from "vitest";
 import { AdventureDocumentError, checkEditionsMatch, parseAdventureDocument } from "../../../src/application/campaign/adventures/adventure-document.js";
 import { plannerStory, resolveStoryEffects, type ResolveOptions } from "../../../src/application/campaign/dm/story-effects.js";
 import type { PlannerProposal } from "../../../src/application/campaign/ports/dm-ports.js";
-import { encounterSpec } from "../../../src/domain/campaign/adventure/adventure-bible.js";
+import { encounterSpec, longRestEffects } from "../../../src/domain/campaign/adventure/adventure-bible.js";
 import type { RoundPlanProposal } from "../../../src/domain/campaign/commands/campaign-command.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
+import { buildStartingState } from "../../../src/application/campaign/setup/starting-state.js";
 import { newCampaign } from "../../domain/campaign/campaign-fixtures.js";
 
 // Hazards, saving throws, random tables, keepsakes, notices, arrival effects, ambushes and a fight's dread, as an adventure says them.
@@ -238,6 +239,67 @@ describe("whose gold pays", () => {
   });
 });
 
+describe("the story's clock, as an adventure says it", () => {
+  const withClock = (extra: string): string => document(extra).replace("startScene: scene:inn", "startScene: scene:inn\nstartTime: { day: 2, time: dusk, weather: rain }");
+
+  it("starts where the adventure says, and gives the game that day, time and weather", () => {
+    const parsed = parseAdventureDocument(withClock(""));
+    expect(parsed.bible.startTime).toEqual({ day: 2, time: "dusk", weather: "rain" });
+    const state = buildStartingState({ campaignId: "camp", organizerId: "u-org", adventure: parsed, seats: [{ userId: "u-a", heroId: "c-borin" }], pacing: { preset: "live" } as never });
+    expect(state.world).toEqual({ day: 2, time: "dusk", weather: "rain" });
+    expect(buildStartingState({ campaignId: "camp", organizerId: "u-org", adventure: parseAdventureDocument(document("")), seats: [{ userId: "u-a", heroId: "c-borin" }], pacing: { preset: "live" } as never }).world).toBeUndefined();
+  });
+
+  it("lets an interaction pass time or turn the weather, within range", () => {
+    const wait = `
+  - id: interaction:wait
+    sceneId: scene:field
+    label: Wait out the night
+    dmNotes: They sleep under the stars.
+    onSuccess:
+      - { kind: time, advance: 3 }
+      - { kind: weather, weather: fog }`;
+    const plan = resolve(withClock(wait), "interaction:wait");
+    expect(plan.effects?.map((planned) => planned.effect)).toEqual(expect.arrayContaining([{ kind: "advanceTime", steps: 3 }, { kind: "setWeather", weather: "fog" }]));
+    expect(() => parseAdventureDocument(withClock(wait.replace("advance: 3", "advance: 40")))).toThrow(AdventureDocumentError);
+    expect(() => parseAdventureDocument(withClock(wait.replace("weather: fog", "weather: hail")))).toThrow(AdventureDocumentError);
+  });
+
+  it("must match in both editions", () => {
+    const english = parseAdventureDocument(withClock(""));
+    const chinese = parseAdventureDocument(withClock("").replace("time: dusk", "time: dawn"));
+    expect(checkEditionsMatch([english, { ...chinese, bible: { ...chinese.bible, language: "zh-TW" } }]).length).toBeGreaterThan(0);
+  });
+});
+
+describe("what a scene brings with a long rest", () => {
+  const scenes = `
+  - id: scene:camp
+    title: Camp
+    publicDescription: A quiet camp.
+    dmNotes: Notes.
+    npcIds: []
+    onLongRest:
+      - { kind: notice, text: You dream of the road. }
+      - { kind: set, flag: rested-at-camp }`;
+
+  it("reaches the engine as effects for the scene the party is in, and for no other", () => {
+    const { bible } = parseAdventureDocument(document("", "", scenes));
+    expect(longRestEffects(bible, "scene:camp").map((effect) => effect.kind)).toEqual(["notice", "setFlag"]);
+    expect(longRestEffects(bible, "scene:inn")).toEqual([]);
+    expect(longRestEffects(bible, null)).toEqual([]);
+  });
+
+  it("may not start a fight or move the party, and must match in both editions", () => {
+    const bad = scenes.replace("{ kind: set, flag: rested-at-camp }", "{ kind: goto, scene: scene:inn }");
+    expect(() => parseAdventureDocument(document("", "", bad))).toThrow(AdventureDocumentError);
+    const other = parseAdventureDocument(document("", "", scenes.replace("You dream of the road.", "你夢見了旅途。")));
+    expect(checkEditionsMatch([parseAdventureDocument(document("", "", scenes)), { ...other, bible: { ...other.bible, language: "zh-TW" } }])).toEqual([]);
+    const differs = parseAdventureDocument(document("", "", scenes.replace("rested-at-camp", "rested-elsewhere")));
+    expect(checkEditionsMatch([parseAdventureDocument(document("", "", scenes)), { ...differs, bible: { ...differs.bible, language: "zh-TW" } }]).length).toBeGreaterThan(0);
+  });
+});
+
 describe("a fight that starts in ambush or with dread", () => {
   const fight = (extra: string): string => `
 encounters:
@@ -255,6 +317,15 @@ ${extra}
   it("reaches the engine's encounter spec", () => {
     const { bible } = parseAdventureDocument(document("", fight("    ambush: { dc: 14 }\n    dread: { ability: wis, dc: 11 }\n    surprised: foes")));
     expect(encounterSpec(bible.encounters[0]!, bible)).toMatchObject({ ambush: { dc: 14 }, dread: { ability: "wis", dc: 11 }, surprised: "foes" });
+  });
+
+  it("carries a monster's changed stats to the engine, and refuses ones out of range", () => {
+    const text = (stats: string): string => fight("").replace("monsters: [{ monsterId: monster:goblin, zoneId: rows }]", `monsters: [{ monsterId: monster:goblin, zoneId: rows, stats: ${stats} }]`);
+    const { bible } = parseAdventureDocument(document("", text("{ hp: 30, armorClass: 16, toHit: 2, damage: 1 }")));
+    expect(encounterSpec(bible.encounters[0]!, bible).monsters[0]?.stats).toEqual({ hp: 30, armorClass: 16, toHit: 2, damage: 1 });
+    expect(() => parseAdventureDocument(document("", text("{ hp: 0 }")))).toThrow(AdventureDocumentError);
+    expect(() => parseAdventureDocument(document("", text("{ armorClass: 40 }")))).toThrow(AdventureDocumentError);
+    expect(() => parseAdventureDocument(document("", text("{ speed: 10 }")))).toThrow(AdventureDocumentError);
   });
 
   it("refuses a dread with no ability", () => {

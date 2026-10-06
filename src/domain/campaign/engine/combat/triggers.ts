@@ -47,8 +47,7 @@ function addMonsters(decision: Decision, triggerIndex: number, monsters: readonl
     const id = `${slug}-t${triggerIndex}-${position + 1}`;
     const summonerId = encounter.order[encounter.order.length - 1];
     if (summonerId === undefined) return;
-    const combatant = monsterCombatant(monster, content, { id, letter: null, zoneId: entry.zoneId, npcId: entry.npcId, fleeBelowHpFraction: entry.fleeBelowHpFraction });
+    const combatant = monsterCombatant(monster, content, { id, letter: null, zoneId: entry.zoneId, npcId: entry.npcId, fleeBelowHpFraction: entry.fleeBelowHpFraction, ...(entry.rank === undefined ? {} : { rank: entry.rank }), ...(entry.stats === undefined ? {} : { stats: entry.stats }) });
     decision.emit({ kind: "combatantSummoned", summonerId, combatant: { ...combatant, initiative: 0 } });
-    decision.request({ kind: "monsterImage", monsterId: entry.monsterId, npcId: entry.npcId });
   });
 }

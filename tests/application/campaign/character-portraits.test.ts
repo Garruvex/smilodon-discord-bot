@@ -17,7 +17,7 @@ const build: BuildChoices = {
   backstory: "",
 };
 
-async function setup(options: { stylizer?: boolean; generator?: boolean; maxPerHour?: number } = {}): Promise<{
+async function setup(options: { stylizer?: boolean; generator?: boolean; maxPerWindow?: number; windowMinutes?: number } = {}): Promise<{
   portraits: CharacterPortraits;
   store: MemoryPortraitStore;
   stylizer: Stylizer;
@@ -37,12 +37,23 @@ async function setup(options: { stylizer?: boolean; generator?: boolean; maxPerH
     clock: r.clock,
     ...(options.stylizer === false ? {} : { stylizer }),
     ...(options.generator === false ? {} : { generator: painter }),
-    ...(options.maxPerHour === undefined ? {} : { maxPerHour: options.maxPerHour }),
+    ...(options.maxPerWindow === undefined ? {} : { maxPerWindow: options.maxPerWindow }),
+    ...(options.windowMinutes === undefined ? {} : { windowMinutes: options.windowMinutes }),
   });
   return { portraits, store, stylizer, painter, characterId: made.character.id, r };
 }
 
 describe("reading an upload", () => {
+  it("can select an earlier generated image without accepting the latest candidate", async () => {
+    const { portraits, characterId } = await setup();
+    const earlier = Buffer.concat([pngBytes, Buffer.from("earlier")]);
+    await portraits.fromDescription("u-alice", characterId, "ink", "");
+    expect(await portraits.savePreview("u-alice", characterId, earlier)).toEqual({ kind: "ok" });
+    await portraits.discard("u-alice", characterId);
+    expect((await portraits.current("u-alice", characterId))?.bytes).toEqual(earlier);
+    expect(await portraits.savePreview("u-bob", characterId, pngBytes)).toEqual({ kind: "refused", reason: "notFound" });
+    expect(await portraits.savePreview("u-alice", characterId, Buffer.from("not an image"))).toEqual({ kind: "refused", reason: "badType" });
+  });
   it("knows a picture by its first bytes, not by what it claims", () => {
     expect(sniffImageType(pngBytes)).toBe("image/png");
     expect(sniffImageType(Buffer.from([0xff, 0xd8, 0xff, 0xe0]))).toBe("image/jpeg");
@@ -55,14 +66,14 @@ describe("reading an upload", () => {
 describe("the portrait prompt", () => {
   it("keeps the likeness when there is a reference, and paints from words when there is none", () => {
     const withPicture = portraitPrompt(build, "ink", "a red cloak", true);
-    expect(withPicture).toContain("turn the person or figure in the reference picture");
+    expect(withPicture).toContain("make the person in the reference image the same character");
     expect(withPicture).toContain("Wren, a gnome rogue");
     expect(withPicture).toContain("Quick and quiet. a red cloak");
     expect(withPicture).toContain("comic-book");
     expect(withPicture).toContain("No text");
     const fromWords = portraitPrompt(build, "watercolor", "", false);
-    expect(fromWords).not.toContain("reference picture");
-    expect(fromWords).toContain("a fantasy tabletop RPG character portrait of Wren");
+    expect(fromWords).not.toContain("reference image");
+    expect(fromWords).toContain("depict Wren, a gnome rogue as a fantasy tabletop RPG character");
   });
 });
 
@@ -148,14 +159,24 @@ describe("painting from the description", () => {
 });
 
 describe("limits and cleanup", () => {
-  it("allows a few pictures an hour per person, then says when to come back", async () => {
-    const { portraits, characterId, r } = await setup({ maxPerHour: 2 });
+  it("allows a few pictures per 15 minutes and reports the remaining wait", async () => {
+    const { portraits, characterId, r } = await setup({ maxPerWindow: 2 });
     expect((await portraits.fromDescription("u-alice", characterId, "ink", "")).kind).toBe("ok");
     expect((await portraits.fromDescription("u-alice", characterId, "ink", "")).kind).toBe("ok");
     const third = await portraits.fromDescription("u-alice", characterId, "ink", "");
-    expect(third).toMatchObject({ kind: "refused", reason: "rateLimited" });
-    r.clock.advance(61 * 60 * 1000);
+    expect(third).toEqual({ kind: "refused", reason: "rateLimited", retryAfterMinutes: 15 });
+    r.clock.advance(10 * 60 * 1000);
+    expect(await portraits.fromDescription("u-alice", characterId, "ink", "")).toEqual({ kind: "refused", reason: "rateLimited", retryAfterMinutes: 5 });
+    r.clock.advance(5 * 60 * 1000);
     expect((await portraits.fromDescription("u-alice", characterId, "ink", "")).kind).toBe("ok");
+  });
+
+  it("uses a configured generation count and window", async () => {
+    const { portraits, characterId, r } = await setup({ maxPerWindow: 1, windowMinutes: 5 });
+    expect((await portraits.fromDescription("u-alice", characterId, "ink", "")).kind).toBe("ok");
+    expect(await portraits.again("u-alice", characterId)).toEqual({ kind: "refused", reason: "rateLimited", retryAfterMinutes: 5 });
+    r.clock.advance(5 * 60 * 1000);
+    expect((await portraits.again("u-alice", characterId)).kind).toBe("ok");
   });
 
   it("removes the portrait, and everything with a deleted character", async () => {

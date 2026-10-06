@@ -30,6 +30,13 @@ export const jaDnd: SettingsTextCatalog = {
       done: "D&D を設定しました。ゲームのハブは {channel} です。足りないものは作り直しました。",
     },
   },
+  "dnd.setup.language": { label: "言語", description: "D&D ハブと新しいチャンネルの言語。", choices: { en: "英語", "zh-TW": "繁体字中国語" } },
+
+  "dnd.language": {
+    label: "D&D の言語", description: "ハブと新しいゲームの既定の言語を選びます。",
+    messages: { unavailable: "このボットでは D&D を利用できません。", notSetUp: "先に D&D を設定してください。", done: "D&D の言語を更新しました。既存のゲームの言語は変わりません。" },
+  },
+  "dnd.language.language": { label: "言語", description: "ハブと新しいゲームの既定の言語を選びます。", choices: { en: "英語", "zh-TW": "繁体字中国語" } },
 
   "dnd.hub-channel": {
     label: "ハブを移す",

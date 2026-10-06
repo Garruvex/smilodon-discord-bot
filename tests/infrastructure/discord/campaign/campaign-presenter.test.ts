@@ -67,6 +67,23 @@ async function table(language: "en" | "zh-TW" = "en"): Promise<Table> {
 const actor = { kind: "user", userId: "u-org" } as const;
 
 describe("the presenter", () => {
+  it.each(["en", "zh-TW"] as const)("shows accepted intent before the outcome in %s", async (language) => {
+    const t = await table(language);
+    const intent = "I check **the surroundings**.\nLook for an exit.";
+    await t.r.bus.execute(t.key, { kind: "submitAction", characterId: t.hero, text: intent }, { commandId: "intent", actor });
+    const presenter = new DiscordCampaignPresenter({ unitOfWork: t.r.store, messages: t.messages, cards: t.cards, adventures: t.r.adventures, glossaries });
+    await presenter.present(t.key, { kind: "actionIntent", roundNumber: 1, characterId: t.hero, revision: 1 }, "intent-delivery");
+    const post = t.messages.posts.at(-1);
+    expect(post?.style).toBe("intent");
+    expect(post?.content).toContain(language === "zh-TW" ? "行動意圖" : "Action intent");
+    expect(post?.content).toContain("\\*\\*the surroundings\\*\\*");
+    expect(post?.content).toContain("\n> Look for an exit.");
+    expect(post?.content).toContain(language === "zh-TW" ? "等待判定" : "Awaiting resolution");
+    const count = t.messages.posts.length;
+    await presenter.present(t.key, { kind: "actionIntent", roundNumber: 1, characterId: t.hero, revision: 99 });
+    expect(t.messages.posts).toHaveLength(count);
+  });
+
   it("posts the roll result, then the narration, then a fresh panel below them", async () => {
     const t = await table();
     t.r.plannerScript.push({
@@ -82,6 +99,10 @@ describe("the presenter", () => {
     await t.runtime.runOnce();
 
     const posts = t.messages.posts.filter((post) => post.channelId === adventure);
+    const intentPost = posts.find((post) => post.style === "intent");
+    expect(intentPost?.content).toContain("I sneak in.");
+    expect(intentPost?.order).toBeLessThan(posts.find((post) => post.style === "roll")?.order ?? 0);
+    expect(posts.find((post) => post.content === "The night air stirs.")?.style).toBe("narration");
     expect(posts.find((post) => post.content.startsWith("🎲"))?.content).toMatch(/^🎲 \*\*.+\*\* · Stealth \(DEX\): d20 \*\*\d+\*\* [+−] \d+ = \*\*\d+\*\* vs DC 15 — [✅❌]/);
     expect(posts.some((post) => post.content === "The night air stirs.")).toBe(true);
     const narrationOrder = posts.find((post) => post.content === "The night air stirs.")?.order ?? 0;
@@ -120,6 +141,32 @@ describe("the presenter", () => {
     const before = t.messages.posts.length;
     await presenter.present(t.key, { kind: "timerReminder", target });
     expect(t.messages.posts.slice(before).filter((post) => post.content.startsWith("⏰"))).toEqual([]);
+  });
+
+  it("tags the players who must roll when a game played by post waits on dice, and says nothing at a live table", async () => {
+    for (const pacingPreset of ["playByPost", "live"] as const) {
+      const t = await table();
+      await t.r.store.transaction(async (tx) => {
+        const stored = await tx.loadRecord(t.key);
+        if (stored !== undefined) await tx.saveRecord({ ...stored.record, pacingPreset }, stored.revision);
+      });
+      const presenter = new DiscordCampaignPresenter({ unitOfWork: t.r.store, messages: t.messages, cards: t.cards, adventures: t.r.adventures, glossaries });
+      t.r.plannerScript.push({
+        roundNumber: 1,
+        actions: [{ characterId: t.hero, resolution: { kind: "check", test: { kind: "skill", skill: "stealth" }, dcTier: "medium", rollModeReasons: [] } }],
+      });
+      await t.r.bus.execute(t.key, { kind: "submitAction", characterId: t.hero, text: "I sneak in." }, { commandId: "a", actor });
+      await t.runtime.runOnce();
+      const before = t.messages.posts.length;
+      await presenter.present(t.key, { kind: "rollsCalled", roundNumber: 1 });
+      const called = t.messages.posts.slice(before);
+      if (pacingPreset === "live") expect(called).toEqual([]);
+      else {
+        expect(called).toHaveLength(1);
+        expect(called[0]?.content).toBe("🎲 <@u-org> — your dice are waiting. Press **Roll** on the panel.");
+        expect(called[0]?.mentions).toEqual(["u-org"]);
+      }
+    }
   });
 
   it("stages the dice reveal: the die is thrown, then the same message shows the result", async () => {
@@ -282,7 +329,7 @@ describe("the presenter in a fight the players play", () => {
     await t.r.bus.execute(t.key, { kind: "combatAttack", combatantId: t.hero, targetId: "goblin", weapon: "item:longsword" }, { commandId: "a1", actor });
     await t.runtime.runOnce();
     const line = t.messages.posts.find((post) => post.content.startsWith("⚔️ **Borin** ·"))?.content ?? "";
-    expect(line).toMatch(/^⚔️ \*\*Borin\*\* · Longsword → Goblin: (hit, \d+ damage|critical hit, \d+ damage|miss)/);
+    expect(line).toMatch(/^⚔️ \*\*Borin\*\* · Longsword → \*\*Goblin\*\*: (hit, \d+ damage|critical hit, \d+ damage|miss)/);
   });
 
   it("says when a hero takes the Dodge action", async () => {
@@ -323,7 +370,7 @@ describe("the look of each kind of message", () => {
     await t.runtime.runOnce();
     const posts = t.messages.posts.filter((post) => post.channelId === adventure);
     expect(posts.find((post) => post.content.startsWith("🎲"))?.style).toBe("roll");
-    expect(posts.find((post) => post.content === "The night air stirs.")?.style).toBeUndefined();
+    expect(posts.find((post) => post.content === "The night air stirs.")?.style).toBe("narration");
 
     const fight = await table();
     await fightOn(fight);

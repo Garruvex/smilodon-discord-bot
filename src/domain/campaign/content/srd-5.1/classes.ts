@@ -21,7 +21,7 @@ export const fighter = defineClass({
   features: ["feature:hide", "feature:help", "feature:ready", "feature:escape-grapple", "feature:hold-reactions", "feature:resume-reactions", "feature:fighting-style-dueling", "feature:second-wind", "feature:grapple", "feature:shove"],
   kits: [
     { id: "knight", equipment: ["item:longsword", "item:chain-mail", "item:shield"] },
-    { id: "skirmisher", equipment: ["item:scimitar", "item:shortbow", "item:leather-armor"] },
+    { id: "skirmisher", equipment: ["item:longsword", "item:shortsword", "item:longbow", "item:leather-armor"] },
   ],
   spellcasting: null,
   suggested: ["str", "con", "dex", "wis", "int", "cha"],
@@ -42,8 +42,8 @@ export const rogue = defineClass({
   expertiseCount: 2,
   features: ["feature:hide", "feature:help", "feature:ready", "feature:escape-grapple", "feature:hold-reactions", "feature:resume-reactions", "feature:sneak-attack", "feature:thieves-cant", "feature:grapple", "feature:shove"],
   kits: [
-    { id: "shadow", equipment: ["item:shortsword", "item:shortbow", "item:leather-armor"] },
-    { id: "duelist", equipment: ["item:scimitar", "item:shortsword", "item:leather-armor"] },
+    { id: "shadow", equipment: ["item:shortsword", "item:shortbow", "item:dagger", "item:dagger", "item:leather-armor", "item:thieves-tools"] },
+    { id: "duelist", equipment: ["item:rapier", "item:shortsword", "item:dagger", "item:dagger", "item:leather-armor", "item:thieves-tools"] },
   ],
   spellcasting: null,
   suggested: ["dex", "cha", "int", "con", "wis", "str"],
@@ -66,8 +66,8 @@ export const cleric = defineClass({
   features: ["feature:hide", "feature:help", "feature:ready", "feature:escape-grapple", "feature:hold-reactions", "feature:resume-reactions", "feature:disciple-of-life"],
   kits: [
     // The Life Domain grants heavy armor proficiency.
-    { id: "shieldbearer", equipment: ["item:mace", "item:chain-mail", "item:shield"] },
-    { id: "wayfarer", equipment: ["item:mace", "item:leather-armor", "item:shield", "item:javelin"] },
+    { id: "shieldbearer", equipment: ["item:mace", "item:shield", "item:chain-mail", "item:light-crossbow", "item:emblem"] },
+    { id: "wayfarer", equipment: ["item:mace", "item:shield", "item:scale-mail", "item:javelin", "item:emblem"] },
   ],
   // Bless and Cure Wounds are Life Domain spells, always prepared; the other
   // level 1 cleric spells the catalog has are prepared too (the limit,
@@ -96,8 +96,8 @@ export const barbarian = defineClass({
   expertiseCount: 0,
   features: ["feature:hide", "feature:help", "feature:ready", "feature:escape-grapple", "feature:hold-reactions", "feature:resume-reactions", "feature:rage", "feature:grapple", "feature:shove"],
   kits: [
-    { id: "berserker", equipment: ["item:greataxe", "item:hide-armor"] },
-    { id: "totemic", equipment: ["item:greataxe", "item:leather-armor"] },
+    { id: "berserker", equipment: ["item:greataxe", "item:handaxe", "item:handaxe", "item:javelin"] },
+    { id: "totemic", equipment: ["item:battleaxe", "item:shield", "item:handaxe", "item:javelin"] },
   ],
   spellcasting: null,
   suggested: ["str", "con", "dex", "wis", "cha", "int"],
@@ -137,8 +137,8 @@ export const bard = defineClass({
   expertiseCount: 0,
   features: ["feature:hide", "feature:help", "feature:ready", "feature:escape-grapple", "feature:hold-reactions", "feature:resume-reactions", "feature:bardic-inspiration"],
   kits: [
-    { id: "lore", equipment: ["item:rapier", "item:leather-armor"] },
-    { id: "skald", equipment: ["item:quarterstaff", "item:leather-armor"] },
+    { id: "lore", equipment: ["item:rapier", "item:dagger", "item:leather-armor", "item:lute"] },
+    { id: "skald", equipment: ["item:longsword", "item:dagger", "item:leather-armor", "item:flute"] },
   ],
   spellcasting: { ability: "cha", spells: ["spell:vicious-mockery", "spell:healing-word", "spell:bless", "spell:cure-wounds"], slots: { 1: 2 } },
   suggested: ["cha", "dex", "con", "wis", "int", "str"],
@@ -180,8 +180,8 @@ export const druid = defineClass({
   expertiseCount: 0,
   features: ["feature:hide", "feature:help", "feature:ready", "feature:escape-grapple", "feature:hold-reactions", "feature:resume-reactions", "feature:druidic"],
   kits: [
-    { id: "land", equipment: ["item:quarterstaff", "item:leather-armor", "item:shield"] },
-    { id: "moonlit", equipment: ["item:scimitar", "item:leather-armor"] },
+    { id: "land", equipment: ["item:quarterstaff", "item:shield", "item:leather-armor", "item:sprig-of-mistletoe"] },
+    { id: "moonlit", equipment: ["item:scimitar", "item:dart", "item:leather-armor", "item:totem"] },
   ],
   spellcasting: { ability: "wis", spells: ["spell:produce-flame", "spell:cure-wounds", "spell:healing-word"], slots: { 1: 2 } },
   suggested: ["wis", "con", "dex", "int", "cha", "str"],
@@ -206,8 +206,8 @@ export const monk = defineClass({
   // per item), so a monk's AC is 10 + Dex, as if unarmed and unarmored.
   features: ["feature:hide", "feature:help", "feature:ready", "feature:escape-grapple", "feature:hold-reactions", "feature:resume-reactions", "feature:martial-arts", "feature:grapple", "feature:shove"],
   kits: [
-    { id: "openhand", equipment: ["item:shortsword"] },
-    { id: "umbra", equipment: ["item:dagger"] },
+    { id: "openhand", equipment: ["item:shortsword", "item:dart"] },
+    { id: "umbra", equipment: ["item:dagger", "item:dart"] },
   ],
   spellcasting: null,
   suggested: ["dex", "wis", "con", "str", "cha", "int"],
@@ -229,8 +229,8 @@ export const paladin = defineClass({
   // No spellcasting: paladin spells begin at level 2 in the SRD.
   features: ["feature:hide", "feature:help", "feature:ready", "feature:escape-grapple", "feature:hold-reactions", "feature:resume-reactions", "feature:divine-sense", "feature:lay-on-hands", "feature:grapple", "feature:shove"],
   kits: [
-    { id: "oath", equipment: ["item:longsword", "item:chain-mail", "item:shield"] },
-    { id: "vengeance", equipment: ["item:longsword", "item:leather-armor", "item:javelin"] },
+    { id: "oath", equipment: ["item:longsword", "item:shield", "item:chain-mail", "item:javelin", "item:emblem"] },
+    { id: "vengeance", equipment: ["item:longsword", "item:warhammer", "item:chain-mail", "item:javelin", "item:emblem"] },
   ],
   spellcasting: null,
   suggested: ["str", "cha", "con", "wis", "dex", "int"],
@@ -256,8 +256,8 @@ export const ranger = defineClass({
   // No spellcasting: ranger spells begin at level 2 in the SRD.
   features: ["feature:hide", "feature:help", "feature:ready", "feature:escape-grapple", "feature:hold-reactions", "feature:resume-reactions", "feature:favored-enemy", "feature:natural-explorer", "feature:grapple", "feature:shove"],
   kits: [
-    { id: "hunter", equipment: ["item:longbow", "item:leather-armor"] },
-    { id: "beastmaster", equipment: ["item:shortbow", "item:scimitar", "item:leather-armor"] },
+    { id: "hunter", equipment: ["item:longbow", "item:shortsword", "item:shortsword", "item:scale-mail"] },
+    { id: "beastmaster", equipment: ["item:shortbow", "item:shortsword", "item:shortsword", "item:leather-armor"] },
   ],
   spellcasting: null,
   suggested: ["dex", "wis", "con", "str", "cha", "int"],
@@ -280,8 +280,8 @@ export const sorcerer = defineClass({
   expertiseCount: 0,
   features: ["feature:hide", "feature:help", "feature:ready", "feature:escape-grapple", "feature:hold-reactions", "feature:resume-reactions", "feature:draconic-bloodline"],
   kits: [
-    { id: "wildmagic", equipment: ["item:dagger"] },
-    { id: "draconic", equipment: ["item:quarterstaff"] },
+    { id: "wildmagic", equipment: ["item:light-crossbow", "item:dagger", "item:dagger", "item:component-pouch"] },
+    { id: "draconic", equipment: ["item:quarterstaff", "item:dagger", "item:dart", "item:component-pouch"] },
   ],
   spellcasting: { ability: "cha", spells: ["spell:fire-bolt", "spell:magic-missile", "spell:shield"], slots: { 1: 2 } },
   suggested: ["cha", "con", "dex", "wis", "int", "str"],
@@ -303,8 +303,8 @@ export const warlock = defineClass({
   expertiseCount: 0,
   features: ["feature:hide", "feature:help", "feature:ready", "feature:escape-grapple", "feature:hold-reactions", "feature:resume-reactions", "feature:fiend-patron", "feature:dark-ones-blessing"],
   kits: [
-    { id: "fiendpact", equipment: ["item:dagger", "item:leather-armor"] },
-    { id: "oldone", equipment: ["item:quarterstaff", "item:leather-armor"] },
+    { id: "fiendpact", equipment: ["item:light-crossbow", "item:dagger", "item:dagger", "item:leather-armor", "item:component-pouch"] },
+    { id: "oldone", equipment: ["item:quarterstaff", "item:dagger", "item:dagger", "item:leather-armor", "item:component-pouch"] },
   ],
   // Pact Magic: fewer, always-highest-level slots. One slot at level 1.
   spellcasting: { ability: "cha", spells: ["spell:eldritch-blast", "spell:witch-bolt"], slots: { 1: 1 } },
@@ -327,8 +327,8 @@ export const wizard = defineClass({
   expertiseCount: 0,
   features: ["feature:hide", "feature:help", "feature:ready", "feature:escape-grapple", "feature:hold-reactions", "feature:resume-reactions", "feature:arcane-recovery"],
   kits: [
-    { id: "scholar", equipment: ["item:dagger", "item:quarterstaff"] },
-    { id: "evoker", equipment: ["item:dagger"] },
+    { id: "scholar", equipment: ["item:quarterstaff", "item:spellbook", "item:component-pouch"] },
+    { id: "evoker", equipment: ["item:dagger", "item:spellbook", "item:component-pouch"] },
   ],
   // A Wizard's classic utility repertoire, so the outside-combat spellcasting
   // step (engine/utility-magic.ts) has a caster who actually knows any of it

@@ -3,12 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { EncounterSpec, PlannedEffect, RoundPlanProposal } from "../../../src/domain/campaign/commands/campaign-command.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 import { alex, d20Roll, jamie, kinds, newCampaign, organizer, reject, run, system } from "./campaign-fixtures.js";
+import { deferredMove, surplusMove } from "../../../src/domain/campaign/engine/scene-move.js";
 import { replay } from "../../../src/domain/campaign/events/evolve.js";
 import { Fight, skirmish } from "./combat-fixtures.js";
 
 const ambush: EncounterSpec = { ...skirmish, id: "encounter:gate-ambush" };
 
-const toChapel: PlannedEffect = { effect: { kind: "transitionScene", sceneId: "scene:ruined-chapel" }, when: { kind: "always" } };
+const toChapel: PlannedEffect = { effect: { kind: "transitionScene", sceneId: "scene:ruined-chapel" }, when: { kind: "always" }, forced: true };
 const ambushIfSpotted: PlannedEffect = {
   effect: { kind: "startEncounter", encounter: ambush },
   when: { kind: "checkOutcome", characterId: "c-mira", success: false },
@@ -41,17 +42,19 @@ describe("story effects", () => {
   it("asks for a moment picture when a natural 20 or 1 decided a round, and not for an ordinary roll", () => {
     const planned = run(closedRound(), system, { kind: "applyRoundPlan", proposal: sneaking([toChapel]) }).state;
     const told = (d20: number): ReturnType<typeof run> => run(rollStealth(planned, d20).state, system, { kind: "recordNarration", roundNumber: 1, text: "Mira slips inside." });
-    expect(told(20).requests).toContainEqual({ kind: "momentImage", roundNumber: 1, auto: true });
-    expect(told(1).requests).toContainEqual({ kind: "momentImage", roundNumber: 1, auto: true });
+    expect(told(20).requests).toContainEqual(expect.objectContaining({ kind: "momentImage", roundNumber: 1, auto: true }));
+    expect(told(1).requests).toContainEqual(expect.objectContaining({ kind: "momentImage", roundNumber: 1, auto: true }));
     expect(told(12).requests.some((request) => request.kind === "momentImage")).toBe(false);
   });
 
-  it("asks for a portrait of each kind of monster as its fight begins", () => {
+  it("asks for one scene with the monsters as its fight begins", () => {
     const planned = run(closedRound(), system, { kind: "applyRoundPlan", proposal: sneaking([ambushIfSpotted]) }).state;
     const narrated = run(rollStealth(planned, 3).state, system, { kind: "recordNarration", roundNumber: 1, text: "A goblin spots Mira!" });
-    const asked = narrated.requests.flatMap((request) => (request.kind === "monsterImage" ? [request.monsterId] : []));
-    expect(asked.length).toBeGreaterThan(0);
-    expect(new Set(asked).size).toBe(asked.length);
+    const asked = narrated.requests.filter((request) => request.kind === "encounterImage");
+    expect(asked).toHaveLength(1);
+    expect(asked[0]?.monsters.length).toBeGreaterThan(0);
+    expect(asked[0]?.snapshot.sceneId).toBe(narrated.state.sceneId);
+    expect(narrated.requests.some((request) => request.kind === "monsterImage")).toBe(false);
   });
 
   it("moves the scene and queues the fight on a failed check, then starts it after narration", () => {
@@ -65,7 +68,7 @@ describe("story effects", () => {
     expect(failed.state.pendingEncounter?.id).toBe("encounter:gate-ambush");
     expect(failed.requests).toContainEqual({ kind: "narrate", roundNumber: 1 });
     // The new scene asks for a picture, which nothing waits on.
-    expect(failed.requests).toContainEqual({ kind: "sceneImage", sceneId: "scene:ruined-chapel", roundNumber: 1 });
+    expect(failed.requests).toContainEqual(expect.objectContaining({ kind: "sceneImage", sceneId: "scene:ruined-chapel", roundNumber: 1 }));
 
     const narrated = run(failed.state, system, { kind: "recordNarration", roundNumber: 1, text: "A goblin spots Mira!" });
     expect(kinds(narrated.events)).toEqual(["narrationRecorded", "encounterStarted"]);
@@ -98,6 +101,27 @@ describe("story effects", () => {
         "Encounter encounter:other: Unknown monster monster:dragon.",
       ],
     });
+  });
+
+  it("accepts a move for each way a check can go, and holds only the one that fires", () => {
+    const onSuccess: PlannedEffect = { effect: { kind: "transitionScene", sceneId: "scene:ruined-chapel" }, when: { kind: "checkOutcome", characterId: "c-mira", success: true } };
+    const onFailure: PlannedEffect = { effect: { kind: "transitionScene", sceneId: "scene:old-watchtower" }, when: { kind: "checkOutcome", characterId: "c-mira", success: false } };
+    const planned = run(closedRound(), system, { kind: "applyRoundPlan", proposal: sneaking([onSuccess, onFailure]) }).state;
+    const succeeded = rollStealth(planned, 15);
+    const proposed = succeeded.events.filter((event) => event.kind === "sceneMoveProposed");
+    expect(proposed).toHaveLength(1);
+    expect(proposed[0]).toMatchObject({ sceneId: "scene:ruined-chapel" });
+    expect(kinds(succeeded.events)).not.toContain("sceneTransitioned");
+  });
+
+  it("holds the first move when two fire at once, and drops the other with what it brings", () => {
+    const first: PlannedEffect = { effect: { kind: "transitionScene", sceneId: "scene:ruined-chapel" }, when: { kind: "always" } };
+    const second: PlannedEffect = { effect: { kind: "transitionScene", sceneId: "scene:old-watchtower" }, when: { kind: "always" } };
+    const clue: PlannedEffect = { effect: { kind: "transitionScene", sceneId: "scene:old-watchtower" }, when: { kind: "always" }, arrivalOf: "scene:old-watchtower" };
+    const held = deferredMove([first, second, clue]);
+    expect(held).toEqual([first]);
+    expect(surplusMove([first, second, clue], held)).toEqual([second, clue]);
+    expect(surplusMove([first], deferredMove([first]))).toEqual([]);
   });
 
   it("runs each encounter only once", () => {
@@ -245,5 +269,20 @@ describe("after a fight", () => {
     expect(ended("victory").heroStatus["c-borin"]?.hp).toBe(1);
     expect(ended("victory").heroStatus["c-mira"]?.hp).toBe(9);
     expect(ended("defeat").heroStatus["c-borin"]?.hp).toBe(1);
+  });
+
+  it("remembers an NPC killed in the fight, and refuses to talk to or trade with them afterwards", () => {
+    const named: EncounterSpec = { ...skirmish, monsters: [{ monsterId: "monster:goblin", zoneId: "courtyard", npcId: "npc:smith", fleeBelowHpFraction: null }, { monsterId: "monster:goblin", zoneId: "courtyard", npcId: null, fleeBelowHpFraction: null }] };
+    const fight = new Fight().rolls([20, 15, 5, 4]).run(organizer, { kind: "startEncounter", spec: named });
+    const slain = {
+      ...fight.encounter,
+      combatants: Object.fromEntries(
+        Object.entries(fight.encounter.combatants).map(([id, combatant]) => [id, combatant.source.kind === "monster" && combatant.source.npcId === "npc:smith" ? { ...combatant, hp: 0, condition: "dead" as const } : combatant]),
+      ),
+    };
+    const after = replay({ ...fight.state, encounter: slain }, [{ kind: "encounterEnded", outcome: "victory" }]);
+    expect(after.npcsDown).toEqual(["npc:smith"]);
+    expect(reject(after, jamie, { kind: "askNpc", characterId: "c-borin", npcId: "npc:smith", question: "Are you well?" })).toEqual({ code: "npcDown" });
+    expect(reject(after, jamie, { kind: "buyItem", characterId: "c-borin", npcId: "npc:smith", itemId: "item:dagger", price: 2 })).toEqual({ code: "npcDown" });
   });
 });

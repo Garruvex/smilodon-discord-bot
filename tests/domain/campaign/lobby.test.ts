@@ -9,6 +9,7 @@ import {
   leave,
   openLobby,
   readyToStart,
+  resize,
   remove,
   start,
   type LobbyResult,
@@ -123,5 +124,17 @@ describe("starting", () => {
     const cancelled = expectOk(cancel(lobby(), "u-a", "u-a"));
     expect(cancelled.status).toBe("cancelled");
     expect(cancel(cancelled, "u-a", "u-a")).toEqual({ ok: false, reason: "closed" });
+  });
+});
+
+describe("changing the party size", () => {
+  it("allows more or fewer seats within 1 to 6, never below the players seated or the minimum", () => {
+    const open = lobby(2, 3);
+    expect(expectOk(resize(open, 5, 2)).maxPlayers).toBe(5);
+    expect(expectOk(resize(open, 2, 2)).maxPlayers).toBe(2);
+    expect(resize(open, 1, 0)).toEqual({ ok: false, reason: "invalidLimits" });
+    expect(resize(open, 2, 3)).toEqual({ ok: false, reason: "invalidLimits" });
+    expect(resize(open, 7, 0)).toEqual({ ok: false, reason: "invalidLimits" });
+    expect(expectOk(resize(open, 3, 1))).toBe(open);
   });
 });

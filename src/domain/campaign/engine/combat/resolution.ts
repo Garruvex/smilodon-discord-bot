@@ -4,7 +4,7 @@ import type { RollId } from "../../core/ids.js";
 import { abilityModifier } from "../../character/character-sheet.js";
 import type { ActionCost } from "../../combat/combat-events.js";
 import { areEngaged, isPresent, type Combatant, type CombatantId, type EncounterState, type PendingCheck, type PendingCombatRoll, type PendingEffectRoll, type ResolutionSource, type ResolutionState, type TargetOutcome } from "../../combat/combat-state.js";
-import { armorClassOf, attackBonusOf, autoFailsSave, bonusDiceFor, conditionLookup, effectResistances, hasCondition, hitsAreCritical, modifiersOf, saveBias } from "../../effects/effect-queries.js";
+import { armorClassOf, attackBonusOf, autoFailsSave, bonusDiceFor, canReact, conditionLookup, effectResistances, hasCondition, hitsAreCritical, modifiersOf, saveBias } from "../../effects/effect-queries.js";
 import type { EffectInstance } from "../../effects/effect-instance.js";
 import type { D20TestRoll } from "../../dice/d20-test.js";
 import type { SealedContent } from "../../rules/content-registry.js";
@@ -311,9 +311,10 @@ function withQuiveringPalm(resolution: ResolutionState, effects: readonly Effect
 function cuttingWords(decision: Decision, encounter: EncounterState, attackerId: CombatantId, total: number, against: number): number {
   const attacker = encounter.combatants[attackerId];
   if (attacker === undefined) return 0;
+  const lookup = conditionLookup(decision.ctx.rules.content);
   const key = "spell:bardic-inspiration";
   for (const bard of Object.values(encounter.combatants)) {
-    if (bard.side === attacker.side || !isPresent(bard) || bard.hp <= 0 || !bard.budget.reaction || !bard.traits.some((trait) => trait.kind === "cuttingWords") || hasCondition(bard, "condition:holding-reactions", conditionLookup(decision.ctx.rules.content))) continue;
+    if (bard.side === attacker.side || !isPresent(bard) || bard.hp <= 0 || !canReact(bard, lookup) || !bard.traits.some((trait) => trait.kind === "cuttingWords") || hasCondition(bard, "condition:holding-reactions", lookup)) continue;
     if ((distanceBetween(encounter, bard.id, attacker.id) ?? Infinity) > 60) continue;
     if ((bard.resources.featureUses[innateUseKey(key)] ?? bard.spellcasting?.innate?.[key] ?? 0) < 1) continue;
     const sides = bard.level >= 15 ? 12 : bard.level >= 10 ? 10 : bard.level >= 5 ? 8 : 6;
@@ -534,21 +535,22 @@ export function applyEffect(
       // prompt). Only against an attack roll, not a saving throw, matching
       // the SRD ("hits you with an attack").
       const isAttack = resolution.plan.check?.kind === "weaponAttack" || resolution.plan.check?.kind === "spellAttack";
-      const holding = hasCondition(recipient, "condition:holding-reactions", conditionLookup(decision.ctx.rules.content));
-      const dodges = isAttack && recipient.traits.some((trait) => trait.kind === "uncannyDodge") && recipient.budget.reaction && !holding;
+      const lookup = conditionLookup(decision.ctx.rules.content);
+      const holding = hasCondition(recipient, "condition:holding-reactions", lookup);
+      const canUseReaction = canReact(recipient, lookup) && !holding;
+      const dodges = isAttack && recipient.traits.some((trait) => trait.kind === "uncannyDodge") && canUseReaction;
       if (dodges) decision.emit({ kind: "uncannyDodgeUsed", combatantId: recipient.id });
       // Evasion: a Dexterity save against damage that halves on a success takes nothing on a success and half on a failure.
       const evades =
         resolution.plan.check?.kind === "savingThrow" && resolution.plan.check.ability === "dex" && recipient.traits.some((trait) => trait.kind === "evasion") && resolution.plan.onAvoid.some((other) => other.kind === "damage" && other.halfOfLand === true);
       const taken = evades ? (effect.halfOfLand === true ? 0 : Math.floor(rolled / 2)) : rolled;
       // Deflect Missiles: the reaction turns a ranged weapon hit down by the die's average, the Dexterity modifier and the level.
-      const deflects = !dodges && resolution.source.kind === "weapon" && resolution.source.option.range.kind === "ranged" && isAttack && recipient.traits.some((trait) => trait.kind === "deflectMissiles") && recipient.budget.reaction && !holding;
+      const deflects = !dodges && resolution.source.kind === "weapon" && resolution.source.option.range.kind === "ranged" && isAttack && recipient.traits.some((trait) => trait.kind === "deflectMissiles") && canUseReaction;
       if (deflects) decision.emit({ kind: "uncannyDodgeUsed", combatantId: recipient.id });
       const deflected = deflects ? 6 + abilityModifier(decision.state.characters[recipient.id]?.abilityScores.dex ?? 10) + recipient.level : 0;
       // Superior Hunter's Defense: the reaction gives resistance to this kind of damage, this blow included.
-      const lookup = conditionLookup(decision.ctx.rules.content);
       const resisted = damageMultiplier([...recipient.traits, ...effectResistances(recipient, lookup)], effect.damageType) < 1;
-      const hunting = !dodges && !deflects && !resisted && taken > 0 && recipient.hp > 0 && recipient.budget.reaction && !holding && recipient.traits.some((trait) => trait.kind === "hunterDefense");
+      const hunting = !dodges && !deflects && !resisted && taken > 0 && recipient.hp > 0 && canUseReaction && recipient.traits.some((trait) => trait.kind === "hunterDefense");
       let struck = recipient;
       if (hunting) {
         decision.emit({ kind: "uncannyDodgeUsed", combatantId: recipient.id });

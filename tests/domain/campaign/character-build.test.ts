@@ -54,7 +54,7 @@ describe("the guided builder", () => {
     expect(deriveSheet(rogue)).toMatchObject({ maxHp: 9, hitDie: 8, skills: { stealth: "expertise", perception: "expertise", acrobatics: "proficient", deception: "proficient" } });
     expect(deriveSheet(cleric)).toMatchObject({ maxHp: 9, spellcasting: { ability: "wis", slots: { 1: 2 } } });
     expect(deriveSheet(fighter).equipment).toEqual(["item:longsword", "item:chain-mail", "item:shield"]);
-    expect(kitEquipment({ class: "rogue", kit: "duelist" })).toEqual(["item:scimitar", "item:shortsword", "item:leather-armor"]);
+    expect(kitEquipment({ class: "rogue", kit: "duelist" })).toEqual(["item:rapier", "item:shortsword", "item:dagger", "item:dagger", "item:leather-armor", "item:thieves-tools"]);
   });
 
   it("has only content the ruleset actually has, so no sheet can name something missing", () => {

@@ -8,6 +8,7 @@ import type { ContentId } from "../rules/content-id.js";
 import type { DcTier, RollModeReason } from "../rules/difficulty.js";
 import type { Ability, DamageType } from "../rules/effects.js";
 import type { Keepsake } from "../state/campaign-state.js";
+import type { TimeOfDay, Weather } from "../rules/world-rules.js";
 
 // Who issued a command. Users are checked against saved campaign state
 // (membership, ownership, organizer); the system covers timers and workers.
@@ -38,9 +39,21 @@ export type CampaignCommand =
   | { readonly kind: "recordRoll"; readonly rollId: RollId; readonly result: RollResult }
   | { readonly kind: "markAway"; readonly userId: UserId }
   | { readonly kind: "markReturned"; readonly userId: UserId }
+  // The organizer frees the seat of a player who is away: their hero leaves the table, and the player can come back later with a hero of their own.
+  | { readonly kind: "retireMember"; readonly userId: UserId }
   // The owner lets another player at the table play their hero in fights while they are away, or takes it back.
   | { readonly kind: "grantProxy"; readonly proxyUserId: UserId }
   | { readonly kind: "revokeProxy" }
+  // A player suggests heading to a scene: the same vote as a move the Planner proposes. The application checks the way is open and
+  // supplies what arriving brings (the scene change first).
+  | { readonly kind: "proposeMove"; readonly sceneId: SceneId; readonly effects: readonly PartyEffect[] }
+  // The party is heading to a new scene. A player presses Stay to object, or takes it back.
+  | { readonly kind: "objectToMove" }
+  | { readonly kind: "withdrawObjection" }
+  | { readonly kind: "supportMove" }
+  | { readonly kind: "withdrawMoveSupport" }
+  // The organizer settles a pending move now: the party goes, or stays where it is.
+  | { readonly kind: "settleMove"; readonly outcome: "go" | "stay" }
   // Resumes a campaign that was waiting for players.
   | { readonly kind: "continue" }
   // Stops play: every timer is cancelled and no round, roll, or model work
@@ -55,7 +68,9 @@ export type CampaignCommand =
   | { readonly kind: "reportPlannerFailure"; readonly roundNumber: number; readonly problems: readonly string[] }
   // The organizer asks the Planner to try the held round again.
   | { readonly kind: "retryPlan" }
-  | { readonly kind: "recordNarration"; readonly roundNumber: number; readonly text: string }
+  | { readonly kind: "recordNarration"; readonly roundNumber: number; readonly text: string; readonly note?: string }
+  | { readonly kind: "reviewSceneNotes"; readonly roundNumber: number; readonly sceneId: SceneId; readonly results: readonly { readonly noteIndex: number; readonly decision: "keep" | "reword" | "drop"; readonly text: string; readonly reason: string }[] }
+  | { readonly kind: "compactSceneNotes"; readonly sceneId: SceneId; readonly throughRound: number; readonly text: string }
   // The Narrator's flourish for a combat round, or the fight's closing line.
   | { readonly kind: "recordCombatNarration"; readonly encounterId: string; readonly round: number; readonly text: string }
   | RecordLedgerFactCommand
@@ -70,7 +85,15 @@ export type CampaignCommand =
   | { readonly kind: "recordSummary"; readonly throughRound: number; readonly visibility: "public" | "private"; readonly text: string }
   // Organizer, outside combat. Short: limited features recharge. Long: HP,
   // spell slots, and every feature recharge.
-  | { readonly kind: "takeRest"; readonly rest: "short" | "long" }
+  // story: what the scene attaches to a long rest (lines, clues, flags, rewards, keepsakes), from the adventure.
+  // The organizer corrects the story's day, time or weather (audited: the event says it was a correction, and why).
+  | { readonly kind: "setWorld"; readonly day?: number; readonly time?: TimeOfDay; readonly weather?: Weather | null; readonly note?: string }
+  | { readonly kind: "takeRest"; readonly rest: "short" | "long"; readonly story?: readonly PartyEffect[] }
+  // Organizer: rest as soon as the round or fight in progress is over (taken at once if nothing is going). rest null takes the request back.
+  | { readonly kind: "queueRest"; readonly rest: "short" | "long" | null; readonly story?: readonly PartyEffect[] }
+  // Any player present proposes a rest; the others answer. A majority of those present makes it as good as the organizer's own request.
+  | { readonly kind: "proposeRest"; readonly rest: "short" | "long"; readonly story?: readonly PartyEffect[] }
+  | { readonly kind: "answerRestVote"; readonly agree: boolean }
   | InventoryCommand
   // Organizer, after a lost fight: play it again from its start, with fresh dice.
   | { readonly kind: "retryEncounter" }
@@ -96,6 +119,7 @@ export type CampaignCommand =
   | DialogueCommand
   | UtilityMagicCommand
   | HealingMagicCommand
+  | HitDiceCommand
   | CompanionMagicCommand
   | RevivalMagicCommand
   | TravelCommand
@@ -156,6 +180,13 @@ export type RevivalMagicCommand = {
   readonly targetId: CharacterId;
   readonly spellId: ContentId<"spell">;
   readonly slotLevel: number;
+};
+
+// A hero spends Hit Dice during a short rest: each die is rolled, the Constitution modifier is added, and the total is healed.
+export type HitDiceCommand = {
+  readonly kind: "spendHitDice";
+  readonly characterId: CharacterId;
+  readonly count: number;
 };
 
 // A slotted healing spell on a friend outside combat (engine/healing-magic.ts):
@@ -269,6 +300,10 @@ export interface EncounterSpec {
   // A victory here raises the party to this level at a milestone table (the
   // adventure's own story beat). Ignored where XP levels the party.
   readonly milestoneLevel?: number;
+  // The party size this fight was tuned for; with more heroes every foe's hit points grow in proportion (heroes / partyBase). Absent: no scaling.
+  readonly partyBase?: number;
+  // Foes who join a bigger party instead of the usual growth: two from this list (in turn) for each hero beyond partyBase.
+  readonly reinforcements?: readonly EncounterMonster[];
   // Beats inside the fight: each fires once, the first time its condition holds. Absent: none.
   readonly triggers?: readonly EncounterTrigger[];
   // Story effects applied when the party wins (after the loot and experience). Absent: none.
@@ -293,12 +328,23 @@ export interface EncounterTrigger {
   readonly effects: readonly FightEffect[];
 }
 
+// What an adventure changes about a borrowed stat block: a tougher or weaker version of an SRD monster. Bonuses are added to every attack.
+export interface MonsterStats {
+  readonly hp?: number;
+  readonly armorClass?: number;
+  readonly toHit?: number;
+  readonly damage?: number;
+}
+
 export interface EncounterMonster {
   readonly monsterId: ContentId<"monster">;
   readonly zoneId: string;
+  // Optional authored role used only for clear visual identification in the Activity.
+  readonly rank?: "boss" | "elite" | "minion";
   // A named NPC this monster plays, e.g. npc:skarn.
   readonly npcId: string | null;
   readonly fleeBelowHpFraction: number | null;
+  readonly stats?: MonsterStats;
 }
 
 export interface RecordLedgerFactCommand {
@@ -326,6 +372,15 @@ export interface RoundPlanProposal {
 export interface PlannedEffect {
   readonly effect: StoryEffect;
   readonly when: EffectCondition;
+  // A scene change the story itself makes (an authored result, a trapdoor)
+  // happens at once. Without this, a move the Planner proposes waits for the
+  // table: silence agrees, and a majority pressing Stay stops it.
+  readonly forced?: boolean;
+  // This effect is part of arriving in that scene (its onEnter effects), so it
+  // waits with the move instead of happening before the party gets there.
+  readonly arrivalOf?: SceneId;
+  // On a Planner's move: the heroes whose actions head there. Fewer than half of those who acted and the move is not proposed.
+  readonly movers?: readonly CharacterId[];
 }
 
 // The application resolves authored IDs (encounters) to their definitions
@@ -353,6 +408,10 @@ export type StoryEffect =
   | { readonly kind: "notice"; readonly noticeId: string; readonly text: string }
   // A story object the party now carries (a token, a letter), with the name and words the table knows it by. Once per id.
   | { readonly kind: "grantKeepsake"; readonly keepsake: Keepsake }
+  // Time passes in the story by this many phases of the day (six make a day). Ignored when the adventure has no clock.
+  | { readonly kind: "advanceTime"; readonly steps: number }
+  // The sky changes.
+  | { readonly kind: "setWeather"; readonly weather: Weather }
   // Harm to one hero between fights (a trap, foul water): the dice decide how much. Not available inside a fight.
   | { readonly kind: "hurt"; readonly characterId: CharacterId; readonly count: number; readonly sides: 4 | 6 | 8 | 10 | 12; readonly damageType: DamageType };
 

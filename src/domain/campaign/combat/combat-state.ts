@@ -91,6 +91,7 @@ export interface Combatant {
   readonly id: CombatantId;
   readonly side: Side;
   readonly source: CombatantSource;
+  readonly rank?: "boss" | "elite" | "minion";
   // "A", "B" for repeated monster types; null for heroes and unique foes.
   readonly letter: string | null;
   readonly level: number;
@@ -115,6 +116,8 @@ export interface Combatant {
   readonly boundTo?: string;
   // A creature the campaign brought along between fights (companions/companion-roster.ts): the roster entry it writes its wounds back to.
   readonly companionId?: string;
+  // Whose it is: the combatant that called it into the fight, or the hero it was brought along by. The table says "belongs to" from this.
+  readonly summonedBy?: CombatantId;
   readonly zoneId: ZoneId;
   readonly initiative: number | null;
   readonly budget: TurnBudget;
@@ -155,6 +158,9 @@ export interface TurnBudget {
   // A spell was cast as a bonus action this turn: only a cantrip with a casting
   // time of one action may follow (SRD 5.1).
   readonly bonusSpellCast: boolean;
+  // Any spell has already been cast this turn (used to prevent a later bonus-action spell).
+  // Optional so saved encounters created before this rule change remain readable.
+  readonly spellCast?: boolean;
   // The light melee weapon attacked with in this turn's Attack action (an off-hand attack needs a different one).
   readonly lightAttack?: string | undefined;
 }

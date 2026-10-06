@@ -8,12 +8,17 @@ export const hubIdPrefix = "dndhub";
 
 export const hubActions = [
   "create",
+  // Opens the Discord Activity from the hub channel, which can host one (a forum post cannot).
+  "playActivity",
   "wizLanguage",
   "wizPacing",
   "wizPlayers",
   "wizLoot",
   "wizVisibility",
   "wizAdventure",
+  // The adventure list: a page of it, and the choice made from it.
+  "wizAdventurePage",
+  "wizAdventurePick",
   "wizNext",
   "wizName",
   "manage",
@@ -24,6 +29,9 @@ export const hubActions = [
   "joinApproveOpen",
   "joinApproveSubmit",
   "joinDecline",
+  "seatOpen",
+  "seatAsk",
+  "seatYes",
   "do",
   "endAsk",
   "endYes",
@@ -40,6 +48,9 @@ export const hubActions = [
   // Manage: raise the party's level (a form for the number).
   "levelOpen",
   "levelSubmit",
+  // Manage: change how many players the game takes (a form for the number).
+  "sizeOpen",
+  "sizeSubmit",
   // Manage: set a hazard save for a hero or the whole party.
   "hazardOpen",
   "hazardSubmit",

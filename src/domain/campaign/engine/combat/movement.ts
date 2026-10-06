@@ -1,7 +1,7 @@
 // Moving in a fight, and the opportunity attacks it provokes: a move waits for them, then happens if the mover can still move.
 import { currentCombatant, engagedWith, isActive, type Combatant, type EncounterState, type ResolutionState, type TurnPlanRemainder } from "../../combat/combat-state.js";
 import { weaponTargets } from "../../combat/legal-targets.js";
-import { avoidsOpportunityAttacks, conditionLookup } from "../../effects/effect-queries.js";
+import { avoidsOpportunityAttacks, canReact, conditionLookup } from "../../effects/effect-queries.js";
 import { deadlineAfter, type Decision } from "../decision.js";
 import type { Rejection } from "../rejection.js";
 import { declareWeaponAttack } from "./combat-actions.js";
@@ -31,7 +31,7 @@ export function startMove(
   const provokers = avoidsOpportunityAttacks(mover, conditionLookup(decision.ctx.rules.content))
     ? []
     : engagedWith(encounter, mover.id)
-        .filter((other) => other.side !== mover.side && isActive(other) && other.budget.reaction)
+        .filter((other) => other.side !== mover.side && canReact(other, conditionLookup(decision.ctx.rules.content)))
         .filter((other) => other.attacks.some((attack) => attack.range.kind === "melee"))
         .map((other) => other.id);
   if (provokers.length === 0) {
@@ -58,7 +58,7 @@ export function nextOpportunityAttack(decision: Decision): void {
   }
   const provoker = encounter.combatants[provokerId];
   const melee = provoker?.attacks.find((attack) => attack.range.kind === "melee");
-  if (provoker === undefined || melee === undefined || !isActive(provoker) || !provoker.budget.reaction) {
+  if (provoker === undefined || melee === undefined || !canReact(provoker, conditionLookup(decision.ctx.rules.content))) {
     decision.emit({ kind: "moveInterrupted", move: { ...move, provokers: rest } });
     nextOpportunityAttack(decision);
     return;
@@ -97,7 +97,7 @@ export function answerOpportunityAttack(decision: Decision, combatantId: string,
 
   const mover = encounter.combatants[move.combatantId];
   const melee = provoker.attacks.find((attack) => attack.range.kind === "melee");
-  if (take && mover !== undefined && melee !== undefined && isActive(mover) && isActive(provoker) && provoker.budget.reaction) {
+  if (take && mover !== undefined && melee !== undefined && isActive(mover) && canReact(provoker, conditionLookup(decision.ctx.rules.content))) {
     if (declareWeaponAttack(decision, provoker, mover.id, melee, "opportunity") !== null) nextOpportunityAttack(decision);
     return null;
   }
@@ -140,8 +140,14 @@ export function completeMove(decision: Decision): void {
 }
 
 export function performMove(decision: Decision, combatantId: string, kind: "move" | "withdraw", zoneId: string | null, feet: number): void {
-  if (kind === "move" && zoneId !== null) decision.emit({ kind: "combatantMoved", combatantId, zoneId, feet });
-  else decision.emit({ kind: "combatantWithdrew", combatantId, feet });
+  if (kind === "move" && zoneId !== null) {
+    const encounter = decision.state.encounter;
+    decision.emit({ kind: "combatantMoved", combatantId, zoneId, feet });
+    const zoneName = encounter?.zones.find((zone) => zone.id === zoneId)?.name;
+    if (encounter !== null && encounter !== undefined && zoneName !== undefined) {
+      decision.request({ kind: "deliver", delivery: { kind: "combatMove", encounterId: encounter.id, combatantId, zoneName } });
+    }
+  } else decision.emit({ kind: "combatantWithdrew", combatantId, feet });
 }
 
 // Called when an action finishes: resume an interrupted move, or end a turn
@@ -158,7 +164,12 @@ export function afterResolution(decision: Decision, resolution: ResolutionState)
   }
   const encounter = activeEncounter(decision);
   const actor = encounter?.combatants[resolution.actorId];
-  if (encounter == null || actor === undefined || isPlayerControlled(decision, actor)) return;
+  if (encounter == null || actor === undefined) return;
+  if (isPlayerControlled(decision, actor)) {
+    // Players end their own turns, but a hero this action left down (a reaction's damage, a spell's backlash) has no menu to end it from.
+    if (!isActive(actor) && currentCombatant(encounter)?.id === actor.id) endTurn(decision);
+    return;
+  }
   // An aura (Frightful Presence) was part of the action: the rest of the turn is still to play.
   if (resolution.source.kind === "area" && resolution.source.area.free === true && isActive(actor) && actor.budget.action) {
     playPlan(decision, actor, chooseMonsterPlan(encounter, actor, decision.ctx.rules.content));

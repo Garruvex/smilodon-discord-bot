@@ -47,10 +47,14 @@ describe("the journal and the recap", () => {
     expect(contentOf(await t.press("back", "u-org"))).toContain("They found the tower.");
   });
 
-  it("says plainly that nothing is written yet, and speaks Traditional Chinese", async () => {
+  it("records the opening location before any chapters, and speaks Traditional Chinese", async () => {
     const empty = await harness();
     await started(empty);
-    expect(contentOf(await empty.press("journal", "u-org"))).toContain("Nothing has been written down yet.");
+    const journal = contentOf(await empty.press("journal", "u-org"));
+    expect(journal).toContain("**Where you have been**");
+    expect(journal).toContain("The Crossroads Inn");
+    expect(journal).toContain("you are here");
+    expect(journal).not.toContain("Nothing has been written down yet.");
     const zh = await harness("zh-TW");
     await withStory(zh);
     expect(contentOf(await zh.press("journal", "u-org"))).toContain("**日誌**");

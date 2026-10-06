@@ -12,6 +12,7 @@ import type { GuildConfigurationProvider } from "../../../config/guild-configura
 import { containsBotName } from "../../../domain/chat/name-mention.js";
 import type { MessageReactionWatchStore } from "../../../application/chat/message-reaction-watch.js";
 import { ChatTurnSupport } from "./chat-turn-support.js";
+import { isInGameChannel, type IsGameChannel } from "./game-channel-guard.js";
 
 // Handles messages that merely name the bot (per its configured
 // branding.displayName) without an explicit @mention. Unlike
@@ -39,19 +40,21 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     private readonly logger: Logger,
     // See MentionChatBehavior's own doc comment on this same param.
     private readonly messageReactionWatchStore: MessageReactionWatchStore | null = null,
+    // The narrator owns a D&D game's channels; chat stays out of them.
+    private readonly isGameChannel: IsGameChannel | null = null,
   ) {
     this.chatAccess = new ChatAccessService(configuration);
     this.turnSupport = new ChatTurnSupport(logger);
   }
 
-  public matches(message: Message): Promise<boolean> {
+  public async matches(message: Message): Promise<boolean> {
     const botId = this.clientUserId();
-    if (!botId || !message.inGuild() || message.author.bot) return Promise.resolve(false);
+    if (!botId || !message.inGuild() || message.author.bot) return false;
     // An explicit @mention is MentionChatBehavior's job, always answered in
     // full — never re-judged here.
-    if (message.mentions.users.has(botId)) return Promise.resolve(false);
+    if (message.mentions.users.has(botId)) return false;
     const profile = this.profiles.find(message.guildId);
-    if (!profile) return Promise.resolve(false);
+    if (!profile) return false;
     // `named` is computed before the feature/access/cooldown gates below so
     // those gates can log a debug reason only when the bot's name was
     // actually said — logging on every unrelated message would be too
@@ -60,19 +63,23 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     const named =
       containsBotName(message.content, profile.displayName) ||
       (liveNickname ? containsBotName(message.content, liveNickname) : false);
-    if (!named) return Promise.resolve(false);
+    if (!named) return false;
     const logContext = { guildId: message.guildId, channelId: message.channelId, messageId: message.id };
     if (!profile.features.chatbot || !profile.features.ambientReplies) {
       this.logger.debug(logContext, "Ambient chat: name mentioned but ambientReplies feature is disabled for this guild");
-      return Promise.resolve(false);
+      return false;
     }
     if (!this.conversation) {
       this.logger.debug(logContext, "Ambient chat: name mentioned but no conversation service is configured");
-      return Promise.resolve(false);
+      return false;
     }
     if (!this.chatAccess.canUseMentionChat(profile, message.member, message.author.id, message.channelId)) {
       this.logger.debug(logContext, "Ambient chat: name mentioned but access policy denied this user/channel");
-      return Promise.resolve(false);
+      return false;
+    }
+    if (await isInGameChannel(message, this.isGameChannel)) {
+      this.logger.debug(logContext, "Ambient chat: name mentioned in a D&D game channel, which the narrator owns");
+      return false;
     }
     const cooldownUntil = this.cooldownUntilByChannel.get(message.channelId) ?? 0;
     if (Date.now() < cooldownUntil) {
@@ -80,9 +87,9 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         { ...logContext, cooldownRemainingMs: cooldownUntil - Date.now() },
         "Ambient chat: name mentioned but channel is on cooldown",
       );
-      return Promise.resolve(false);
+      return false;
     }
-    return Promise.resolve(true);
+    return true;
   }
 
   public async execute(message: Message): Promise<BehaviorResult> {

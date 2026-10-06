@@ -48,7 +48,7 @@ export interface ExploreScreen {
 }
 
 export interface ExploreFlowDependencies {
-  readonly play: Pick<CampaignPlayController, "ask" | "press" | "trade" | "castSpell" | "healSpell" | "summonCompanion" | "reviveSpell">;
+  readonly play: Pick<CampaignPlayController, "ask" | "press" | "trade" | "proposeMove" | "castSpell" | "healSpell" | "summonCompanion" | "reviveSpell">;
   readonly unitOfWork: CampaignUnitOfWork;
   readonly rulesets: RulesetCatalog;
   readonly adventures: AdventureLibrary;
@@ -72,6 +72,7 @@ export const exploreActions: readonly CampaignAction[] = [
   "exploreHaggle",
   "exploreCast",
   "exploreCastPick",
+  "exploreGo",
   "exploreHealSlot",
   "exploreHealWho",
   "exploreConjureSlot",
@@ -156,6 +157,11 @@ export class ExploreFlow {
         const page = pageAsked(value);
         if (page !== null) return void (await interaction.editReply(await this.home(record, text, userId, undefined, page)));
         return void (await interaction.editReply(await this.npcScreen(record, text, userId, withoutPrefix(value))));
+      }
+      case "exploreGo": {
+        const result = await this.deps.play.proposeMove(record.key, userId, value, interaction.id);
+        const title = this.sceneTitleIn(record, value);
+        return void (await interaction.editReply(await this.home(record, text, userId, this.told(text, result, text.campaign.explore.proposed({ scene: title })))));
       }
       case "explorePressPick": {
         const npc = argument ?? "";
@@ -250,6 +256,11 @@ export class ExploreFlow {
 
   // ---- screens ---------------------------------------------------------------
 
+  private sceneTitleIn(record: CampaignRecord, sceneId: string): string {
+    const bible = this.deps.adventures.find(record.adventure.adventureId, record.adventure.version, record.language);
+    return bible?.scenes.find((scene) => scene.id === sceneId)?.title ?? sceneId;
+  }
+
   private told(text: Texts, result: PlayResult, success: string): string {
     return result.kind === "ok" ? success : refusalText(text, result.reason);
   }
@@ -291,6 +302,16 @@ export class ExploreFlow {
             .setCustomId(campaignCustomId("exploreNpc", record.key.campaignId))
             .setPlaceholder(t.npcPlaceholder)
             .addOptions(pageOf(view.npcs.map((npc) => ({ label: npc.name.slice(0, 100), description: (npc.trades ? `${t.trades} · ${npc.description}` : npc.description).slice(0, 100), value: npc.id })), page, t.more)),
+        ),
+      );
+    }
+    if (view.places.length > 0) {
+      rows.push(
+        new ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(campaignCustomId("exploreGo", record.key.campaignId))
+            .setPlaceholder(t.placePlaceholder)
+            .addOptions(view.places.slice(0, menuLimit).map((place) => ({ label: place.title.slice(0, 100), value: place.id, ...(place.visited ? { description: t.placeVisited } : {}) }))),
         ),
       );
     }

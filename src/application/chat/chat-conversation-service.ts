@@ -759,7 +759,7 @@ export class ChatConversationService {
         )),
         personaLore: selectedPersonaLore.map((chunk) => ({ heading: chunk.heading, text: chunk.text })),
         userCustomization,
-        birthday: birthday ? { month: birthday.month, day: birthday.day } : null,
+        birthday: birthday ? { month: birthday.month, day: birthday.day, birthYear: birthday.birthYear } : null,
         enabledTools: toolsEnabled && this.toolRegistry
           ? this.toolRegistry.list().filter((tool) => !disabledToolNames?.has(tool.name))
           : [],

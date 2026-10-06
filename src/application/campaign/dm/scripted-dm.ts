@@ -41,7 +41,7 @@ export class ScriptedNarrator implements CampaignNarrator {
   public readonly hazardRequests: HazardNarratorRequest[] = [];
 
   public constructor(
-    private readonly script: Scripted<NarratorRequest, { readonly text: string }>[],
+    private readonly script: Scripted<NarratorRequest, { readonly text: string; readonly note?: string }>[],
     private readonly combatScript: Scripted<CombatNarratorRequest, { readonly text: string }>[] = [],
     private readonly tradeScript: Scripted<TradeNarratorRequest, { readonly text: string }>[] = [],
     private readonly dialogueScript: Scripted<DialogueNarratorRequest, { readonly text: string }>[] = [],
@@ -49,7 +49,7 @@ export class ScriptedNarrator implements CampaignNarrator {
     private readonly hazardScript: Scripted<HazardNarratorRequest, { readonly text: string }>[] = [],
   ) {}
 
-  public narrate(request: NarratorRequest): Promise<{ readonly text: string }> {
+  public narrate(request: NarratorRequest): Promise<{ readonly text: string; readonly note?: string }> {
     this.requests.push(request);
     return next(this.script, request, "narrator");
   }

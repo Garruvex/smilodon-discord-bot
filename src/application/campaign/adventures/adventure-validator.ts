@@ -59,7 +59,50 @@ export function validateAdventure(source: string, content: SealedContent): Adven
     if (mine.length > 0 && mine.every((rehearsal) => rehearsal.outcome === "defeat")) warnings.push(`${encounter.id} defeated the adventure's own heroes in every rehearsal; it may be too hard.`);
   }
   if (document.bible.encounters.length === 0) warnings.push("The adventure has no fights.");
+  warnings.push(...routeWarnings(document));
   return { ok: errors.length === 0, errors: errors.slice(0, maxReported), warnings, document, rehearsals };
+}
+
+// Only an adventure that lists exits somewhere has routes to check: a scene with no exits lets the party go anywhere. Warnings, not errors,
+// because some stories are linear on purpose (a train, a dream, a one-way descent).
+export function routeWarnings(document: AdventureDocument): readonly string[] {
+  const { scenes, startScene } = document.bible;
+  if (!scenes.some((scene) => scene.exits !== undefined)) return [];
+  const byId = new Map(scenes.map((scene) => [scene.id as string, scene]));
+  // An authored goto (a fight's victory, an interaction's result) takes the party there whatever the exits say.
+  const jumps = new Set<string>();
+  const collect = (value: unknown): void => {
+    if (Array.isArray(value)) value.forEach(collect);
+    else if (typeof value === "object" && value !== null) {
+      const record = value as Record<string, unknown>;
+      if (record["kind"] === "goto" && typeof record["scene"] === "string") jumps.add(record["scene"]);
+      Object.values(record).forEach(collect);
+    }
+  };
+  collect(document.bible);
+  const reached = new Set<string>([startScene, ...jumps]);
+  const queue = [...reached];
+  for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+    const scene = byId.get(next);
+    const targets = scene?.exits === undefined ? scenes.map((other) => other.id as string) : scene.exits.map((exit) => exit.to as string);
+    for (const target of targets) {
+      if (reached.has(target)) continue;
+      reached.add(target);
+      queue.push(target);
+    }
+  }
+  const warnings: string[] = [];
+  for (const scene of scenes) {
+    if (!reached.has(scene.id)) warnings.push(`${scene.id} cannot be reached from the start scene by its exits.`);
+    if (scene.exits?.length === 0) warnings.push(`${scene.id} has no way out; the party would be stuck there.`);
+  }
+  for (const scene of document.bible.linear === true ? [] : scenes) {
+    for (const exit of scene.exits ?? []) {
+      const there = byId.get(exit.to);
+      if (there?.exits !== undefined && there.exits.length > 0 && !there.exits.some((back) => back.to === scene.id)) warnings.push(`${scene.id} leads to ${exit.to}, but there is no way back.`);
+    }
+  }
+  return warnings;
 }
 
 function limitProblems(document: AdventureDocument): readonly string[] {

@@ -8,8 +8,8 @@ import type { Glossary } from "../../../domain/campaign/rules/content-registry.j
 export const adventureIdPrefix = "dndadv";
 
 // dndadv:<action>:<revision>:<key>. The revision names the text the review showed.
-export type AdventureAction = "approve" | "discard" | "review" | "remove" | "confirmremove" | "keep" | "restore";
-const actions: readonly string[] = ["approve", "discard", "review", "remove", "confirmremove", "keep", "restore"];
+export type AdventureAction = "approve" | "discard" | "review" | "remove" | "confirmremove" | "keep" | "restore" | "example";
+const actions: readonly string[] = ["approve", "discard", "review", "remove", "confirmremove", "keep", "restore", "example"];
 
 export function adventureCustomId(action: AdventureAction, key: string, revision: string): string {
   const id = `${adventureIdPrefix}:${action}:${revision}:${key}`;
@@ -26,6 +26,8 @@ export function parseAdventureId(customId: string): { readonly action: Adventure
 export interface ReviewScreen {
   readonly content: string;
   readonly components: ActionRowBuilder<ButtonBuilder>[];
+  // The whole report, when it is too long for the message.
+  readonly files?: { readonly attachment: Buffer; readonly name: string }[];
 }
 
 const maxContent = 1_900;
@@ -70,15 +72,18 @@ export function renderReview(input: { report: AdventureReport; adventure: Stored
             new ButtonBuilder().setCustomId(adventureCustomId("discard", adventure.key, revisionOf(adventure))).setLabel(t.discardButton).setStyle(ButtonStyle.Secondary),
           ),
         ];
-  return { content: content.length <= maxContent ? content : `${content.slice(0, maxContent)}…`, components: buttons };
+  if (content.length <= maxContent) return { content, components: buttons };
+  // Too long for a message: what decides the outcome is already at the top; the whole report comes as a file.
+  return { content: `${content.slice(0, maxContent - 200)}…\n\n${t.previewTruncated}`, components: buttons, files: [{ attachment: Buffer.from(content, "utf8"), name: "review.txt" }] };
 }
 
-const shown = 25;
+const shown = 20;
 
 // The server's adventures with what can be done to each: review a draft, remove an approved one, restore a removed one.
 export function renderLibrary(input: { adventures: readonly StoredAdventure[]; text: Texts }): ReviewScreen {
   const t = input.text.campaign.adventure;
-  if (input.adventures.length === 0) return { content: t.libraryEmpty, components: [] };
+  const example = new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(adventureCustomId("example", "example", "00000000")).setLabel(t.exampleButton).setStyle(ButtonStyle.Secondary));
+  if (input.adventures.length === 0) return { content: t.libraryEmpty, components: [example] };
   const list = input.adventures.slice(0, shown);
   const status = { pending: t.statusPending, approved: t.statusApproved, removed: t.statusRemoved, discarded: t.discarded } as const;
   const lines = [
@@ -97,7 +102,7 @@ export function renderLibrary(input: { adventures: readonly StoredAdventure[]; t
   });
   const rows: ActionRowBuilder<ButtonBuilder>[] = [];
   for (let index = 0; index < buttons.length; index += 5) rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(buttons.slice(index, index + 5)));
-  return { content: lines.join("\n").slice(0, 1_900), components: rows };
+  return { content: lines.join("\n").slice(0, 1_900), components: [...rows, example] };
 }
 
 // Asks before removing: names the adventure and how many games still use this version.

@@ -1,0 +1,51 @@
+# D&D Activity
+
+The Activity opens to a server-scoped lobby at `assets/activity/`. It authenticates players with Discord, lists campaigns visible to them in the launch server, and uses the existing campaign services for lobby choices and game actions.
+
+## Enable it for one bot instance
+
+For a native bot process, set these in the environment used to start it:
+
+```env
+ACTIVITY_ENABLED=true
+ACTIVITY_HOST=127.0.0.1
+ACTIVITY_PORT=3000
+DISCORD_CLIENT_SECRET=<Discord application client secret>
+```
+
+Set `DISCORD_CLIENT_SECRET` from the Discord Developer Portal's application OAuth2 settings. Keep it private and configure it only on the bot instance that hosts the Activity. Do not put it in frontend configuration or commit its value.
+
+For a named bot instance, put the settings in `config/instances/<instance-name>.env`. Enable the server on only one instance so there is a single Activity origin and no port conflict.
+
+Start that bot as usual. The Activity should answer at `http://127.0.0.1:3000/`, and its health endpoint is `http://127.0.0.1:3000/healthz`. Point the existing Cloudflare published-application route at the same HTTP service. The public Activity address should be the hostname configured in Discord's Activities URL mapping.
+
+For Docker Compose, set `ACTIVITY_HOST=0.0.0.0` and `ACTIVITY_PORT=3000` in the selected instance environment file so the Activity server listens on the container network. The `stack:up`, `stack:down`, `stack:logs`, `stack:ps`, and `stack:config` npm scripts include the tracked `compose.tunnel.yaml` overlay, so the tunnel service shares the network with the machine-specific `compose.yaml` even though that file is ignored by Git. Set the Cloudflare published-application origin to the selected bot service, such as `http://bot-yohta:3000` or `http://bot-pinecone:3000`. Inside a container, `localhost` refers to that container itself, so `http://localhost:3000` is not the bot service. No public host port needs to be published.
+
+Set `CLOUDFLARE_TUNNEL_TOKEN` in the server's root `.env` file. Keep the existing remotely managed Tunnel and its public hostname route; only change its origin to the bot service URL above. Run `npm run stack:up` to start or update the bots and Compose-managed tunnel together. Check the full stack with `npm run stack:ps`. After confirming the Compose-managed connector is connected, stop and remove the old standalone `jovial_leavitt` container so there is only one connector using the token. `npm run stack:down` includes the tunnel too.
+
+If the tunnel process runs directly on the host instead, publish the selected bot's container port on a loopback-only host port and route it to `http://127.0.0.1:3000`.
+
+## Current scope
+
+- The lobby lists open games and games the player can access. Players can join an open lobby, choose an available starter hero, and start it when they are the organizer.
+- The game screen reads live campaign state: scene, party status and health, enemy health, and legal actions for the player's turn. It refreshes from the bot's campaign API every three seconds; this polling does not call Discord's API.
+- Activity actions use the same campaign controller and rules engine as the Discord controls. Accepted actions schedule a coalesced Discord card refresh, including quiet state changes; narration and background delivery still use Discord.
+- The lobby supports starter heroes, organizer start, join requests, invitations, and joining an approved active game with the player's latest saved character snapshot.
+- Exploration supports submitting an action, passing, rolling a pending check, casting available cantrips or rituals, healing and reviving party members, summoning companions, drinking carried potions, and proposing an available move.
+- Combat presents the engine's legal attacks, spells, features, potions, shield toggles, engagement, movement and teleport options, safe withdrawal, Dodge, Dash, Wild Shape, turn ending, reaction spells, Divine Smite, and opportunity attacks.
+- Character details include the requesting player's spells, resources, equipment and gold. They can equip or remove carried armor and shields, move items between their inventory and the party stash, and inspect stash contents. Other party members' private inventory and spell details are not sent to the Activity.
+- OAuth identity and launch-server membership are verified through Discord on the bot server. The Activity receives an opaque, in-memory session token; a bot restart expires those sessions, so players should reopen the Activity after a restart.
+
+The game list is scoped to the server in which the Activity was launched. Private campaigns are only shown to their members, organizer, or a player with an active invitation. The Activity and Discord campaign controls act on the same saved campaign, so updates appear in both views; routine snapshot polling itself is backend-only.
+
+For a local, read-only API reference, run `npm run activity:api-docs` and open `http://127.0.0.1:3001/`. The page lists routes and game action fields, and `/openapi.json` provides the machine-readable definition. This separate development server always binds to loopback; it is not served through the Activity origin or Cloudflare tunnel. Set `ACTIVITY_DOCS_PORT` if port 3001 is occupied.
+
+## Source layout and build
+
+`assets/activity/activity.js` and `assets/activity/styles.css` are build output; edit the sources and run `npm run build:activity`.
+
+- `src/activity/main.js` starts the page. The rest of `src/activity/` is one module per job: `api` (requests, quiet re-sign-in), `poll` (the table refresh), `render`, `lobby`, `map`, `party`, `hero`, `actions` (the action panel and its pickers), `vote`, `dice`, `session`, `preview`, `story` (the story feed and the strip under the scene) and `drawers` (the party, map and story panels along the screen's edges). `state.js` holds what the page knows, as the single `app` object; assign to its fields instead of keeping module-level variables.
+- `src/activity/styles/` is the stylesheet, bundled in the order of `index.css`. The files are layered redesigns, so that order is the cascade: do not reorder them.
+- `?design-preview` (with `&journey`, `&vote`, `&vote&away`, `&roll&natural=20`, `&lobby-preview` and others, plus `&language=zh-TW`) shows the table with sample data and no server.
+- `tools/activity/compare-server.mjs` checks a change did not alter what the page looks like: it serves an old and a new build side by side, and `/compare` compares the page HTML while `/compare?styles` compares the computed style of every element at desktop and phone width. Keep a copy of the old `activity.js` and `styles.css`, pass them as arguments, and expect "ALL SAME" for a refactor.
+- The table snapshot carries `story`: the public log as entries, newest last, built by `src/application/campaign/views/activity-story.ts` from the event log (tellings, what heroes did and said, checks as total against DC, clues, place changes, and what each fight action did). It is bounded by size, not count: the current and last round in full, older tellings cut to their opening. Add a kind of entry there and in `story.js` together. `?design-preview&story-live` adds made-up entries every few seconds to watch the strip, the badge and the feed.

@@ -234,6 +234,7 @@ export interface GuildConfiguration {
   // computed in — used by BirthdayAnnouncer so a UTC day boundary doesn't
   // shift a guild's birthdays to the wrong calendar day for its members.
   timezone: string;
+  birthdayMessageTemplate?: string | null;
   // Language for everything the bot posts in this guild — the music panel,
   // announcements, votes, command replies. See application/i18n.
   language: Language;

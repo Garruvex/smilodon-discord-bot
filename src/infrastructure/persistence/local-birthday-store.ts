@@ -3,11 +3,11 @@ import { dirname, resolve } from "node:path";
 
 import { z } from "zod";
 
-import type { BirthdayRecord, BirthdayStore } from "../../application/birthdays/birthday-store.js";
+import type { BirthdayDetails, BirthdayRecord, BirthdayStore } from "../../application/birthdays/birthday-store.js";
 
 const guildDocumentSchema = z.object({
   version: z.literal(1),
-  users: z.record(z.string(), z.object({ month: z.number().int().min(1).max(12), day: z.number().int().min(1).max(31) })),
+  users: z.record(z.string(), z.object({ month: z.number().int().min(1).max(12), day: z.number().int().min(1).max(31), birthYear: z.number().int().min(1900).nullable().optional(), message: z.string().max(1000).nullable().optional() })),
   announcedDates: z.array(z.string()).default([]),
 });
 type GuildDocument = z.infer<typeof guildDocumentSchema>;
@@ -24,9 +24,9 @@ export class LocalBirthdayStore implements BirthdayStore {
     return Promise.resolve();
   }
 
-  public setBirthday(guildId: string, userId: string, month: number, day: number): Promise<void> {
+  public setBirthday(guildId: string, userId: string, month: number, day: number, details: BirthdayDetails = {}): Promise<void> {
     const document = this.read(guildId);
-    document.users[userId] = { month, day };
+    document.users[userId] = { ...document.users[userId], month, day, ...details };
     this.write(guildId, document);
     return Promise.resolve();
   }

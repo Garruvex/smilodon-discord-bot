@@ -150,6 +150,36 @@ describe("approving an adventure", () => {
     expect(screen.content.indexOf("replaces a draft")).toBeLessThan(screen.content.indexOf("the first warning"));
   });
 
+  it("attaches the whole report when a review is too long for a message, with the deciding lines still on top", async () => {
+    const { catalog: c } = setup();
+    const submitted = await c.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: yamlOf("en") });
+    if (submitted.kind !== "pending") throw new Error("submit");
+    const long = { ...submitted.report, warnings: ["the first warning", ...Array.from({ length: 60 }, (_, index) => `warning ${index} ${"x".repeat(100)}`)] };
+    const screen = renderReview({ report: long, adventure: submitted.adventure, text: texts.en, glossary: undefined });
+    expect(screen.content.length).toBeLessThanOrEqual(2000);
+    expect(screen.content).toContain("the first warning");
+    expect(screen.content).toContain("The full report is attached.");
+    const attached = screen.files?.[0];
+    expect(attached?.name).toBe("review.txt");
+    expect(attached?.attachment.toString("utf8")).toContain("warning 59");
+    // A short one needs no file.
+    expect(renderReview({ report: submitted.report, adventure: submitted.adventure, text: texts.en, glossary: undefined }).files).toBeUndefined();
+  });
+
+  it("offers an example adventure file from the list, in the asker's language", async () => {
+    const t = await drafted();
+    const listed = renderLibrary({ adventures: [], text: texts.en });
+    expect(listed.content).toContain("No adventures");
+    const buttonId = (listed.components[0]?.toJSON().components[0] as { custom_id: string }).custom_id;
+    const followUps: { files?: { name: string }[]; content?: string }[] = [];
+    const { interaction } = fakeButton(buttonId, "u-up");
+    (interaction as unknown as { followUp: (payload: never) => Promise<void> }).followUp = (payload: never): Promise<void> => (followUps.push(payload), Promise.resolve());
+    const withExample = new AdventureComponentHandler({ catalog: t.catalog, authority: { isAdmin: () => Promise.resolve(false) } as never, example: (language): string => `id: example-${language}` });
+    await withExample.execute({ interaction, logger: quiet as never });
+    expect(followUps[0]?.files?.[0]?.name).toBe("example-adventure-en.yaml");
+    expect(followUps[0]?.content).toContain("complete adventure");
+  });
+
   it("lists the server's adventures, asks before removing one, and removes and restores it", async () => {
     const t = await drafted();
     const pending = await t.catalog.list("g-1");
@@ -259,6 +289,15 @@ describe("the adventure commands", () => {
     expect(buttonsOf(replies.at(-1))).toBe(2);
   });
 
+  it("rejects an uploaded adventure when its declared language differs from the selected language", async () => {
+    const { intake, catalog } = intakeFor(null);
+    serve(yamlOf("zh-TW"));
+    const { interaction, replies } = fakeCommand({ file: { url: "https://cdn.discordapp.com/attachments/1/2/a.yaml", size: 5_000 }, language: "en" });
+    await intake.upload(interaction);
+    expect(replies.at(-1)?.content).toContain("declares 繁體中文");
+    expect(await catalog.list("g-1")).toEqual([]);
+  });
+
   it("names what is wrong with a file that fails, and offers nothing to approve", async () => {
     const { intake } = intakeFor(null);
     serve(yamlOf("en").replace("monster:goblin", "monster:beholder"));
@@ -274,7 +313,7 @@ describe("the adventure commands", () => {
     vi.stubGlobal("fetch", fetcher);
     const missing = fakeCommand({ file: null });
     await intake.upload(missing.interaction);
-    expect(missing.replies.at(-1)?.content).toBe("Attach an adventure file (YAML or JSON).");
+    expect(missing.replies.at(-1)?.content).toContain("Attach an adventure file (YAML or JSON).");
     const big = fakeCommand({ file: { url: "https://cdn.discordapp.com/a", size: 900_000 } });
     await intake.upload(big.interaction);
     expect(big.replies.at(-1)?.content).toBe("That file is too large to be an adventure.");
@@ -360,5 +399,35 @@ describe("a game from an approved adventure", () => {
     // The bundled adventure still works, and a guess at an ID does not.
     expect((await t.creator.create({ ...game, name: "Second Game" })).kind).toBe("created");
     expect(await t.creator.create({ ...game, name: "Third Game", adventureId: "g000000-guess" })).toEqual({ kind: "refused", reason: "unknownAdventure" });
+  });
+
+  it("finds the adventure a person names by its ID or title for /dnd new, and says what there is when none fits", async () => {
+    const t = table();
+    const changed = yamlOf("en").replace(/^title:.*$/m, "title: Harbor Heist");
+    const submitted = await t.catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: changed });
+    if (submitted.kind !== "pending") throw new Error("submit");
+    await t.catalog.approve(submitted.adventure.key, "u-up", false);
+    expect(t.creator.findAdventure("g-1", "en", null)).toEqual({ kind: "found", adventureId: undefined });
+    expect(t.creator.findAdventure("g-1", "en", "harbor")).toEqual({ kind: "found", adventureId: submitted.adventure.id });
+    expect(t.creator.findAdventure("g-1", "en", submitted.adventure.id)).toEqual({ kind: "found", adventureId: submitted.adventure.id });
+    // The bundled one is the default, so naming it changes nothing.
+    expect(t.creator.findAdventure("g-1", "en", starterAdventureId)).toEqual({ kind: "found", adventureId: undefined });
+    const none = t.creator.findAdventure("g-1", "en", "nothing like it");
+    expect(none.kind).toBe("none");
+    expect(none.kind === "none" ? none.available : []).toContain("Harbor Heist");
+    // Another server does not see it.
+    expect(t.creator.findAdventure("g-2", "en", "harbor")).toMatchObject({ kind: "none" });
+    // An adventure with no Chinese edition is not offered for a Chinese game.
+    expect(t.creator.findAdventure("g-1", "zh-TW", "harbor")).toMatchObject({ kind: "none" });
+  });
+
+  it("refuses an English game using a Chinese-only uploaded adventure", async () => {
+    const t = table();
+    const submitted = await t.catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: yamlOf("zh-TW") });
+    if (submitted.kind !== "pending") throw new Error("submit");
+    await t.catalog.approve(submitted.adventure.key, "u-up", false);
+    const game = { guildId: "g-1", organizerId: "u-up", name: "Language Check", language: "en" as const, pacing: "live" as const, players: 3, adventureId: submitted.adventure.id };
+    expect(await t.creator.create(game)).toEqual({ kind: "refused", reason: "unknownAdventure" });
+    expect((await t.creator.create({ ...game, language: "zh-TW", name: "中文冒險" })).kind).toBe("created");
   });
 });

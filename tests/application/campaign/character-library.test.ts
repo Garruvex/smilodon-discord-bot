@@ -82,6 +82,27 @@ const heroOf = (state: CampaignState, userId = "u-alice"): NonNullable<CampaignS
 const actor = { kind: "user", userId: "u-alice" } as const;
 
 describe("the character library", () => {
+  it("edits a full build as a new version without changing an earlier snapshot", async () => {
+    const t = table();
+    const first = await createAldric(t);
+    const changed = await t.library.edit("u-alice", first.characterId, { ...aldric, name: "Aldric II", class: "rogue", kit: "shadow", skills: ["stealth", "perception", "acrobatics", "deception"], expertise: ["stealth", "perception"] });
+    expect(changed.kind).toBe("ok");
+    if (changed.kind !== "ok") return;
+    expect(changed.snapshot).toMatchObject({ revision: 2, branch: "main", parentSnapshotId: first.id, source: { kind: "edit" }, build: { name: "Aldric II", class: "rogue" } });
+    expect((await t.library.snapshot("u-alice", first.id))?.build.name).toBe("Aldric");
+    expect((await t.library.entry("u-alice", first.characterId))?.character.name).toBe("Aldric II");
+    expect(await t.library.edit("u-bob", first.characterId, aldric)).toEqual({ kind: "notFound" });
+  });
+
+  it("keeps saved gear when an edit leaves class, race, and kit unchanged", async () => {
+    const t = table();
+    const first = await createAldric(t);
+    const changed = await t.library.edit("u-alice", first.characterId, { ...aldric, name: "Aldric the Brave", backstory: "A new chapter" });
+    expect(changed.kind).toBe("ok");
+    if (changed.kind !== "ok") return;
+    expect(changed.snapshot.gear).toEqual(first.gear);
+  });
+
   it("keeps a character for its owner alone, across everything a link or an ID could reveal", async () => {
     const t = table();
     const snapshot = await createAldric(t);
@@ -119,6 +140,21 @@ describe("the character library", () => {
 });
 
 describe("bringing a saved character into a game", () => {
+  it("starts with a fourth player using a saved character beyond three preset heroes", async () => {
+    const t = table();
+    const created = await t.lobby.create({ guildId, organizerId: "u-alice", name: "Four Players", language: "en", adventureId: starterAdventureId, pacing: { preset: "live" }, maxPlayers: 4 });
+    if (created.kind !== "ok") throw new Error(`create: ${JSON.stringify(created)}`);
+    const key = created.value.key;
+    for (const [index, userId] of ["u-alice", "u-bob", "u-cara"].entries()) {
+      expect((await t.lobby.join(key, userId)).kind).toBe("ok");
+      expect((await t.lobby.chooseHero(key, userId, starter.en.heroes[index]?.id ?? "")).kind).toBe("ok");
+    }
+    const saved = await createAldric(t, "u-dan");
+    expect((await t.lobby.join(key, "u-dan")).kind).toBe("ok");
+    expect((await t.lobby.chooseSaved(key, "u-dan", saved.id)).kind).toBe("ok");
+    expect((await t.lobby.start(key, "u-alice")).kind).toBe("ok");
+  });
+
   it("previews what carries over, then seats the character and shows it on the lobby", async () => {
     const t = table();
     const snapshot = await createAldric(t);

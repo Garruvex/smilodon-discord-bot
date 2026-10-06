@@ -20,6 +20,8 @@ export interface CampaignRuntimeOptions {
   readonly timers: TimerWorker;
   readonly dm: DmJobWorker;
   readonly delivery: DeliveryWorker;
+  // Admits approved players who selected a character while an encounter ran.
+  readonly queuedJoins?: { runOnce(): Promise<{ readonly processed: number; readonly failed: readonly { readonly id: string; readonly error: string }[] }> };
   // Scene pictures, when an image model is set up.
   readonly images?: ImageWorker;
   readonly logger: RuntimeLogger;
@@ -161,7 +163,7 @@ export class CampaignRuntime {
   }
 
   private async work(): Promise<void> {
-    const { rolls, timers, dm, delivery, logger } = this.options;
+    const { rolls, timers, dm, delivery, queuedJoins, logger } = this.options;
     // Rolls can chain (a hit asks for damage), so run until none are left.
     for (let index = 0; index < 50; index += 1) {
       if (this.report("roll", await rolls.runOnce(), logger).processed === 0) break;
@@ -173,6 +175,7 @@ export class CampaignRuntime {
       if (this.report("roll", await rolls.runOnce(), logger).processed === 0) break;
     }
     this.report("delivery", await delivery.runOnce(), logger);
+    if (queuedJoins !== undefined) this.report("queued-join", await queuedJoins.runOnce(), logger);
     this.startPictures();
   }
 

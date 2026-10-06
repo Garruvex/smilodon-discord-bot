@@ -4,7 +4,7 @@ import { buildTurnView } from "../../../src/application/campaign/views/turn-view
 import { enSrd51Glossary } from "../../../src/application/i18n/campaign/glossary/en/srd-5.1.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 import { loadStarterAdventure } from "../../../src/infrastructure/campaign/starter-adventures.js";
-import { alex, jamie, newCampaign, organizer, partyOfThree, ruleset } from "../../domain/campaign/campaign-fixtures.js";
+import { alex, jamie, newCampaign, organizer, partyOfThree, partyWithSpells, ruleset } from "../../domain/campaign/campaign-fixtures.js";
 import { Fight, skirmish } from "../../domain/campaign/combat-fixtures.js";
 
 const bible = loadStarterAdventure().en.bible;
@@ -104,5 +104,14 @@ describe("a hero's turn view", () => {
     const view = viewOf(fight.state, "c-elspeth");
     const bless = view?.spells.find((spell) => spell.spellId === "spell:bless");
     expect(bless).toMatchObject({ slotLevel: 1, slotsLeft: 1 });
+  });
+
+  it("previews every creature an area spell will affect, including allies", () => {
+    const fight = new Fight(partyWithSpells(["spell:fireball"], { 3: 1 }))
+      .rolls([5, 4, 20, 3, 2])
+      .run(organizer, { kind: "startEncounter", spec: { ...skirmish, partyZoneId: "courtyard" } });
+    const fireball = viewOf(fight.state, "c-elspeth")?.spells.find((spell) => spell.spellId === "spell:fireball");
+    expect(fireball?.affectedByTarget?.["goblin-a"]?.map((target) => target.id)).toEqual(["goblin-a", "c-mira", "c-borin", "goblin-b"]);
+    expect(fireball?.affectedByTarget?.["goblin-a"]?.some((target) => target.self)).toBe(false);
   });
 });

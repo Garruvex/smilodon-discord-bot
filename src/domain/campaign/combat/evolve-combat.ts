@@ -48,6 +48,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
             movement: event.movement ?? combatant.speed,
             attacksLeft: attacksPerAction(combatant.traits),
             bonusSpellCast: false,
+            spellCast: false,
           },
           dodging: false,
           disengaged: false,
@@ -140,6 +141,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
             reaction: cost.reaction ? false : combatant.budget.reaction,
             attacksLeft,
             bonusSpellCast: combatant.budget.bonusSpellCast || (resolution.source.kind === "spell" && cost.bonusAction),
+            spellCast: combatant.budget.spellCast === true || resolution.source.kind === "spell",
             ...(lightSwing === undefined ? {} : { lightAttack: lightSwing }),
           },
           resources: { ...resources, featureUses: uses },
@@ -344,7 +346,7 @@ export function evolveEncounter(encounter: EncounterState | null, event: CombatE
     case "combatantSummoned": {
       const at = encounter.order.indexOf(event.summonerId) + 1;
       const order = [...encounter.order.slice(0, at), event.combatant.id, ...encounter.order.slice(at)];
-      return { ...encounter, combatants: { ...encounter.combatants, [event.combatant.id]: event.combatant }, order, turnIndex: at <= encounter.turnIndex ? encounter.turnIndex + 1 : encounter.turnIndex };
+      return { ...encounter, combatants: { ...encounter.combatants, [event.combatant.id]: { ...event.combatant, summonedBy: event.summonerId } }, order, turnIndex: at <= encounter.turnIndex ? encounter.turnIndex + 1 : encounter.turnIndex };
     }
     case "encounterTriggerFired":
       return { ...encounter, triggersFired: [...(encounter.triggersFired ?? []), event.index] };

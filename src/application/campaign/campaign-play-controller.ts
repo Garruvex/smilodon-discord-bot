@@ -1,10 +1,13 @@
-import type { AdventureBible, NpcId } from "../../domain/campaign/adventure/adventure-bible.js";
+import { companionsOf } from "../../domain/campaign/companions/companion-roster.js";
+import { longRestEffects, withArrival, type AdventureBible, type NpcId } from "../../domain/campaign/adventure/adventure-bible.js";
+import { reachableScenes } from "./dm/interactions.js";
 import type { Skill } from "../../domain/campaign/character/character-sheet.js";
+import type { TimeOfDay, Weather } from "../../domain/campaign/rules/world-rules.js";
 import { abilities } from "../../domain/campaign/rules/effects.js";
 import { sceneNpcs } from "./views/explore-view.js";
 import { raiseToLevel } from "../../domain/campaign/character/leveling.js";
 import type { ContentId } from "../../domain/campaign/rules/content-id.js";
-import type { CampaignCommand, CombatCommand, EnvironmentalDamageSource } from "../../domain/campaign/commands/campaign-command.js";
+import type { CampaignCommand, CombatCommand, EnvironmentalDamageSource, PartyEffect } from "../../domain/campaign/commands/campaign-command.js";
 import type { Ability } from "../../domain/campaign/rules/effects.js";
 import { actingHero } from "../../domain/campaign/engine/members.js";
 import { isFallen } from "../../domain/campaign/state/campaign-state.js";
@@ -18,7 +21,7 @@ import type { CampaignKey, CampaignUnitOfWork } from "./ports/campaign-store.js"
 
 // Why a control did nothing. Engine rejections keep their code; the rest are
 // the controller's own. The Discord layer turns each into a private message.
-export type PlayRefusal = RejectionCode | "notFound" | "notActive" | "noHero" | "noPendingRoll" | "npcNotHere" | "notForSale" | "invalidHazard";
+export type PlayRefusal = RejectionCode | "noPendingMove" | "invalidMove" | "notFound" | "notActive" | "noHero" | "noPendingRoll" | "npcNotHere" | "notForSale" | "invalidHazard";
 
 // What a manager can do to a game from the hub.
 export type ManageAction = "pause" | "resume" | "closeRound" | "retry" | "retryFight" | "retell" | "illustrate" | "illustrateScene" | "shortRest" | "longRest";
@@ -85,6 +88,11 @@ export class CampaignPlayController {
     return this.perform(key, userId, interactionId, () => ({ kind: "raiseLevel", level }));
   }
 
+  // The organizer corrects the story's day, time of day or weather (a DnD Admin acts for them: userId null).
+  public setWorld(key: CampaignKey, userId: UserId | null, patch: { readonly day?: number; readonly time?: TimeOfDay; readonly weather?: Weather | null; readonly note?: string }, interactionId: string): Promise<PlayResult> {
+    return this.perform(key, userId, interactionId, () => ({ kind: "setWorld", ...patch }));
+  }
+
   // The hero's next level lands in `buildClass` (their own, or a multiclass they qualify for).
   public chooseClassLevel(key: CampaignKey, userId: UserId, buildClass: string, skillChoice: string | undefined, interactionId: string): Promise<PlayResult> {
     return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "chooseClassLevel", characterId, buildClass, ...(skillChoice === undefined ? {} : { skillChoice }) }));
@@ -142,9 +150,19 @@ export class CampaignPlayController {
     return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "summonCompanion", characterId, spellId, slotLevel }));
   }
 
+  // Send a companion away between fights; it is the hero's own to dismiss.
+  public dismissCompanion(key: CampaignKey, userId: UserId, companionId: string, interactionId: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "dismissCompanion", characterId, companionId }));
+  }
+
   // A spell that brings a fallen hero back, cast between fights.
   public reviveSpell(key: CampaignKey, userId: UserId, spellId: ContentId<"spell">, slotLevel: number, targetId: string, interactionId: string): Promise<PlayResult> {
     return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "castReviveSpell", characterId, targetId, spellId, slotLevel }));
+  }
+
+  // After a short rest, a hero spends some of their Hit Dice: each is rolled, and the total is healed.
+  public spendHitDice(key: CampaignKey, userId: UserId, count: number, interactionId: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "spendHitDice", characterId, count }));
   }
 
   // A slotted healing spell on a friend between fights; the dice decide how much it heals.
@@ -187,6 +205,18 @@ export class CampaignPlayController {
     return first ?? { kind: "ok" };
   }
 
+  // A player suggests heading to a scene the story leaves open from here. It waits for the table like any other move.
+  public async proposeMove(key: CampaignKey, userId: UserId, sceneId: string, interactionId: string): Promise<PlayResult> {
+    const stored = await this.options.unitOfWork.transaction((tx) => tx.loadRecord(key));
+    const bible = stored === undefined ? undefined : this.options.adventures.find(stored.record.adventure.adventureId, stored.record.adventure.version, stored.record.language);
+    if (bible === undefined) return { kind: "refused", reason: "notFound" };
+    return this.perform(key, userId, interactionId, (state) => {
+      const scene = bible.scenes.find((candidate) => candidate.id === sceneId);
+      if (scene === undefined || !reachableScenes(bible, state).includes(scene.id)) return "invalidMove";
+      return { kind: "proposeMove", sceneId: scene.id, effects: withArrival({ kind: "transitionScene", sceneId: scene.id }, bible) };
+    });
+  }
+
   // Runs a command for the clicker's hero against an NPC the scene actually has.
   private async withNpc(
     key: CampaignKey,
@@ -204,9 +234,12 @@ export class CampaignPlayController {
     });
   }
 
-  // roundNumber is the round the form was opened for; the engine refuses it in any other round.
-  public submitAction(key: CampaignKey, userId: UserId, text: string, interactionId: string, roundNumber?: number): Promise<PlayResult> {
-    return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "submitAction", characterId, text, ...(roundNumber === undefined ? {} : { roundNumber }) }));
+  // The form carries both its round and scene so stale drafts cannot cross a room transition.
+  public submitAction(key: CampaignKey, userId: UserId, text: string, interactionId: string, roundNumber?: number, sceneId?: string): Promise<PlayResult> {
+    return this.asHero(key, userId, interactionId, (characterId, state) => {
+      if (sceneId !== undefined && sceneId !== state.sceneId) return "staleRound";
+      return { kind: "submitAction", characterId, text, ...(roundNumber === undefined ? {} : { roundNumber }) };
+    });
   }
 
   public pass(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {
@@ -220,6 +253,24 @@ export class CampaignPlayController {
       if (heroId === null || heroId === undefined) return "noHero";
       const check = Object.values(state.checks).find((candidate) => candidate.characterId === heroId && candidate.status === "pending");
       return check === undefined ? "noPendingRoll" : { kind: "requestRoll", checkId: check.id };
+    });
+  }
+
+  // Stay here / Go along is one toggle: a player who objected takes it back, anyone else objects.
+  public toggleMoveObjection(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult & { readonly staying?: boolean }> {
+    let staying = false;
+    return this.perform(key, userId, interactionId, (state) => {
+      if (state.pendingMove === undefined) return "noPendingMove";
+      staying = !state.pendingMove.objectors.includes(userId);
+      return { kind: staying ? "objectToMove" : "withdrawObjection" };
+    }).then((result) => (result.kind === "ok" ? { ...result, staying } : result));
+  }
+
+  public voteOnMove(key: CampaignKey, userId: UserId, choice: "go" | "stay", interactionId: string): Promise<PlayResult> {
+    return this.perform(key, userId, interactionId, (state) => {
+      if (state.pendingMove === undefined) return "noPendingMove";
+      if (choice === "stay") return state.pendingMove.objectors.includes(userId) ? { kind: "withdrawObjection" } : { kind: "objectToMove" };
+      return state.pendingMove.supporters?.includes(userId) ? { kind: "withdrawMoveSupport" } : { kind: "supportMove" };
     });
   }
 
@@ -329,19 +380,65 @@ export class CampaignPlayController {
     return this.perform(key, userId, interactionId, () => ({ kind: "closeRound" }));
   }
 
+  // Organizer: send the party to the scene it is waiting to move to, or keep it where it is. userId null is a DnD Admin acting for them.
+  public settleMove(key: CampaignKey, userId: UserId | null, outcome: "go" | "stay", interactionId: string): Promise<PlayResult> {
+    return this.perform(key, userId, interactionId, (state) => (state.pendingMove === undefined ? "noPendingMove" : { kind: "settleMove", outcome }));
+  }
+
   // The DM could not resolve a round; the organizer asks it to try again.
   public retryPlan(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {
     return this.perform(key, userId, interactionId, () => ({ kind: "retryPlan" }));
   }
 
-  public rest(key: CampaignKey, userId: UserId, rest: "short" | "long", interactionId: string): Promise<PlayResult> {
-    return this.perform(key, userId, interactionId, () => ({ kind: "takeRest", rest }));
+  // Organizer: rest now if nothing is going, otherwise as soon as the round or fight in progress is over. rest null takes the request back.
+  public async queueRest(key: CampaignKey, userId: UserId, rest: "short" | "long" | null, interactionId: string): Promise<PlayResult> {
+    const story = rest === "long" ? await this.longRestStory(key) : [];
+    return this.perform(key, userId, interactionId, () => ({ kind: "queueRest", rest, ...(story.length === 0 ? {} : { story }) }));
+  }
+
+  // Any player present: propose a rest to the table, or answer the proposal that is open. A majority of the players present makes it happen.
+  public async proposeRest(key: CampaignKey, userId: UserId, rest: "short" | "long", interactionId: string): Promise<PlayResult> {
+    const story = rest === "long" ? await this.longRestStory(key) : [];
+    return this.perform(key, userId, interactionId, () => ({ kind: "proposeRest", rest, ...(story.length === 0 ? {} : { story }) }));
+  }
+
+  public answerRestVote(key: CampaignKey, userId: UserId, agree: boolean, interactionId: string): Promise<PlayResult> {
+    return this.perform(key, userId, interactionId, () => ({ kind: "answerRestVote", agree }));
+  }
+
+  // Send all of the player's companions away (between fights). Each goes as its own command, so a repeat of the same press changes nothing.
+  public async dismissCompanions(key: CampaignKey, userId: UserId, interactionId: string): Promise<PlayResult> {
+    const loaded = await this.options.unitOfWork.transaction((tx) => tx.loadCampaign(key));
+    const heroId = loaded?.state.members[userId]?.characterId;
+    const ids = heroId === null || heroId === undefined || loaded === undefined ? [] : companionsOf(loaded.state.companions, heroId).map((companion) => companion.id);
+    if (ids.length === 0) return { kind: "refused", reason: "invalidTarget" };
+    let result: PlayResult = { kind: "ok" };
+    for (const companionId of ids) {
+      result = await this.dismissCompanion(key, userId, companionId, `${interactionId}:${companionId}`);
+      if (result.kind === "refused") return result;
+    }
+    return result;
+  }
+
+  public async rest(key: CampaignKey, userId: UserId, rest: "short" | "long", interactionId: string): Promise<PlayResult> {
+    const story = rest === "long" ? await this.longRestStory(key) : [];
+    return this.perform(key, userId, interactionId, () => ({ kind: "takeRest", rest, ...(story.length === 0 ? {} : { story }) }));
+  }
+
+  // What the scene the party is in brings with a long rest, from the adventure the game joined.
+  private async longRestStory(key: CampaignKey): Promise<readonly PartyEffect[]> {
+    const loaded = await this.options.unitOfWork.transaction(async (tx) => ({ record: await tx.loadRecord(key), stored: await tx.loadCampaign(key) }));
+    if (loaded.record === undefined || loaded.stored === undefined) return [];
+    const { adventure, language } = loaded.record.record;
+    return longRestEffects(this.options.adventures.find(adventure.adventureId, adventure.version, language), loaded.stored.state.sceneId);
   }
 
   // A DnD Admin (checked by the caller, which knows the server's role) runs
   // an organizer control on a game they do not organize. The engine still
   // sees the organizer's own rights, so it decides exactly as it would for them.
-  public manage(key: CampaignKey, verb: ManageAction, interactionId: string): Promise<PlayResult> {
+  // A named user runs the verb as themselves, and the engine refuses anyone but the organizer.
+  public async manage(key: CampaignKey, verb: ManageAction, interactionId: string, userId: UserId | null = null): Promise<PlayResult> {
+    const story = verb === "longRest" ? await this.longRestStory(key) : [];
     const command = (state: CampaignState): CampaignCommand =>
       verb === "pause"
         ? { kind: "pauseCampaign", reason: "organizer" }
@@ -360,8 +457,8 @@ export class CampaignPlayController {
                     : verb === "illustrateScene"
                       // The scene the party is in now; a scene with no picture yet is painted, one with a picture is painted again.
                       ? { kind: "redoPicture", subject: state.sceneId ?? "" }
-                      : { kind: "takeRest", rest: verb === "longRest" ? "long" : "short" };
-    return this.perform(key, null, interactionId, command);
+                      : { kind: "queueRest", rest: verb === "longRest" ? "long" : "short", ...(story.length === 0 ? {} : { story }) };
+    return this.perform(key, userId, interactionId, command);
   }
 
   // Organizer: paint the last posted picture again ("" when there is none, which the engine refuses).

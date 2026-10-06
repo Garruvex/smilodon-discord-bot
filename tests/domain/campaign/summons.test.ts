@@ -21,6 +21,7 @@ describe("Conjure Animals", () => {
     const order = fight.encounter.order;
     expect(order[0]).toBe("c-elspeth");
     expect(new Set(order.slice(1, 3))).toEqual(new Set(bears.map((bear) => bear.id)));
+    expect(bears.every((bear) => bear.summonedBy === "c-elspeth")).toBe(true);
     expect(fight.encounter.status).toBe("active");
   });
 

@@ -19,7 +19,7 @@ export interface HubGame {
 // everything the /dnd commands do, grouped by what a person came to do: games,
 // characters, adventures. It is the oldest message in the channel, with one
 // message per live game below it.
-export function renderHubControl(gameCount: number, text: Texts): CardPayload {
+export function renderHubControl(gameCount: number, text: Texts, activity = false): CardPayload {
   const t = text.campaign.hub;
   const button = (action: Parameters<typeof hubCustomId>[0], label: string, style = ButtonStyle.Secondary): ButtonBuilder =>
     new ButtonBuilder().setCustomId(hubCustomId(action)).setLabel(label).setStyle(style);
@@ -27,7 +27,7 @@ export function renderHubControl(gameCount: number, text: Texts): CardPayload {
     .setAccentColor(accents.blue)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ${t.title}\n${t.intro}${gameCount === 0 ? `\n\n${t.empty}` : ""}`))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t.sectionGames))
-    .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(button("create", t.createButton, ButtonStyle.Success), button("help", t.helpButton)))
+    .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(button("create", t.createButton, ButtonStyle.Success), ...(activity ? [button("playActivity", t.playActivityButton, ButtonStyle.Primary)] : []), button("help", t.helpButton)))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t.sectionCharacters))
     .addActionRowComponents(
       new ActionRowBuilder<ButtonBuilder>().addComponents(button("characters", t.charactersButton, ButtonStyle.Primary), button("newCharacter", t.newCharacterButton), button("importOpen", t.importButton)),

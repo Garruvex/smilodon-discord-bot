@@ -1,38 +1,18 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, escapeMarkdown } from "discord.js";
 
+import type { TurnChoice } from "../../../application/campaign/views/turn-choice.js";
 import type { TargetView, TurnView } from "../../../application/campaign/views/turn-view.js";
 import type { Texts } from "../../../application/i18n/texts.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import { campaignCustomId } from "./campaign-ids.js";
+import { noIcons, type CampaignIcon, type CampaignIcons } from "./campaign-icons.js";
 
 // The private turn menu (panel spec: Combat targeting). Each option is one
 // legal action; targets come in a second menu. A choice is written into the
 // menu's option values, so a menu still works after a restart and never grants
 // authority: the engine checks every command again.
 
-export type TurnChoice =
-  | { readonly kind: "attack"; readonly weapon: string }
-  | { readonly kind: "cast"; readonly spell: string; readonly slot: number }
-  // The spellbook: a hero with many spells picks from a page of them (renderSpellMenu).
-  | { readonly kind: "spells"; readonly page: number }
-  // Wild Shape: a beast to become, the beasts to choose from, or a return to the druid's own form.
-  | { readonly kind: "shape"; readonly monster: string }
-  | { readonly kind: "shapes"; readonly page: number }
-  // The rest of the main menu, when it holds more actions than one menu can show.
-  | { readonly kind: "more"; readonly page: number }
-  | { readonly kind: "unshape" }
-  | { readonly kind: "feature"; readonly feature: string }
-  | { readonly kind: "potion"; readonly item: string }
-  | { readonly kind: "move"; readonly zone: string }
-  // A spell that carries the hero to a zone (Misty Step).
-  | { readonly kind: "teleport"; readonly spell: string; readonly slot: number; readonly zone: string }
-  | { readonly kind: "shield"; readonly item: string; readonly on: boolean }
-  | { readonly kind: "engage" }
-  | { readonly kind: "withdraw" }
-  | { readonly kind: "dodge" }
-  | { readonly kind: "dash" }
-  | { readonly kind: "disengage" }
-  | { readonly kind: "end" };
+export type { TurnChoice };
 
 export function encodeChoice(choice: TurnChoice): string {
   switch (choice.kind) {
@@ -125,18 +105,82 @@ export interface TurnMenu {
 }
 
 const maxOptions = 25;
+// The icon a menu entry carries, so kinds of action can be told apart at a glance.
+function iconOf(choice: TurnChoice, view: TurnView): CampaignIcon | undefined {
+  switch (choice.kind) {
+    case "attack":
+      return view.attacks.find((attack) => attack.weapon === choice.weapon)?.ranged === true ? "ranged" : "attack";
+    case "cast":
+    case "spells":
+    case "teleport":
+      return "spell";
+    case "shape":
+    case "shapes":
+    case "unshape":
+      return "shape";
+    case "potion":
+      return "potion";
+    case "shield":
+      return "shield";
+    case "move":
+      return "move";
+    case "engage":
+      return "attack";
+    case "withdraw":
+    case "disengage":
+      return "withdraw";
+    case "dodge":
+      return "dodge";
+    case "dash":
+      return "dash";
+    default:
+      return undefined;
+  }
+}
+
+interface MenuOption {
+  readonly label: string;
+  readonly value: string;
+  readonly description?: string;
+  readonly emoji?: { readonly id: string; readonly name: string };
+}
+
+// The line under an attack: whether it is a close blow or a shot, and how far it carries.
+function attackNote(choice: TurnChoice, view: TurnView, text: Texts): string | undefined {
+  if (choice.kind !== "attack") return undefined;
+  const t = text.campaign.turn;
+  const attack = view.attacks.find((candidate) => candidate.weapon === choice.weapon);
+  if (attack === undefined) return undefined;
+  if (choice.weapon.startsWith("nonlethal:")) return t.noteKnockOut;
+  if (attack.reach !== undefined) return t.noteRanged({ normal: attack.reach.normal, long: attack.reach.long });
+  return choice.weapon.startsWith("offhand:") ? t.noteOffHand : t.noteMelee;
+}
+
+// Discord refuses a menu with two options of one value, and a hero carrying two daggers offers the same attack twice.
+function distinct(options: readonly MenuOption[]): MenuOption[] {
+  const seen = new Set<string>();
+  return options.filter((option) => (seen.has(option.value) ? false : (seen.add(option.value), true)));
+}
+
+function optionOf(choice: TurnChoice, view: TurnView, text: Texts, glossary: Glossary, icons: CampaignIcons): MenuOption {
+  const icon = iconOf(choice, view);
+  const emoji = icon === undefined ? undefined : icons.emoji(icon);
+  const note = attackNote(choice, view, text);
+  return { label: choiceLabel(choice, view, text, glossary).slice(0, 100), value: encodeChoice(choice), ...(note === undefined ? {} : { description: note.slice(0, 100) }), ...(emoji === undefined ? {} : { emoji }) };
+}
+
 // The main menu keeps a place for "More actions…" and for End turn.
 const actionsPerPage = maxOptions - 2;
 
 // The turn view: what is left this turn, then one menu of everything legal.
-export function renderTurnMenu(view: TurnView, text: Texts, glossary: Glossary, campaignId: string, page = 0): TurnMenu {
+export function renderTurnMenu(view: TurnView, text: Texts, glossary: Glossary, campaignId: string, page = 0, icons: CampaignIcons = noIcons): TurnMenu {
   const t = text.campaign.turn;
   const mark = (left: boolean): string => (left ? "✅" : "❌");
   const lines = [
     t.header({ hero: view.heroName, zone: view.zone, action: mark(view.budget.action), bonus: mark(view.budget.bonusAction), reaction: mark(view.budget.reaction), feet: view.budget.movement }),
   ];
   if (view.engagedWith.length > 0) lines.push(t.engaged({ names: view.engagedWith.join(", ") }));
-  const options = choicesOf(view).map((choice) => ({ label: choiceLabel(choice, view, text, glossary).slice(0, 100), value: encodeChoice(choice) }));
+  const options: MenuOption[] = distinct(choicesOf(view).map((choice) => optionOf(choice, view, text, glossary, icons)));
   const refresh = refreshRow(campaignId, text.campaign.button.refresh);
   if (view.busy) return { content: [...lines, t.busy].join("\n"), components: [refresh] };
   // End turn is on every page; a long list continues on the next one, so no action is ever cut off.
@@ -162,12 +206,12 @@ const spellbookThreshold = 8;
 const spellsPerPage = maxOptions - 2;
 
 // The spellbook: one page of the spells the hero can cast now, each at each slot level it fits.
-export function renderSpellMenu(view: TurnView, page: number, text: Texts, glossary: Glossary, campaignId: string): TurnMenu {
+export function renderSpellMenu(view: TurnView, page: number, text: Texts, glossary: Glossary, campaignId: string, icons: CampaignIcons = noIcons): TurnMenu {
   const t = text.campaign.turn;
   const pages = Math.max(1, Math.ceil(view.spells.length / spellsPerPage));
   const at = Math.min(Math.max(0, page), pages - 1);
   const choices = view.spells.slice(at * spellsPerPage, (at + 1) * spellsPerPage).map((spell): TurnChoice => ({ kind: "cast", spell: spell.spellId, slot: spell.slotLevel }));
-  const options = choices.map((choice) => ({ label: choiceLabel(choice, view, text, glossary).slice(0, 100), value: encodeChoice(choice) }));
+  const options: MenuOption[] = distinct(choices.map((choice) => optionOf(choice, view, text, glossary, icons)));
   if (at + 1 < pages) options.push({ label: t.spellbookMore({ page: at + 2 }), value: encodeChoice({ kind: "spells", page: at + 1 }) });
   return {
     content: t.spellbookPrompt,
@@ -181,12 +225,12 @@ export function renderSpellMenu(view: TurnView, page: number, text: Texts, gloss
 }
 
 // Wild Shape: one page of the beasts the druid may become now.
-export function renderShapeMenu(view: TurnView, page: number, text: Texts, glossary: Glossary, campaignId: string): TurnMenu {
+export function renderShapeMenu(view: TurnView, page: number, text: Texts, glossary: Glossary, campaignId: string, icons: CampaignIcons = noIcons): TurnMenu {
   const t = text.campaign.turn;
   const pages = Math.max(1, Math.ceil(view.wildShapes.length / spellsPerPage));
   const at = Math.min(Math.max(0, page), pages - 1);
   const choices = view.wildShapes.slice(at * spellsPerPage, (at + 1) * spellsPerPage).map((monster): TurnChoice => ({ kind: "shape", monster }));
-  const options = choices.map((choice) => ({ label: choiceLabel(choice, view, text, glossary).slice(0, 100), value: encodeChoice(choice) }));
+  const options: MenuOption[] = distinct(choices.map((choice) => optionOf(choice, view, text, glossary, icons)));
   if (at + 1 < pages) options.push({ label: t.shapesMore({ page: at + 2 }), value: encodeChoice({ kind: "shapes", page: at + 1 }) });
   return {
     content: t.shapesPrompt,
@@ -206,12 +250,37 @@ export function renderTargetMenu(choice: TurnChoice, view: TurnView, text: Texts
   const t = text.campaign.turn;
   const max = Math.max(1, Math.min(targets.max, targets.targets.length, maxOptions));
   const action = choiceLabel(choice, view, text, glossary);
-  const options = targets.targets.slice(0, maxOptions).map((target) => ({ label: targetLabel(target, text).slice(0, 100), value: encodeAim(choice, target.id) }));
+  const spell = choice.kind === "cast" ? view.spells.find((candidate) => candidate.spellId === choice.spell && candidate.slotLevel === choice.slot) : undefined;
+  const options = targets.targets.slice(0, maxOptions).map((target) => {
+    const affected = spell?.affectedByTarget?.[target.id];
+    const description = affected === undefined ? undefined : t.areaPreview({ target: target.name, names: affected.map((person) => person.side === "party" ? t.areaAlly({ name: person.name }) : person.name).join(", ") });
+    return { label: targetLabel(target, text).slice(0, 100), value: encodeAim(choice, target.id), ...(description === undefined ? {} : { description: description.slice(0, 100) }) };
+  });
   return {
     content: max > 1 ? t.targetsPrompt({ action, max }) : t.targetPrompt({ action }),
     components: [
       new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
         new StringSelectMenuBuilder().setCustomId(campaignCustomId("aim", campaignId)).setPlaceholder(t.targetPlaceholder).setMinValues(1).setMaxValues(max).addOptions(options),
+      ),
+      refreshRow(campaignId, t.back),
+    ],
+  };
+}
+
+// A selected area anchor gets a full hit list before the spell is committed.
+export function renderAreaConfirm(choice: Extract<TurnChoice, { readonly kind: "cast" }>, targetId: string, view: TurnView, text: Texts, glossary: Glossary, campaignId: string): TurnMenu | null {
+  const spell = view.spells.find((candidate) => candidate.spellId === choice.spell && candidate.slotLevel === choice.slot);
+  const target = spell?.targets.find((candidate) => candidate.id === targetId);
+  const affected = spell?.affectedByTarget?.[targetId];
+  if (target === undefined || affected === undefined) return null;
+  const t = text.campaign.turn;
+  const name = glossary.names[choice.spell] ?? choice.spell;
+  const names = affected.map((person) => `• ${person.side === "party" ? t.areaAlly({ name: escapeMarkdown(person.name) }) : escapeMarkdown(person.name)}`).join("\n");
+  return {
+    content: t.areaConfirm({ spell: escapeMarkdown(name), target: escapeMarkdown(target.name), names }),
+    components: [
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder().setCustomId(campaignCustomId("areaConfirm", campaignId)).setPlaceholder(t.areaCastNow({ spell: name }).slice(0, 150)).addOptions({ label: t.areaCastNow({ spell: name }).slice(0, 100), value: encodeAim(choice, targetId) }),
       ),
       refreshRow(campaignId, t.back),
     ],

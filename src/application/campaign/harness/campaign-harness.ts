@@ -307,6 +307,11 @@ export async function runHarness(options: HarnessOptions): Promise<HarnessRun> {
     }
     await rolls.runOnce();
     await drainDm();
+    const afterNarration = await load();
+    if (afterNarration.pendingMove !== undefined && afterNarration.round !== null) {
+      const voter = players.find((player) => afterNarration.members[player.userId]?.availability === "present");
+      if (voter !== undefined) await execute({ kind: "settleMove", outcome: "go" }, user(voter));
+    }
     const fight = (await load()).encounter;
     if (fight !== null && fight.status !== "ended" && !(await runCombat())) {
       stoppedBecause = "stalled";

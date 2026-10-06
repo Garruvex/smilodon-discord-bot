@@ -229,7 +229,9 @@ describe("buildChatContext", () => {
 
   it("surfaces birthday in a separate user_profile section, not user_memories", () => {
     const withBirthday = buildChatContext(baseRequest({ birthday: { month: 3, day: 5 } }));
-    expect(withBirthday).toContain("<user_profile>\nbirthday: month=3 day=5\n</user_profile>");
+    expect(withBirthday).toContain("<user_profile>\nbirthday: month=3 day=5 (birth year unknown; do not guess age)\n</user_profile>");
+    const withYear = buildChatContext(baseRequest({ birthday: { month: 3, day: 5, birthYear: 1999 } }));
+    expect(withYear).toContain("birthday: month=3 day=5 birthYear=1999");
 
     const without = buildChatContext(baseRequest());
     expect(without).toContain("<user_profile>\nnone\n</user_profile>");

@@ -6,6 +6,7 @@ import type {
 } from "discord.js";
 
 import type { ApplicationConfiguration } from "../../config/configuration.js";
+import type { Language } from "../i18n/language.js";
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import type { CommandModule } from "../commands/command.js";
 import { AccessDenialReason, type AccessDecision } from "../../domain/access/access-decision.js";
@@ -19,6 +20,16 @@ export class AccessPolicyService {
     private readonly guildConfigurationProvider: GuildConfigurationProvider,
     private readonly engine: AccessPolicyEngine = new AccessPolicyEngine(),
   ) {}
+
+  public guildLanguage(guildId: string): Language | null {
+    return this.guildConfigurationProvider.find(guildId)?.language ?? null;
+  }
+
+  // Activity callers supply a member resolved by the server, never roles from
+  // the browser. Owner status still comes from the bot configuration.
+  public evaluateMember(policy: CommandAccessPolicy, commandModule: CommandModule, member: Omit<AccessSubject, "isOwner">): AccessDecision {
+    return this.engine.evaluate({ ...member, isOwner: this.configuration.ownerUserIds.has(member.userId) }, policy, commandModule, this.guildConfigurationProvider.find(member.guildId));
+  }
 
   public evaluate(
     policy: CommandAccessPolicy,

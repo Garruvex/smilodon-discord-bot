@@ -7,7 +7,7 @@ import type { MetamagicOption } from "../rules/modifiers.js";
 import type { SealedContent } from "../rules/content-registry.js";
 import { healingPotionCost, type HouseRules } from "../rules/house-rules.js";
 import { mayWildShapeInto, wildShapeFeature, wildShapeUses } from "../rules/wild-shape-rules.js";
-import { armedMetamagic, canAct, conditionLookup, hasCondition, isFlying, shapechangeOf, speedOf } from "../effects/effect-queries.js";
+import { armedMetamagic, canAct, canReact, conditionLookup, hasCondition, isFlying, shapechangeOf, speedOf } from "../effects/effect-queries.js";
 import { castableSlotLevels, slotUnavailable, spellMaxTargets, usePoolOf } from "../magic/spell-rules.js";
 import { areEngaged, availableSlots, currentCombatant, engagedWith, isPresent, type AttackOption, type Combatant, type EncounterState } from "./combat-state.js";
 import { isWorn } from "./combatant-profile.js";
@@ -67,11 +67,16 @@ export function costProblem(hero: Combatant, cost: "action" | "bonusAction", con
 // ------------------------------------------------------------- Weapons
 
 export function attackProblem(encounter: EncounterState, attacker: Combatant, option: AttackOption, targetId: string, purpose: "action" | "opportunity" | "legendary" | "reaction", content: SealedContent): TurnProblem | null {
+  const lookup = conditionLookup(content);
   if (purpose === "action") {
     // Extra Attack: the Attack action grants more than one attack, so what
     // must still be available is an attack left in it, not the action itself
     // (which is only spent once the last of them is made).
-    if (attacker.budget.attacksLeft <= 0 || !canAct(attacker, conditionLookup(content))) return { code: "noActionLeft" };
+    if (attacker.budget.attacksLeft <= 0 || !canAct(attacker, lookup)) return { code: "noActionLeft" };
+  } else if (purpose === "legendary") {
+    if (!canAct(attacker, lookup)) return { code: "noActionLeft" };
+  } else if (!canReact(attacker, lookup)) {
+    return { code: "noActionLeft" };
   }
   const problem = weaponTargetProblem(encounter, attacker, encounter.combatants[targetId], option, content);
   return problem === null ? null : { code: problem };
@@ -110,7 +115,7 @@ function castAsBonusAction(spell: SpellDefinition, metamagic: MetamagicOption | 
 // How many creatures a spell may name at this level: Twinned Spell adds a second to a spell that targets only one and does not grow with the slot.
 export function spellTargetLimit(spell: SpellDefinition, slotLevel: number, metamagic: MetamagicOption | null): number {
   if (spell.targeting.relation === "self") return spell.targeting.count;
-  const twin = metamagic === "twinned" && spell.targeting.count === 1 && (spell.targeting.countPerHigherSlot ?? 0) === 0 ? 1 : 0;
+  const twin = metamagic === "twinned" && spell.targeting.area !== true && spell.targeting.count === 1 && (spell.targeting.countPerHigherSlot ?? 0) === 0 ? 1 : 0;
   return spellMaxTargets(spell, slotLevel) + twin;
 }
 
@@ -143,6 +148,8 @@ export function spellProblem(
   const bonus = castAsBonusAction(spell, metamagic);
   // After a bonus-action spell, only a one-action cantrip may be cast this turn.
   if (caster.budget.bonusSpellCast && (bonus || spell.level > 0)) return refuse({ code: "bonusSpellCast" });
+  // A bonus-action spell cannot follow another spell in the same turn.
+  if (bonus && caster.budget.spellCast === true) return refuse({ code: "bonusSpellCast" });
   const cost = costProblem(caster, bonus ? "bonusAction" : "action", content);
   if (cost !== null) return refuse(cost);
   // A teleport is aimed at a zone within reach, other than the one the caster stands in.
@@ -159,7 +166,7 @@ export function spellProblem(
     const problem = spellTargetProblem(encounter, caster, spell, encounter.combatants[targetId], content);
     if (problem !== null) return refuse({ code: problem });
   }
-  return accept({ spell, bonus, targets: spell.targeting.area === true ? withEveryoneInTheirZones(encounter, targets, sparedBy(caster, spell)) : targets });
+  return accept({ spell, bonus, targets: spell.targeting.area === true ? withEveryoneInTheirZones(encounter, targets, sparedBy(caster, spell), caster.id) : targets });
 }
 
 // How many of the caster's friends an area spares: one more than the spell's level, for an evocation cast by a wizard who can sculpt.
@@ -167,10 +174,11 @@ function sparedBy(caster: Combatant, spell: SpellDefinition): { readonly side: C
   return { side: caster.side, count: spell.school === "evocation" && caster.traits.some((trait) => trait.kind === "sculptSpells") ? spell.level + 1 : 0 };
 }
 
-// An area reaches everyone in the zone it is aimed at: the creature named first, then the others, friends and the caster among them.
-function withEveryoneInTheirZones(encounter: EncounterState, named: readonly string[], spared: { readonly side: Combatant["side"]; readonly count: number }): readonly string[] {
+// An area reaches everyone in the zone it is aimed at: the creature named first, then the others, friends among them. The caster aims it
+// and is never caught by it (unless they named themselves).
+function withEveryoneInTheirZones(encounter: EncounterState, named: readonly string[], spared: { readonly side: Combatant["side"]; readonly count: number }, casterId: string): readonly string[] {
   const zones = new Set(named.flatMap((id) => (encounter.combatants[id] === undefined ? [] : [encounter.combatants[id].zoneId])));
-  const others = Object.values(encounter.combatants).filter((other) => zones.has(other.zoneId) && isPresent(other) && !named.includes(other.id));
+  const others = Object.values(encounter.combatants).filter((other) => zones.has(other.zoneId) && isPresent(other) && other.id !== casterId && !named.includes(other.id));
   // Sculpt Spells: some of the caster's friends are left out of the blast.
   let left = spared.count;
   const hit = others.filter((other) => {
@@ -388,6 +396,7 @@ export function turnOptions(encounter: EncounterState | null, sheet: CharacterSh
       const bonusAction = castAsBonusAction(spell, metamagic);
       if (costProblem(hero, bonusAction ? "bonusAction" : "action", content) !== null) continue;
       if (hero.budget.bonusSpellCast && (bonusAction || spell.level > 0)) continue;
+      if (bonusAction && hero.budget.spellCast === true) continue;
       const innate = hero.spellcasting?.innate?.[id];
       const pool = usePoolOf(hero.spellcasting, id);
       if (innate !== undefined && innate !== null && (hero.resources.featureUses[pool.key] ?? innate) < pool.cost) continue;

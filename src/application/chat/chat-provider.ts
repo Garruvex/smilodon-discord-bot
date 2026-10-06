@@ -97,7 +97,7 @@ export interface ChatRequest {
   // Explicit, user-supplied structured fact (not model-inferred like
   // memories) — kept as its own field/prompt section to preserve the
   // trust/authorship distinction from LLM-curated memory claims.
-  birthday: { month: number; day: number } | null;
+  birthday: { month: number; day: number; birthYear?: number | null | undefined } | null;
   images: readonly ChatImage[];
   webSearchMode: "off" | "auto";
   imageGenerationEnabled: boolean;

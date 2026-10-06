@@ -6,18 +6,22 @@ import { dcLadder, rollModeReasons } from "../../../domain/campaign/rules/diffic
 import { abilities } from "../../../domain/campaign/rules/effects.js";
 import { lootGold } from "../../../domain/campaign/rules/house-rules.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
+import type { SceneId } from "../../../domain/campaign/adventure/adventure-bible.js";
 import type { CampaignCommandBus } from "../campaign-command-bus.js";
 import { assembleContext, defaultContextBudget, renderTranscript, type ContextAudience } from "../dm/context-assembler.js";
 import { latestSummaryRound } from "../../../domain/campaign/engine/dm.js";
+import { sceneNoteCompactionThreshold } from "../../../domain/campaign/engine/dm.js";
 import { encounterRecords } from "../dm/combat-records.js";
 import { checkLabel, roundRecords } from "../dm/round-records.js";
 import { plannerStory, resolveStoryEffects } from "../dm/story-effects.js";
+import type { RuntimeLogger } from "../campaign-runtime.js";
 import type { CampaignKey, CampaignUnitOfWork, OutboxItem, StoredCampaign } from "../ports/campaign-store.js";
 import type {
   AdventureCatalog,
   CampaignChronicler,
   CampaignNarrator,
   CampaignPlanner,
+  CampaignSceneNoteJudge,
   CombatNarratorRequest,
   DialogueNarratorRequest,
   DmContext,
@@ -36,6 +40,7 @@ export interface DmJobWorkerOptions {
   readonly narrator: CampaignNarrator;
   // Condenses rounds in the background; without one, summaries are simply not made.
   readonly chronicler?: CampaignChronicler;
+  readonly noteJudge?: CampaignSceneNoteJudge;
   readonly adventures: AdventureCatalog;
   readonly glossaries: Readonly<Record<string, Glossary>>;
   // Resolves each campaign's pinned ruleset, so the narrator can be given reference cards for the monsters in a fight.
@@ -44,6 +49,8 @@ export interface DmJobWorkerOptions {
   readonly maxAttempts?: number;
   // Chance for the tables an adventure rolls on (0 up to but excluding 1); tests pin it.
   readonly random?: () => number;
+  // Where a failed planning attempt is written, so the reason is not lost with the organizer notice.
+  readonly logger?: RuntimeLogger;
 }
 
 const system = { kind: "system" } as const;
@@ -66,7 +73,9 @@ export class DmJobWorker {
       ...(await tx.pendingOutbox("narrateUtilityCast")),
       ...(await tx.pendingOutbox("narrateHazard")),
       ...(await tx.pendingOutbox("chronicle")),
+      ...(await tx.pendingOutbox("compactSceneNotes")),
       ...(await tx.pendingOutbox("renarrate")),
+      ...(await tx.pendingOutbox("judgeSceneNotes")),
     ]);
     const failed: { id: string; error: string }[] = [];
     for (const item of items) {
@@ -79,7 +88,9 @@ export class DmJobWorker {
         if (item.request.kind === "narrateDialogue" && !(await this.narrateDialogue(item, item.request.dialogueId))) continue;
         if (item.request.kind === "narrateUtilityCast") await this.narrateUtilityCast(item, item.request.castId);
         if (item.request.kind === "narrateHazard") await this.narrateHazard(item, item.request.hazardId);
-        if (item.request.kind === "chronicle") await this.chronicle(item, item.request.throughRound);
+        if (item.request.kind === "chronicle") await this.chronicle(item, item.request.throughRound, item.request.privateOnly ?? false);
+        if (item.request.kind === "compactSceneNotes") await this.compactSceneNotes(item, item.request.sceneId, item.request.throughRound);
+        if (item.request.kind === "judgeSceneNotes") await this.judgeSceneNotes(item, item.request.roundNumber, item.request.sceneId);
         if (item.request.kind === "renarrate") await this.renarrate(item, item.request.roundNumber);
         await unitOfWork.transaction((tx) => tx.completeOutbox(item.id));
       } catch (error) {
@@ -108,7 +119,10 @@ export class DmJobWorker {
         ? [{ characterId, heroName: loaded.stored.state.characters[characterId]?.name ?? characterId, text: submission.text }]
         : [],
     );
-    let problems: readonly string[] = [];
+    // An organizer retry is a new job, but it must retain the last failure's
+    // feedback instead of asking the model to repeat the same invalid plan.
+    const previousFailure = loaded.events.findLast((event) => event.kind === "plannerFailed" && event.roundNumber === roundNumber);
+    let problems: readonly string[] = previousFailure?.kind === "plannerFailed" ? previousFailure.problems : [];
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
         const proposal = await this.options.planner.plan({
@@ -128,20 +142,26 @@ export class DmJobWorker {
         const resolved = resolveStoryEffects(proposal, loaded.bible, loaded.stored.state, { wallet, ...(this.options.random === undefined ? {} : { random: this.options.random }) });
         if (resolved.kind === "invalid") {
           problems = resolved.problems;
+          this.options.logger?.warn({ campaignId: item.key.campaignId, roundNumber, attempt, problems }, "Planner proposal was invalid");
           continue;
         }
         const outcome = await this.options.bus.execute(
           item.key,
           { kind: "applyRoundPlan", proposal: resolved.proposal },
-          { commandId: `${item.id}:plan:${attempt}`, actor: system },
+          { commandId: `${item.id}:${item.attempts}:plan:${attempt}`, actor: system },
         );
         if (outcome.kind !== "rejected") return;
         if (outcome.rejection.code !== "invalidPlan") return; // Stale: the round moved on.
         problems = outcome.rejection.problems;
+        this.options.logger?.warn({ campaignId: item.key.campaignId, roundNumber, attempt, problems }, "Engine refused the round plan");
       } catch (error) {
         problems = [`The planner call failed: ${error instanceof Error ? error.message : String(error)}`];
+        this.options.logger?.warn({ err: error, campaignId: item.key.campaignId, roundNumber, attempt }, "Planner call failed");
       }
     }
+    // A provider hiccup should not hold the round for the organizer: the job is tried again later, and only the last try holds it.
+    if (item.attempts + 1 < this.maxAttempts) throw new Error(`The planner failed: ${problems.join(" ")}`);
+    this.options.logger?.error({ campaignId: item.key.campaignId, roundNumber, problems }, "Round held: the planner failed on every try");
     await this.options.bus.execute(
       item.key,
       { kind: "reportPlannerFailure", roundNumber, problems },
@@ -155,15 +175,18 @@ export class DmJobWorker {
     const loaded = await this.load(item.key);
     const request = this.narratorRequest(loaded, roundNumber);
     let text: string;
+    let note = "";
     try {
-      text = (await this.options.narrator.narrate(request)).text;
+      const narrated = await this.options.narrator.narrate(request);
+      text = narrated.text;
+      note = narrated.note ?? "";
     } catch (error) {
       if (item.attempts + 1 < this.maxAttempts) throw error;
       text = fallbackNarration(request);
     }
     await this.options.bus.execute(
       item.key,
-      { kind: "recordNarration", roundNumber, text },
+      { kind: "recordNarration", roundNumber, text, note },
       { commandId: `${item.id}:narration`, actor: system },
     );
   }
@@ -190,12 +213,12 @@ export class DmJobWorker {
   // they name. A public summary is written from the public transcript alone, so
   // it cannot hold a secret. The engine refuses a late or number-filled
   // summary; a fact that renames a known entity is dropped, not forced.
-  private async chronicle(item: OutboxItem, throughRound: number): Promise<void> {
+  private async chronicle(item: OutboxItem, throughRound: number, privateOnly = false): Promise<void> {
     const { chronicler, bus } = this.options;
     if (chronicler === undefined) return;
     const loaded = await this.load(item.key);
     const { state } = loaded.stored;
-    for (const audience of ["public", "private"] as const) {
+    for (const audience of (privateOnly ? ["private"] as const : ["public", "private"] as const)) {
       const visibility = audience;
       const from = latestSummaryRound(state.summaries, visibility);
       if (from >= throughRound) continue;
@@ -218,6 +241,83 @@ export class DmJobWorker {
         );
       }
     }
+  }
+
+  private async compactSceneNotes(item: OutboxItem, sceneId: string, throughRound: number): Promise<void> {
+    const { chronicler, bus } = this.options;
+    if (chronicler === undefined) return;
+    const loaded = await this.load(item.key);
+    const { state } = loaded.stored;
+    const previous = state.sceneSummaries?.[sceneId];
+    const notes = (state.sceneNotes ?? []).filter((note) => note.sceneId === sceneId && note.roundNumber > (previous?.throughRound ?? 0) && note.roundNumber <= throughRound);
+    if (notes.length === 0 || notes.reduce((sum, note) => sum + note.text.length, 0) < sceneNoteCompactionThreshold) return;
+    const scene = findScene(loaded.bible, sceneId);
+    const transcript = notes.map((note) => `Round ${note.roundNumber}: ${note.text}`).join("\n");
+    const known = Object.values(state.ledger).flatMap((entry) => entry.facts.some((fact) => fact.visibility === "public") ? [{ entityId: entry.entityId, canonicalName: entry.canonicalName }] : []);
+    const result = await chronicler.chronicle({
+      audience: "public",
+      language: state.language,
+      transcript,
+      previousSummary: previous?.text ?? null,
+      knownEntities: known,
+      scene: { id: scene?.id ?? sceneId, title: scene?.title ?? sceneId },
+    });
+    if (result.summary.trim().length === 0) throw new Error("Chronicler returned an empty scene memory.");
+    const summary = await bus.execute(item.key, { kind: "compactSceneNotes", sceneId: sceneId as SceneId, throughRound, text: result.summary }, { commandId: `${item.id}:scene-notes:${sceneId}`, actor: system });
+    if (summary.kind === "rejected") return;
+    for (const [index, fact] of result.facts.entries()) {
+      await bus.execute(
+        item.key,
+        { kind: "recordLedgerFact", entityId: fact.entityId, canonicalName: fact.canonicalName, fact: fact.fact, visibility: "public" },
+        { commandId: `${item.id}:scene-fact:${sceneId}:${index}`, actor: system },
+      );
+    }
+    await this.chronicle(item, throughRound, true);
+  }
+
+  private async judgeSceneNotes(item: OutboxItem, roundNumber: number, sceneId: string): Promise<void> {
+    const loaded = await this.load(item.key);
+    const { state } = loaded.stored;
+    const pending = (state.pendingSceneNotes ?? []).filter((note) => note.roundNumber === roundNumber && note.sceneId === sceneId);
+    if (pending.length === 0) return;
+    const scene = findScene(loaded.bible, sceneId);
+    const notes = pending.map(({ noteIndex, text }) => ({ noteIndex, text }));
+    const judge = this.options.noteJudge;
+    if (judge === undefined) {
+      await this.discardSceneNotes(item, roundNumber, sceneId as SceneId, pending.map((note) => ({ noteIndex: note.noteIndex, decision: "drop" as const, text: "", reason: "Scene note judge unavailable; discarded." })));
+      return;
+    }
+    try {
+      if (scene === undefined) throw new Error("The proposed note refers to an unknown scene.");
+      const committedOutcomes = renderTranscript({
+        audience: "planner", state, events: loaded.events, bible: loaded.bible, glossary: this.glossary(loaded), budgetTokens: this.options.budgetTokens ?? defaultContextBudget,
+      }, roundNumber - 1, roundNumber);
+      const people = loaded.bible.npcs.filter((npc) => scene.npcIds.includes(npc.id) && state.npcsDown?.includes(npc.id) !== true).map((npc) => ({ id: npc.id, name: npc.name, description: npc.publicDescription, secret: npc.secret }));
+      const results = await judge.judge({
+        language: state.language,
+        scene: { id: scene.id, title: scene.title, publicDescription: scene.publicDescription, ...(scene.details === undefined ? {} : { details: scene.details }), dmNotes: scene.dmNotes },
+        adventure: { title: loaded.bible.title, premise: loaded.bible.premise, dmOverview: loaded.bible.dmOverview },
+        establishedPeople: people,
+        committedOutcomes: committedOutcomes === "" ? [] : [committedOutcomes],
+        notes,
+      });
+      const expected = new Set(pending.map((note) => note.noteIndex));
+      const seen = new Set<number>();
+      for (const result of results) {
+        if (!expected.has(result.noteIndex) || seen.has(result.noteIndex)) throw new Error("Scene note judge returned invalid note indexes.");
+        seen.add(result.noteIndex);
+      }
+      const normalized = pending.map((note) => results.find((result) => result.noteIndex === note.noteIndex) ?? ({ noteIndex: note.noteIndex, decision: "drop" as const, text: "", reason: "Judge returned no decision; discarded." }));
+      await this.discardSceneNotes(item, roundNumber, sceneId as SceneId, normalized);
+    } catch (error) {
+      if (item.attempts + 1 < this.maxAttempts) throw error;
+      await this.discardSceneNotes(item, roundNumber, sceneId as SceneId, pending.map((note) => ({ noteIndex: note.noteIndex, decision: "drop" as const, text: "", reason: "Judge failed; discarded." })));
+    }
+  }
+
+  private async discardSceneNotes(item: OutboxItem, roundNumber: number, sceneId: SceneId, results: readonly { readonly noteIndex: number; readonly decision: "keep" | "reword" | "drop"; readonly text: string; readonly reason: string }[]): Promise<void> {
+    const reviewed = await this.options.bus.execute(item.key, { kind: "reviewSceneNotes", roundNumber, sceneId, results }, { commandId: `${item.id}:review`, actor: system });
+    if (reviewed.kind === "rejected" && reviewed.rejection.code !== "staleSummary") throw new Error(`Scene note review was rejected: ${reviewed.rejection.code}.`);
   }
 
   // The opening scene, told before the first round. Like a round's narration,

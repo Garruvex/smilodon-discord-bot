@@ -4,7 +4,8 @@ import { swapFightingStyle } from "../character/fighting-styles.js";
 import { withWarlockChoices } from "../character/warlock-choices.js";
 import type { ContentId } from "../rules/content-id.js";
 import type { CharacterId, UserId } from "../core/ids.js";
-import type { CampaignState, CheckState, ItemOffer, MemberState, RoundState, Submission } from "../state/campaign-state.js";
+import type { CampaignState, CheckState, ItemOffer, MemberState, MoveReason, RoundState, SceneVisit, Submission } from "../state/campaign-state.js";
+import type { SceneId } from "../adventure/adventure-bible.js";
 import type { CombatEvent } from "../combat/combat-events.js";
 import type { HeroStatus } from "../combat/combatant-profile.js";
 import { baseEncounterId } from "../engine/ids.js";
@@ -30,6 +31,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
         },
         lastRoundNumber: event.roundNumber,
         checks: {},
+        shortRestOpen: false,
       };
     case "actionSubmitted":
       return withSubmission(state, event.characterId, { kind: "action", text: event.text, revision: event.revision });
@@ -69,9 +71,37 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "checkResolved":
       return updateCheck(state, event.checkId, (check) => ({ ...check, status: "resolved", result: event.result }));
     case "roundResolved":
-      return state.round?.number === event.roundNumber ? { ...state, round: null } : state;
+      if (state.round?.number !== event.roundNumber) return state;
+      { const { sceneMoveSettledRound: _round, sceneMoveSettledDestination: _destination, ...rest } = state; return { ...rest, round: null }; }
     case "sceneTransitioned":
-      return { ...state, sceneId: event.sceneId, sceneChangedRound: event.roundNumber };
+      return { ...omitDeclined(state), sceneId: event.sceneId, sceneChangedRound: event.roundNumber, visits: visitsAfterMove(state, event.sceneId, event.roundNumber, event.reason) };
+    case "sceneVisitStarted":
+      return { ...state, visits: state.visits ?? [{ id: "visit-1", sceneId: event.sceneId, arrivedRound: event.roundNumber }] };
+    case "sceneVisitNarrationClosed":
+      return { ...state, visits: (state.visits ?? []).map((visit) => visit.sceneId === event.sceneId && visit.leftRound === undefined ? { ...visit, narratedThroughRound: event.roundNumber } : visit) };
+    case "sceneMoveProposed":
+      return { ...state, pendingMove: { sceneId: event.sceneId, proposedRound: event.roundNumber, effects: event.effects, objectors: [], supporters: [], ...(event.by === undefined ? {} : { proposedBy: event.by }), ...(event.heroes === undefined ? {} : { heroes: event.heroes }) } };
+    case "sceneMoveObjected":
+      return state.pendingMove === undefined || state.pendingMove.objectors.includes(event.userId)
+        ? state
+        : { ...state, pendingMove: { ...state.pendingMove, supporters: (state.pendingMove.supporters ?? []).filter((userId) => userId !== event.userId), objectors: [...state.pendingMove.objectors, event.userId] } };
+    case "sceneMoveObjectionWithdrawn":
+      return state.pendingMove === undefined
+        ? state
+        : { ...state, pendingMove: { ...state.pendingMove, objectors: state.pendingMove.objectors.filter((userId) => userId !== event.userId) } };
+    case "sceneMoveSupported":
+      return state.pendingMove === undefined || state.pendingMove.supporters?.includes(event.userId)
+        ? state
+        : { ...state, pendingMove: { ...state.pendingMove, objectors: state.pendingMove.objectors.filter((userId) => userId !== event.userId), supporters: [...(state.pendingMove.supporters ?? []), event.userId] } };
+    case "sceneMoveSupportWithdrawn":
+      return state.pendingMove === undefined
+        ? state
+        : { ...state, pendingMove: { ...state.pendingMove, supporters: (state.pendingMove.supporters ?? []).filter((userId) => userId !== event.userId) } };
+    case "sceneMoveAgreed":
+    case "sceneMoveDeclined": {
+      const { pendingMove: _settled, ...rest } = state;
+      return { ...rest, sceneMoveSettledRound: event.roundNumber, sceneMoveSettledDestination: event.kind === "sceneMoveAgreed" ? event.sceneId : null, ...(event.kind === "sceneMoveDeclined" ? { sceneMoveDeclinedScene: event.sceneId } : {}) };
+    }
     case "proxyGranted":
       return { ...state, proxies: { ...(state.proxies ?? {}), [event.ownerUserId]: event.proxyUserId } };
     case "proxyRevoked": {
@@ -80,6 +110,22 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     }
     case "summaryRecorded":
       return { ...state, summaries: [...(state.summaries ?? []), { throughRound: event.throughRound, visibility: event.visibility, text: event.text }] };
+    case "sceneNoteProposed":
+      return { ...state, pendingSceneNotes: [...(state.pendingSceneNotes ?? []), { roundNumber: event.roundNumber, sceneId: event.sceneId, noteIndex: event.noteIndex, text: event.text }] };
+    case "sceneNoteReviewed": {
+      const pendingSceneNotes = (state.pendingSceneNotes ?? []).filter((note) => note.roundNumber !== event.roundNumber || note.sceneId !== event.sceneId || note.noteIndex !== event.noteIndex);
+      return event.decision === "drop"
+        ? { ...state, pendingSceneNotes }
+        : { ...state, pendingSceneNotes, sceneNotes: [...(state.sceneNotes ?? []), { roundNumber: event.roundNumber, sceneId: event.sceneId, text: event.text }] };
+    }
+    case "sceneNotesCompacted": {
+      const { [event.sceneId]: _old, ...otherSummaries } = state.sceneSummaries ?? {};
+      return {
+        ...state,
+        sceneSummaries: { ...otherSummaries, [event.sceneId]: { throughRound: event.throughRound, text: event.text } },
+        sceneNotes: (state.sceneNotes ?? []).filter((note) => note.sceneId !== event.sceneId || note.roundNumber > event.throughRound),
+      };
+    }
     case "encounterQueued":
       return { ...state, pendingEncounter: event.encounter };
     case "clockAdvanced":
@@ -90,6 +136,8 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return { ...state, flags: { ...state.flags, [event.flag]: event.value } };
     case "keepsakeGained":
       return { ...state, keepsakes: { ...state.keepsakes, [event.keepsake.id]: event.keepsake } };
+    case "worldChanged":
+      return { ...state, world: event.world };
     case "goldSpent":
       return event.wallet === "pool"
         ? { ...state, gold: state.gold - event.amount }
@@ -98,6 +146,32 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return updateMember(state, event.userId, (member) => ({ ...member, availability: "away", consecutiveMisses: 0 }));
     case "memberReturned":
       return updateMember(state, event.userId, (member) => ({ ...member, availability: "present", consecutiveMisses: 0 }));
+    case "memberRetired": {
+      const { [event.userId]: _left, ...members } = state.members;
+      const characters = { ...state.characters };
+      const heroStatus = { ...state.heroStatus };
+      const id = event.characterId;
+      if (id !== null) { delete characters[id]; delete heroStatus[id]; }
+      const proxies = Object.fromEntries(Object.entries(state.proxies ?? {}).filter(([owner, proxy]) => owner !== event.userId && proxy !== event.userId));
+      const without = <T,>(list: readonly T[] | undefined, value: T): readonly T[] | undefined => list?.filter((item) => item !== value);
+      const round = state.round === null || id === null ? state.round : {
+        ...state.round,
+        participants: state.round.participants.filter((participant) => participant !== id),
+        submissions: Object.fromEntries(Object.entries(state.round.submissions).filter(([submitter]) => submitter !== id)),
+      };
+      const pending = state.pendingMove === undefined ? undefined : { ...state.pendingMove, objectors: state.pendingMove.objectors.filter((user) => user !== event.userId), supporters: without(state.pendingMove.supporters, event.userId) ?? [] };
+      return {
+        ...state,
+        members,
+        characters,
+        heroStatus,
+        round,
+        proxies,
+        ...(state.openingReady === undefined ? {} : { openingReady: state.openingReady.filter((user) => user !== event.userId) }),
+        ...(pending === undefined ? {} : { pendingMove: pending }),
+        ...(id !== null && event.name !== null ? { retiredHeroes: { ...state.retiredHeroes, [id]: event.name } } : {}),
+      };
+    }
     case "waitingForPlayers":
       return { ...state, status: "waitingForPlayers", pausedBy: null };
     case "campaignPaused":
@@ -201,8 +275,28 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
     case "gearChanged":
     case "combatNarrationRecorded":
       return evolveCombat(state, event);
+    case "restProposed":
+      return { ...state, restVote: { rest: event.rest, proposedBy: event.by, agree: [event.by], decline: [], closesAt: event.closesAt, sceneId: event.sceneId, story: event.story } };
+    case "restVoteCast": {
+      const vote = state.restVote;
+      if (vote === undefined) return state;
+      const others = (list: readonly UserId[]): readonly UserId[] => list.filter((userId) => userId !== event.userId);
+      return { ...state, restVote: { ...vote, agree: event.agree ? [...others(vote.agree), event.userId] : others(vote.agree), decline: event.agree ? others(vote.decline) : [...others(vote.decline), event.userId] } };
+    }
+    case "restVoteClosed": {
+      const { restVote: _closed, ...rest } = state;
+      return rest;
+    }
+    case "restQueued": {
+      const { pendingRest: _asked, ...rest } = state;
+      return event.rest === null ? rest : { ...rest, pendingRest: { rest: event.rest, sceneId: event.sceneId ?? null, story: event.story ?? [] } };
+    }
+    case "restEnded": {
+      const { resting: _over, ...rest } = state;
+      return rest;
+    }
     case "restTaken":
-      return withCompanions({ ...state, heroStatus: { ...state.heroStatus, ...event.heroStatus } }, afterRest(state.companions, event.rest));
+      return withCompanions({ ...omitPendingRest(state), resting: event.rest, shortRestOpen: event.rest === "short", ...(event.longRestAt === undefined ? {} : { lastLongRestAt: event.longRestAt }), heroStatus: { ...state.heroStatus, ...event.heroStatus } }, afterRest(state.companions, event.rest));
     case "companionsSummoned":
       return { ...state, companions: withSummoned(state.companions, event.companions, event.replaced), heroStatus: { ...state.heroStatus, ...event.heroStatus } };
     case "heroRevived":
@@ -261,7 +355,13 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return { ...state, trades };
     }
     case "pressStarted":
-      return { ...state, pressPending: { ...state.pressPending, [event.press.characterId]: event.press } };
+      return {
+        ...state,
+        pressPending: { ...state.pressPending, [event.press.characterId]: event.press },
+        npcPressAttempts: state.npcPressAttempts?.includes(event.press.npcId) === true
+          ? state.npcPressAttempts
+          : [...(state.npcPressAttempts ?? []), event.press.npcId],
+      };
     case "dialogueSettled": {
       const { dialogue, revealSecret } = event;
       const { [dialogue.characterId]: _spentPress, ...pressPending } = state.pressPending ?? {};
@@ -293,6 +393,12 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       const sheet = settled.characters[event.damage.characterId];
       if (!event.damage.dead || sheet === undefined) return settled;
       return { ...settled, stash: [...settled.stash, ...sheet.equipment], characters: { ...settled.characters, [sheet.id]: { ...sheet, equipment: [] } } };
+    }
+    case "hitDiceStarted":
+      return { ...state, hitDicePending: { ...state.hitDicePending, [event.pending.characterId]: event.pending }, hitDiceCount: (state.hitDiceCount ?? 0) + 1 };
+    case "hitDiceSettled": {
+      const { [event.characterId]: _rolled, ...hitDicePending } = state.hitDicePending ?? {};
+      return { ...state, hitDicePending, heroStatus: { ...state.heroStatus, [event.characterId]: event.heroStatus } };
     }
     case "healingStarted":
       return { ...state, healingPending: { ...state.healingPending, [event.healing.casterId]: event.healing } };
@@ -402,11 +508,13 @@ function evolveCombat(state: CampaignState, event: CombatEvent): CampaignState {
   const encounter = evolveEncounter(state.encounter, event);
   if (event.kind === "encounterStarted") {
     const { characters, heroStatus, stash, gold, offers, offerCount, companions } = state;
+    // The fight ends the rest: Hit Dice can no longer be spent for it.
     const baseId = baseEncounterId(event.encounter.id);
     return {
       ...state,
       encounter,
       pendingEncounter: null,
+      shortRestOpen: false,
       encounterHistory: state.encounterHistory.includes(baseId) ? state.encounterHistory : [...state.encounterHistory, baseId],
       fightCheckpoint: { characters, heroStatus, stash, gold, offers, offerCount, companions },
     };
@@ -434,10 +542,17 @@ function evolveCombat(state: CampaignState, event: CombatEvent): CampaignState {
       characters[id] = { ...sheet, equipment: [] };
     }
   }
-  return withoutOffers(withCompanions({ ...state, encounter, heroStatus, characters, stash }, afterFight(state.companions, Object.values(encounter.combatants))), (offer) => fallen.includes(offer.fromCharacterId) || fallen.includes(offer.toCharacterId));
+  const killed = Object.values(encounter.combatants).flatMap((combatant) => (combatant.source.kind === "monster" && combatant.source.npcId !== null && combatant.condition === "dead" ? [combatant.source.npcId] : []));
+  const npcsDown: CampaignState["npcsDown"] = killed.length === 0 ? state.npcsDown : [...new Set([...(state.npcsDown ?? []), ...killed])] as NonNullable<CampaignState["npcsDown"]>;
+  return withoutOffers(withCompanions({ ...state, encounter, heroStatus, characters, stash, ...(npcsDown === undefined ? {} : { npcsDown }) }, afterFight(state.companions, Object.values(encounter.combatants))), (offer) => fallen.includes(offer.fromCharacterId) || fallen.includes(offer.toCharacterId));
 }
 
 // The state with a new roster; an absent roster stays absent.
+function omitPendingRest(state: CampaignState): CampaignState {
+  const { pendingRest: _taken, restVote: _voted, ...rest } = state;
+  return rest;
+}
+
 function withCompanions(state: CampaignState, companions: CampaignState["companions"]): CampaignState {
   return companions === undefined ? state : { ...state, companions };
 }
@@ -513,4 +628,25 @@ function updateOwner(
 ): CampaignState {
   const ownerId = state.characters[characterId]?.ownerUserId;
   return ownerId === undefined ? state : updateMember(state, ownerId, update);
+}
+
+// The party leaves the scene it was in and starts a new stay. A game that began
+// before visits were kept gets its first stay from where the party stood.
+function visitsAfterMove(state: CampaignState, sceneId: SceneId, roundNumber: number, reason: MoveReason | undefined): readonly SceneVisit[] {
+  const known = state.visits ?? (state.sceneId === null ? [] : [{ id: "visit-1", sceneId: state.sceneId, arrivedRound: 1 }]);
+  const last = known.at(-1);
+  const left = known.map((visit) => (visit === last && visit.leftRound === undefined ? { ...visit, leftRound: roundNumber, narratedThroughRound: roundNumber } : visit));
+  const arrival: SceneVisit = {
+    id: `visit-${known.length + 1}`,
+    sceneId,
+    arrivedRound: roundNumber,
+    ...(last === undefined ? {} : { cameFrom: last.sceneId }),
+    arrivedBy: reason ?? "story",
+  };
+  return [...left, arrival];
+}
+
+function omitDeclined(state: CampaignState): CampaignState {
+  const { sceneMoveDeclinedScene: _declined, ...rest } = state;
+  return rest;
 }

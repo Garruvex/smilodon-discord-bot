@@ -8,7 +8,7 @@ import { progressionOf, type Progression } from "../../../domain/campaign/charac
 import type { UserId } from "../../../domain/campaign/core/ids.js";
 import { abilities } from "../../../domain/campaign/rules/effects.js";
 import type { SealedContent } from "../../../domain/campaign/rules/content-registry.js";
-import type { CampaignKey, CampaignUnitOfWork } from "../ports/campaign-store.js";
+import type { CampaignKey, CampaignTransaction, CampaignUnitOfWork } from "../ports/campaign-store.js";
 import type { Clock } from "../ports/clock.js";
 import { checkCompatibility, type ImportConflict } from "./compatibility.js";
 import type { LibraryCharacter, LibrarySnapshot, PortableCharacter, SnapshotGear } from "./library-types.js";
@@ -29,6 +29,11 @@ export type CreateResult =
   | { readonly kind: "ok"; readonly character: LibraryCharacter; readonly snapshot: LibrarySnapshot }
   | { readonly kind: "invalid"; readonly problems: readonly BuildProblem[] }
   | { readonly kind: "full" };
+
+export type EditResult =
+  | { readonly kind: "ok"; readonly character: LibraryCharacter; readonly snapshot: LibrarySnapshot }
+  | { readonly kind: "invalid"; readonly problems: readonly BuildProblem[] }
+  | { readonly kind: "notFound" };
 
 export type ImportResult =
   | { readonly kind: "ok"; readonly character: LibraryCharacter; readonly snapshot: LibrarySnapshot }
@@ -58,11 +63,38 @@ export class CharacterLibrary {
     return this.options.unitOfWork.transaction((tx) => this.insert(tx, ownerUserId, build, { equipment: kitEquipment(build) }, { kind: "builder" }));
   }
 
-  public list(ownerUserId: UserId): Promise<readonly LibraryEntry[]> {
-    return this.options.unitOfWork.transaction(async (tx) => {
-      const characters = await tx.listLibraryCharacters(ownerUserId);
-      return Promise.all(characters.map(async (character) => ({ character, snapshots: await tx.listLibrarySnapshots(character.id) })));
+  // An edit is a new version on the main branch. Earlier versions and game copies stay intact.
+  public edit(ownerUserId: UserId, characterId: string, build: BuildChoices): Promise<EditResult> {
+    const problems = buildProblems(build);
+    if (problems.length > 0) return Promise.resolve({ kind: "invalid", problems });
+    return this.options.unitOfWork.transaction(async (tx): Promise<EditResult> => {
+      const character = await tx.loadLibraryCharacter(characterId);
+      if (character === undefined || character.ownerUserId !== ownerUserId) return { kind: "notFound" };
+      const snapshots = await tx.listLibrarySnapshots(characterId);
+      const parent = snapshots.filter((snapshot) => snapshot.branch === "main").at(-1) ?? snapshots[0];
+      if (parent === undefined) return { kind: "notFound" };
+      const sameKit = parent.build.class === build.class && parent.build.kit === build.kit && parent.build.race === build.race;
+      const updated: LibraryCharacter = { ...character, name: build.name.trim(), className: build.class };
+      const snapshot: LibrarySnapshot = {
+        id: this.id("ls"), characterId, ownerUserId, revision: snapshots.length + 1, branch: "main", parentSnapshotId: parent.id,
+        source: { kind: "edit" }, sourceKey: `edit:${this.id("se")}`,
+        rulesetId: this.options.content.rulesetId, rulesetVersion: this.options.rulesetVersion, createdAt: this.options.clock.now(),
+        build: { ...build, name: build.name.trim() }, gear: sameKit ? parent.gear : { equipment: kitEquipment(build) },
+      };
+      await tx.saveLibraryCharacter(updated);
+      await tx.saveLibrarySnapshot(snapshot);
+      return { kind: "ok", character: updated, snapshot };
     });
+  }
+
+  public list(ownerUserId: UserId): Promise<readonly LibraryEntry[]> {
+    return this.options.unitOfWork.transaction((tx) => this.listInTransaction(tx, ownerUserId));
+  }
+
+  public listInTransaction(tx: CampaignTransaction, ownerUserId: UserId): Promise<readonly LibraryEntry[]> {
+    return tx.listLibraryCharacters(ownerUserId).then((characters) =>
+      Promise.all(characters.map(async (character) => ({ character, snapshots: await tx.listLibrarySnapshots(character.id) }))),
+    );
   }
 
   public snapshot(ownerUserId: UserId, snapshotId: string): Promise<LibrarySnapshot | undefined> {
@@ -74,6 +106,21 @@ export class CharacterLibrary {
       const character = await tx.loadLibraryCharacter(characterId);
       if (character === undefined || character.ownerUserId !== ownerUserId) return undefined;
       return { character, snapshots: await tx.listLibrarySnapshots(characterId) };
+    });
+  }
+
+  public gamesForCharacter(ownerUserId: UserId, characterId: string, guildId: string): Promise<readonly { readonly campaignId: string; readonly name: string }[]> {
+    return this.options.unitOfWork.transaction(async (tx) => {
+      const character = await tx.loadLibraryCharacter(characterId);
+      if (character?.ownerUserId !== ownerUserId) return [];
+      const records = await tx.listRecords(guildId, ["active", "paused"]);
+      const games = await Promise.all(records.map(async ({ record }) => {
+        const campaign = await tx.loadCampaign(record.key);
+        const heroId = campaign?.state.members[ownerUserId]?.characterId;
+        const hero = heroId == null ? undefined : campaign?.state.characters[heroId];
+        return hero?.origin?.libraryCharacterId === characterId ? { campaignId: record.key.campaignId, name: record.name } : null;
+      }));
+      return games.filter((game): game is { campaignId: string; name: string } => game !== null);
     });
   }
 

@@ -21,6 +21,7 @@ export interface CampaignSettingsAccessOptions {
   readonly unitOfWork: CampaignUnitOfWork;
   readonly lobby: CampaignLobbyService;
   readonly setup: CampaignSetupService;
+  readonly cards: { syncHub(guildId: string): Promise<void> };
   readonly modelConfigured: boolean;
 }
 
@@ -42,8 +43,19 @@ export class CampaignSettingsAccess {
 
   // Sets the server up, moves the hub to `channelId`, or (null) repairs what is
   // there: the category, hub channel, DnD Admin role and every card.
-  public setUp(guildId: string, channelId: string | null): Promise<GuildSetupResult> {
-    return this.options.setup.setupGuild(guildId, channelId);
+  public setUp(guildId: string, channelId: string | null, language?: "en" | "zh-TW"): Promise<GuildSetupResult> {
+    return this.options.setup.setupGuild(guildId, channelId, language);
+  }
+
+  public async setLanguage(guildId: string, language: "en" | "zh-TW"): Promise<boolean> {
+    const changed = await this.options.unitOfWork.transaction(async (tx) => {
+      const settings = await tx.loadGuildSettings(guildId);
+      if (settings === undefined || settings === null) return false;
+      await tx.saveGuildSettings({ ...settings, language });
+      return true;
+    });
+    if (changed) await this.options.cards.syncHub(guildId);
+    return changed;
   }
 
   // Hands the DnD Admin powers to another role. False before the server is set up.

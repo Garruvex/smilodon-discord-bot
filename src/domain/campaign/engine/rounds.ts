@@ -6,7 +6,9 @@ import { takeEnvironmentalDamage } from "./environmental-damage.js";
 import { rollTimerId, roundTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
 import { scheduleReminder } from "./reminders.js";
+import { takeQueuedRest } from "./rest.js";
 import { firedEffects } from "./round-plan.js";
+import { deferredMove, proposeMove, settleDueMove, surplusMove } from "./scene-move.js";
 
 export const maxActionLength = 500;
 
@@ -21,6 +23,9 @@ export function openRound(decision: Decision, options: { readonly skipActorCheck
   if (state.status === "waitingForPlayers") return { code: "campaignWaiting" };
   if (state.encounter !== null && state.encounter.status !== "ended") return { code: "inCombat" };
   if (state.round !== null) return { code: "roundAlreadyOpen" };
+  // A rest asked for during the round that just ended is taken now; the party then rests until the organizer finishes.
+  if (state.pendingRest !== undefined && state.status === "active") takeQueuedRest(decision);
+  if (decision.state.resting !== undefined) return ctx.actor.kind === "user" ? { code: "resting" } : null;
 
   // The opening is still being told, or the table is getting ready: the first
   // round opens when everyone is.
@@ -71,6 +76,7 @@ export function submitAction(decision: Decision, characterId: CharacterId, text:
   const previous = round.submissions[characterId];
   const revision = previous?.kind === "action" ? previous.revision + 1 : 1;
   decision.emit({ kind: "actionSubmitted", roundNumber: round.number, characterId, text: trimmed, revision });
+  decision.request({ kind: "deliver", delivery: { kind: "actionIntent", roundNumber: round.number, characterId, revision } });
   closeIfEveryoneResponded(decision);
   return null;
 }
@@ -116,11 +122,19 @@ export function closeIfEveryoneResponded(decision: Decision): void {
 function closeRound(decision: Decision, reason: RoundCloseReason): void {
   const round = decision.state.round;
   if (round === null) return;
-  const missed = round.participants.filter((characterId) => round.submissions[characterId] === undefined);
+  // While a scene change waits for the table nobody can act, so nobody has missed the round.
+  const missed = decision.state.pendingMove !== undefined ? [] : round.participants.filter((characterId) => round.submissions[characterId] === undefined);
   if (reason !== "timer" && round.closesAt !== null) {
     decision.request({ kind: "cancelTimer", timerId: roundTimerId(round.number) });
   }
   decision.emit({ kind: "roundClosed", roundNumber: round.number, reason, missed });
+  settleDueMove(decision, round.number);
+  if (decision.state.pendingMove === undefined && decision.state.visits !== undefined) {
+    const openVisit = decision.state.visits.at(-1);
+    if (openVisit !== undefined && openVisit.leftRound === undefined && openVisit.arrivedRound <= round.number && openVisit.narratedThroughRound === undefined) {
+      decision.emit({ kind: "sceneVisitNarrationClosed", sceneId: openVisit.sceneId, roundNumber: round.number });
+    }
+  }
 
   const { awayAfterMisses } = decision.state.pacing;
   for (const member of Object.values(decision.state.members)) {
@@ -157,16 +171,22 @@ export function finishRoundIfResolved(decision: Decision): void {
   if (checks.some((check) => check.status !== "resolved")) return;
   // Scene first, so the Narrator describes the round in the scene it leads to.
   const fired = [...firedEffects(state, round)].sort((a, b) => effectOrder[a.effect.kind] - effectOrder[b.effect.kind]);
-  for (const { effect } of fired) {
+  // A move the story does not force waits for the table; everything else happens now.
+  const held = deferredMove(fired);
+  const surplus = surplusMove(fired, held);
+  for (const { effect } of fired.filter((candidate) => !held.includes(candidate) && !surplus.includes(candidate))) {
     // Harm to a hero is an Exploration rule (the dice decide); a hero already down or already hurt this moment is spared.
     if (effect.kind === "hurt") takeEnvironmentalDamage(decision, effect.characterId, { kind: "damage", count: effect.count, sides: effect.sides, damageType: effect.damageType });
     else decision.applyStory(round.number, effect);
   }
+  // A fight where the party stands this round settles the matter: a move proposed with it is off. (A move proposed earlier has
+  // already settled by now, as the round closed.)
+  if (decision.state.pendingEncounter === null) proposeMove(decision, round.number, held);
   decision.emit({ kind: "roundResolved", roundNumber: round.number, quiet: false });
   decision.request({ kind: "narrate", roundNumber: round.number });
 }
 
-const effectOrder = { transitionScene: 0, setFlag: 1, spendGold: 1, revealClue: 2, grantReward: 2, grantKeepsake: 2, notice: 2, hurt: 3, startEncounter: 3, advanceClock: 4 } as const;
+const effectOrder = { transitionScene: 0, setFlag: 1, spendGold: 1, revealClue: 2, grantReward: 2, grantKeepsake: 2, notice: 2, advanceTime: 2, setWeather: 2, hurt: 3, startEncounter: 3, advanceClock: 4 } as const;
 
 // Nobody is present: suspend all timers and hold pending work until a
 // returning player explicitly continues.
@@ -205,6 +225,9 @@ function roundAcceptingResponse(decision: Decision, characterId: CharacterId): R
   if (state.status === "waitingForPlayers") return { code: "campaignWaiting" };
   if (state.round === null) return { code: "noOpenRound" };
   if (state.round.status !== "collecting") return { code: "roundNotCollecting" };
+  // A pending scene change is a table decision, not another action round.
+  // The deadline (or organizer close) settles it before actions reopen.
+  if (state.pendingMove !== undefined) return { code: "moveDecisionPending" };
   if (!state.round.participants.includes(characterId)) return { code: "notParticipant" };
   return state.round;
 }

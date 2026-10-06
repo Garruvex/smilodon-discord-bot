@@ -3,10 +3,11 @@ import type { HarnessMove, HarnessPlayer } from "./campaign-harness.js";
 
 type Lines = Readonly<Record<CampaignLanguage, readonly string[]>>;
 
-function cycle(lines: Lines): (roundNumber: number, language: CampaignLanguage) => HarnessMove {
+function cycle(lines: Lines, offsets: Partial<Record<CampaignLanguage, number>> = {}): (roundNumber: number, language: CampaignLanguage) => HarnessMove {
   return (roundNumber, language) => {
     const options = lines[language];
-    const text = options[(roundNumber - 1) % options.length];
+    const index = (roundNumber - 1 - (offsets[language] ?? 0) + options.length) % options.length;
+    const text = options[index];
     return text === undefined ? { kind: "pass" } : { kind: "act", text };
   };
 }
@@ -25,8 +26,9 @@ const cautious: HarnessPlayer = {
       "I ask Garrick quietly who else has been asking about the road.",
       "I search behind the bar for anything out of place.",
       "I sneak around the back to watch the stables.",
+      "I search the chapel for Skarn.",
     ],
-    "zh-TW": ["我先在門邊仔細聽裡面的動靜。", "我小聲詢問蓋瑞克還有誰打聽過這條路。", "我搜查吧檯後面有沒有可疑的東西。", "我悄悄繞到後面觀察馬廄。"],
+    "zh-TW": ["我先在門邊仔細聽裡面的動靜。", "我小聲詢問蓋瑞克還有誰打聽過這條路。", "我搜查吧檯後面有沒有可疑的東西。", "我悄悄繞到後面觀察馬廄。", "我在禮拜堂裡找斯卡恩。"],
   }),
 };
 
@@ -38,7 +40,7 @@ const chaotic: HarnessPlayer = {
   clicksRoll: true,
   returnsWhenAway: true,
   combatRole: "striker",
-  // Leads the party to the chapel in round 4 and starts the fight in round 5.
+  // Leads the party to the chapel, votes through the move window, then starts the fight there.
   move: cycle({
     en: [
       "I slam my tankard down and threaten Garrick until he talks.",

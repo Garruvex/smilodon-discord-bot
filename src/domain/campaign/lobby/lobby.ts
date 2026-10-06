@@ -53,6 +53,12 @@ export function openLobby(minPlayers: number, maxPlayers: number): LobbyResult {
   return valid ? { ok: true, lobby: { status: "open", minPlayers, maxPlayers, members: [] } } : { ok: false, reason: "invalidLimits" };
 }
 
+// The organizer changes how many players the game takes. It cannot drop below the players already seated or the minimum.
+export function resize(lobby: LobbyState, maxPlayers: number, seated: number): LobbyResult {
+  const valid = Number.isInteger(maxPlayers) && maxPlayers >= Math.max(lobby.minPlayers, seated, lobbyLimits.minPlayersFloor) && maxPlayers <= lobbyLimits.maxPlayersCeiling;
+  return valid ? { ok: true, lobby: maxPlayers === lobby.maxPlayers ? lobby : { ...lobby, maxPlayers } } : { ok: false, reason: "invalidLimits" };
+}
+
 export function activeMembers(lobby: LobbyState): readonly LobbyMember[] {
   return lobby.members.filter((member) => member.status !== "withdrawn");
 }

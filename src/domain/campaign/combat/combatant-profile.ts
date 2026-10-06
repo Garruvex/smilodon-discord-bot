@@ -1,3 +1,4 @@
+import type { MonsterStats } from "../commands/campaign-command.js";
 import { abilityModifier, savingThrowModifier, type CharacterSheet } from "../character/character-sheet.js";
 import { spellbookOf } from "../character/spell-access.js";
 import { plus } from "../dice/dice-expression.js";
@@ -10,7 +11,7 @@ import type { HeroStatus } from "../character/hero-status.js";
 import { armorSpeedPenalty, isWorn } from "../engine/gear.js";
 import type { AttackOption, Combatant, CombatSpellcasting, ZoneId } from "./combat-state.js";
 
-const freshTurn = { action: true, bonusAction: true, reaction: true, movement: 0, attacksLeft: 1, bonusSpellCast: false } as const;
+const freshTurn = { action: true, bonusAction: true, reaction: true, movement: 0, attacksLeft: 1, bonusSpellCast: false, spellCast: false } as const;
 
 // Hero status and worn gear belong to Character and Inventory; they are re-exported for callers that build combatants.
 export { defaultHeroResources, type HeroStatus } from "../character/hero-status.js";
@@ -187,6 +188,9 @@ export interface MonsterPlacement {
   readonly zoneId: ZoneId;
   readonly npcId: string | null;
   readonly fleeBelowHpFraction: number | null;
+  readonly rank?: "boss" | "elite" | "minion";
+  // The adventure's changes to the stat block (a reskinned monster made tougher or weaker).
+  readonly stats?: MonsterStats;
 }
 
 // A monster stat block's attacks as AttackOptions, resolving each one's
@@ -245,17 +249,23 @@ function innateUses(casting: MonsterSpellcasting | undefined): Readonly<Record<s
 }
 
 export function monsterCombatant(monster: MonsterDefinition, content: SealedContent, placement: MonsterPlacement): Combatant {
-  const attacks = monsterAttackOptions(monster, content);
+  const stats = placement.stats;
+  const attacks = monsterAttackOptions(monster, content).map((attack) =>
+    stats === undefined || (stats.toHit === undefined && stats.damage === undefined)
+      ? attack
+      : { ...attack, toHit: attack.toHit + (stats.toHit ?? 0), damage: { ...attack.damage, modifier: attack.damage.modifier + (stats.damage ?? 0) } },
+  );
   const saves = Object.fromEntries(abilities.map((ability) => [ability, abilityModifier(monster.abilityScores[ability])])) as Record<Ability, number>;
   return {
     id: placement.id,
     side: "foes",
     source: { kind: "monster", monsterId: monster.id, npcId: placement.npcId },
+    ...(placement.rank === undefined ? {} : { rank: placement.rank }),
     letter: placement.letter,
     level: 0,
-    armorClass: monster.armorClass,
-    maxHp: monster.maxHp,
-    hp: monster.maxHp,
+    armorClass: stats?.armorClass ?? monster.armorClass,
+    maxHp: stats?.hp ?? monster.maxHp,
+    hp: stats?.hp ?? monster.maxHp,
     speed: monster.speed,
     initiativeModifier: abilityModifier(monster.abilityScores.dex),
     saves,

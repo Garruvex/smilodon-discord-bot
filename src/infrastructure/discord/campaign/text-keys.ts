@@ -1,5 +1,5 @@
 import type { Texts } from "../../../application/i18n/texts.js";
-import type { Skill } from "../../../domain/campaign/character/character-sheet.js";
+import { abilityOf, type CheckTest, type Skill } from "../../../domain/campaign/character/character-sheet.js";
 
 // A class as the table reads it. Adventures name a class by one identifier in
 // every language edition ("fighter"); the name a player sees comes from the
@@ -12,4 +12,11 @@ export function classLabel(text: Texts, raw: string | null): string {
 // Message keys cannot contain hyphens, so "sleight-of-hand" is "sleightOfHand".
 export function skillKey(skill: Skill): keyof Texts["campaign"]["skill"] {
   return skill.replace(/-(\w)/g, (_match, letter: string) => letter.toUpperCase()) as keyof Texts["campaign"]["skill"];
+}
+
+// The English abbreviation sits next to the localized name, where players cross-check rules.
+export function checkLabel(test: CheckTest, text: Texts): string {
+  const ability = abilityOf(test);
+  const name = test.kind === "skill" ? text.campaign.skill[skillKey(test.skill)] : text.campaign.ability[ability];
+  return `${test.kind === "save" ? text.campaign.msg.saveLabel({ name }) : name} (${ability.toUpperCase()})`;
 }

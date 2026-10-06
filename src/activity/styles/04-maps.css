@@ -1,0 +1,85 @@
+/* Maps: one calm look for the journey and the battlefield, centred in a window of fixed height. */
+.live-map-viewport { height: clamp(260px, 44vh, 480px); max-height: none; }
+.live-map { display: block; width: 100%; height: 100%; min-height: 0; padding: 0; }
+.live-map > svg { display: block; }
+@media (max-width: 760px) { .live-map-viewport { height: clamp(220px, 48vh, 360px); } }
+
+.map-key { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+.map-key > span { display: inline-flex; align-items: center; gap: 6px; }
+.map-key i { display: inline-block; width: 11px; height: 11px; border: 1.5px solid transparent; border-radius: 50%; }
+.map-key i.current-key { background: var(--ui-accent); }
+.map-key i.visited-key { background: #6c7d4c; }
+.map-key i.reachable-key { background: #c59a5d; }
+.map-key i.locked-key { border: 1.5px dashed var(--ui-border-strong); background: transparent; }
+.map-key i.party-key { background: #6c7d4c; }
+.map-key i.foe-key { background: #a8443a; }
+
+.map-toolbar { gap: 8px; }
+.map-go-group { display: flex; min-width: 0; flex: 1; align-items: center; gap: 10px; }
+.map-go { border-color: var(--ui-accent); background: var(--ui-accent); color: #fff4dc; font-weight: 700; }
+.map-go:hover { background: var(--ui-accent-dark); }
+.map-go[aria-pressed="true"] { background: var(--ui-paper-raised); color: var(--ui-accent); }
+.map-go-hint { min-width: 0; color: var(--ui-accent); font-size: 12px; font-weight: 600; }
+
+/* Journey: places are boxes sized to their names; only a one-way route has an arrow. */
+.jr-line { stroke: #9a8a6f; stroke-width: 2; stroke-dasharray: none; opacity: 1; fill: none; }
+.jr-line.one-way { stroke-dasharray: 6 5; }
+.jr-arrow { fill: #9a8a6f; }
+.jr-node rect { fill: var(--ui-paper-raised); stroke: var(--ui-border-strong); stroke-width: 1.5; filter: drop-shadow(0 2px 2px #3a281c20); }
+.jr-node text { pointer-events: none; }
+.jr-title { fill: var(--ui-ink); font: 700 13px var(--serif); }
+.jr-sub { fill: var(--ui-muted); font: 11px var(--sans); }
+.jr-dot { fill: var(--ui-border-strong); }
+.jr-node.visited .jr-dot { fill: #6c7d4c; }
+.jr-node.reachable .jr-dot { fill: #c59a5d; }
+.jr-node.known rect { fill: #e8dcc4; }
+.jr-node.locked rect { fill: #ddd0b7; stroke-dasharray: 4 3; }
+.jr-node.locked .jr-title { fill: #7a6f60; }
+.jr-node.current rect { fill: var(--ui-accent); stroke: #c59a5d; }
+.jr-node.current .jr-title, .jr-node.current .jr-sub { fill: #fff4dc; }
+.jr-node.current .jr-dot { fill: #ffe3a8; }
+.jr-node.is-dim { opacity: .38; }
+.jr-node.is-target { cursor: pointer; }
+.jr-node.is-target rect { fill: #f8e8d0; stroke: var(--ui-accent); stroke-width: 3; }
+.jr-node.is-target .jr-sub { fill: var(--ui-accent); font-weight: 700; }
+.jr-node.is-target:hover rect, .jr-node.is-target:focus rect { fill: #fff0d6; }
+.jr-node:focus { outline: none; }
+
+/* Battlefield: each zone is a card with its terrain, and each creature in it is a token. */
+.bf-edge { stroke: #b3a07c; stroke-width: 3; stroke-linecap: round; stroke-dasharray: none; opacity: 1; }
+.bf-distance-bg { fill: var(--ui-paper); stroke: var(--ui-border); }
+.bf-distance { fill: var(--ui-muted); font: 700 11px var(--sans); text-anchor: middle; }
+.bf-area { fill: var(--ui-paper-raised); stroke: var(--ui-border-strong); stroke-width: 1.5; filter: drop-shadow(0 2px 3px #3a281c20); }
+.bf-zone.has-foe .bf-area { fill: #f3e3d6; }
+.bf-zone.has-active .bf-area { stroke: var(--ui-accent); stroke-width: 3; }
+.bf-zone text { pointer-events: none; text-anchor: middle; }
+.bf-title { fill: var(--ui-ink); font: 700 14px var(--serif); }
+.bf-terrain { fill: var(--ui-muted); font: 11px var(--sans); }
+.bf-names { fill: var(--ui-muted); font: 10px var(--sans); }
+.bf-more { fill: var(--ui-muted); font: 700 11px var(--sans); }
+.bf-token circle { stroke-width: 2; }
+.bf-token.party circle { fill: #dfe6cb; stroke: #6c7d4c; }
+.bf-token.foe circle { fill: #f1d3c8; stroke: #a8443a; }
+.bf-token.is-active circle { stroke: var(--ui-accent); stroke-width: 4; }
+.bf-initial { fill: var(--ui-ink); font: 700 14px var(--serif); }
+.bf-token.foe.rank-boss circle { fill: #f4d6a1; stroke: #92551d; stroke-width: 3; }
+.bf-token.foe.rank-elite circle { fill: #efc6a1; stroke: #9a452f; stroke-width: 2.5; }
+.bf-token.foe.rank-minion circle { fill: #e7d5cc; stroke: #9b6556; }
+.bf-enemy-icon { filter: brightness(0) saturate(100%) invert(24%) sepia(32%) saturate(1500%) hue-rotate(330deg) brightness(82%); }
+.live-enemy .enemy-rank-label { width: fit-content; padding: 2px 6px; border-radius: 999px; background: #e9d8bd; color: #684330; font-size: 10px; font-weight: 700; }
+.live-enemy.rank-boss .enemy-sigil { background: #e8c481; }
+.live-enemy.rank-elite .enemy-sigil { background: #e5b398; }
+.live-enemy.rank-minion .enemy-sigil { background: #dbc9b8; }
+.live-enemy.rank-boss .enemy-rank-label { background: #ead19e; color: #6a4315; }
+.live-enemy.rank-elite .enemy-rank-label { background: #eac3a5; color: #713a2b; }
+.live-enemy.rank-minion .enemy-rank-label { background: #e3d6ca; color: #655247; }
+.bf-zone.is-dim { opacity: .42; }
+.bf-zone.is-target { cursor: pointer; }
+.bf-zone.is-target .bf-area { fill: #f8e8d0; stroke: var(--ui-accent); stroke-width: 3; stroke-dasharray: 8 5; }
+.bf-zone.is-target:hover .bf-area, .bf-zone.is-target:focus .bf-area { fill: #fff0d6; }
+.bf-go { fill: var(--ui-accent); font: 700 12px var(--sans); }
+.bf-zone:focus { outline: none; }
+
+/* The map is always draggable and zoomable, so the page does not scroll while a finger is on it. */
+.live-map-viewport { cursor: grab; touch-action: none; user-select: none; }
+.live-map-viewport:active { cursor: grabbing; }

@@ -101,7 +101,7 @@ describe("the play controller", () => {
     expect((await r.store.transaction((tx) => tx.loadCampaign(key)))?.state.members["u-b"]?.availability).toBe("away");
     expect(await controller.back(key, "u-b", "i-2")).toEqual({ kind: "ok" });
     expect(await controller.pause(key, "u-org", "i-3")).toEqual({ kind: "ok" });
-    expect(refusal(await controller.submitAction(key, "u-org", "Hi.", "i-4"))).toBe("campaignWaiting");
+    expect(refusal(await controller.submitAction(key, "u-org", "Hi.", "i-4"))).toBe("campaignPaused");
     expect(refusal(await controller.continue(key, "u-b", "i-5"))).toBe("notOrganizer");
     expect(await controller.continue(key, "u-org", "i-6")).toEqual({ kind: "ok" });
   });
@@ -174,5 +174,20 @@ describe("raising the party's level", () => {
     expect(refusal(await controller.raiseLevel(key, "u-org", 3, "i-4"))).toBe("noLevelToRaise");
     // A DnD Admin acts for the organizer without being named.
     expect(await controller.raiseLevel(key, null, 4, "i-5")).toEqual({ kind: "ok" });
+  });
+
+  it("refuses to settle a move when there is none, for the organizer and for an admin acting for them", async () => {
+    const r = rig();
+    const key = await twoPlayerCampaign(r);
+    const { controller } = controllerFor(r);
+    expect(refusal(await controller.settleMove(key, "u-org", "go", "i-go"))).toBe("noPendingMove");
+    expect(refusal(await controller.settleMove(key, null, "stay", "i-stay2"))).toBe("noPendingMove");
+  });
+
+  it("refuses Stay here when the party is not about to go anywhere", async () => {
+    const r = rig();
+    const key = await twoPlayerCampaign(r);
+    const { controller } = controllerFor(r);
+    expect(refusal(await controller.toggleMoveObjection(key, "u-org", "i-stay"))).toBe("noPendingMove");
   });
 });

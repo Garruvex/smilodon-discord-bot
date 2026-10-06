@@ -42,6 +42,10 @@ class Shelf implements ImageAssetStore {
     this.kept.delete(`${key.campaignId}:${sceneId}`);
     return Promise.resolve();
   }
+  public removeAll(key: CampaignKey): Promise<void> {
+    for (const name of [...this.kept.keys()]) if (name.startsWith(`${key.campaignId}:`)) this.kept.delete(name);
+    return Promise.resolve();
+  }
 }
 
 async function table(): Promise<{ r: Rig; key: CampaignKey; painter: Painter; posted: { channelId: string; caption: string }[]; worker: ImageWorker; failPost: { on: boolean }; shelf: Shelf }> {
@@ -55,6 +59,11 @@ async function table(): Promise<{ r: Rig; key: CampaignKey; painter: Painter; po
     const stored = await tx.loadRecord(key);
     if (stored === undefined) throw new Error("record");
     await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventurePostId: "chan-adventure" } }, stored.revision);
+  });
+  await r.store.transaction(async (tx) => {
+    const stored = await tx.loadCampaign(key);
+    if (stored === undefined) throw new Error("campaign");
+    await tx.saveCampaign(key, { ...stored.state, sceneId: chapel }, stored.revision);
   });
   const painter = new Painter();
   const posted: { channelId: string; caption: string }[] = [];
@@ -79,6 +88,35 @@ const recordOf = async (t: Awaited<ReturnType<typeof table>>): Promise<NonNullab
 };
 
 describe("scene pictures", () => {
+  it("bounds automatic moments per scene while allowing manual moments and a new scene", async () => {
+    const t = await table();
+    const moments = [
+      { round: 1, scene: chapel, auto: true },
+      { round: 5, scene: chapel, auto: true },
+      { round: 9, scene: chapel, auto: true },
+      { round: 13, scene: chapel, auto: false },
+      { round: 17, scene: "scene:old-watchtower", auto: true },
+    ];
+    for (const moment of moments) {
+      await t.r.store.transaction(async (tx) => {
+        await tx.appendEvents(t.key, [{ campaignId: t.key.campaignId, causationId: `moment-${moment.round}`, commandKind: "pass", actor: { kind: "system" }, rulesRevision: "test", recordedAt: 1, event: { kind: "narrationRecorded", roundNumber: moment.round, text: "The heroes discover a remarkable sight." } }]);
+        await tx.enqueue(t.key, `moment-${moment.round}`, { kind: "momentImage", roundNumber: moment.round, auto: moment.auto, snapshot: { sceneId: moment.scene, world: { day: 1, time: "dusk" }, heroes: [] } }, 1);
+      });
+      expect((await t.worker.runOnce()).failed).toEqual([]);
+    }
+    expect(t.painter.prompts).toHaveLength(3);
+    expect((await recordOf(t)).automaticMomentScenes).toEqual({ [chapel]: "moment:round-1", "scene:old-watchtower": "moment:round-17" });
+    expect((await recordOf(t)).images?.["moment:round-9"]).toBe("skipped");
+  });
+
+  it("does not pay twice when worker passes overlap", async () => {
+    const t = await table();
+    await ask(t, chapel);
+    await Promise.all([t.worker.runOnce(), t.worker.runOnce()]);
+    expect(t.painter.prompts).toHaveLength(1);
+    expect(t.posted).toHaveLength(1);
+  });
+
   it("paints a scene once from its public description alone, and posts it with the scene's title", async () => {
     const t = await table();
     await ask(t, chapel);
@@ -99,11 +137,15 @@ describe("scene pictures", () => {
     expect(t.painter.prompts).toHaveLength(1);
   });
 
-  it("attaches a late picture to the scene it was made for, not the one the party is in now", async () => {
+  it("keeps a late picture for its original scene without posting it into the current scene", async () => {
     const t = await table();
     await ask(t, "scene:old-watchtower");
     await t.worker.runOnce();
-    expect(t.posted[0]?.caption).toBe(starter.en.bible.scenes.find((scene) => scene.id === "scene:old-watchtower")?.title);
+    expect(t.posted).toEqual([]);
+    expect(t.painter.prompts[0]).toContain(starter.en.bible.scenes.find((scene) => scene.id === "scene:old-watchtower")?.title);
+    expect((await recordOf(t)).images?.["scene:old-watchtower"]).toBe("done");
+    expect(await t.shelf.load(t.key, "scene:old-watchtower")).toBeDefined();
+    expect(await t.r.store.transaction((tx) => tx.pendingOutbox("sceneImage"))).toEqual([]);
   });
 
   it("waits for the round that moved the party to be told, then paints", async () => {
@@ -127,6 +169,25 @@ describe("scene pictures", () => {
     expect(t.posted).toHaveLength(1);
   });
 
+  it("keeps the picture without posting if the party moves while generation is running", async () => {
+    const t = await table();
+    const generate = t.painter.generate.bind(t.painter);
+    t.painter.generate = async (request): Promise<GeneratedImage> => {
+      await t.r.store.transaction(async (tx) => {
+        const stored = await tx.loadCampaign(t.key);
+        if (stored === undefined) throw new Error("campaign");
+        await tx.saveCampaign(t.key, { ...stored.state, sceneId: "scene:old-watchtower" }, stored.revision);
+      });
+      return generate(request);
+    };
+    await ask(t, chapel);
+    expect((await t.worker.runOnce()).failed).toEqual([]);
+    expect(t.painter.prompts).toHaveLength(1);
+    expect(t.posted).toEqual([]);
+    expect((await recordOf(t)).images?.[chapel]).toBe("done");
+    expect(await t.shelf.load(t.key, chapel)).toBeDefined();
+  });
+
   it("paints the scene the organizer asks for even if it has no picture yet, and again if it has one", async () => {
     const t = await table();
     const redo = (id: string): Promise<void> => t.r.store.transaction((tx) => tx.enqueue(t.key, id, { kind: "redoImage", subject: chapel }, 1));
@@ -137,6 +198,29 @@ describe("scene pictures", () => {
     await t.worker.runOnce();
     expect(t.painter.prompts).toHaveLength(2);
     expect(t.posted).toHaveLength(2);
+  });
+
+  it("paints the moment that was asked for: its light, its place and its party, even after the story has moved on", async () => {
+    const t = await table();
+    const before = await t.r.store.transaction((tx) => tx.loadCampaign(t.key));
+    if (before === undefined) throw new Error("campaign");
+    const ids = Object.keys(before.state.characters);
+    const first = before.state.characters[ids[0] ?? ""];
+    if (first === undefined) throw new Error("hero");
+    // The picture is asked for at dusk in the chapel, with one hero at level 1 carrying a mace ...
+    const snapshot = { sceneId: chapel, world: { day: 2, time: "dusk", weather: "rain" }, heroes: [{ id: first.id, level: 1, equipment: ["item:mace"] }] };
+    await t.r.store.transaction((tx) => tx.enqueue(t.key, "img-dusk", { kind: "sceneImage", sceneId: chapel, roundNumber: 0, snapshot }, 1));
+    // ... and by the time the painter gets to it, it is dawn in another place and the hero has a different weapon.
+    await t.r.store.transaction((tx) => tx.saveCampaign(t.key, { ...before.state, sceneId: "scene:old-watchtower", world: { day: 3, time: "dawn" }, characters: { ...before.state.characters, [first.id]: { ...first, level: 4, equipment: ["item:greataxe"] } } }, before.revision));
+    await t.worker.runOnce();
+    const prompt = t.painter.prompts[0] ?? "";
+    expect(prompt).toContain("dusk, rain");
+    expect(prompt).not.toContain("dawn");
+    expect(prompt).toContain(`${first.name}, a level 1`);
+    expect(prompt).toContain("mace");
+    expect(prompt).not.toContain("greataxe");
+    // Only the heroes who were there.
+    for (const other of ids.slice(1)) expect(prompt).not.toContain(before.state.characters[other]?.name ?? "\u0000");
   });
 
   it("paints each distinct scene without a campaign image cap", async () => {
@@ -183,7 +267,7 @@ describe("scene pictures", () => {
     expect(t.painter.prompts).toHaveLength(1);
     expect((await recordOf(t)).images).toEqual({ [chapel]: "done" });
     expect((await recordOf(t)).imageBudget).toBeUndefined();
-    expect(t.shelf.kept.size).toBe(0);
+    expect(await t.shelf.load(t.key, chapel)).toBeDefined();
   });
 
   it("gives the scene up, and drops the saved picture, when every post fails", async () => {
@@ -195,6 +279,26 @@ describe("scene pictures", () => {
     expect((await recordOf(t)).images).toEqual({ [chapel]: "failed" });
     expect(t.shelf.kept.size).toBe(0);
     expect(t.painter.prompts).toHaveLength(1);
+  });
+
+  it("does not post an old scene's saved picture when a failed delivery retries after a move", async () => {
+    const t = await table();
+    t.failPost.on = true;
+    await ask(t, chapel);
+    expect((await t.worker.runOnce()).failed).toHaveLength(1);
+    expect((await recordOf(t)).images?.[chapel]).toBe("made");
+    await t.r.store.transaction(async (tx) => {
+      const stored = await tx.loadCampaign(t.key);
+      if (stored === undefined) throw new Error("campaign");
+      await tx.saveCampaign(t.key, { ...stored.state, sceneId: "scene:old-watchtower" }, stored.revision);
+    });
+    t.failPost.on = false;
+    expect((await t.worker.runOnce()).failed).toEqual([]);
+    expect(t.posted).toEqual([]);
+    expect(t.painter.prompts).toHaveLength(1);
+    expect((await recordOf(t)).images?.[chapel]).toBe("done");
+    expect(await t.shelf.load(t.key, chapel)).toBeDefined();
+    expect(await t.r.store.transaction((tx) => tx.pendingOutbox("sceneImage"))).toEqual([]);
   });
 
   it("paints different campaigns side by side, and one campaign's scenes in order", async () => {
@@ -212,6 +316,11 @@ describe("scene pictures", () => {
       if (stored === undefined) throw new Error("record");
       await tx.saveRecord({ ...stored.record, channels: { ...stored.record.channels, adventurePostId: "chan-two" } }, stored.revision);
     });
+    await t.r.store.transaction(async (tx) => {
+      const stored = await tx.loadCampaign(second);
+      if (stored === undefined) throw new Error("campaign");
+      await tx.saveCampaign(second, { ...stored.state, sceneId: chapel }, stored.revision);
+    });
     let running = 0;
     let peak = 0;
     const generate = t.painter.generate.bind(t.painter);
@@ -228,9 +337,9 @@ describe("scene pictures", () => {
     await t.r.store.transaction((tx) => tx.enqueue(second, "img-second", { kind: "sceneImage", sceneId: chapel, roundNumber: 0 }, 1));
     await t.worker.runOnce();
     expect(peak).toBe(2);
-    // The first campaign: chapel once, then the watchtower. The second: its chapel.
+    // Each campaign posts its current chapel; the old watchtower is generated and cached.
     expect(t.painter.prompts).toHaveLength(3);
-    expect(t.posted.filter((post) => post.channelId === "chan-adventure")).toHaveLength(2);
+    expect(t.posted.filter((post) => post.channelId === "chan-adventure")).toHaveLength(1);
     expect(t.posted.filter((post) => post.channelId === "chan-two")).toHaveLength(1);
   });
 
@@ -350,8 +459,8 @@ describe("how a picture is asked for", () => {
     await t.worker.runOnce();
     const prompt = t.painter.prompts[0] ?? "";
     expect(prompt).toContain(sheet.name);
-    expect(prompt).toMatch(/Subject: .*adventurer/);
-    expect(prompt).toContain("Carrying:");
+    expect(prompt).toMatch(/Character identity: .*adventurer/);
+    expect(prompt).toContain("Carried gear:");
     expect(prompt).toContain("No text");
   });
 

@@ -8,32 +8,40 @@ import { retryEncounter } from "./combat/combat-retry.js";
 import { canHandOver, refreshGear, startHandOver } from "./combat/combat-gear.js";
 import { encounterProblems, handleCombatCommand, recordCombatNarration, recordCombatRoll } from "./combat/combat-flow.js";
 import { handleInventoryCommand } from "./inventory.js";
-import { takeRest } from "./rest.js";
+import { answerRestVote, proposeRest, queueRest, takeRest } from "./rest.js";
 import { handleDialogueCommand, recordPressRoll } from "./dialogue.js";
 import { handleShopCommand, recordHaggleRoll } from "./shop.js";
 import { recordEnvironmentalDamageRoll } from "./environmental-damage.js";
 import { handleTravelCommand, recordHazardRoll } from "./travel.js";
 import { handleHealingMagicCommand, recordHealingRoll } from "./healing-magic.js";
+import { handleHitDiceCommand, recordHitDiceRoll } from "./hit-dice.js";
 import { handleRevivalMagicCommand } from "./revival-magic.js";
 import { chooseWarlockOptions } from "./warlock-choices.js";
 import { handleCompanionMagicCommand } from "./companion-magic.js";
 import { handleUtilityMagicCommand } from "./utility-magic.js";
 import { Decision, type DecideResult, type EngineContext } from "./decision.js";
-import { beginAdventure, beginPlay, illustrateMoment, markReady, redoPicture, recordLedgerFact, recordNarration, recordOpening, recordSummary, regenerateNarration, replaceNarration, reportPlannerFailure, retryPlan } from "./dm.js";
+import { beginAdventure, beginPlay, compactSceneNotes, correctWorld, illustrateMoment, markReady, redoPicture, recordLedgerFact, recordNarration, recordOpening, recordSummary, regenerateNarration, replaceNarration, reportPlannerFailure, retryPlan, reviewSceneNotes } from "./dm.js";
 import { raisePartyLevel } from "./level-up.js";
-import { chooseAsi, chooseClassLevel, chooseFightingStyle, continueCampaign, grantProxy, joinHero, markAway, markReturned, revokeProxy } from "./members.js";
+import { chooseAsi, chooseClassLevel, chooseFightingStyle, continueCampaign, grantProxy, joinHero, markAway, markReturned, retireMember, revokeProxy } from "./members.js";
 import { isSkill } from "../character/character-sheet.js";
 import { pauseCampaign } from "./pause.js";
 import { remind } from "./reminders.js";
 import { speak } from "./speech.js";
 import type { Rejection } from "./rejection.js";
 import { applyRoundPlan } from "./round-plan.js";
+import { objectToMove, proposeMoveByPlayer, settleMoveByOrganizer, supportMove, withdrawMoveSupport, withdrawObjection } from "./scene-move.js";
 import { closeRoundByOrganizer, openRound, pass, roundTimerExpired, submitAction } from "./rounds.js";
 
 // Pure. Validates a command against the state and rules and returns the
 // events and requests it causes, or a typed rejection. A rejected command
 // changes nothing, even if a step emitted events before refusing.
 export function decide(state: CampaignState, command: CampaignCommand, ctx: EngineContext): DecideResult {
+  // Pause is a campaign-wide stop, not just a frozen timer. Keep every player
+  // action behind the same gate; otherwise commands without their own state
+  // check (such as a free cantrip) can still change the game while paused.
+  if (state.pausedBy !== null && ctx.actor.kind === "user" && command.kind !== "continue" && command.kind !== "pauseCampaign") {
+    return { kind: "rejected", rejection: { code: "campaignPaused" } };
+  }
   const decision = new Decision(state, ctx);
   const rejection = handle(decision, command);
   return rejection === null ? decision.result() : { kind: "rejected", rejection };
@@ -65,10 +73,24 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return markAway(decision, command.userId);
     case "markReturned":
       return markReturned(decision, command.userId);
+    case "retireMember":
+      return retireMember(decision, command.userId);
     case "grantProxy":
       return grantProxy(decision, command.proxyUserId);
     case "revokeProxy":
       return revokeProxy(decision);
+    case "proposeMove":
+      return proposeMoveByPlayer(decision, command.sceneId, command.effects);
+    case "objectToMove":
+      return objectToMove(decision);
+    case "withdrawObjection":
+      return withdrawObjection(decision);
+    case "supportMove":
+      return supportMove(decision);
+    case "withdrawMoveSupport":
+      return withdrawMoveSupport(decision);
+    case "settleMove":
+      return settleMoveByOrganizer(decision, command.outcome);
     case "continue":
       return continueCampaign(decision);
     case "pauseCampaign":
@@ -80,7 +102,11 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
     case "retryPlan":
       return retryPlan(decision);
     case "recordNarration":
-      return recordNarration(decision, command.roundNumber, command.text);
+      return recordNarration(decision, command.roundNumber, command.text, command.note);
+    case "reviewSceneNotes":
+      return reviewSceneNotes(decision, command);
+    case "compactSceneNotes":
+      return compactSceneNotes(decision, command);
     case "beginAdventure":
       return beginAdventure(decision);
     case "recordOpening":
@@ -109,8 +135,16 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return regenerateNarration(decision, command.roundNumber);
     case "replaceNarration":
       return replaceNarration(decision, command.roundNumber, command.text);
+    case "setWorld":
+      return correctWorld(decision, command);
     case "takeRest":
-      return takeRest(decision, command.rest);
+      return takeRest(decision, command.rest, command.story ?? []);
+    case "queueRest":
+      return queueRest(decision, command.rest, command.story ?? []);
+    case "proposeRest":
+      return proposeRest(decision, command.rest, command.story ?? []);
+    case "answerRestVote":
+      return answerRestVote(decision, command.agree);
     case "offerItem":
     case "respondToOffer":
     case "cancelOffer":
@@ -143,6 +177,8 @@ function handle(decision: Decision, command: CampaignCommand): Rejection | null 
       return handleCompanionMagicCommand(decision, command);
     case "castHealingSpell":
       return handleHealingMagicCommand(decision, command);
+    case "spendHitDice":
+      return handleHitDiceCommand(decision, command);
     case "faceHazard":
     case "recordHazardNarration":
     case "takeEnvironmentalDamage":
@@ -200,6 +236,8 @@ function recordRoll(decision: Decision, rollId: RollId, result: RollResult): Rej
   if (hazard !== undefined) return recordHazardRoll(decision, hazard, result);
   const damage = Object.values(decision.state.damagePending ?? {}).find((candidate) => candidate.rollId === rollId);
   if (damage !== undefined) return recordEnvironmentalDamageRoll(decision, damage, result);
+  const hitDice = Object.values(decision.state.hitDicePending ?? {}).find((candidate) => candidate.rollId === rollId);
+  if (hitDice !== undefined) return recordHitDiceRoll(decision, hitDice, result);
   const healing = Object.values(decision.state.healingPending ?? {}).find((candidate) => candidate.rollId === rollId);
   if (healing !== undefined) return recordHealingRoll(decision, healing, result);
   return recordCombatRoll(decision, rollId, result);

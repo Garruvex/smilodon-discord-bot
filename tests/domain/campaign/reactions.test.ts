@@ -164,7 +164,7 @@ describe("a window across a pause or a restart", () => {
     const fight = goblinShoots(15).rolls([], [3, 3]);
     // The other players leave; Elspeth's player is the last one, and the organizer pauses.
     fight.run(organizer, { kind: "pauseCampaign", reason: "organizer" });
-    expect(fight.reject(sam, { kind: "combatReact", combatantId: "c-elspeth", spellId: "spell:shield" })).toEqual({ code: "campaignWaiting" });
+    expect(fight.reject(sam, { kind: "combatReact", combatantId: "c-elspeth", spellId: "spell:shield" })).toEqual({ code: "campaignPaused" });
     // A timer firing meanwhile does nothing.
     fight.run(system, { kind: "reactionTimerExpired", encounterId: "enc-1", resolutionId: fight.encounter.resolution?.id ?? "" });
     expect(fight.encounter.resolution?.reaction).not.toBeNull();

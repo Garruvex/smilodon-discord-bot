@@ -46,7 +46,7 @@ const rules: readonly KeywordRule[] = [
 ];
 
 // Story keywords for the starter adventure: naming a place travels there;
-// attacking starts the scene's fight.
+// after reaching it, attacking starts the scene's fight.
 const sceneWords: Readonly<Record<string, readonly string[]>> = {
   "scene:old-watchtower": ["watchtower", "瞭望塔"],
   "scene:ruined-chapel": ["chapel", "禮拜堂"],
@@ -99,12 +99,12 @@ function storyEffects(request: PlannerRequest): readonly PlannerEffect[] {
     }
   }
   const fight = request.story.encounters.find((encounter) => encounter.sceneId === scene);
-  if (fight !== undefined && mentions(fightWords)) effects.push({ kind: "startEncounter", encounterId: fight.id, when: always });
+  if (fight !== undefined && scene === request.story.sceneId && mentions(fightWords)) effects.push({ kind: "startEncounter", encounterId: fight.id, when: always });
   return effects;
 }
 
 export class TemplateNarrator implements CampaignNarrator {
-  public narrate(request: NarratorRequest): Promise<{ readonly text: string }> {
+  public narrate(request: NarratorRequest): Promise<{ readonly text: string; readonly note?: string }> {
     const zh = request.language === "zh-TW";
     const lines = request.outcomes.map((outcome) => describe(outcome, zh));
     if (request.spotlight.length > 0) {

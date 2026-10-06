@@ -23,13 +23,17 @@ import {
   buildSmiteView,
 } from "../../../application/campaign/views/campaign-views.js";
 import type { Language } from "../../../application/i18n/language.js";
-import { texts as allTexts } from "../../../application/i18n/texts.js";
+import { texts as allTexts, type Texts } from "../../../application/i18n/texts.js";
+import { buildMapView } from "../../../application/campaign/views/map-view.js";
+import type { AdventureBible } from "../../../domain/campaign/adventure/adventure-bible.js";
+import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import { renderAdventurePanel } from "./adventure-panel.js";
 import { renderCampaignCard } from "./campaign-card.js";
 import type { CampaignMessageGateway } from "./campaign-message-gateway.js";
 import type { CardPayload } from "./card-payload.js";
 import { renderHeroCard } from "./hero-card.js";
+import { renderMapImage, type MapImage } from "./map-image.js";
 import type { HeroPictureFile, HeroPictures } from "./hero-pictures.js";
 import { renderHubControl, renderHubGame, type HubGame } from "./hub-card.js";
 import { renderLobbyCard } from "./lobby-card.js";
@@ -54,6 +58,10 @@ export interface CampaignCardServiceOptions {
   readonly resources?: CampaignResourceGateway;
   // Hero thumbnails for the party channel's hero cards; omitted in tests that don't draw them.
   readonly pictures?: HeroPictures;
+  // Draws the party's map at the top of the party card.
+  readonly drawMap?: boolean;
+  // Enables the Activity launcher on the campaign hub.
+  readonly activity?: boolean;
   // Waits (milliseconds) before each retry of a card that could not be drawn for a reason that may pass (a rate limit, a timeout); tests shorten it.
   readonly retryDelaysMs?: readonly number[];
 }
@@ -101,6 +109,9 @@ export class CampaignCardService implements CardRefresher {
     if (this.scheduled.has(id)) return;
     this.scheduled.add(id);
     void this.queue.run(id, async () => {
+      // Combine the roll request, result, and ensuing state changes into one
+      // rendering of the latest state instead of several rapid message edits.
+      await new Promise((resolve) => setTimeout(resolve, 150));
       this.scheduled.delete(id);
       try {
         await this.syncNow(key);
@@ -225,19 +236,29 @@ export class CampaignCardService implements CardRefresher {
     const loaded = await this.options.unitOfWork.transaction(async (tx) => ({ stored: await tx.loadRecord(key), campaign: await tx.loadCampaign(key) }));
     if (loaded.stored === undefined) return;
     const { record } = loaded.stored;
-    const desired = this.desiredCards(record, loaded.campaign, await this.thumbnails(loaded.campaign));
+    const desired = await this.desiredCards(record, loaded.campaign, await this.thumbnails(loaded.campaign));
     const updates: Record<string, CardReference> = {};
     const failures: CardFailure[] = [];
     // A lobby card becomes the campaign card in place when the adventure starts.
     const inherited = record.cards.party === undefined && record.cards.lobby !== undefined ? { party: record.cards.lobby } : {};
     const existing: Readonly<Record<string, CardReference>> = { ...record.cards, ...inherited };
-    for (const card of desired) {
-      const reference = await this.place(card, existing[card.key], verify, `${key.campaignId}:${card.key}`, failures);
-      const saved = record.cards[card.key];
-      if (reference !== null && (saved === undefined || saved.messageId !== reference.messageId || saved.channelId !== reference.channelId || saved.renderedHash !== reference.renderedHash || saved.epoch !== reference.epoch)) {
-        updates[card.key] = reference;
+    const channels = new Map<string, DesiredCard[]>();
+    for (const card of desired) channels.set(card.channelId, [...(channels.get(card.channelId) ?? []), card]);
+    // A slow party-channel edit must not hold the adventure's roll prompt behind it.
+    // Within each channel, actionable controls go first and requests remain serial.
+    await Promise.all([...channels.values()].map(async (cards) => {
+      cards.sort((a, b) => Number(b.key === "adventure") - Number(a.key === "adventure"));
+      for (const card of cards) {
+        const reference = await this.place(card, existing[card.key], verify, `${key.guildId}:${key.campaignId}:${card.key}`, failures);
+        const saved = record.cards[card.key];
+        if (reference !== null && (saved === undefined || saved.messageId !== reference.messageId || saved.channelId !== reference.channelId || saved.renderedHash !== reference.renderedHash || saved.epoch !== reference.epoch)) {
+          updates[card.key] = reference;
+          // Publish the new message identity immediately, so its buttons work
+          // even while another channel is waiting on Discord.
+          await this.saveReferences(key, { [card.key]: reference }, []);
+        }
       }
-    }
+    }));
     // An offer that was answered leaves the Party channel; an answered reaction, smite, or opportunity attack leaves the Adventure channel.
     const answered = Object.keys(record.cards).filter(
       (name) => (name.startsWith("offer:") || name === "reaction" || name === "smite" || name === "opportunity") && !desired.some((card) => card.key === name),
@@ -300,11 +321,9 @@ export class CampaignCardService implements CardRefresher {
     if (settings?.hubChannelId === null || settings === undefined) return;
     const hubChannelId = settings.hubChannelId;
     const live = games.filter(({ record }) => record.lifecycle !== "archived");
-    // The hub speaks the server's default (English) unless every live game shares a language.
-    const languages = new Set(live.map(({ record }) => record.language));
-    const language: Language = languages.size === 1 && languages.has("zh-TW") ? "zh-TW" : "en";
+    const language: Language = settings.language ?? "en";
     const control = await this.place(
-      { key: "hub", channelId: hubChannelId, payload: renderHubControl(live.length, allTexts[language]), epoch: "hub", pin: true },
+      { key: "hub", channelId: hubChannelId, payload: renderHubControl(live.length, allTexts[language], this.options.activity === true), epoch: "hub", pin: true },
       settings.hubCard ?? undefined,
       verify,
     );
@@ -362,7 +381,7 @@ export class CampaignCardService implements CardRefresher {
     return made;
   }
 
-  private desiredCards(record: CampaignRecord, campaign: StoredCampaign | undefined, thumbnails: ReadonlyMap<string, HeroPictureFile> = new Map()): readonly DesiredCard[] {
+  private async desiredCards(record: CampaignRecord, campaign: StoredCampaign | undefined, thumbnails: ReadonlyMap<string, HeroPictureFile> = new Map()): Promise<readonly DesiredCard[]> {
     const language: Language = record.language;
     const text = allTexts[language];
     const campaignId = record.key.campaignId;
@@ -396,12 +415,14 @@ export class CampaignCardService implements CardRefresher {
           {
             campaignName: record.name,
             sceneTitle: panel.sceneTitle,
+            ...(panel.world === undefined ? {} : { world: panel.world }),
             mode: panel.mode,
             language: record.language,
             pacingPreset: record.pacingPreset,
             organizerId: record.organizerId,
             heroes,
             adventureUrl: guildUrl(adventureChannelId),
+            ...(this.options.drawMap === true ? await mapOf(state, bible, text) : {}),
           },
           text,
           campaignId,
@@ -433,7 +454,7 @@ export class CampaignCardService implements CardRefresher {
       if (opportunity !== null) {
         cards.push({ key: "opportunity", channelId: adventureChannelId, payload: renderOpportunityAttackCard(opportunity, text, campaignId), epoch: "opportunity", pin: false });
       }
-      cards.push({ key: "adventure", channelId: adventureChannelId, payload: renderAdventurePanel(panel, text, campaignId), epoch: panelEpoch(state), pin: false });
+      cards.push({ key: "adventure", channelId: adventureChannelId, payload: renderAdventurePanel(panel, text, campaignId, guildUrl(partyChannelId)), epoch: panelEpoch(state), pin: false });
     }
     return cards;
   }
@@ -479,7 +500,7 @@ export class CampaignCardService implements CardRefresher {
         if (current.epoch === card.epoch) {
           if (current.renderedHash === hash) {
             if (!verify || await messages.exists(current.channelId, current.messageId)) return current;
-          } else if ((await messages.edit(current.channelId, current.messageId, card.payload)) === "ok") {
+          } else if ((this.options.logger.info({ card: card.key, epoch: card.epoch }, "Editing a campaign card"), await messages.edit(current.channelId, current.messageId, card.payload)) === "ok") {
             return { ...current, renderedHash: hash };
           }
         }
@@ -599,4 +620,13 @@ function hashOf(payload: CardPayload): string {
   // A card's pictures are part of what it shows: a new portrait is an edit.
   for (const file of payload.files ?? []) hash.update(file.name).update(file.bytes);
   return hash.digest("hex");
+}
+
+// The party's map as a picture; absent while there is only the one place to show.
+async function mapOf(state: CampaignState, bible: AdventureBible, text: Texts): Promise<{ readonly map?: MapImage }> {
+  const view = buildMapView(state, bible);
+  if (view.nodes.length < 2) return {};
+  const t = text.campaign.map;
+  const map = await renderMapImage(view, { unknown: t.unknown, here: t.here, deadEnd: t.deadEnd, locked: t.locked });
+  return map === undefined ? {} : { map };
 }

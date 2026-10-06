@@ -175,6 +175,12 @@ describe("loadConfiguration", () => {
     expect(loadConfiguration({ ...validEnvironment, CAMPAIGN_IMAGE_MODEL: "gpt-image-1" }).campaignImages).toBeNull();
   });
 
+  it("configures portrait generation limits with safe defaults", () => {
+    expect(loadConfiguration(validEnvironment).portraitGenerationLimit).toEqual({ maxPerWindow: 6, windowMinutes: 15 });
+    expect(loadConfiguration({ ...validEnvironment, CAMPAIGN_PORTRAIT_MAX_PER_WINDOW: "2", CAMPAIGN_PORTRAIT_WINDOW_MINUTES: "5" }).portraitGenerationLimit).toEqual({ maxPerWindow: 2, windowMinutes: 5 });
+    expect(() => loadConfiguration({ ...validEnvironment, CAMPAIGN_PORTRAIT_MAX_PER_WINDOW: "0" })).toThrow("Invalid application configuration");
+  });
+
   it("loads a Gemini chat configuration from GOOGLE_API_KEY, no OPENAI_* required", () => {
     const configuration = loadConfiguration({
       ...validEnvironment,

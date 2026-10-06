@@ -32,8 +32,9 @@ export interface CharacterPortraitsOptions {
   readonly stylizer?: PortraitStylizer;
   // Paints from text alone; absent: "paint from my description" is not offered.
   readonly generator?: ImageGenerator;
-  // Pictures one person may ask for in an hour, so the image budget is not theirs alone.
-  readonly maxPerHour?: number;
+  // Pictures one person may ask for in a rolling 15-minute window.
+  readonly maxPerWindow?: number;
+  readonly windowMinutes?: number;
   readonly timeoutMs?: number;
 }
 
@@ -58,6 +59,30 @@ export class CharacterPortraits {
 
   public get available(): boolean {
     return this.canUpload || this.canPaint;
+  }
+
+  // An unsaved sheet can preview art without creating a library character.
+  public async preview(ownerUserId: UserId, build: BuildChoices, style: PortraitStyle, note: string, bytes?: Buffer): Promise<PortraitResult> {
+    if (bytes === undefined ? !this.canPaint : !this.canUpload) return { kind: "refused", reason: "unavailable" };
+    let source: GeneratedImage | undefined;
+    if (bytes !== undefined) {
+      if (bytes.byteLength > maxUploadBytes) return { kind: "refused", reason: "tooLarge" };
+      const mediaType = sniffImageType(bytes);
+      if (mediaType === undefined) return { kind: "refused", reason: "badType" };
+      source = { bytes, mediaType };
+    }
+    const limited = this.limit(ownerUserId);
+    if (limited !== null) return limited;
+    return this.paint(build, source, style, note.trim().slice(0, maxNoteLength));
+  }
+
+  public async savePreview(ownerUserId: UserId, characterId: string, bytes: Buffer): Promise<{ readonly kind: "ok" } | { readonly kind: "refused"; readonly reason: PortraitRefusal }> {
+    if ((await this.owned(ownerUserId, characterId)) === undefined) return { kind: "refused", reason: "notFound" };
+    if (bytes.byteLength > maxUploadBytes) return { kind: "refused", reason: "tooLarge" };
+    const mediaType = sniffImageType(bytes);
+    if (mediaType === undefined) return { kind: "refused", reason: "badType" };
+    await this.options.store.saveImage(characterId, "portrait", { bytes, mediaType });
+    return { kind: "ok" };
   }
 
   // The portrait in use, for the owner's screens.
@@ -146,6 +171,16 @@ export class CharacterPortraits {
   }
 
   private async make(characterId: string, build: BuildChoices, source: GeneratedImage | undefined, style: PortraitStyle, note: string, fromUpload: boolean): Promise<PortraitResult> {
+    const result = await this.paint(build, source, style, note);
+    if (result.kind !== "ok") return result;
+    try {
+      await this.options.store.saveImage(characterId, "candidate", result.image);
+      await this.options.store.saveNote(characterId, JSON.stringify({ style, note, fromUpload } satisfies Note));
+      return result;
+    } catch { return { kind: "refused", reason: "failed" }; }
+  }
+
+  private async paint(build: BuildChoices, source: GeneratedImage | undefined, style: PortraitStyle, note: string): Promise<PortraitResult> {
     const timeoutMs = this.options.timeoutMs ?? 90_000;
     try {
       const prompt = portraitPrompt(build, style, note, source !== undefined);
@@ -155,18 +190,16 @@ export class CharacterPortraits {
           : await this.options.generator?.generate({ prompt, timeoutMs });
       if (image === undefined) return { kind: "refused", reason: "unavailable" };
       if (image.bytes.byteLength > maxUploadBytes) return { kind: "refused", reason: "failed" };
-      await this.options.store.saveImage(characterId, "candidate", image);
-      await this.options.store.saveNote(characterId, JSON.stringify({ style, note, fromUpload } satisfies Note));
-      return { kind: "ok", image, style, fromUpload };
+      return { kind: "ok", image, style, fromUpload: source !== undefined };
     } catch {
       return { kind: "refused", reason: "failed" };
     }
   }
 
-  // The first saved build of a character the person owns, or undefined.
+  // The latest saved build of a character the person owns, or undefined.
   private async owned(ownerUserId: UserId, characterId: string): Promise<BuildChoices | undefined> {
     const entry = await this.options.library.entry(ownerUserId, characterId);
-    return entry?.snapshots[0]?.build;
+    return entry?.snapshots.at(-1)?.build;
   }
 
   private async readNote(characterId: string): Promise<Note | undefined> {
@@ -180,16 +213,16 @@ export class CharacterPortraits {
     }
   }
 
-  // A sliding hour per person.
+  // A short rolling window per person keeps retries available without unbounded image use.
   private limit(ownerUserId: UserId): PortraitResult | null {
     const now = this.options.clock.now();
-    const hour = 60 * 60 * 1000;
-    const recent = (this.asked.get(ownerUserId) ?? []).filter((at) => now - at < hour);
-    const max = this.options.maxPerHour ?? 6;
+    const windowMs = (this.options.windowMinutes ?? 15) * 60 * 1000;
+    const recent = (this.asked.get(ownerUserId) ?? []).filter((at) => now - at < windowMs);
+    const max = this.options.maxPerWindow ?? 6;
     if (recent.length >= max) {
       const oldest = recent[0] ?? now;
       this.asked.set(ownerUserId, recent);
-      return { kind: "refused", reason: "rateLimited", retryAfterMinutes: Math.max(1, Math.ceil((oldest + hour - now) / 60_000)) };
+      return { kind: "refused", reason: "rateLimited", retryAfterMinutes: Math.max(1, Math.ceil((oldest + windowMs - now) / 60_000)) };
     }
     this.asked.set(ownerUserId, [...recent, now]);
     return null;

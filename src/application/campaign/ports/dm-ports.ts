@@ -32,6 +32,8 @@ export interface PlannerRequest {
   // Where the story may go: story effects may name only these IDs.
   readonly story: {
     readonly sceneId: string | null;
+    // A move the table has not yet agreed to: the party is already heading there.
+    readonly pendingMoveTo?: string;
     readonly sceneIds: readonly string[];
     // Encounters not yet fought, with the scene each belongs to.
     readonly encounters: readonly { readonly id: string; readonly sceneId: string }[];
@@ -58,7 +60,8 @@ export interface PlannerProposal {
 }
 
 export type PlannerEffect =
-  | { readonly kind: "transitionScene"; readonly sceneId: string; readonly when: EffectCondition }
+  // movers: the heroes whose actions head there this round (absent: not stated, so the move is not judged by who wants it).
+  | { readonly kind: "transitionScene"; readonly sceneId: string; readonly when: EffectCondition; readonly movers?: readonly string[] }
   | { readonly kind: "startEncounter"; readonly encounterId: string; readonly when: EffectCondition }
   | { readonly kind: "advanceClock"; readonly clockId: string; readonly by: number; readonly when: EffectCondition }
   | { readonly kind: "revealClue"; readonly clueId: string; readonly when: EffectCondition };
@@ -174,7 +177,7 @@ export interface HazardNarratorRequest {
 }
 
 export interface CampaignNarrator {
-  narrate(request: NarratorRequest): Promise<{ readonly text: string }>;
+  narrate(request: NarratorRequest): Promise<{ readonly text: string; readonly note?: string }>;
   narrateCombat(request: CombatNarratorRequest): Promise<{ readonly text: string }>;
   narrateTrade(request: TradeNarratorRequest): Promise<{ readonly text: string }>;
   narrateDialogue(request: DialogueNarratorRequest): Promise<{ readonly text: string }>;
@@ -191,6 +194,8 @@ export interface ChronicleRequest {
   readonly previousSummary: string | null;
   // Entities already in the ledger this audience may see: their IDs and locked names.
   readonly knownEntities: readonly { readonly entityId: string; readonly canonicalName: string }[];
+  // Present while merging public notes from one scene; omitted for the private full-story memory.
+  readonly scene?: { readonly id: string; readonly title: string };
 }
 
 export interface ChronicleResult {
@@ -200,6 +205,26 @@ export interface ChronicleResult {
 
 export interface CampaignChronicler {
   chronicle(request: ChronicleRequest): Promise<ChronicleResult>;
+}
+
+export interface SceneNoteJudgeRequest {
+  readonly language: CampaignLanguage;
+  readonly scene: { readonly id: string; readonly title: string; readonly publicDescription: string; readonly details?: string; readonly dmNotes: string };
+  readonly adventure: { readonly title: string; readonly premise: string; readonly dmOverview: string };
+  readonly establishedPeople: readonly { readonly id: string; readonly name: string; readonly description: string; readonly secret?: string }[];
+  readonly committedOutcomes: readonly string[];
+  readonly notes: readonly { readonly noteIndex: number; readonly text: string }[];
+}
+
+export interface SceneNoteJudgment {
+  readonly noteIndex: number;
+  readonly decision: "keep" | "reword" | "drop";
+  readonly text: string;
+  readonly reason: string;
+}
+
+export interface CampaignSceneNoteJudge {
+  judge(request: SceneNoteJudgeRequest): Promise<readonly SceneNoteJudgment[]>;
 }
 
 export interface AdventureCatalog {

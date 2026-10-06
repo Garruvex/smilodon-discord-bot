@@ -21,8 +21,8 @@ import type { ComponentContext, ComponentHandler, ModalContext } from "../../../
 import { texts, type Texts } from "../../../application/i18n/texts.js";
 import { publicAccessPolicy } from "../../../domain/access/access-policy.js";
 import { deriveSnapshotSheet } from "../../../domain/campaign/character/leveling.js";
-import { buildClasses, buildRaces, classTemplates, selectableBuildRaces, suggestedAbilities, type BuildChoices, type BuildProblem } from "../../../domain/campaign/character/character-build.js";
-import { abilityModifier, skillAbilities, type CharacterSheet, type Skill } from "../../../domain/campaign/character/character-sheet.js";
+import { buildClasses, buildRaces, classTemplates, selectableBuildRaces, standardArray, suggestedAbilities, type BuildChoices, type BuildProblem } from "../../../domain/campaign/character/character-build.js";
+import { abilityModifier, skillAbilities, type CharacterSheet } from "../../../domain/campaign/character/character-sheet.js";
 import { armorClassFrom, heroTraits, unarmoredModifier } from "../../../domain/campaign/combat/combatant-profile.js";
 import type { Glossary, SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import { abilities, type Ability } from "../../../domain/campaign/rules/effects.js";
@@ -30,7 +30,7 @@ import { isSkill, skills } from "../../../domain/campaign/rules/skills.js";
 import { classLabel, skillKey } from "../campaign/text-keys.js";
 import { downloadAttachmentBytes, downloadAttachmentText, type BytesResult } from "../campaign/attachment-download.js";
 import { fileField, noteField, portraitHome, portraitModal, portraitPreview, portraitRefused, portraitWorking, styleField, type PortraitScreen } from "../campaign/portrait-screens.js";
-import { decodeDraft, emptyDraft, encodeDraft, libraryCustomId, libraryIdPrefix, parseLibraryId, scoresOf, type Draft } from "../campaign/library-ids.js";
+import { decodeDraft, emptyDraft, encodeDraft, libraryCustomId, libraryIdPrefix, parseLibraryId, scoresOf, type Draft, withLanguage } from "../campaign/library-ids.js";
 
 export interface CharacterLibraryHandlerDependencies {
   readonly library: CharacterLibrary;
@@ -57,6 +57,27 @@ type Language = "en" | "zh-TW";
 // person, not to any one server or game.
 export const languageOf = (interaction: { readonly locale: string }): Language => (interaction.locale.startsWith("zh") ? "zh-TW" : "en");
 
+// A form remembers the language too, so the screen after it is in the same one.
+function speakModal(modal: ModalBuilder, language: Language, editId?: string): ModalBuilder {
+  const id = modal.data.custom_id;
+  return typeof id === "string" ? modal.setCustomId(withLanguage(editId === undefined ? id : `${id}:${editId}`, language)) : modal;
+}
+
+// Every control on a screen remembers the language the screen is in.
+function speak(screen: LibraryScreen, language: Language, editId?: string): LibraryScreen {
+  for (const row of screen.components) {
+    for (const component of row.components) {
+      const id = "custom_id" in component.data ? component.data.custom_id : undefined;
+      if (typeof id === "string" && id.startsWith(`${libraryIdPrefix}:`) && parseLibraryId(id)?.language === undefined) {
+        const parsed = parseLibraryId(id);
+        const editing = editId !== undefined && parsed?.action.startsWith("b") === true && !parsed.parts.includes(editId);
+        component.setCustomId(withLanguage(editing ? `${id}:${editId}` : id, language));
+      }
+    }
+  }
+  return screen;
+}
+
 const nameField = "name";
 const appearanceField = "appearance";
 const backstoryField = "backstory";
@@ -75,6 +96,10 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
 
   // The opening screen, for /dnd characters.
   public async homeScreen(userId: string, language: Language): Promise<LibraryScreen> {
+    return speak(await this.home(userId, language), language);
+  }
+
+  private async home(userId: string, language: Language): Promise<LibraryScreen> {
     const text = texts[language];
     const entries = await this.deps.library.list(userId);
     const t = text.campaign.chars;
@@ -89,14 +114,19 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
         ),
       );
     }
-    rows.push(new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(button(libraryCustomId("new"), t.newButton, ButtonStyle.Primary, entries.length >= maxCharactersPerOwner)));
+    rows.push(
+      new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(
+        button(libraryCustomId("new"), t.newButton, ButtonStyle.Primary, entries.length >= maxCharactersPerOwner),
+        button(libraryCustomId("lang", language === "en" ? "zh-TW" : "en"), t.switchLanguage, ButtonStyle.Secondary),
+      ),
+    );
     const lines = entries.map((entry) => t.line({ name: entry.character.name, class: classLabel(text, entry.character.className), count: entry.snapshots.length }));
     return { content: `**${t.title}**\n${t.intro}\n\n${lines.length === 0 ? t.empty : lines.join("\n")}`, components: rows };
   }
 
   // The builder's first screen (choose a class), for the hub's New character button.
   public builderScreen(language: Language): LibraryScreen {
-    return this.classScreen(texts[language]);
+    return speak(this.classScreen(texts[language]), language);
   }
 
   // Reads an uploaded character file as data and makes it a new character in
@@ -127,7 +157,7 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     const { interaction } = context;
     const parsed = parseLibraryId(interaction.customId);
     if (parsed === null) return;
-    const language = languageOf(interaction);
+    const language = parsed.language ?? languageOf(interaction);
     const text = texts[language];
     const userId = interaction.user.id;
     const [first] = parsed.parts;
@@ -138,30 +168,41 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
       switch (parsed.action) {
         case "view":
           return void (await this.show(interaction, await this.viewScreen(userId, value, language)));
+        case "sync": {
+          const characterId = first ?? "";
+          const games = await this.deps.library.gamesForCharacter(userId, characterId, interaction.guildId ?? "");
+          if (!games.some((game) => game.campaignId === value)) return void (await this.show(interaction, { content: text.campaign.chars.gone, components: [] }));
+          const result = await this.deps.library.saveProgress(userId, { guildId: interaction.guildId ?? "", campaignId: value });
+          const t = text.campaign.chars;
+          const note = result.kind === "refused" ? (t.saveRefused as Readonly<Record<string, string>>)[result.reason] ?? text.campaign.refusal.generic : result.created ? t.progressSaved({ name: result.snapshot.build.name, revision: result.snapshot.revision }) : t.progressAlready;
+          return void (await this.show(interaction, await this.viewScreen(userId, characterId, language, note, interaction.guildId ?? "")));
+        }
         case "bClass":
           return void (await this.show(interaction, this.raceScreen({ ...emptyDraft, class: buildClasses.find((id) => id === value) ?? null }, language)));
         case "bRace": {
           const draft = decodeDraft(first);
           const race = buildRaces.find((id) => id === value) ?? null;
-          const chosen = { ...draft, race, raceAbilities: [], raceSkills: [] };
+          const chosen = { ...draft, race, raceAbilities: [], raceSkills: [], kit: null, skills: [], expertise: [], order: [] };
           return void (await this.show(interaction, race === "half-elf" ? this.raceAbilityScreen(chosen, text) : this.kitScreen(chosen, text)));
         }
         case "bRaceAbility": {
           const draft = decodeDraft(first);
           const ability = abilities.find((candidate) => candidate === value && candidate !== "cha" && !draft.raceAbilities.includes(candidate));
-          const chosen = ability === undefined ? draft : { ...draft, raceAbilities: [...draft.raceAbilities, ability] };
+          const chosen = ability === undefined ? draft : { ...draft, raceAbilities: [...draft.raceAbilities, ability], raceSkills: [], kit: null, skills: [], expertise: [], order: [] };
           return void (await this.show(interaction, chosen.raceAbilities.length === 2 ? this.raceSkillScreen(chosen, text) : this.raceAbilityScreen(chosen, text)));
         }
         case "bRaceSkills": {
           const draft = decodeDraft(first);
           const raceSkills = interaction.values.filter((skill): skill is Draft["raceSkills"][number] => isSkill(skill)).slice(0, 2);
-          return void (await this.show(interaction, this.kitScreen({ ...draft, raceSkills }, text)));
+          return void (await this.show(interaction, this.kitScreen({ ...draft, raceSkills, kit: null, skills: [], expertise: [], order: [] }, text)));
         }
-        case "bKit":
-          return void (await this.show(interaction, this.skillsScreen({ ...decodeDraft(first), kit: value }, language)));
+        case "bKit": {
+          const draft = decodeDraft(first);
+          return void (await this.show(interaction, this.skillsScreen({ ...draft, kit: value, ...(draft.kit === value ? {} : { skills: [], expertise: [], order: [] }) }, language)));
+        }
         case "bSkills": {
           const draft = decodeDraft(first);
-          const chosen = { ...draft, skills: interaction.values.flatMap((skill) => (classTemplates[draft.class ?? "fighter"].skillChoices as readonly string[]).includes(skill) && !(draft.raceSkills as readonly string[]).includes(skill) ? [skill as Draft["skills"][number]] : []), expertise: [] };
+          const chosen = { ...draft, skills: interaction.values.flatMap((skill) => (classTemplates[draft.class ?? "fighter"].skillChoices as readonly string[]).includes(skill) && !(draft.raceSkills as readonly string[]).includes(skill) ? [skill as Draft["skills"][number]] : []), expertise: [], order: [] };
           const needsExpertise = draft.class !== null && classTemplates[draft.class].expertiseCount > 0;
           return void (await this.show(interaction, needsExpertise ? this.expertiseScreen(chosen, language) : this.scoresScreen(chosen, language)));
         }
@@ -184,26 +225,67 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     }
     if (!interaction.isButton()) return;
     switch (parsed.action) {
+      case "lang":
+        await interaction.deferUpdate();
+        return void (await this.show(interaction, speak(await this.home(userId, first === "zh-TW" ? "zh-TW" : "en"), first === "zh-TW" ? "zh-TW" : "en")));
       case "home":
         await interaction.deferUpdate();
         return void (await this.show(interaction, await this.homeScreen(userId, language)));
       case "view":
         await interaction.deferUpdate();
-        return void (await this.show(interaction, await this.viewScreen(userId, first ?? "", language)));
+        return void (await this.show(interaction, await this.viewScreen(userId, first ?? "", language, undefined, interaction.guildId ?? "")));
       case "new":
         await interaction.deferUpdate();
         return void (await this.show(interaction, this.classScreen(text)));
+      case "edit": {
+        await interaction.deferUpdate();
+        const entry = await this.deps.library.entry(userId, first ?? "");
+        const latest = entry?.snapshots.filter((snapshot) => snapshot.branch === "main").at(-1);
+        if (latest === undefined || entry === undefined) return void (await this.show(interaction, { content: text.campaign.chars.gone, components: [] }));
+        const draft = this.draftFrom(latest.build);
+        return void (await this.show(interaction, this.editOverview(draft, text, entry.character.id)));
+      }
+      case "eStep": {
+        await interaction.deferUpdate();
+        const draft = decodeDraft(parsed.parts[1]);
+        const next = first === "class" ? this.classScreen(text)
+          : first === "race" ? this.raceScreen(draft, language)
+          : first === "kit" ? this.kitScreen(draft, text)
+          : first === "skills" ? this.skillsScreen(draft, language)
+          : first === "scores" ? this.scoresScreen({ ...draft, order: [] }, language)
+          : this.scoresScreen(draft, language);
+        return void (await this.show(interaction, next));
+      }
+      case "bBack": {
+        await interaction.deferUpdate();
+        const draft = decodeDraft(parsed.parts[1]);
+        const stage = first;
+        const previous = stage === "race" ? this.classScreen(text)
+          : stage === "raceAbility" ? draft.raceAbilities.length > 0 ? this.raceAbilityScreen({ ...draft, raceAbilities: draft.raceAbilities.slice(0, -1) }, text) : this.raceScreen(draft, language)
+          : stage === "raceSkills" ? this.raceAbilityScreen({ ...draft, raceAbilities: draft.raceAbilities.slice(0, -1) }, text)
+          : stage === "kit" ? draft.race === "half-elf" ? this.raceSkillScreen(draft, text) : this.raceScreen(draft, language)
+          : stage === "skills" ? this.kitScreen(draft, text)
+          : stage === "expert" ? this.skillsScreen(draft, language)
+          : stage === "scores" ? draft.order.length > 0 ? this.scoresScreen({ ...draft, order: draft.order.slice(0, -1) }, language) : draft.class !== null && classTemplates[draft.class].expertiseCount > 0 ? this.expertiseScreen(draft, language) : this.skillsScreen(draft, language)
+          : this.classScreen(text);
+        return void (await this.show(interaction, previous));
+      }
       case "bRecommended": {
         await interaction.deferUpdate();
         const draft = decodeDraft(first);
         const order = draft.class === null ? [] : classTemplates[draft.class].suggested.slice(0, 5);
         return void (await this.show(interaction, this.scoresScreen({ ...draft, order }, language)));
       }
-      case "bName":
+      case "bName": {
         // A form has to be the first response.
-        return void (await interaction.showModal(this.nameModal(first ?? "", text)));
+        const editId = parsed.parts.find((part) => part.startsWith("lc-"));
+        const entry = editId === undefined ? undefined : await this.deps.library.entry(userId, editId);
+        if (editId !== undefined && entry === undefined) return void (await interaction.reply({ content: text.campaign.chars.gone, flags: MessageFlags.Ephemeral }));
+        const build = entry?.snapshots.filter((snapshot) => snapshot.branch === "main").at(-1)?.build;
+        return void (await interaction.showModal(speakModal(this.nameModal(first ?? "", text, build), language, editId)));
+      }
       case "pUpload":
-        return void (await interaction.showModal(portraitModal(text, first ?? "")));
+        return void (await interaction.showModal(speakModal(portraitModal(text, first ?? ""), language)));
       case "pHome":
         await interaction.deferUpdate();
         return void (await this.show(interaction, await this.portraitHomeFor(userId, first ?? "", language)));
@@ -270,22 +352,23 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
   public async executeModal(context: ModalContext): Promise<void> {
     const { interaction } = context;
     const parsed = parseLibraryId(interaction.customId);
-    if (parsed?.action === "pSubmit") return void (await this.submitPortrait(interaction, parsed.parts[0] ?? ""));
+    if (parsed?.action === "pSubmit") return void (await this.submitPortrait(interaction, parsed.parts[0] ?? "", parsed.language ?? languageOf(interaction)));
     if (parsed?.action !== "bName") return;
-    const language = languageOf(interaction);
+    const language = parsed.language ?? languageOf(interaction);
     const text = texts[language];
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const draft = decodeDraft(parsed.parts[0]);
+    const editId = parsed.parts[1];
     const build = this.buildFrom(draft, {
       name: interaction.fields.getTextInputValue(nameField),
       appearance: interaction.fields.getTextInputValue(appearanceField),
       backstory: interaction.fields.getTextInputValue(backstoryField),
-    });
+    }, editId !== undefined);
     if (build === null) {
       await interaction.editReply({ content: text.campaign.chars.problem.abilitiesNotStandardArray });
       return;
     }
-    const made = await this.deps.library.create(interaction.user.id, build);
+    const made = editId === undefined ? await this.deps.library.create(interaction.user.id, build) : await this.deps.library.edit(interaction.user.id, editId, build);
     if (made.kind === "invalid") {
       await interaction.editReply({ content: this.problemLines(made.problems, text) });
       return;
@@ -294,20 +377,23 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
       await interaction.editReply({ content: text.campaign.chars.full({ max: maxCharactersPerOwner }) });
       return;
     }
+    if (made.kind === "notFound") {
+      await interaction.editReply({ content: text.campaign.chars.gone });
+      return;
+    }
     const offer = this.deps.portraits?.available === true;
     await interaction.editReply({
-      content: text.campaign.chars.created({ name: made.character.name, sheet: this.sheetLine(made.snapshot, text) }) + (offer ? `\n\n${text.campaign.portrait.offer}` : ""),
-      components: offer ? [new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(button(libraryCustomId("pHome", made.character.id), text.campaign.portrait.button, ButtonStyle.Primary), button(libraryCustomId("view", made.character.id), text.campaign.chars.viewButton, ButtonStyle.Secondary))] : [],
+      content: (editId === undefined ? text.campaign.chars.created({ name: made.character.name, sheet: this.sheetLine(made.snapshot, text) }) : text.campaign.chars.edited({ name: made.character.name, revision: made.snapshot.revision })) + (offer ? `\n\n${text.campaign.portrait.offer}` : ""),
+      components: offer ? speak({ content: "", components: [new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(button(libraryCustomId("pHome", made.character.id), text.campaign.portrait.button, ButtonStyle.Primary), button(libraryCustomId("view", made.character.id), text.campaign.chars.viewButton, ButtonStyle.Secondary))] }, language).components : [],
     });
   }
 
   // The upload form was sent: read the picture, make the portrait, show it for a yes.
-  private async submitPortrait(interaction: ModalSubmitInteraction, characterId: string): Promise<void> {
-    const language = languageOf(interaction);
+  private async submitPortrait(interaction: ModalSubmitInteraction, characterId: string, language: Language): Promise<void> {
     const text = texts[language];
     const userId = interaction.user.id;
     await interaction.deferUpdate();
-    const shown = async (screen: LibraryScreen): Promise<void> => void (await interaction.editReply({ content: screen.content, components: screen.components, files: [...(screen.files ?? [])], attachments: [] }));
+    const shown = async (screen: LibraryScreen): Promise<void> => void (await interaction.editReply({ content: screen.content, components: speak(screen, language).components, files: [...(screen.files ?? [])], attachments: [] }));
     const attachment = interaction.fields.getUploadedFiles(fileField, false)?.first();
     if (attachment === undefined) return shown(portraitRefused(text, characterId, "noFile"));
     if (attachment.size > maxUploadBytes) return shown(portraitRefused(text, characterId, "tooLarge"));
@@ -347,7 +433,7 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     await this.show(interaction, await this.portraitResult(userId, characterId, language, result));
   }
 
-  private async viewScreen(userId: string, characterId: string, language: Language, note?: string): Promise<LibraryScreen> {
+  private async viewScreen(userId: string, characterId: string, language: Language, note?: string, guildId?: string): Promise<LibraryScreen> {
     const text = texts[language];
     const t = text.campaign.chars;
     const entry = await this.deps.library.entry(userId, characterId);
@@ -358,7 +444,7 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     const lines = entry.snapshots.map((snapshot) =>
       t.viewSnapshot({
         revision: snapshot.revision,
-        source: snapshot.source.kind === "builder" ? t.sourceBuilder : snapshot.source.kind === "import" ? t.sourceImport : t.sourceCampaign,
+        source: snapshot.source.kind === "builder" ? t.sourceBuilder : snapshot.source.kind === "import" ? t.sourceImport : snapshot.source.kind === "edit" ? t.sourceEdit : t.sourceCampaign,
         gear: snapshot.gear.equipment.map((id) => glossary?.names[id] ?? id).join(", "),
       }),
     );
@@ -367,12 +453,15 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     const heading = `${race === null ? "" : `${race} `}${classLabel(text, entry.character.className)}`;
     const portraits = this.deps.portraits;
     const portrait = portraits === undefined ? undefined : await portraits.current(userId, characterId);
+    const games = guildId === undefined ? [] : await this.deps.library.gamesForCharacter(userId, characterId, guildId);
     return {
-      content: [...(note === undefined ? [] : [note, ""]), t.viewTitle({ name: entry.character.name, class: heading }), t.viewScores({ scores }), "", ...lines].join("\n"),
+      content: [...(note === undefined ? [] : [note, ""]), t.viewTitle({ name: entry.character.name, class: heading }), t.viewScores({ scores }), "", t.libraryScope, "", ...lines].join("\n"),
       ...(portrait === undefined ? {} : { files: [{ attachment: portrait.bytes, name: `portrait.${portrait.mediaType === "image/jpeg" ? "jpg" : portrait.mediaType === "image/webp" ? "webp" : "png"}` }] }),
       components: [
+        ...(games.length === 0 ? [] : [new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(new StringSelectMenuBuilder().setCustomId(libraryCustomId("sync", characterId)).setPlaceholder(t.syncPlaceholder).addOptions(games.slice(0, 25).map((game) => ({ label: game.name.slice(0, 100), value: game.campaignId }))))]),
         new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(
           ...(portraits?.available === true ? [button(libraryCustomId("pHome", entry.character.id), text.campaign.portrait.button, portrait === undefined ? ButtonStyle.Primary : ButtonStyle.Secondary)] : []),
+          button(libraryCustomId("edit", entry.character.id), t.editButton, ButtonStyle.Secondary),
           ...(latest === undefined ? [] : [button(libraryCustomId("export", latest.id), t.exportButton, ButtonStyle.Secondary)]),
           button(libraryCustomId("deleteAsk", entry.character.id), t.deleteButton, ButtonStyle.Danger),
           button(libraryCustomId("home"), t.backButton, ButtonStyle.Secondary),
@@ -385,7 +474,20 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     const t = text.campaign.chars;
     return {
       content: t.bClass,
-      components: [select(libraryCustomId("bClass"), t.bClassPlaceholder, buildClasses.map((id) => ({ label: classLabel(text, id), value: id })))],
+      components: [select(libraryCustomId("bClass"), t.bClassPlaceholder, buildClasses.map((id) => ({ label: classLabel(text, id), value: id }))), new ActionRowBuilder<ButtonBuilder>().addComponents(button(libraryCustomId("home"), t.backButton, ButtonStyle.Secondary))],
+    };
+  }
+
+  private editOverview(draft: Draft, text: Texts, characterId: string): LibraryScreen {
+    const t = text.campaign.chars;
+    const token = encodeDraft(draft);
+    const edit = (step: string, label: string): ButtonBuilder => button(libraryCustomId("eStep", step, token, characterId), label, ButtonStyle.Secondary);
+    return {
+      content: t.editIntro,
+      components: [
+        new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(edit("class", t.editClass), edit("race", t.editRace), edit("kit", t.editKit), edit("skills", t.editSkills)),
+        new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(edit("scores", t.editScores), edit("details", t.editDetails), button(libraryCustomId("view", characterId), t.backButton, ButtonStyle.Secondary)),
+      ],
     };
   }
 
@@ -395,26 +497,26 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     if (draft.class === null) return this.classScreen(text);
     const glossary = this.deps.glossaries[language];
     const options = selectableBuildRaces.map((race) => ({ label: glossary?.names[`race:${race}`] ?? race, value: race }));
-    return { content: t.bRace({ class: classLabel(text, draft.class) }), components: [select(libraryCustomId("bRace", encodeDraft(draft)), t.bRacePlaceholder, options)] };
+    return this.builderBack({ content: t.bRace({ class: classLabel(text, draft.class) }), components: [select(libraryCustomId("bRace", encodeDraft(draft)), t.bRacePlaceholder, options)] }, "race", draft, text);
   }
 
   private raceAbilityScreen(draft: Draft, text: Texts): LibraryScreen {
     if (draft.race !== "half-elf") return this.kitScreen(draft, text);
     const t = text.campaign.chars;
     const options = abilities.filter((ability) => ability !== "cha" && !draft.raceAbilities.includes(ability)).map((ability) => ({ label: text.campaign.ability[ability], value: ability }));
-    return { content: t.bRaceAbility({ count: 2 - draft.raceAbilities.length }), components: [select(libraryCustomId("bRaceAbility", encodeDraft(draft)), t.bRaceAbilityPlaceholder, options)] };
+    return this.builderBack({ content: t.bRaceAbility({ count: 2 - draft.raceAbilities.length }), components: [select(libraryCustomId("bRaceAbility", encodeDraft(draft)), t.bRaceAbilityPlaceholder, options)] }, "raceAbility", draft, text);
   }
 
   private raceSkillScreen(draft: Draft, text: Texts): LibraryScreen {
     const t = text.campaign.chars;
-    return { content: t.bRaceSkills, components: [select(libraryCustomId("bRaceSkills", encodeDraft(draft)), t.bRaceSkillsPlaceholder, skills.map((skill) => ({ label: text.campaign.skill[skillKey(skill)], value: skill })), 2, 2)] };
+    return this.builderBack({ content: t.bRaceSkills, components: [select(libraryCustomId("bRaceSkills", encodeDraft(draft)), t.bRaceSkillsPlaceholder, skills.map((skill) => ({ label: text.campaign.skill[skillKey(skill)], value: skill })), 2, 2)] }, "raceSkills", draft, text);
   }
 
   private kitScreen(draft: Draft, text: Texts): LibraryScreen {
     const t = text.campaign.chars;
     if (draft.class === null) return this.classScreen(text);
     const kits = classTemplates[draft.class].kits.map((kit) => ({ label: (t.kit as Readonly<Record<string, string>>)[kit.id] ?? kit.id, value: kit.id }));
-    return { content: t.bKit({ class: classLabel(text, draft.class) }), components: [select(libraryCustomId("bKit", encodeDraft(draft)), t.bKitPlaceholder, kits)] };
+    return this.builderBack({ content: t.bKit({ class: classLabel(text, draft.class) }), components: [select(libraryCustomId("bKit", encodeDraft(draft)), t.bKitPlaceholder, kits)] }, "kit", draft, text);
   }
 
   private skillsScreen(draft: Draft, language: Language): LibraryScreen {
@@ -422,11 +524,11 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     const t = text.campaign.chars;
     if (draft.class === null) return this.classScreen(text);
     const template = classTemplates[draft.class];
-    const options = template.skillChoices.filter((skill) => !draft.raceSkills.includes(skill)).map((skill) => ({ label: `${text.campaign.skill[skillKey(skill)]} (${skillAbility(skill)})`, value: skill }));
-    return {
+    const options = template.skillChoices.filter((skill) => !draft.raceSkills.includes(skill)).map((skill) => ({ label: `${text.campaign.skill[skillKey(skill)]} (${text.campaign.ability[skillAbilities[skill]]})`, value: skill }));
+    return this.builderBack({
       content: t.bSkills({ count: template.skillCount }),
       components: [select(libraryCustomId("bSkills", encodeDraft(draft)), t.bSkillsPlaceholder, options, template.skillCount, template.skillCount)],
-    };
+    }, "skills", draft, text);
   }
 
   private expertiseScreen(draft: Draft, language: Language): LibraryScreen {
@@ -435,7 +537,7 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     if (draft.class === null) return this.classScreen(text);
     const count = classTemplates[draft.class].expertiseCount;
     const options = draft.skills.map((skill) => ({ label: text.campaign.skill[skillKey(skill)], value: skill }));
-    return { content: t.bExpert({ count }), components: [select(libraryCustomId("bExpert", encodeDraft(draft)), t.bExpertPlaceholder, options, count, count)] };
+    return this.builderBack({ content: t.bExpert({ count }), components: [select(libraryCustomId("bExpert", encodeDraft(draft)), t.bExpertPlaceholder, options, count, count)] }, "expert", draft, text);
   }
 
   // Deals the standard array out ability by ability, or all at once with the suggestion.
@@ -447,44 +549,56 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
     if (draft.order.length >= abilities.length - 1) {
       const scores = scoresOf(draft.order);
       const done = abilities.map((ability) => `${text.campaign.ability[ability]} ${scores[ability] ?? 0}`).join(" · ");
-      return {
+      return this.builderBack({
         content: t.bScoresDone({ scores: done }),
         components: [new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(button(libraryCustomId("bName", encodeDraft({ ...draft, order: this.fullOrder(draft.order) })), t.bNameButton, ButtonStyle.Primary))],
-      };
+      }, "scores", draft, text);
     }
     const value = [15, 14, 13, 12, 10, 8][draft.order.length] ?? 8;
     const soFar = draft.order.length === 0 ? "" : ` (${draft.order.map((ability, index) => `${text.campaign.ability[ability]} ${[15, 14, 13, 12, 10, 8][index] ?? 0}`).join(", ")})`;
     const left = abilities.filter((ability) => !draft.order.includes(ability));
-    return {
+    return this.builderBack({
       content: t.bScores({ value, so_far: soFar }),
       components: [
         select(libraryCustomId("bScore", token), t.bScoresPlaceholder, left.map((ability) => ({ label: text.campaign.ability[ability], value: ability }))),
         new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(button(libraryCustomId("bRecommended", token), t.bRecommended, ButtonStyle.Secondary)),
       ],
-    };
+    }, "scores", draft, text);
+  }
+
+  private builderBack(screen: LibraryScreen, stage: string, draft: Draft, text: Texts): LibraryScreen {
+    return { ...screen, components: [...screen.components, new ActionRowBuilder<ButtonBuilder>().addComponents(button(libraryCustomId("bBack", stage, encodeDraft(draft)), text.campaign.chars.backButton, ButtonStyle.Secondary))] };
   }
 
   private fullOrder(order: readonly Ability[]): readonly Ability[] {
     return order.length === abilities.length - 1 ? [...order, ...abilities.filter((ability) => !order.includes(ability))] : order;
   }
 
-  private nameModal(token: string, text: Texts): ModalBuilder {
+  private draftFrom(build: BuildChoices): Draft {
+    const order = standardArray.map((score) => abilities.find((ability) => build.abilities[ability] === score)).filter((ability): ability is Ability => ability !== undefined).slice(0, 5);
+    return { class: build.class, race: build.race ?? null, raceAbilities: build.raceAbilityChoices ?? [], raceSkills: build.raceSkillChoices ?? [], kit: build.kit, skills: build.skills, expertise: build.expertise, order };
+  }
+
+  private nameModal(token: string, text: Texts, current?: BuildChoices): ModalBuilder {
     const t = text.campaign.chars;
-    const input = (id: string, label: string, style: TextInputStyle, required: boolean, max: number): ActionRowBuilder<TextInputBuilder> =>
-      new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(style).setRequired(required).setMaxLength(max));
+    const input = (id: string, label: string, style: TextInputStyle, required: boolean, max: number, value?: string): ActionRowBuilder<TextInputBuilder> => {
+      const field = new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(style).setRequired(required).setMaxLength(max);
+      if (value !== undefined && value !== "") field.setValue(value);
+      return new ActionRowBuilder<TextInputBuilder>().addComponents(field);
+    };
     return new ModalBuilder()
       .setCustomId(libraryCustomId("bName", token))
       .setTitle(t.bNameTitle)
-      .addComponents(input(nameField, t.bNameLabel, TextInputStyle.Short, true, 40), input(appearanceField, t.bAppearanceLabel, TextInputStyle.Paragraph, false, 300), input(backstoryField, t.bBackstoryLabel, TextInputStyle.Paragraph, false, 300));
+      .addComponents(input(nameField, t.bNameLabel, TextInputStyle.Short, true, 40, current?.name), input(appearanceField, t.bAppearanceLabel, TextInputStyle.Paragraph, false, 300, current?.appearance), input(backstoryField, t.bBackstoryLabel, TextInputStyle.Paragraph, false, 300, current?.backstory));
   }
 
   // The build a finished draft and the form's words make, or null when the draft is not finished.
-  private buildFrom(draft: Draft, words: { readonly name: string; readonly appearance: string; readonly backstory: string }): BuildChoices | null {
-    if (draft.class === null || draft.race === null || draft.kit === null || draft.order.length < abilities.length - 1 || (draft.race === "half-elf" && (draft.raceAbilities.length !== 2 || draft.raceSkills.length !== 2))) return null;
+  private buildFrom(draft: Draft, words: { readonly name: string; readonly appearance: string; readonly backstory: string }, allowLegacyRace = false): BuildChoices | null {
+    if (draft.class === null || (draft.race === null && !allowLegacyRace) || draft.kit === null || draft.order.length < abilities.length - 1 || (draft.race === "half-elf" && (draft.raceAbilities.length !== 2 || draft.raceSkills.length !== 2))) return null;
     const scores = scoresOf(draft.order);
     const built = { ...suggestedAbilities(draft.class) } as Record<Ability, number>;
     for (const ability of abilities) built[ability] = scores[ability] ?? 0;
-    return { class: draft.class, race: draft.race, ...(draft.race === "half-elf" ? { raceAbilityChoices: draft.raceAbilities, raceSkillChoices: draft.raceSkills } : {}), kit: draft.kit, abilities: built, skills: draft.skills, expertise: draft.expertise, ...words };
+    return { class: draft.class, ...(draft.race === null ? {} : { race: draft.race }), ...(draft.race === "half-elf" ? { raceAbilityChoices: draft.raceAbilities, raceSkillChoices: draft.raceSkills } : {}), kit: draft.kit, abilities: built, skills: draft.skills, expertise: draft.expertise, ...words };
   }
 
   // One line for a saved character: class, hit points and armor class, all derived.
@@ -513,7 +627,10 @@ export class CharacterLibraryComponentHandler implements ComponentHandler {
 
   // A screen replaces the last one, picture included: no files means the old picture goes.
   private async show(interaction: ButtonInteraction | StringSelectMenuInteraction, screen: LibraryScreen): Promise<void> {
-    await interaction.editReply({ content: screen.content, components: screen.components, files: [...(screen.files ?? [])], attachments: [] });
+    // Whatever language this screen's control was shown in, the next one keeps.
+    const language = parseLibraryId(interaction.customId)?.language ?? languageOf(interaction);
+    const editId = parseLibraryId(interaction.customId)?.parts.find((part) => part.startsWith("lc-"));
+    await interaction.editReply({ content: screen.content, components: speak(screen, language, editId).components, files: [...(screen.files ?? [])], attachments: [] });
   }
 }
 
@@ -545,9 +662,4 @@ function select(customId: string, placeholder: string, options: readonly { reado
   return new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(
     new StringSelectMenuBuilder().setCustomId(customId).setPlaceholder(placeholder).setMinValues(min).setMaxValues(max).addOptions(options.map((option) => ({ label: option.label.slice(0, 100), value: option.value }))),
   );
-}
-
-// "acrobatics" reads "DEX" next to its name.
-function skillAbility(skill: Skill): string {
-  return skillAbilities[skill].toUpperCase();
 }

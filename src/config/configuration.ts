@@ -1,6 +1,13 @@
 export interface DiscordConfiguration {
   token: string;
   applicationId: string;
+  clientSecret: string | null;
+}
+
+export interface ActivityConfiguration {
+  enabled: boolean;
+  host: string;
+  port: number;
 }
 
 export interface LavalinkConfiguration {
@@ -95,6 +102,7 @@ export interface ApplicationConfiguration {
   environment: "development" | "test" | "production";
   logLevel: "trace" | "debug" | "info" | "warn" | "error" | "fatal";
   discord: DiscordConfiguration;
+  activity?: ActivityConfiguration;
   ownerUserIds: ReadonlySet<string>;
   guildConfigurationDirectory: string;
   runtimeDataDirectory: string;
@@ -125,6 +133,7 @@ export interface ApplicationConfiguration {
   // campaigns cannot be started.
   campaign: CampaignModelConfiguration | null;
   campaignImages?: CampaignImageConfiguration | null;
+  portraitGenerationLimit?: { readonly maxPerWindow: number; readonly windowMinutes: number };
   // Independent of chat/utility generation: either vendor can provide
   // vectors regardless of which provider produces replies or summaries.
   embeddings: EmbeddingConfiguration | null;

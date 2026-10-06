@@ -1,4 +1,4 @@
-import type { CheckId } from "../core/ids.js";
+import type { CheckId, UserId } from "../core/ids.js";
 import { abilityOf } from "../character/character-sheet.js";
 import { resolveD20Test, rollMatchesSpec, type D20TestRoll } from "../dice/d20-test.js";
 import type { RollResult } from "../dice/roll-spec.js";
@@ -32,6 +32,17 @@ export function rollTimerExpired(decision: Decision, checkId: CheckId): Rejectio
   if (decision.state.status !== "active" || check?.status !== "pending") return null;
   startRoll(decision, check, true);
   return null;
+}
+
+// Leaving the table should not leave a round waiting on this player's dice.
+// Start their outstanding exploration checks immediately and mark them timed out.
+export function rollChecksForAwayMember(decision: Decision, userId: UserId): void {
+  for (const check of Object.values(decision.state.checks)) {
+    if (check.status === "pending" && decision.state.characters[check.characterId]?.ownerUserId === userId) {
+      if (check.deadline !== null) decision.request({ kind: "cancelTimer", timerId: rollTimerId(check.id) });
+      startRoll(decision, check, true);
+    }
+  }
 }
 
 // The roll worker saved a result. Re-recording the same result is a no-op,

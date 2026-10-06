@@ -1,4 +1,11 @@
-import { REST, Routes, type RESTPostAPIApplicationCommandsJSONBody } from "discord.js";
+import {
+  ApplicationCommandType,
+  REST,
+  Routes,
+  type RESTGetAPIApplicationCommandsResult,
+  type RESTPostAPIApplicationCommandsJSONBody,
+  type RESTPostAPIPrimaryEntryPointApplicationCommandJSONBody,
+} from "discord.js";
 
 import { CommandModule } from "../../../application/commands/command.js";
 import type { GuildCommandDeploymentService } from "../../../application/commands/guild-command-deployment-service.js";
@@ -46,13 +53,28 @@ export class DiscordGuildCommandDeploymentService
     const commandData = this.commandJson(
       this.commandRegistry.getAll().filter((command) => command.module === CommandModule.Bootstrap),
     );
+    const route = Routes.applicationCommands(this.configuration.discord.applicationId);
+    const existingCommands = await this.rest.get(route) as RESTGetAPIApplicationCommandsResult;
+    const entryPoint = existingCommands.find((command) => command.type === ApplicationCommandType.PrimaryEntryPoint);
+    if (entryPoint) {
+      commandData.push({
+        type: ApplicationCommandType.PrimaryEntryPoint,
+        name: entryPoint.name,
+        ...(entryPoint.handler === undefined ? {} : { handler: entryPoint.handler }),
+        ...(entryPoint.name_localizations == null ? {} : { name_localizations: entryPoint.name_localizations }),
+        ...(entryPoint.contexts == null ? {} : { contexts: entryPoint.contexts }),
+        ...(entryPoint.integration_types == null ? {} : { integration_types: entryPoint.integration_types }),
+        ...(entryPoint.default_member_permissions === undefined ? {} : { default_member_permissions: entryPoint.default_member_permissions }),
+        ...(entryPoint.nsfw === undefined ? {} : { nsfw: entryPoint.nsfw }),
+      } satisfies RESTPostAPIPrimaryEntryPointApplicationCommandJSONBody);
+    }
 
     await this.rest.put(
-      Routes.applicationCommands(this.configuration.discord.applicationId),
+      route,
       { body: commandData },
     );
 
-    return commandData.length;
+    return commandData.length - (entryPoint ? 1 : 0);
   }
 
   private commandJson(

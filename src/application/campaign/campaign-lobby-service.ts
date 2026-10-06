@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { CampaignLanguage } from "../../domain/campaign/adventure/adventure-bible.js";
 import type { UserId } from "../../domain/campaign/core/ids.js";
+import type { CharacterSheet } from "../../domain/campaign/character/character-sheet.js";
 import * as lobbyRules from "../../domain/campaign/lobby/lobby.js";
 import type { LobbyRefusal, LobbyResult } from "../../domain/campaign/lobby/lobby.js";
 import { HouseRuleError, resolveHouseRules, startingLevelFor } from "../../domain/campaign/rules/house-rules.js";
@@ -61,7 +62,11 @@ export type ServiceRefusal =
   | "joinAlreadyPlaying"
   | "joinNotAtBreak"
   | "invalidEntrance"
-  | "privateInviteOnly";
+  | "privateInviteOnly"
+  | "memberNotAway"
+  | "organizerStays"
+  | "heroNotReplaceable"
+  | "inCombat";
 
 // What choosing a saved character would bring, and what stands in the way.
 export type SavedPreview =
@@ -71,6 +76,17 @@ export type SavedPreview =
 export type ChooseSavedResult = ServiceResult<CampaignRecord> | { readonly kind: "conflicts"; readonly conflicts: readonly ImportConflict[] };
 
 export type ServiceResult<T> = { readonly kind: "ok"; readonly value: T } | { readonly kind: "refused"; readonly reason: ServiceRefusal };
+
+export interface ActivityCampaignListingItem {
+  readonly campaignId: string;
+  readonly name: string;
+  readonly adventureTitle: string;
+  readonly lifecycle: "lobby" | "active" | "paused";
+  readonly playerCount: number;
+  readonly maxPlayers: number;
+  readonly canWatch: boolean;
+  readonly action: "join" | "continue" | "request" | "requested" | "queued" | "invited" | "expired" | "full" | "resume";
+}
 
 export interface CampaignLobbyServiceOptions {
   readonly unitOfWork: CampaignUnitOfWork;
@@ -87,6 +103,8 @@ export interface CampaignLobbyServiceOptions {
   // Called after a game starts, so the places it lives in can be adjusted (a
   // players-only game hides its channels then).
   readonly onStarted?: (key: CampaignKey) => void;
+  // Called after a game is ended, to clear what it left behind (pictures waiting to be posted).
+  readonly onEnded?: (key: CampaignKey) => void;
 }
 
 export const nameLimits = { min: 2, max: 60 } as const;
@@ -117,7 +135,6 @@ export class CampaignLobbyService {
     }
     const lobby = lobbyRules.openLobby(input.minPlayers ?? 1, input.maxPlayers ?? Math.min(document.heroes.length, lobbyRules.lobbyLimits.maxPlayersCeiling));
     if (!lobby.ok) return refused(lobby.reason);
-    if (lobby.lobby.maxPlayers > document.heroes.length) return refused("invalidLimits");
 
     const key: CampaignKey = { guildId: input.guildId, campaignId: (this.options.newId ?? randomUUID)() };
     const record: CampaignRecord = {
@@ -166,19 +183,202 @@ export class CampaignLobbyService {
     return this.options.unitOfWork.transaction((tx) => tx.listRecords(guildId));
   }
 
+  // Resolves a Discord Activity launched from a campaign's Party or Adventure
+  // post to that game, while keeping the Activity's normal lobby as fallback.
+  public async activityGameForChannel(guildId: string, userId: UserId, channelId: string): Promise<ActivityCampaignListingItem | null> {
+    const games = await this.activityGames(guildId, userId);
+    const stored = await this.findByChannel(guildId, [channelId]);
+    if (stored !== undefined) return games.find((game) => game.campaignId === stored.record.key.campaignId) ?? null;
+    // Started from somewhere that is not a game's own channel (the hub): a player in exactly one game goes straight into it instead of choosing from a list.
+    const mine = games.filter((game) => game.action === "resume" || game.action === "continue");
+    return mine.length === 1 ? (mine[0] ?? null) : null;
+  }
+
+  // A deliberately small, access-filtered projection for the Discord Activity lobby.
+  public activityGames(guildId: string, userId: UserId): Promise<readonly ActivityCampaignListingItem[]> {
+    return this.options.unitOfWork.transaction(async (tx) => {
+      const records = await tx.listRecords(guildId, ["lobby", "active", "paused"]);
+      const now = this.options.clock.now();
+      const games: ActivityCampaignListingItem[] = [];
+      for (const { record } of records) {
+        if (record.lifecycle !== "lobby" && record.lifecycle !== "active" && record.lifecycle !== "paused") continue;
+        if (record.lifecycle === "lobby" && record.lobby.status !== "open") continue;
+        const storedCampaign = record.lifecycle === "lobby" ? undefined : await tx.loadCampaign(record.key);
+        if (record.lifecycle !== "lobby" && storedCampaign === undefined) continue;
+        const campaignMember = storedCampaign?.state.members[userId] !== undefined;
+        const lobbyMember = record.lobby.members.some((member) => member.userId === userId && member.status !== "withdrawn");
+        const organizer = record.organizerId === userId;
+        const request = record.joinRequests?.[userId];
+        const requestIsCurrent = request !== undefined && request.expiresAt > now;
+        const invited = requestIsCurrent && (request.status === "invited" || request.status === "approved" || request.status === "queued");
+        const participant = organizer || lobbyMember || campaignMember;
+        const privateGame = record.visibility === "membersOnly";
+
+        // A private campaign name, roster, and existence stay hidden unless the
+        // player already belongs to it or has an unexpired invitation.
+        // A private game stays hidden unless there is an invitation, or there was one that has since run out, which the player is told about.
+        const expired = request !== undefined && !requestIsCurrent;
+        const pending = requestIsCurrent && request.status === "requested";
+        if (privateGame && !participant && !invited && !expired && !pending) continue;
+        if (record.lifecycle === "lobby" && !participant && !invited && privateGame) continue;
+        if (record.lifecycle !== "lobby" && !participant && !invited && !expired && !pending && privateGame) continue;
+
+        const adventureTitle = this.options.adventures.documentAt(record.adventure.adventureId, record.adventure.version, record.language)?.bible.title
+          ?? record.adventure.adventureId;
+        if (record.lifecycle === "lobby") {
+          const playerCount = lobbyRules.activeMembers(record.lobby).length;
+          games.push({
+            campaignId: record.key.campaignId,
+            name: record.name,
+            adventureTitle,
+            lifecycle: record.lifecycle,
+            playerCount,
+            maxPlayers: record.lobby.maxPlayers,
+            canWatch: !privateGame || participant || invited,
+            action: participant ? "continue" : invited ? "join" : this.reservedSeats(record) >= record.lobby.maxPlayers ? "full" : "join",
+          });
+          continue;
+        }
+
+        const playerCount = Object.keys(storedCampaign?.state.members ?? {}).length;
+        const action = participant
+          ? "resume"
+          : requestIsCurrent && request.status === "queued"
+            ? "queued"
+            : invited
+            ? "invited"
+            : requestIsCurrent && request.status === "requested"
+              ? "requested"
+              : expired
+                ? "expired"
+                : this.reservedSeats(record) >= record.lobby.maxPlayers ? "full" : "request";
+        games.push({
+          campaignId: record.key.campaignId,
+          name: record.name,
+          adventureTitle,
+          lifecycle: record.lifecycle,
+          playerCount,
+          maxPlayers: record.lobby.maxPlayers,
+          canWatch: !privateGame || participant || invited,
+          action,
+        });
+      }
+      return games.sort((left, right) => {
+        const lifecycleOrder = { lobby: 0, active: 1, paused: 2 } as const;
+        return lifecycleOrder[left.lifecycle] - lifecycleOrder[right.lifecycle] || left.name.localeCompare(right.name);
+      });
+    });
+  }
+
+  public async joinFromActivity(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>> {
+    return this.queue.run(queueKey(key), () => this.options.unitOfWork.transaction(async (tx) => {
+      const stored = await tx.loadRecord(key);
+      if (stored === undefined) return refused("notFound");
+      const { record } = stored;
+      if (record.lifecycle !== "lobby") return refused("notLobby");
+      const existing = lobbyRules.activeMembers(record.lobby).some((member) => member.userId === userId);
+      const invitation = record.joinRequests?.[userId];
+      const hasInvitation = invitation !== undefined && invitation.expiresAt > this.options.clock.now()
+        && (invitation.status === "invited" || invitation.status === "approved");
+      if (record.visibility === "membersOnly" && record.organizerId !== userId && !existing && !hasInvitation) return refused("privateInviteOnly");
+      if (!existing && !hasInvitation && this.reservedSeats(record) >= record.lobby.maxPlayers) return refused("full");
+      const result = lobbyRules.join(record.lobby, userId);
+      if (!result.ok) return refused(result.reason);
+      const joinRequests = { ...(record.joinRequests ?? {}) };
+      delete joinRequests[userId];
+      const next = { ...record, lobby: result.lobby, joinRequests };
+      await tx.saveRecord(next, stored.revision);
+      return ok(next);
+    }));
+  }
+
+  public inviteLobby(key: CampaignKey, actorId: UserId, userId: UserId): Promise<ServiceResult<CampaignRecord>> {
+    return this.queue.run(queueKey(key), () => this.options.unitOfWork.transaction(async (tx) => {
+      const stored = await tx.loadRecord(key);
+      if (stored === undefined) return refused("notFound");
+      const { record } = stored;
+      if (record.organizerId !== actorId) return refused("notOrganizer");
+      if (record.lifecycle !== "lobby" || record.lobby.status !== "open") return refused("notLobby");
+      if (lobbyRules.activeMembers(record.lobby).some((member) => member.userId === userId)) return refused("joinAlreadyPlaying");
+      const current = record.joinRequests?.[userId];
+      const reserved = current?.status === "invited" && current.expiresAt > this.options.clock.now();
+      if (!reserved && this.reservedSeats(record) >= record.lobby.maxPlayers) return refused("gameFull");
+      const next: CampaignRecord = { ...record, joinRequests: { ...(record.joinRequests ?? {}), [userId]: { status: "invited", expiresAt: this.options.clock.now() + 7 * 24 * 60 * 60 * 1000 } } };
+      await tx.saveRecord(next, stored.revision);
+      return ok(next);
+    }));
+  }
+
   public join(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>> {
-    return this.change(key, (lobby) => lobbyRules.join(lobby, userId));
+    return this.change(key, (lobby, record) => {
+      const alreadySeated = lobbyRules.activeMembers(lobby).some((member) => member.userId === userId);
+      const invite = record.joinRequests?.[userId];
+      const reserved = invite !== undefined && invite.expiresAt > this.options.clock.now() && (invite.status === "invited" || invite.status === "approved");
+      if (!alreadySeated && !reserved && this.reservedSeats(record) >= lobby.maxPlayers) return { ok: false, reason: "full" };
+      return lobbyRules.join(lobby, userId);
+    });
   }
 
   // A running public game accepts applications. A private game can only be
   // entered through an organizer invitation.
   public requestOngoingJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>> {
     return this.changeJoinRequest(key, userId, (record, playing) => {
-      if (record.visibility === "membersOnly") return "privateInviteOnly";
-      if (playing) return "joinAlreadyPlaying";
       const current = record.joinRequests?.[userId];
+      // Someone whose invitation to a private game ran out may ask again; otherwise a private game is entered by invitation only.
+      if (record.visibility === "membersOnly" && current === undefined) return "privateInviteOnly";
+      if (playing) return "joinAlreadyPlaying";
       if (current !== undefined && current.expiresAt > this.options.clock.now()) return current;
+      if (this.reservedSeats(record) >= record.lobby.maxPlayers) return "gameFull";
       return { status: "requested", expiresAt: this.options.clock.now() + 7 * 24 * 60 * 60 * 1000 };
+    });
+  }
+
+  // The players who are marked away right now, with their hero, for the organizer to pick whose seat to free.
+  public async awaySeats(key: CampaignKey): Promise<readonly { readonly userId: UserId; readonly heroName: string | null }[]> {
+    const campaign = await this.options.unitOfWork.transaction((tx) => tx.loadCampaign(key));
+    if (campaign === undefined) return [];
+    const { state } = campaign;
+    return Object.values(state.members)
+      .filter((member) => member.availability === "away" && member.userId !== state.organizerId)
+      .map((member) => ({ userId: member.userId, heroName: member.characterId === null ? null : (state.characters[member.characterId]?.name ?? null) }));
+  }
+
+  // The organizer frees an away player's seat: the hero leaves the table, and the seat, and any request the player had, are released so someone else can be invited into it.
+  public retireSeat(key: CampaignKey, actorId: UserId, userId: UserId, interactionId: string): Promise<ServiceResult<CampaignRecord>> {
+    return this.queue.run(queueKey(key), async () => {
+      const stored = await this.options.unitOfWork.transaction((tx) => tx.loadRecord(key));
+      if (stored === undefined) return refused("notFound");
+      if (stored.record.lifecycle !== "active" && stored.record.lifecycle !== "paused") return refused("closed");
+      if (stored.record.organizerId !== actorId) return refused("notOrganizer");
+      const outcome = await this.options.bus.execute(key, { kind: "retireMember", userId }, { commandId: `dnd:${interactionId}`, actor: { kind: "user", userId: actorId } });
+      if (outcome.kind === "notFound") return refused("notFound");
+      if (outcome.kind === "rejected") {
+        const code = outcome.rejection.code;
+        return refused(code === "memberNotAway" || code === "organizerStays" || code === "inCombat" || code === "notOrganizer" ? code : "notMember");
+      }
+      const next = await this.options.unitOfWork.transaction(async (tx) => {
+        const latest = await tx.loadRecord(key);
+        if (latest === undefined) return undefined;
+        const joinRequests = { ...(latest.record.joinRequests ?? {}) };
+        delete joinRequests[userId];
+        const updated: CampaignRecord = { ...latest.record, joinRequests, lobby: { ...latest.record.lobby, members: latest.record.lobby.members.filter((member) => member.userId !== userId) } };
+        await tx.saveRecord(updated, latest.revision);
+        return updated;
+      });
+      return next === undefined ? refused("notFound") : ok(next);
+    });
+  }
+
+  public withdrawOngoingJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>> {
+    return this.changeJoinRequest(key, userId, (record) => {
+      const current = record.joinRequests?.[userId];
+      if (current === undefined) return "notMember";
+      if (current.status === "requested") return null;
+      if (current.status === "queued") {
+        const { queuedHero: _queuedHero, queueId: _queueId, ...approved } = current;
+        return { ...approved, status: "approved" };
+      }
+      return "notMember";
     });
   }
 
@@ -222,36 +422,135 @@ export class CampaignLobbyService {
       const state = loaded.campaign.state;
       if (record.lifecycle !== "active" && record.lifecycle !== "paused") return refused("closed");
       const request = record.joinRequests?.[userId];
-      if (request?.status !== "approved" || request.expiresAt <= this.options.clock.now()) return refused("joinNotApproved");
+      if ((request?.status !== "approved" && request?.status !== "queued") || request.expiresAt <= this.options.clock.now()) return refused("joinNotApproved");
       if (state.members[userId]?.characterId != null) {
-        return this.finishOngoingJoin(key, userId, heroRef);
+        return this.finishOngoingJoin(key, userId, state.members[userId]!.characterId!);
       }
-      if ((state.encounter !== null && state.encounter.status !== "ended") || state.pendingEncounter !== null) return refused("joinNotAtBreak");
       if (state.members[userId] === undefined && Object.keys(state.members).length >= record.lobby.maxPlayers) return refused("gameFull");
-      const snapshotId = savedSnapshotIdOf(heroRef);
-      let sheet;
-      if (snapshotId !== null) {
-        if (this.options.library === undefined || this.options.rulesets === undefined) return refused("libraryUnavailable");
-        const snapshot = await this.options.library.snapshot(userId, snapshotId);
-        if (snapshot === undefined) return refused("savedCharacterMissing");
-        const content = this.options.rulesets.resolve({ ...this.options.ruleset, houseRules: record.houseRules }).content;
-        if (checkCompatibility(snapshot, content).length > 0) return refused("savedCharacterProblem");
-        sheet = { ...instantiateHero(snapshot, record.houseRules), ownerUserId: userId };
-      } else {
-        const preset = this.options.adventures.documentAt(record.adventure.adventureId, record.adventure.version, record.language)?.heroes.find((hero) => hero.id === heroRef);
-        if (preset === undefined) return refused("unknownHero");
-        if (Object.values(state.characters).some((hero) => !isFallen(state, hero.id) && (hero.id === preset.id || hero.id.startsWith(`${preset.id}-`)))) return refused("heroTaken");
-        const { class: className, ...rest } = preset;
-        const used = Object.keys(state.characters).filter((id) => id === preset.id || id.startsWith(`${preset.id}-`)).length;
-        sheet = { ...rest, id: used === 0 ? preset.id : `${preset.id}-${used + 1}`, className, ownerUserId: userId };
+      const prepared = await this.ongoingHeroSheet(record, state, userId, heroRef);
+      if (prepared.kind === "refused") return prepared;
+      const joining = prepared.value;
+      if (await this.mustWaitForFight(key, state)) {
+        const joinRequests = { ...(record.joinRequests ?? {}), [userId]: { ...request, status: "queued" as const, queuedHero: joining, queueId: interactionId } };
+        const updated: CampaignRecord = { ...record, joinRequests };
+        await this.options.unitOfWork.transaction((tx) => tx.saveRecord(updated, loaded.stored!.revision));
+        return ok(updated);
       }
       const partyLevel = Math.max(1, ...Object.values(state.characters).filter((hero) => !isFallen(state, hero.id)).map((hero) => hero.level));
-      if (sheet.level > partyLevel) return refused("savedCharacterProblem");
-      const joining = raiseToLevel(sheet, partyLevel);
-      const outcome = await this.options.bus.execute(key, { kind: "joinHero", sheet: joining, entrance: request.entrance ?? "A new companion joins the party." }, { commandId: `dnd:${interactionId}`, actor: { kind: "user", userId } });
+      const outcome = await this.options.bus.execute(key, { kind: "joinHero", sheet: raiseToLevel(joining, partyLevel), entrance: request.entrance ?? "A new companion joins the party." }, { commandId: `dnd:${interactionId}`, actor: { kind: "user", userId } });
       if (outcome.kind !== "accepted") return refused(outcome.kind === "notFound" ? "notFound" : "savedCharacterProblem");
+      return this.finishOngoingJoin(key, userId, joining.id);
+    });
+  }
+
+  // A player whose hero has fallen takes a new one: a preset of the adventure that no living hero already is, or one of their saved heroes.
+  // It joins at the party's level with its own starting gear, and plays from the next round or fight. No one has to approve it: it is the player's own seat.
+  public async replaceFallenHero(key: CampaignKey, userId: UserId, heroRef: string, entrance: string | undefined, interactionId: string): Promise<ServiceResult<CampaignRecord>> {
+    return this.queue.run(queueKey(key), async () => {
+      const loaded = await this.options.unitOfWork.transaction(async (tx) => ({ stored: await tx.loadRecord(key), campaign: await tx.loadCampaign(key) }));
+      if (loaded.stored === undefined || loaded.campaign === undefined) return refused("notFound");
+      const { record } = loaded.stored;
+      const state = loaded.campaign.state;
+      if (record.lifecycle !== "active" && record.lifecycle !== "paused") return refused("closed");
+      const current = state.members[userId]?.characterId ?? null;
+      if (current === null || !isFallen(state, current)) return refused("heroNotReplaceable");
+      const arrival = entrance?.trim();
+      if (arrival !== undefined && arrival.length > 500) return refused("invalidEntrance");
+      const baseId = (id: string): string => id.replace(/-\d+$/, "");
+      if (savedSnapshotIdOf(heroRef) === null && Object.values(state.characters).some((hero) => !isFallen(state, hero.id) && baseId(hero.id) === heroRef)) return refused("heroNotReplaceable");
+      const prepared = await this.ongoingHeroSheet(record, state, userId, heroRef);
+      if (prepared.kind === "refused") return prepared;
+      // A preset hero always gets a numbered id, and one played again is told apart by a numeral in its name: "Mira II".
+      const numerals = ["", "", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+      const isSaved = savedSnapshotIdOf(heroRef) !== null;
+      const turn = prepared.value.id === heroRef ? 1 : Number(/-(\d+)$/.exec(prepared.value.id)?.[1] ?? 1);
+      const joining = isSaved ? prepared.value : { ...prepared.value, id: `${heroRef}-${turn}`, name: turn >= 2 ? `${prepared.value.name} ${numerals[turn] ?? turn}` : prepared.value.name };
+      const partyLevel = Math.max(1, ...Object.values(state.characters).filter((hero) => !isFallen(state, hero.id)).map((hero) => hero.level));
+      const outcome = await this.options.bus.execute(key, { kind: "joinHero", sheet: raiseToLevel(joining, partyLevel), entrance: arrival === undefined || arrival === "" ? "A new companion joins the party." : arrival }, { commandId: `dnd:${interactionId}`, actor: { kind: "user", userId } });
+      if (outcome.kind !== "accepted") return refused(outcome.kind === "notFound" ? "notFound" : "savedCharacterProblem");
+      // The lobby record keeps which hero the seat took (the preset or the saved hero), not the numbered character it became.
       return this.finishOngoingJoin(key, userId, heroRef);
     });
+  }
+
+  // The runtime checks these reservations after combat's closing narration and
+  // joins each selected hero at the first safe break. Requests remain on the
+  // campaign record, so a restart cannot lose someone's place in the queue.
+  public async processQueuedJoins(): Promise<{ readonly processed: number; readonly failed: readonly { readonly id: string; readonly error: string }[] }> {
+    const records = await this.options.unitOfWork.transaction((tx) => tx.listRecordsByLifecycle(["active", "paused"]));
+    const failed: { id: string; error: string }[] = [];
+    let processed = 0;
+    for (const { record } of records) {
+      for (const [userId, request] of Object.entries(record.joinRequests ?? {})) {
+        if (request.status !== "queued" || request.queuedHero === undefined || request.expiresAt <= this.options.clock.now()) continue;
+        try {
+          const joined = await this.queue.run(queueKey(record.key), async () => {
+            const latest = await this.options.unitOfWork.transaction(async (tx) => ({ stored: await tx.loadRecord(record.key), campaign: await tx.loadCampaign(record.key) }));
+            if (latest.stored === undefined || latest.campaign === undefined) return false;
+            const currentRequest = latest.stored.record.joinRequests?.[userId];
+            const state = latest.campaign.state;
+            if (currentRequest?.status !== "queued" || currentRequest.queuedHero === undefined || currentRequest.expiresAt <= this.options.clock.now()) return false;
+            if (state.members[userId]?.characterId != null) {
+              const result = await this.finishOngoingJoin(record.key, userId, state.members[userId]!.characterId!);
+              return result.kind === "ok";
+            }
+            if (await this.mustWaitForFight(record.key, state)) return false;
+            if (state.members[userId] === undefined && Object.keys(state.members).length >= latest.stored.record.lobby.maxPlayers) {
+              await this.returnQueuedJoinToApproval(record.key, userId, currentRequest.queueId);
+              return false;
+            }
+            const partyLevel = Math.max(1, ...Object.values(state.characters).filter((hero) => !isFallen(state, hero.id)).map((hero) => hero.level));
+            const commandId = `dnd:queued-join:${currentRequest.queueId ?? currentRequest.expiresAt}`;
+            const outcome = await this.options.bus.execute(record.key, { kind: "joinHero", sheet: raiseToLevel(currentRequest.queuedHero, partyLevel), entrance: currentRequest.entrance ?? "A new companion joins the party." }, { commandId, actor: { kind: "user", userId } });
+            if (outcome.kind !== "accepted") {
+              await this.returnQueuedJoinToApproval(record.key, userId, currentRequest.queueId);
+              return false;
+            }
+            const result = await this.finishOngoingJoin(record.key, userId, currentRequest.queuedHero.id);
+            return result.kind === "ok";
+          });
+          if (joined) processed += 1;
+        } catch (error) {
+          failed.push({ id: `${record.key.campaignId}:${userId}`, error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+    }
+    return { processed, failed };
+  }
+
+  // A hero joins at a safe break: not while a fight is on or about to start, and not before its closing narration is told. A closing narration that was given up on (the Narrator failed every attempt) is not waited for, or nobody could ever join after that fight.
+  private async mustWaitForFight(key: CampaignKey, state: import("../../domain/campaign/state/campaign-state.js").CampaignState): Promise<boolean> {
+    if (state.pendingEncounter !== null) return true;
+    const encounter = state.encounter;
+    if (encounter === null) return false;
+    if (encounter.status !== "ended") return true;
+    if (encounter.narratedRound >= encounter.round) return false;
+    const work = await this.options.unitOfWork.transaction((tx) => tx.outboxForCampaign(key));
+    return work.some((item) => item.status === "pending" && item.request.kind === "narrateCombat");
+  }
+
+  private async ongoingHeroSheet(record: CampaignRecord, state: import("../../domain/campaign/state/campaign-state.js").CampaignState, userId: UserId, heroRef: string): Promise<ServiceResult<CharacterSheet>> {
+    const snapshotId = savedSnapshotIdOf(heroRef);
+    let sheet: CharacterSheet;
+    if (snapshotId !== null) {
+      if (this.options.library === undefined || this.options.rulesets === undefined) return refused("libraryUnavailable");
+      const snapshot = await this.options.library.snapshot(userId, snapshotId);
+      if (snapshot === undefined) return refused("savedCharacterMissing");
+      const content = this.options.rulesets.resolve({ ...this.options.ruleset, houseRules: record.houseRules }).content;
+      if (checkCompatibility(snapshot, content).length > 0) return refused("savedCharacterProblem");
+      sheet = { ...instantiateHero(snapshot, record.houseRules), ownerUserId: userId };
+    } else {
+      const preset = this.options.adventures.documentAt(record.adventure.adventureId, record.adventure.version, record.language)?.heroes.find((hero) => hero.id === heroRef);
+      if (preset === undefined) return refused("unknownHero");
+      const { class: className, ...rest } = preset;
+      const queuedIds = Object.values(record.joinRequests ?? {}).flatMap((request) => request.status === "queued" && request.queuedHero !== undefined ? [request.queuedHero.id] : []);
+      const used = Object.keys(state.characters).filter((id) => id === preset.id || id.startsWith(`${preset.id}-`)).length
+        + queuedIds.filter((id) => id === preset.id || id.startsWith(`${preset.id}-`)).length;
+      sheet = { ...rest, id: used === 0 ? preset.id : `${preset.id}-${used + 1}`, className, ownerUserId: userId };
+    }
+    const partyLevel = Math.max(1, ...Object.values(state.characters).filter((hero) => !isFallen(state, hero.id)).map((hero) => hero.level));
+    if (sheet.level > partyLevel) return refused("savedCharacterProblem");
+    return ok(sheet);
   }
 
   private async finishOngoingJoin(key: CampaignKey, userId: UserId, heroRef: string): Promise<ServiceResult<CampaignRecord>> {
@@ -270,8 +569,20 @@ export class CampaignLobbyService {
       return next === undefined ? refused("notFound") : ok(next);
   }
 
+  private async returnQueuedJoinToApproval(key: CampaignKey, userId: UserId, queueId: string | undefined): Promise<void> {
+    await this.options.unitOfWork.transaction(async (tx) => {
+      const latest = await tx.loadRecord(key);
+      const request = latest?.record.joinRequests?.[userId];
+      if (latest === undefined || request?.status !== "queued" || request.queueId !== queueId) return;
+      const { queuedHero: _queuedHero, queueId: _queueId, ...approved } = request;
+      const joinRequests = { ...latest.record.joinRequests, [userId]: { ...approved, status: "approved" as const } };
+      await tx.saveRecord({ ...latest.record, joinRequests }, latest.revision);
+    });
+  }
+
   private reservedSeats(record: CampaignRecord): number {
-    return record.lobby.members.length + Object.entries(record.joinRequests ?? {}).filter(([userId, request]) => !record.lobby.members.some((member) => member.userId === userId) && (request.status === "invited" || request.status === "approved") && request.expiresAt > this.options.clock.now()).length;
+    const members = lobbyRules.activeMembers(record.lobby);
+    return members.length + Object.entries(record.joinRequests ?? {}).filter(([userId, request]) => !members.some((member) => member.userId === userId) && (request.status === "invited" || request.status === "approved" || request.status === "queued") && request.expiresAt > this.options.clock.now()).length;
   }
 
   private changeJoinRequest(key: CampaignKey, userId: UserId, decide: (record: CampaignRecord, playing: boolean, reserved: boolean) => NonNullable<CampaignRecord["joinRequests"]>[string] | ServiceRefusal | null): Promise<ServiceResult<CampaignRecord>> {
@@ -282,7 +593,8 @@ export class CampaignLobbyService {
       const { record } = stored;
       if (record.lifecycle !== "active" && record.lifecycle !== "paused") return refused("closed");
       const playing = campaign.state.members[userId]?.characterId != null;
-      const reserved = record.joinRequests?.[userId]?.status === "invited" || record.joinRequests?.[userId]?.status === "approved";
+      const request = record.joinRequests?.[userId];
+      const reserved = request !== undefined && request.expiresAt > this.options.clock.now() && (request.status === "invited" || request.status === "approved" || request.status === "queued");
       const result = decide(record, playing, reserved);
       if (typeof result === "string") return refused(result);
       const joinRequests = { ...(record.joinRequests ?? {}) };
@@ -329,6 +641,7 @@ export class CampaignLobbyService {
       if (ended.kind === "refused") return ended;
       // Stops the clock. Refused when it is already paused or never started, which is fine.
       await this.options.bus.execute(key, { kind: "pauseCampaign", reason: "organizer" }, { commandId: `end:${key.campaignId}`, actor: { kind: "system" } });
+      this.options.onEnded?.(key);
       return ended;
     });
   }
@@ -372,6 +685,28 @@ export class CampaignLobbyService {
     });
   }
 
+  // The organizer (null: a DnD Admin acting for them) changes how many players the game takes, in the lobby or while it is being played.
+  // It never goes below the players already seated.
+  public setPartySize(key: CampaignKey, actorId: UserId | null, maxPlayers: number): Promise<ServiceResult<CampaignRecord>> {
+    return this.queue.run(queueKey(key), () =>
+      this.options.unitOfWork.transaction(async (tx): Promise<ServiceResult<CampaignRecord>> => {
+        const stored = await tx.loadRecord(key);
+        if (stored === undefined) return refused("notFound");
+        const { record } = stored;
+        if (record.lifecycle === "archived") return refused("closed");
+        if (actorId !== null && record.organizerId !== actorId) return refused("notOrganizer");
+        const campaign = await tx.loadCampaign(key);
+        const seated = Math.max(this.reservedSeats(record), Object.keys(campaign?.state.members ?? {}).length);
+        const resized = lobbyRules.resize(record.lobby, maxPlayers, seated);
+        if (!resized.ok) return refused(resized.reason);
+        if (resized.lobby === record.lobby) return ok(record);
+        const next: CampaignRecord = { ...record, lobby: resized.lobby };
+        await tx.saveRecord(next, stored.revision);
+        return ok(next);
+      }),
+    );
+  }
+
   // Changes house-rule options while the game is still in its lobby, for the
   // organizer only. Every value is checked against the options the engine
   // implements; nothing else can be saved.
@@ -401,12 +736,14 @@ export class CampaignLobbyService {
   // by the caller). The game comes back paused, exactly where it stopped; the
   // organizer resumes it. A game cancelled in its lobby never began, and a
   // name another unfinished game has taken since is not given twice.
-  public reopen(key: CampaignKey): Promise<ServiceResult<CampaignRecord>> {
+  // A named actor must be the organizer; the Discord command checks the server's admin role itself and names no one.
+  public reopen(key: CampaignKey, actorId: UserId | null = null): Promise<ServiceResult<CampaignRecord>> {
     return this.queue.run(queueKey(key), () =>
       this.options.unitOfWork.transaction(async (tx): Promise<ServiceResult<CampaignRecord>> => {
         const stored = await tx.loadRecord(key);
         if (stored === undefined) return refused("notFound");
         const { record } = stored;
+        if (actorId !== null && record.organizerId !== actorId) return refused("notOrganizer");
         if (record.lifecycle !== "archived") return refused("notEnded");
         if (record.startedAt === null || (await tx.loadCampaign(key)) === undefined) return refused("neverStarted");
         const taken = (await tx.listRecords(key.guildId, ["lobby", "active", "paused"])).some((other) => other.record.name.toLowerCase() === record.name.toLowerCase());

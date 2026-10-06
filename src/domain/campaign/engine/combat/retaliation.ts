@@ -1,6 +1,6 @@
 // Retaliation: a hero who was damaged by a creature close by strikes back with their reaction.
 import { isPresent, type ResolutionState } from "../../combat/combat-state.js";
-import { conditionLookup, hasCondition } from "../../effects/effect-queries.js";
+import { canReact, conditionLookup, hasCondition } from "../../effects/effect-queries.js";
 import type { Decision } from "../decision.js";
 import { activeEncounter } from "./combat-flow.js";
 import { declareWeaponAttack } from "./combat-actions.js";
@@ -18,7 +18,7 @@ export function offerRetaliation(decision: Decision, resolution: ResolutionState
   const lookup = conditionLookup(decision.ctx.rules.content);
   for (const targetId of resolution.targetIds) {
     const target = encounter.combatants[targetId];
-    if (target === undefined || target.side === attacker.side || target.condition !== "active" || target.hp <= 0 || !target.budget.reaction) continue;
+    if (target === undefined || target.side === attacker.side || target.hp <= 0 || !canReact(target, lookup)) continue;
     if (!target.traits.some((trait) => trait.kind === "retaliation") || target.zoneId !== attacker.zoneId || hasCondition(target, "condition:holding-reactions", lookup)) continue;
     // Only damage counts: a spell or a blow that did nothing to the hero is no reason to strike back.
     const effects = resolution.outcomes[targetId]?.landed === true ? landEffects(resolution, encounter) : resolution.plan.onAvoid;

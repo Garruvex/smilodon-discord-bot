@@ -1,8 +1,8 @@
 import { createCanvas, loadImage, type Image, type SKRSContext2D } from "@napi-rs/canvas";
 import { StickerFormatType, type Message, type Sticker } from "discord.js";
-import createEmojiMatcher from "emoji-regex";
 
 import { fontFamily } from "../../canvas/card-font.js";
+import { drawRichText, emojiImage, splitRichText, warmEmoji, warmSegments, type RichSegment } from "../../canvas/rich-text.js";
 
 export class EmptyQuoteError extends Error {
   public constructor() {
@@ -17,43 +17,6 @@ const avatarPanelWidth = 450;
 const textLeft = 500;
 const textRight = width - 60;
 const maxQuoteLength = 300;
-
-// Twemoji asset set, pinned so a version bump upstream can't suddenly break
-// rendering. Filenames are the emoji's codepoints (variation selectors
-// stripped) joined with hyphens, matching Twemoji's own naming convention.
-const twemojiCdnBase = "https://cdn.jsdelivr.net/gh/jdecked/twemoji@14.1.2/assets/72x72";
-
-interface TextSegment {
-  type: "text";
-  value: string;
-}
-
-interface EmojiSegment {
-  type: "emoji";
-  url: string;
-  fallback: string;
-}
-
-type QuoteSegment = TextSegment | EmojiSegment;
-
-const customEmojiPattern = /<(a?):(\w+):(\d+)>/g;
-
-function customEmojiUrl(id: string): string {
-  // Discord serves a static frame for animated emoji when png is requested,
-  // which is all a still image card needs.
-  return `https://cdn.discordapp.com/emojis/${id}.png?size=64`;
-}
-
-function unicodeEmojiToCodepoint(emoji: string): string {
-  return Array.from(emoji)
-    .map((char) => char.codePointAt(0)!.toString(16))
-    .filter((hex) => hex !== "fe0f")
-    .join("-");
-}
-
-function unicodeEmojiUrl(emoji: string): string {
-  return `${twemojiCdnBase}/${unicodeEmojiToCodepoint(emoji)}.png`;
-}
 
 function stripMarkdown(message: Message, raw: string): string {
   return raw
@@ -80,50 +43,11 @@ function extractRawQuoteContent(message: Message): string {
   return stripMarkdown(message, raw);
 }
 
-// Splits the cleaned message text into alternating text/emoji segments,
-// keeping custom-emoji tags and unicode emoji intact so the renderer can
-// draw them as inline images instead of flattening them to plain text.
-function tokenizeQuoteContent(text: string): QuoteSegment[] {
-  const matches: { start: number; end: number; segment: EmojiSegment }[] = [];
-
-  for (const match of text.matchAll(customEmojiPattern)) {
-    const [full, , name, id] = match as unknown as [string, string, string, string];
-    matches.push({
-      start: match.index,
-      end: match.index + full.length,
-      segment: { type: "emoji", url: customEmojiUrl(id), fallback: `:${name}:` },
-    });
-  }
-
-  const unicodeEmojiPattern = createEmojiMatcher();
-  for (const match of text.matchAll(unicodeEmojiPattern)) {
-    matches.push({
-      start: match.index,
-      end: match.index + match[0].length,
-      segment: { type: "emoji", url: unicodeEmojiUrl(match[0]), fallback: match[0] },
-    });
-  }
-
-  matches.sort((a, b) => a.start - b.start);
-
-  const segments: QuoteSegment[] = [];
-  let cursor = 0;
-  for (const { start, end, segment } of matches) {
-    if (start < cursor) continue; // overlapping match (defensive)
-    if (start > cursor) segments.push({ type: "text", value: text.slice(cursor, start) });
-    segments.push(segment);
-    cursor = end;
-  }
-  if (cursor < text.length) segments.push({ type: "text", value: text.slice(cursor) });
-
-  return segments;
-}
-
 // Truncates by segment "units" (one per emoji, one per character otherwise)
 // so a long run of custom emoji doesn't get cut mid-tag and a short message
 // full of emoji isn't truncated far earlier than its visible length implies.
-function truncateSegments(segments: QuoteSegment[], maxUnits: number): { segments: QuoteSegment[]; truncated: boolean } {
-  const result: QuoteSegment[] = [];
+function truncateSegments(segments: RichSegment[], maxUnits: number): { segments: RichSegment[]; truncated: boolean } {
+  const result: RichSegment[] = [];
   let used = 0;
 
   for (const segment of segments) {
@@ -149,21 +73,21 @@ function truncateSegments(segments: QuoteSegment[], maxUnits: number): { segment
   return { segments: result, truncated: false };
 }
 
-function segmentsToPlainText(segments: QuoteSegment[]): string {
+function segmentsToPlainText(segments: RichSegment[]): string {
   return segments.map((segment) => (segment.type === "text" ? segment.value : segment.fallback)).join("");
 }
 
-function getQuoteSegments(message: Message): QuoteSegment[] {
+function getRichSegments(message: Message): RichSegment[] {
   const raw = extractRawQuoteContent(message);
   if (!raw) return [];
 
-  const { segments, truncated } = truncateSegments(tokenizeQuoteContent(raw), maxQuoteLength);
+  const { segments, truncated } = truncateSegments(splitRichText(raw), maxQuoteLength);
   if (truncated) segments.push({ type: "text", value: "…" });
   return segments;
 }
 
 export function getQuoteText(message: Message): string {
-  return segmentsToPlainText(getQuoteSegments(message));
+  return segmentsToPlainText(getRichSegments(message));
 }
 
 export function hasQuotableContent(message: Message): boolean {
@@ -190,11 +114,11 @@ interface EmojiToken {
 
 type LayoutToken = TextToken | EmojiToken;
 
-function tokenizeForLayout(segments: QuoteSegment[], emojiImages: Map<string, Image | null>): LayoutToken[] {
+function tokenizeForLayout(segments: RichSegment[]): LayoutToken[] {
   const tokens: LayoutToken[] = [];
   for (const segment of segments) {
     if (segment.type === "emoji") {
-      tokens.push({ type: "emoji", image: emojiImages.get(segment.url) ?? null, fallback: segment.fallback });
+      tokens.push({ type: "emoji", image: emojiImage(segment) ?? null, fallback: segment.fallback });
       continue;
     }
     for (const raw of segment.value.match(tokenPattern) ?? []) {
@@ -202,26 +126,6 @@ function tokenizeForLayout(segments: QuoteSegment[], emojiImages: Map<string, Im
     }
   }
   return tokens;
-}
-
-async function loadEmojiImages(segments: QuoteSegment[]): Promise<Map<string, Image | null>> {
-  const urls = new Set<string>();
-  for (const segment of segments) {
-    if (segment.type === "emoji") urls.add(segment.url);
-  }
-
-  const entries = await Promise.all(
-    Array.from(urls, async (url): Promise<[string, Image | null]> => {
-      try {
-        const buffer = Buffer.from(await (await fetch(url)).arrayBuffer());
-        return [url, await loadImage(buffer)];
-      } catch {
-        return [url, null];
-      }
-    }),
-  );
-
-  return new Map(entries);
 }
 
 function tokenWidth(ctx: SKRSContext2D, token: LayoutToken, fontSize: number): number {
@@ -347,16 +251,19 @@ async function drawAvatarPanel(ctx: SKRSContext2D, message: Message): Promise<vo
   ctx.fillRect(blendStart + blendWidth, 0, width - (blendStart + blendWidth), height);
 }
 
-function drawAuthorLines(ctx: SKRSContext2D, message: Message, y: number, centered: boolean, textX: (line: string) => number): void {
+async function drawAuthorLines(ctx: SKRSContext2D, message: Message, y: number, centered: boolean, centerX: number): Promise<void> {
   const authorText = `- ${message.member?.displayName ?? message.author.displayName}`;
   const handleText = `@${message.author.username}`;
+  await warmEmoji([authorText]);
   ctx.font = `italic 28px "${fontFamily}"`;
   ctx.fillStyle = "#CCCCCC";
-  ctx.fillText(authorText, centered ? textX(authorText) : textLeft, y);
+  if (centered) drawRichText(ctx, authorText, centerX, y, 28, "center");
+  else drawRichText(ctx, authorText, textLeft, y, 28);
 
   ctx.font = `22px "${fontFamily}"`;
   ctx.fillStyle = "#777777";
-  ctx.fillText(handleText, centered ? textX(handleText) : textLeft, y + 32);
+  if (centered) drawRichText(ctx, handleText, centerX, y + 32, 22, "center");
+  else drawRichText(ctx, handleText, textLeft, y + 32, 22);
 }
 
 function drawWatermark(ctx: SKRSContext2D, botUsername: string): void {
@@ -370,7 +277,7 @@ function drawWatermark(ctx: SKRSContext2D, botUsername: string): void {
 async function drawTextCard(
   ctx: SKRSContext2D,
   message: Message,
-  segments: QuoteSegment[],
+  segments: RichSegment[],
   botUsername: string,
 ): Promise<void> {
   await drawAvatarPanel(ctx, message);
@@ -381,8 +288,8 @@ async function drawTextCard(
   ctx.fillStyle = "rgba(255,255,255,0.05)";
   ctx.fillText("“", textLeft - 30, 260);
 
-  const emojiImages = await loadEmojiImages(segments);
-  const tokens = tokenizeForLayout(segments, emojiImages);
+  await warmSegments(segments);
+  const tokens = tokenizeForLayout(segments);
 
   const maxTextWidth = textRight - textLeft;
   const { lines, fontSize, lineHeight } = layoutQuote(ctx, tokens, maxTextWidth, 340);
@@ -390,8 +297,6 @@ async function drawTextCard(
   // wraps to a paragraph, centering makes each line ragged and harder to
   // read, so it falls back to left-aligned.
   const centered = lines.length === 1;
-  const textX = (lineText: string): number =>
-    centered ? textLeft + (maxTextWidth - ctx.measureText(lineText).width) / 2 : textLeft;
   const tokenLineX = (line: LayoutToken[]): number =>
     centered ? textLeft + (maxTextWidth - lineWidth(ctx, line, fontSize)) / 2 : textLeft;
 
@@ -405,7 +310,7 @@ async function drawTextCard(
     y += lineHeight;
   }
 
-  drawAuthorLines(ctx, message, y + 20, centered, textX);
+  await drawAuthorLines(ctx, message, y + 20, centered, textLeft + maxTextWidth / 2);
   drawWatermark(ctx, botUsername);
 }
 
@@ -450,13 +355,12 @@ async function drawStickerCard(
     ctx.fillText(label, textLeft + (maxWidth - labelWidth) / 2, boxY + boxSize / 2);
   }
 
-  const textX = (lineText: string): number => textLeft + (maxWidth - ctx.measureText(lineText).width) / 2;
-  drawAuthorLines(ctx, message, boxY + boxSize + 60, true, textX);
+  await drawAuthorLines(ctx, message, boxY + boxSize + 60, true, textLeft + maxWidth / 2);
   drawWatermark(ctx, botUsername);
 }
 
 export async function renderQuoteCard(message: Message, botUsername: string): Promise<Buffer> {
-  const segments = getQuoteSegments(message);
+  const segments = getRichSegments(message);
   const sticker = segments.length === 0 ? pickRenderableSticker(message) : undefined;
 
   if (segments.length === 0 && !sticker) {
