@@ -86,6 +86,7 @@ function profile(overrides: { ambientReplies?: boolean } = {}): GuildConfigurati
       includeSources: true, maxImagesPerRequest: 2, ambientCooldownSeconds: 20,
       channelHistoryLimit: 8, reactionReplyWaitMinMinutes: 2, reactionReplyWaitMaxMinutes: 5, reactionReplyMinReactors: 1, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
+    security: { trap: { enabled: false, channelId: null, action: "timeout", deleteWindow: "1h", timeout: "28d" }, exemptRoleIds: [], logChannelId: null },
     sourceFile: "test.yaml",
   };
 }

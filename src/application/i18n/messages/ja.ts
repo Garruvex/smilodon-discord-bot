@@ -292,4 +292,14 @@ export const ja = {
   "setup.status.duration.minutes": "{minutes}分",
   "setup.status.duration.minutesSeconds": "{minutes}分{seconds}秒",
   "setup.status.footer": "管理パネルか /settings-… コマンドで変更できます。初めてなら /setup guide をどうぞ。",
+
+  "security.trap.noticeTitle": "このチャンネルには投稿しないでください",
+  "security.trap.noticeBody": "ここは会話のためのチャンネルではありません。投稿されたメッセージは自動的に削除され、投稿したアカウントは管理者が確認するまで制限されます。",
+  "security.trap.topic": "このチャンネルには投稿しないでください",
+  "security.trap.action.timeout": "タイムアウト",
+  "security.trap.action.kick": "キック",
+  "security.trap.action.ban": "BAN",
+  "security.trap.log.acted": "{user} が {channel} に投稿したため、{action}しました。メッセージを {removed} 件削除しました。",
+  "security.trap.log.blocked": "{user} が {channel} に投稿しましたが、{action}できませんでした。相手の最上位ロールが私より上か、権限が足りません。メッセージは削除しました。",
+  "security.trap.log.error": "{user} が {channel} に投稿しましたが、処理中に問題が発生しました。ボットのログを確認してください。",
 } as const satisfies TranslationCatalog;

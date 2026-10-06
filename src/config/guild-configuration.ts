@@ -1,4 +1,5 @@
 import type { Language } from "../application/i18n/language.js";
+import type { TrapConfiguration } from "../domain/security/trap-policy.js";
 
 // The top-level features, in display order. GuildFeatureConfiguration also
 // holds sub-switches (ambientReplies, channelHistory, ...) that aren't
@@ -207,6 +208,16 @@ export interface GuildPanelConfiguration {
   progressBar: ProgressBarSettings;
 }
 
+export interface GuildSecurityConfiguration {
+  // A channel that no member has a reason to post in: whoever does is a
+  // compromised account or a spam bot, and is dealt with automatically.
+  trap: TrapConfiguration;
+  // Roles never actioned by any security feature (moderators, trusted bots).
+  exemptRoleIds: readonly string[];
+  // Where security actions are reported. Unset falls back to the audit log.
+  logChannelId: string | null;
+}
+
 export interface GuildConfiguration {
   schemaVersion: 1;
   guildId: string;
@@ -229,5 +240,6 @@ export interface GuildConfiguration {
   linkFixPlatforms: GuildLinkFixPlatformConfiguration;
   music: GuildMusicConfiguration;
   chat: GuildChatConfiguration;
+  security: GuildSecurityConfiguration;
   sourceFile: string;
 }
