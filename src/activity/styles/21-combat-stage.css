@@ -48,15 +48,19 @@
 body.has-turn-bar { padding-bottom: calc(var(--turn-bar-h, 64px) + 12px); }
 body.has-turn-bar .turn-strip .turn-pip { display: none; }
 #turn-bar { position: fixed; z-index: 59; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; width: max-content; max-width: calc(100% - 20px); padding: 8px 14px; border: 1px solid var(--stage-stone-line); border-radius: 12px; background: var(--stage-stone); color: var(--stage-card); box-shadow: 0 10px 28px #0009; }
-#turn-bar .hotbar-pips { display: flex; align-items: center; gap: 10px; }
-#turn-bar .hotbar-pip { display: grid; justify-items: center; gap: 2px; }
-#turn-bar .hotbar-pip small { color: #cbbd96; font-size: 10px; }
-#turn-bar .hotbar-gem { display: block; width: 14px; height: 14px; border-radius: 50%; background: #7fae5e; }
+#turn-bar .hotbar-pips { display: flex; align-items: stretch; gap: 6px; }
+#turn-bar .hotbar-pip { display: grid; align-content: center; justify-items: center; gap: 4px; min-width: 62px; min-height: 54px; padding: 6px 10px; border: 1px solid #5b4a35; border-radius: 8px; background: #3a2c24; box-sizing: border-box; }
+#turn-bar .hotbar-pip small { color: #cbbd96; font-size: 10.5px; font-weight: 600; line-height: 1.1; text-align: center; white-space: nowrap; }
+#turn-bar .hotbar-gem { display: block; width: 16px; height: 16px; border-radius: 50%; background: #7fae5e; }
 #turn-bar .pip-bonusAction .hotbar-gem { border-radius: 2px; background: #d98c2b; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 #turn-bar .pip-reaction .hotbar-gem { border-radius: 2px; background: #6f93d6; transform: rotate(45deg) scale(.78); }
+#turn-bar .hotbar-pip.is-spent { background: #2e2520; }
 #turn-bar .hotbar-pip.is-spent .hotbar-gem { background: #5a4636; }
 #turn-bar .hotbar-pip.is-spent small { text-decoration: line-through; opacity: .6; }
-#turn-bar .hotbar-move { padding: 3px 9px; border: 1px solid #5b4a35; border-radius: 999px; color: var(--stage-card); font-size: 12px; font-weight: 600; white-space: nowrap; }
+#turn-bar .hotbar-count b { color: var(--stage-card); font: 700 16px/1 var(--sans); white-space: nowrap; }
+#turn-bar .hotbar-count.count-move b { color: #a9cf8a; }
+#turn-bar .hotbar-count.count-attacks b { color: #e8a77a; }
+#turn-bar .hotbar-count.is-spent b { color: #8b7a62; }
 #turn-bar .hotbar-slots { display: flex; gap: 6px; padding: 0 12px; border-inline: 1px solid #5b4a35; }
 #turn-bar .hotbar-slot { position: relative; display: grid; justify-items: center; gap: 3px; min-width: 62px; min-height: 0; padding: 7px 10px 6px; border: 1px solid var(--stage-card-line); border-radius: 8px; background: var(--stage-card); color: var(--ui-ink, #33271e); font: 600 12px/1.1 var(--sans); cursor: pointer; }
 #turn-bar .hotbar-slot img { width: 24px; height: 24px; filter: brightness(0) opacity(.72); }
@@ -72,7 +76,8 @@ body.has-turn-bar .turn-strip .turn-pip { display: none; }
   #turn-bar { bottom: 50px; gap: 8px; padding: 6px 8px; width: calc(100% - 16px); justify-content: space-between; }
   #turn-bar .hotbar-pips { gap: 6px; flex-wrap: wrap; max-width: 76px; }
   #turn-bar .hotbar-pip small { display: none; }
-  #turn-bar .hotbar-move { padding: 1px 6px; font-size: 10px; }
+  #turn-bar .hotbar-pip { min-width: 46px; min-height: 46px; padding: 4px 6px; }
+  #turn-bar .hotbar-pip small { font-size: 9px; }
   #turn-bar .hotbar-slots { gap: 4px; padding: 0 6px; flex: 1 1 auto; justify-content: center; }
   #turn-bar .hotbar-slot { min-width: 0; padding: 6px 7px 5px; font-size: 10px; }
   #turn-bar .hotbar-slot span { max-width: 52px; overflow: hidden; text-overflow: ellipsis; }
@@ -99,14 +104,33 @@ body.has-turn-bar .turn-strip .turn-pip { display: none; }
   .party-rail .rail-face img[hidden], .party-rail .rail-face span[hidden] { display: none; }
   .party-rail .rail-hero:focus-visible { outline: 2px solid #ecd295; outline-offset: 2px; }
   body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab[data-side="left"] { display: none; }
-  body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab[data-side="right"], body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab[data-side="bottom"] { position: fixed; top: calc(50% - 27px); right: 0; bottom: auto; left: auto; display: grid; place-items: center; width: 46px; height: 46px; padding: 0; transform: none; writing-mode: horizontal-tb; border: 1px solid var(--stage-stone-line); border-right: 0; border-radius: 12px 0 0 12px; background: var(--stage-stone); color: var(--stage-card); }
-  .drawer-tab[data-side="bottom"], .drawer-tab[data-side="bottom"][aria-expanded="true"] { top: calc(50% + 27px); bottom: auto; }
+  /* Story and Map are icon buttons stacked on the left edge, directly above the party rail (--rail-h is the rail's measured height). */
+  body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab[data-side="right"], body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab[data-side="bottom"] { position: fixed; top: calc(50% - var(--rail-h, 0px) / 2 - 48px); right: auto; bottom: auto; left: 0; display: grid; place-items: center; width: 46px; height: 46px; padding: 0; transform: none; writing-mode: horizontal-tb; border: 1px solid var(--stage-stone-line); border-left: 0; border-radius: 0 12px 12px 0; background: var(--stage-stone); color: var(--stage-card); transition: left .22s ease; }
+  body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab[data-side="bottom"], body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab[data-side="bottom"][aria-expanded="true"] { top: calc(50% + var(--rail-h, 0px) / 2 + 2px); bottom: auto; }
+  /* Party, Story and Map are bookmarks on the left edge: one panel out at a time, and the bookmarks ride its edge. */
+  body { --dock-w: 0px; }
+  body.drawer-open-left { --dock-w: min(var(--drawer-left-w), 92vw); }
+  body.drawer-open-right { --dock-w: min(var(--drawer-right-w), 92vw); }
+  body.drawer-open-bottom { --dock-w: min(var(--drawer-dock-map-w, 640px), 92vw); }
+  body[data-game-kind="table"] .party-rail, body.drawer-open-left .party-rail { left: var(--dock-w); padding: 8px 4px; border-left: 0; }
+  body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab[data-side="right"], body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab[data-side="bottom"] { left: var(--dock-w); }
+  /* Hovering a bookmark lengthens it, staying joined to the edge. */
+  body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab[data-side="right"], body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab[data-side="bottom"] { transition: left .22s ease, width .15s ease, background .15s ease, box-shadow .15s ease; }
+  body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab[data-side="right"]:hover, body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab[data-side="bottom"]:hover { width: 56px; background: #4a3b27; box-shadow: 0 6px 16px #0009; }
+  .drawer-tab > img { transition: transform .15s ease; }
+  .drawer-tab:hover > img { transform: scale(1.12); }
+  @media (prefers-reduced-motion: reduce) { .drawer-tab, .drawer-tab > img { transition: none; } .drawer-tab:hover > img { transform: none; } }
+  .drawer[data-side="right"], .drawer[data-side="bottom"] { top: calc((100% - var(--dock-h, var(--drawer-side-h))) / 2); bottom: auto; left: 0; right: auto; height: var(--dock-h, var(--drawer-side-h)); border: 1px solid var(--ui-border-strong, #9c7a4b); border-left: 0; border-radius: 0 12px 12px 0; transform: translateX(-104%); }
+  .drawer[data-side="right"] { width: min(var(--drawer-right-w), 92vw); }
+  .drawer[data-side="bottom"] { z-index: 57; --dock-h: min(var(--drawer-map-h), calc(100% - 24px)); width: min(var(--drawer-dock-map-w, 640px), 92vw); }
+  body.has-turn-bar .drawer[data-side="bottom"] { bottom: auto; }
+  .drawer[data-side="right"][data-open="true"], .drawer[data-side="bottom"][data-open="true"] { transform: none; }
   .drawer-tab[data-side="right"] > span:not(.drawer-badge), .drawer-tab[data-side="bottom"] > span:not(.drawer-badge) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); transform: none; }
   .drawer-tab[data-side="right"] img, .drawer-tab[data-side="bottom"] img { display: block; width: 24px; height: 24px; filter: brightness(0) invert(.92) sepia(.2); }
   .drawer-tab[aria-expanded="true"] { background: #4a3b27; border-color: #ecd295; }
   .drawer-tab .drawer-badge { position: absolute; top: -6px; left: -6px; }
 }
-body[data-game-kind="table"]:has(#live-screen:not([hidden])):has(.encounter-board) .drawer-tab[data-side="bottom"], body:has(.encounter-board) #drawer-bottom { display: none; }
+@media (max-width: 900px) { body[data-game-kind="table"]:has(#live-screen:not([hidden])):has(.encounter-board) .drawer-tab[data-side="bottom"], body:has(.encounter-board) #drawer-bottom { display: none; } }
 @media (max-width: 900px) { body:has(.encounter-board) .drawer-tab { width: 50%; } body:has(.encounter-board) .drawer-tab[data-side="right"] { right: 0; } }
 
 /* The round, in the encounter's heading */

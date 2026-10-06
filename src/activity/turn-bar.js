@@ -16,6 +16,14 @@ const gem = (key, left) => {
   return pip;
 };
 
+// A counter in the same dark tile as the pips: the number big, what it counts under it.
+const tile = (key, value, label, left) => {
+  const node = document.createElement("span");
+  node.className = `hotbar-pip hotbar-count count-${key}${left ? "" : " is-spent"}`;
+  node.append(Object.assign(document.createElement("b"), { textContent: value }), Object.assign(document.createElement("small"), { textContent: label }));
+  return node;
+};
+
 function openActions() {
   document.querySelector("#hero-tab-actions")?.click();
   document.querySelector("#hero-panel-actions")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
@@ -37,8 +45,8 @@ function draw(force) {
   const pips = document.createElement("div");
   pips.className = "hotbar-pips";
   pips.append(gem("action", budget.action), gem("bonusAction", budget.bonusAction), gem("reaction", budget.reaction));
-  pips.append(Object.assign(document.createElement("span"), { className: "hotbar-move", textContent: t("activity.fight.movement", { feet: budget.movement }) }));
-  if (budget.attacksLeft > 1) pips.append(Object.assign(document.createElement("span"), { className: "hotbar-move", textContent: t("activity.fight.attacksLeft", { count: budget.attacksLeft }) }));
+  pips.append(tile("move", t("activity.fight.feetShort", { feet: budget.movement }), t("activity.fight.movementLabel"), budget.movement > 0));
+  if (budget.attacksLeft > 1) pips.append(tile("attacks", String(budget.attacksLeft), t("activity.fight.attacksLabel"), true));
   const slots = document.createElement("div");
   slots.className = "hotbar-slots";
   const choicesOf = (category) => (groups.get(category) ?? []).filter((node) => node instanceof HTMLButtonElement);
@@ -80,12 +88,25 @@ function draw(force) {
   bar?.remove();
   bar = next;
   document.body.append(bar);
+  placePopover();
   watcher?.disconnect();
   watcher = new ResizeObserver(() => {
     document.documentElement.style.setProperty("--turn-bar-h", `${bar.offsetHeight}px`);
     window.dispatchEvent(new Event("resize"));
   });
   watcher.observe(bar);
+}
+
+// The list opens above the slot that was pressed, kept inside the screen.
+function placePopover() {
+  const popover = bar.querySelector(".hotbar-popover");
+  const slot = bar.querySelector('.hotbar-slot[aria-expanded="true"]');
+  if (popover === null || slot === null) return;
+  const barBox = bar.getBoundingClientRect();
+  const slotBox = slot.getBoundingClientRect();
+  const half = popover.offsetWidth / 2;
+  const center = Math.max(half + 10, Math.min(window.innerWidth - half - 10, slotBox.left + slotBox.width / 2));
+  popover.style.left = `${center - barBox.left}px`;
 }
 
 // groups: the buttons by kind of action, built for this bar alone (a button can sit in one place). meta: the kinds in order, with their icons.

@@ -9,7 +9,6 @@
     <script type="module" src="/activity.js"></script>
   </head>
   <body>
-    <div class="activity-language-bar"><label for="activity-language" data-i18n="activity.uiLanguage.label">Interface language</label><select id="activity-language"><option value="auto" data-i18n="activity.uiLanguage.auto">Automatic (Discord)</option><option value="en">English</option><option value="zh-TW">繁體中文</option></select></div>
     <main class="lobby-shell" id="lobby-screen">
       <header class="lobby-header">
         <div class="lobby-brand"><div><span class="eyebrow" data-i18n="activity.brand">FNTU ADVENTURES</span><h1 data-i18n="activity.lobby.title">Your tables</h1></div></div>
@@ -37,12 +36,14 @@
     <main class="live-shell" id="live-screen" hidden>
       <header class="live-header">
         <div class="lobby-brand"><span class="lobby-brand-mark" aria-hidden="true"><img src="/art-icons/roll.svg" alt=""></span><div><span class="eyebrow" id="live-adventure">ADVENTURE</span><div class="live-title-row"><h1 id="live-campaign">Campaign</h1><span class="table-connection-dot" id="table-connection-dot" data-state="connecting" role="img" aria-label="Connecting to the live table" title="Connecting to the live table"></span></div></div></div>
-        <div class="live-header-status"><span class="live-phase ui-status"><span id="live-phase">Loading game…</span></span><span class="live-round ui-status" id="live-round"></span></div>
-        <div class="live-heading-right"><button class="ui-control" id="table-manage" type="button" hidden data-i18n="activity.tables.manage">Manage table</button><button class="rules-open ui-control" id="rules-open" type="button" data-i18n-aria-label="activity.rules.open" data-i18n-title="activity.rules.open" aria-label="Rules"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 21.5A2.5 2.5 0 0 1 6.5 19H20"/><path d="M9 8h7M9 11.5h5"/></svg></button><button class="presence-toggle ui-control" id="live-presence-toggle" type="button" hidden></button><button class="lobby-retry ui-control" id="back-to-lobby" data-i18n="activity.button.allGames" type="button">All games</button></div>
+        <div class="live-header-actions"><button class="presence-toggle ui-control" id="live-presence-toggle" type="button" hidden></button><button class="lobby-retry ui-control" id="back-to-lobby" data-i18n="activity.button.allGames" type="button">All games</button></div>
       </header>
       <section class="table-join-panel ui-card" id="table-join-panel" hidden aria-live="polite"></section>
       <div class="vote-shield" id="vote-shield" aria-hidden="true" hidden></div>
       <dialog class="scene-move-decision" id="live-scene-move" aria-labelledby="live-move-heading" hidden></dialog>
+      <div class="live-status-row">
+        <div class="live-header-status"><span class="live-phase ui-status"><span id="live-phase">Loading game…</span></span><span class="live-round ui-status" id="live-round"></span></div>
+      </div>
       <section class="live-scene ui-card"><div class="live-scene-art" id="live-scene-art"><img id="live-scene-image" alt="" hidden><span class="scene-art-fallback" aria-hidden="true"><i class="scene-fallback-moon"></i><i class="scene-fallback-hill"></i><i class="scene-fallback-ruin ruin-left"></i><i class="scene-fallback-ruin ruin-right"></i></span><div class="live-scene-copy"><span class="eyebrow" id="live-scene-eyebrow" data-i18n="activity.scene.label">CURRENT SCENE</span><h2 id="live-scene-title" data-i18n="activity.scene.loading">Loading scene…</h2><p id="live-scene-description"></p></div><button class="artwork-open" id="scene-artwork-open" type="button" aria-haspopup="dialog" data-i18n-aria-label="activity.artwork.viewScene" aria-label="View scene image"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg></button></div><div class="live-enemies" id="live-enemies" data-i18n-aria-label="activity.scene.enemies" aria-label="Enemies"></div></section>
       <section class="combat-turn-strip" id="combat-turn-strip" hidden data-i18n-aria-label="activity.combat.initiative" aria-label="Initiative"><div class="combat-active-turn"><span class="eyebrow" data-i18n="activity.combat.initiative">INITIATIVE</span><strong id="combat-active-name"></strong></div><div class="combat-up-next"><span class="eyebrow" data-i18n="activity.combat.upNext">UP NEXT</span><div id="combat-upcoming"></div></div></section>
       <div class="live-feature-grid">
@@ -66,7 +67,7 @@
     </main>
 
     <dialog class="character-builder-dialog" id="character-builder-dialog" aria-label="Create a character"></dialog>
-    <dialog class="rules-book" id="rules-book" aria-labelledby="rules-title"><header><h2 id="rules-title" data-i18n="activity.rules.title">Rules</h2><button class="ui-control" id="rules-close" type="button" data-i18n-aria-label="activity.rules.close" aria-label="Close">×</button></header><input class="rules-search" id="rules-search" type="search" autocomplete="off" data-i18n-placeholder="activity.rules.search" placeholder="Search the rules"><div class="rules-list" id="rules-list"></div><p class="rules-empty" id="rules-empty" hidden data-i18n="activity.rules.empty">Nothing matches.</p><p class="rules-note" data-i18n="activity.rules.note">After the 5th Edition SRD. The game decides every outcome; this is only a reference.</p></dialog>
+    <div class="rules-book" id="rules-book" role="region" aria-labelledby="rules-title"><header><h2 id="rules-title" data-i18n="activity.rules.title">Rules</h2></header><input class="rules-search" id="rules-search" type="search" autocomplete="off" data-i18n-placeholder="activity.rules.search" placeholder="Search the rules"><div class="rules-list" id="rules-list"></div><p class="rules-empty" id="rules-empty" hidden data-i18n="activity.rules.empty">Nothing matches.</p><p class="rules-note" data-i18n="activity.rules.note">After the 5th Edition SRD. The game decides every outcome; this is only a reference.</p></div>
     <dialog class="artwork-viewer" id="artwork-viewer" aria-labelledby="artwork-viewer-title"><header><h2 id="artwork-viewer-title"></h2><button class="ui-control" id="artwork-viewer-close" type="button" data-i18n-aria-label="activity.artwork.close" aria-label="Close image">×</button></header><img id="artwork-viewer-image" alt=""></dialog>
     <dialog class="dice-dialog" id="dice-dialog" aria-labelledby="dice-title" aria-describedby="dice-description">
       <button class="dialog-close" id="dice-close" data-i18n-aria-label="activity.dice.close" type="button" aria-label="Close roll prompt">×</button>
@@ -79,6 +80,10 @@
       <p class="dice-action" id="dice-action"></p>
       <button class="live-action-choice primary dice-roll-button" id="dice-roll-button" type="button"><img src="/art-icons/roll.svg" alt=""><span data-i18n="activity.dice.rollD20">Roll d20</span></button>
     </dialog>
+
+    <div class="activity-language-bar">
+      <div class="live-heading-right"><button class="ui-control" id="table-manage" type="button" hidden data-i18n="activity.tables.manage">Manage table</button></div>
+<label for="activity-language" data-i18n="activity.uiLanguage.label">Interface language</label><select id="activity-language"><option value="auto" data-i18n="activity.uiLanguage.auto">Automatic (Discord)</option><option value="en">English</option><option value="zh-TW">繁體中文</option></select></div>
 
     <div class="toast" role="status" aria-live="polite"></div>
     <div class="action-busy" id="action-busy" data-state="busy" role="status" aria-live="polite" hidden><span class="busy-mark" aria-hidden="true"></span><span class="busy-text"></span></div>

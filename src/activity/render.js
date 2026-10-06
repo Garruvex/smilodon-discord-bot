@@ -33,7 +33,7 @@ export function paintSection(name, inputs, paint) {
 }
 
 
-// The story's clock beside the round: "Day 3 · dusk · rain". Nothing is shown for an adventure that keeps no clock.
+// The story's clock beside the round: "Day 3", "dusk" and "rain" as a card each. Nothing is shown for an adventure that keeps no clock.
 function renderWorld(world) {
   let line = document.querySelector("#live-world");
   if (line === null) {
@@ -44,7 +44,14 @@ function renderWorld(world) {
   }
   line.hidden = world === null || world === undefined;
   if (line.hidden) return;
-  line.textContent = [t("activity.world.day", { day: world.day }), t("activity.world.time." + world.time), world.weather === null ? null : t("activity.world.weather." + world.weather)].filter(Boolean).join(" · ");
+  line.replaceChildren(...[["day", "day", t("activity.world.day", { day: world.day })], ["time", world.time, t("activity.world.time." + world.time)], ["weather", world.weather, world.weather === null ? null : t("activity.world.weather." + world.weather)]]
+    .filter(([, , text]) => text !== null)
+    .map(([kind, value, text]) => {
+      const card = Object.assign(document.createElement("span"), { className: "live-world-card", textContent: text });
+      card.dataset.kind = kind;
+      card.dataset.value = value;
+      return card;
+    }));
 }
 
 export function renderGame(game) {

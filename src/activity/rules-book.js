@@ -1,9 +1,10 @@
+import { showRules } from "./drawers.js";
 import { app } from "./state.js";
 import { t } from "./i18n.js";
 
 // A small rulebook for people new to the game, after SRD 5.1 (2014) as written. The words are the table's reference, not rules the screen decides:
 // the engine decides every outcome. Each entry: [id, section, English title, English text, Chinese title, Chinese text].
-const sections = ["actions", "turn", "rolls", "hurt", "conditions"];
+const sections = ["actions", "turn", "rolls", "magic", "spells", "hurt", "conditions"];
 const entries = [
   ["attack", "actions", "Attack", "Make one melee or ranged attack. Roll a d20 and add your bonus; if the total meets or beats the target's Armor Class (AC), it hits and deals damage. A natural 20 on an attack roll is a critical hit (the damage dice are rolled twice); a natural 1 always misses.", "攻擊", "進行一次近戰或遠程攻擊。擲 d20 加上攻擊加值，總和達到或超過目標的護甲等級（AC）就命中並造成傷害。攻擊骰擲出自然 20 為重擊（傷害骰擲兩次），自然 1 一定未命中。"],
   ["cast", "actions", "Cast a spell", "Spend the spell's casting time (usually one action) and, for a leveled spell, a spell slot. Cantrips cost no slot. Some spells need a roll to hit; others make the target roll a saving throw.", "施展法術", "花費法術的施法時間（通常是一個動作），有環級的法術還要消耗一個法術位；戲法不消耗法術位。有些法術要擲攻擊骰，有些則讓目標進行豁免。"],
@@ -20,7 +21,16 @@ const entries = [
   ["reaction", "turn", "Reaction", "A quick response to a trigger, on or off your turn. You get one reaction per round; it comes back at the start of your turn.", "反應", "對某個觸發做出的即時回應，不論是否在你的回合；每輪只有一次反應，在你的回合開始時恢復。"],
   ["opportunity", "turn", "Opportunity attack", "When a creature you can see moves out of your reach, you can use your reaction to make one melee attack against it. Disengage avoids this.", "藉機攻擊", "你看得見的生物離開你的觸及範圍時，你可以用反應對他進行一次近戰攻擊；撤離可以避免。"],
   ["cover", "turn", "Cover", "Half cover gives +2 to AC and Dexterity saves; three-quarters cover gives +5. A target with total cover cannot be targeted directly.", "掩蔽", "半掩蔽使 AC 與敏捷豁免 +2；四分之三掩蔽 +5；完全掩蔽的目標不能被直接選為目標。"],
-  ["concentration", "turn", "Concentration", "Some spells last only while you concentrate. You can concentrate on one at a time. Taking damage forces a Constitution save (DC 10 or half the damage, whichever is higher) or the spell ends.", "專注", "有些法術只在你專注時持續，一次只能專注於一個。受到傷害時要做體質豁免（DC 取 10 或傷害的一半，較高者），失敗則法術結束。"],
+  ["concentration", "magic", "Concentration", "Some spells last only while you concentrate. You can concentrate on one at a time. Taking damage forces a Constitution save (DC 10 or half the damage, whichever is higher) or the spell ends.", "專注", "有些法術只在你專注時持續，一次只能專注於一個。受到傷害時要做體質豁免（DC 取 10 或傷害的一半，較高者），失敗則法術結束。"],
+  ["slots", "magic", "Spell slots", "A leveled spell costs a spell slot of its level or higher. Your slots are on your sheet and come back after a long rest. Cantrips cost no slot and can be cast as often as you like.", "法術位", "有環級的法術需要消耗相同或更高環級的法術位。你的法術位記在角色表上，長休後恢復。戲法不耗法術位，可以隨意施放。"],
+  ["upcast", "magic", "Casting at a higher level", "Use a higher-level slot and the spell is cast at that level. Many spells grow stronger that way: more damage or healing, more targets, a longer reach.", "以更高環級施放", "用更高環級的法術位施放，法術就以該環級生效。許多法術會因此變強：更多傷害或治療、更多目標、更遠的距離。"],
+  ["cantrip", "magic", "Cantrips", "Level 0 spells. They cost no slot, and their damage grows when your character reaches level 5, 11 and 17.", "戲法", "0 環法術。不耗法術位，角色到 5、11、17 級時傷害會提升。"],
+  ["spellroll", "magic", "Spell attack or saving throw", "A spell attack rolls a d20 plus your spellcasting modifier and proficiency bonus against the target's AC. Other spells make the target roll a saving throw against your spell save DC: 8 plus your proficiency bonus plus your spellcasting modifier. Some spells simply work.", "法術攻擊或豁免", "法術攻擊是擲 d20，加上施法調整值與熟練加值，對抗目標的 AC。其他法術讓目標對你的法術豁免 DC 進行豁免：8 加熟練加值加施法調整值。有些法術不需要擲骰，直接生效。"],
+  ["casttime", "magic", "Casting time", "Most spells take one action; some take a bonus action or a reaction. If you cast a spell as a bonus action, the only other spell you can cast that turn is a cantrip with a casting time of one action.", "施法時間", "多數法術需要一個動作；有些是附贈動作或反應。若你以附贈動作施放法術，該回合你只能再施放施法時間為一個動作的戲法。"],
+  ["spellrange", "magic", "Range and targets", "A spell reaches yourself, touch, or a distance in feet. It needs a clear path to its target, and total cover blocks it. An area spell affects everything inside its shape.", "距離與目標", "法術的距離可以是自身、接觸，或若干呎。法術需要通往目標的無遮擋路徑，全掩蔽會擋住它。範圍法術會影響其範圍內的一切。"],
+  ["components", "magic", "Components", "Verbal (you speak), somatic (you gesture) and material (a small item). A spellcasting focus or component pouch stands in for material components that have no listed cost.", "法術成分", "言語（你要出聲）、姿勢（你要做手勢）和材料（小物件）。施法法器或材料包可以代替沒有標價的材料成分。"],
+  ["ritual", "magic", "Rituals", "A spell tagged ritual can be cast without a slot by taking 10 extra minutes, if you can cast rituals. Not during a fight.", "儀式", "標有儀式的法術，若你能施放儀式，多花 10 分鐘就可以不耗法術位施放。戰鬥中不能這樣做。"],
+  ["schools", "magic", "Schools of magic", "Abjuration, conjuration, divination, enchantment, evocation, illusion, necromancy and transmutation. The school mostly describes what a spell is like; a few features care about it.", "魔法學派", "防護、咒法、預言、附魔、塑能、幻術、死靈、變化。學派多半只是描述法術的類型，少數特性會在意它。"],
 
   ["check", "rolls", "Ability check", "Roll a d20, add the ability modifier, and add your proficiency bonus if you are proficient in the skill. Meet or beat the DC to succeed. A natural 20 or 1 on a check has no special effect.", "屬性檢定", "擲 d20，加上屬性調整值；若你熟練該技能再加熟練加值。達到或超過 DC 就成功。檢定擲出自然 20 或 1 沒有特殊效果。"],
   ["save", "rolls", "Saving throw", "A roll to resist something, made with the matching ability (a Dexterity save to dodge a fireball, a Constitution save to resist poison). Same math as a check, against the effect's DC.", "豁免", "用來抵抗某件事的擲骰，使用對應的屬性（敏捷豁免躲火球、體質豁免抵抗毒）。算法與檢定相同，對抗效果的 DC。"],
@@ -67,11 +77,11 @@ function card(entry) {
 function paint() {
   const list = document.querySelector("#rules-list");
   list.replaceChildren(...sections.flatMap((section) => {
-    const group = entries.filter((entry) => entry[1] === section);
+    const group = section === "spells" ? [] : entries.filter((entry) => entry[1] === section);
     const heading = document.createElement("h3");
     heading.textContent = t(`activity.rules.section.${section}`);
     heading.dataset.section = section;
-    return [heading, ...group.map(card)];
+    return [heading, ...(section === "spells" ? spellCards() : group.map(card))];
   }));
   filter(document.querySelector("#rules-search").value);
 }
@@ -119,30 +129,27 @@ function spellLines(facts) {
   return { head, rows: [[words("label.casting"), words(`time.${facts.castingTime === "bonus-action" ? "bonusAction" : facts.castingTime}`)], [words("label.range"), range], [words("label.targets"), targets], [words("label.roll"), check], ...(effects.length ? [[words("label.does"), effects.join("; ")]] : [])], flags, note: words("note") };
 }
 
-function paintSpell(name) {
-  let box = document.querySelector("#rules-spell");
-  if (box === null) {
-    box = document.createElement("section");
-    box.id = "rules-spell";
-    document.querySelector("#rules-list").before(box);
-  }
-  const facts = name === undefined ? undefined : app.currentSnapshot?.spellFacts?.[name];
-  box.hidden = facts === undefined;
-  if (facts === undefined) return;
-  const lines = spellLines(facts);
-  const title = document.createElement("h3");
-  title.textContent = facts.name;
-  const kind = document.createElement("p");
-  kind.className = "rules-spell-kind";
-  kind.textContent = lines.head;
-  const list = document.createElement("dl");
-  for (const [label, value] of lines.rows) list.append(Object.assign(document.createElement("dt"), { textContent: label }), Object.assign(document.createElement("dd"), { textContent: value }));
-  const flags = document.createElement("p");
-  flags.className = "rules-spell-flags";
-  flags.textContent = lines.flags.join(" · ");
-  flags.hidden = lines.flags.length === 0;
-  const note = Object.assign(document.createElement("small"), { textContent: lines.note });
-  box.replaceChildren(title, kind, list, flags, note);
+// The spells this party knows, each a card in the book with the game's own facts about it.
+function spellCards() {
+  const known = Object.values(app.currentSnapshot?.spellFacts ?? {}).sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+  return known.map((facts) => {
+    const lines = spellLines(facts);
+    const item = document.createElement("details");
+    item.className = "rules-entry rules-spell-entry";
+    item.dataset.spell = facts.name;
+    const head = document.createElement("summary");
+    head.append(facts.name, Object.assign(document.createElement("small"), { textContent: lines.head }));
+    const list = document.createElement("dl");
+    for (const [label, value] of lines.rows) list.append(Object.assign(document.createElement("dt"), { textContent: label }), Object.assign(document.createElement("dd"), { textContent: value }));
+    const body = document.createElement("div");
+    body.className = "rules-spell-body";
+    body.append(list);
+    if (lines.flags.length > 0) body.append(Object.assign(document.createElement("p"), { className: "rules-spell-flags", textContent: lines.flags.join(" · ") }));
+    body.append(Object.assign(document.createElement("small"), { textContent: lines.note }));
+    item.append(head, body);
+    item.dataset.search = `${facts.name} ${lines.head} ${lines.rows.map((row) => row[1]).join(" ")}`.toLocaleLowerCase();
+    return item;
+  });
 }
 
 // A small ⓘ that opens the book on a spell (by its name on the page) or on a rules entry.
@@ -177,24 +184,33 @@ export function spellGuide(spellFacts) {
   return row;
 }
 
+// Opened from its bookmark the book starts clean; opened through openRules it has already been set to an entry or a spell.
+let prepared = false;
+export function readyRules() {
+  if (prepared) { prepared = false; return; }
+  document.querySelector("#rules-search").value = "";
+  paint();
+}
+
 // Opens the book, on an entry when one is named, or on a spell's page.
 export function openRules(entryId, spellName) {
   const box = dialog();
   if (box === null) return;
   document.querySelector("#rules-search").value = "";
   paint();
-  paintSpell(spellName);
-  if (!box.open) box.showModal();
+  prepared = true;
+  showRules();
+  prepared = false;
   const target = entryId === undefined ? null : box.querySelector(`#rules-${entryId}`);
   if (target !== null) { target.open = true; target.scrollIntoView({ block: "start" }); }
-  else if (spellName !== undefined) box.querySelector("#rules-spell")?.scrollIntoView({ block: "start" });
+  else if (spellName !== undefined) {
+    const spell = [...box.querySelectorAll(".rules-spell-entry")].find((node) => node.dataset.spell === spellName);
+    if (spell !== undefined) { spell.open = true; spell.scrollIntoView({ block: "start" }); }
+  }
 }
 
 export function wireRulesBook() {
   const box = dialog();
   if (box === null) return;
-  document.querySelector("#rules-open").addEventListener("click", () => openRules());
-  document.querySelector("#rules-close").addEventListener("click", () => box.close());
-  box.addEventListener("click", (event) => { if (event.target === box) box.close(); });
-  document.querySelector("#rules-search").addEventListener("input", (event) => { paintSpell(undefined); filter(event.target.value); });
+  document.querySelector("#rules-search").addEventListener("input", (event) => { filter(event.target.value); });
 }

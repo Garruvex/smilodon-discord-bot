@@ -2,12 +2,31 @@ import { app } from "./state.js";
 import { iconImage, setArtwork } from "./dom.js";
 import { t } from "./i18n.js";
 import { partyStatusText } from "./party.js";
+import { readyRules } from "./rules-book.js";
 import { buildStoryFeed, buildStoryStrip, onStoryNews, resetStory, retranslateStory, storyOpened } from "./story.js";
 
 // The party, the map and the story sit in panels that slide in from the edge of the screen, each with a tab on its edge. They are built once,
 // and the party's and the map's own markup is moved into them, so everything that paints those sections keeps working where it is.
 const drawers = {};
 const order = [];
+
+// The bookmarks and the portrait rail ride the panels' edge. While a panel slides, they read where its edge really is on every frame (--dock-w), so they never drift from it,
+// and when one panel is going out as another comes in they stay with the wider of the two.
+function placeDock() {
+  if (!window.matchMedia("(min-width: 901px)").matches) return;
+  let edge = 0;
+  for (const entry of Object.values(drawers)) {
+    const right = entry.drawer.getBoundingClientRect().right;
+    if (entry.drawer.dataset.open === "true" || right > 0) edge = Math.max(edge, right);
+  }
+  document.body.style.setProperty("--dock-w", `${Math.round(edge)}px`);
+}
+function followDock() {
+  const end = performance.now() + 450;
+  const tick = () => { placeDock(); if (performance.now() < end) requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+}
+window.addEventListener("resize", placeDock);
 
 function makeDrawer(side, titleKey, body, onOpen) {
   const drawer = document.createElement("aside");
@@ -39,12 +58,13 @@ function makeDrawer(side, titleKey, body, onOpen) {
     tab.setAttribute("aria-expanded", String(open));
     document.body.classList.toggle(`drawer-open-${side}`, open);
     if (open) {
-      // On a narrow screen the panels are sheets over one another: only one is up at a time.
-      if (window.matchMedia("(max-width: 900px)").matches) for (const other of Object.values(drawers)) if (other !== entry) other.set(false);
+      // The panels are bookmarks on one edge: only one is out at a time.
+      for (const other of Object.values(drawers)) if (other !== entry) other.set(false);
       order.splice(order.indexOf(side), 1);
       order.push(side);
       entry.onOpen?.();
     }
+    followDock();
   };
   tab.addEventListener("click", () => { app.drawerAuto[side] = false; entry.set(drawer.dataset.open !== "true"); });
   document.body.append(drawer, tab);
@@ -71,7 +91,6 @@ export function mountDrawers() {
     app.unreadStory = 0;
     drawers.right.badge.hidden = true;
   });
-  makeStoryWindow(story);
   scene.after(buildStoryStrip(() => story.set(true)));
   onStoryNews((news) => {
     if (news === 0 || story.drawer.dataset.open === "true") return;
@@ -79,6 +98,12 @@ export function mountDrawers() {
     story.badge.textContent = String(app.unreadStory);
     story.badge.hidden = false;
   });
+  const rulesBook = document.querySelector("#rules-book");
+  if (rulesBook !== null) {
+    const rules = makeDrawer("rules", "activity.rules.title", rulesBook, readyRules);
+    rules.tab.prepend(Object.assign(document.createElement("img"), { alt: "", src: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 21.5A2.5 2.5 0 0 1 6.5 19H20"/><path d="M9 8h7M9 11.5h5"/></svg>')}` }));
+    rules.tab.firstElementChild.setAttribute("aria-hidden", "true");
+  }
   const dots = document.createElement("span");
   dots.className = "drawer-dots";
   drawers.left.dots = dots;
@@ -111,75 +136,16 @@ function paintTitles() {
     entry.tab.title = text;
     entry.tab.setAttribute("aria-label", text);
     entry.drawer.setAttribute("aria-label", text);
-    if (entry.windowTitle) {
-      entry.windowTitle.textContent = text;
-      entry.windowTitle.title = t("activity.story.moveWindow");
-      entry.minimize.setAttribute("aria-label", t("activity.story.minimize"));
-    }
   }
-}
-
-function makeStoryWindow(entry) {
-  const header = document.createElement("div");
-  header.className = "story-window-header";
-  const handle = document.createElement("button");
-  handle.type = "button";
-  handle.className = "story-window-handle";
-  const minimize = document.createElement("button");
-  minimize.type = "button";
-  minimize.className = "story-window-minimize";
-  minimize.textContent = "−";
-  minimize.addEventListener("click", () => { entry.set(false); entry.tab.focus(); });
-  header.append(handle, minimize);
-  entry.drawer.prepend(header);
-  entry.windowTitle = handle;
-  entry.minimize = minimize;
-  const desktop = () => window.matchMedia("(min-width: 901px)").matches;
-  const place = (x, y) => {
-    const rect = entry.drawer.getBoundingClientRect();
-    entry.drawer.style.left = `${Math.max(8, Math.min(window.innerWidth - rect.width - 8, x))}px`;
-    entry.drawer.style.top = `${Math.max(8, Math.min(window.innerHeight - rect.height - 8, y))}px`;
-    entry.drawer.style.right = "auto";
-  };
-  let drag = null;
-  handle.addEventListener("pointerdown", (event) => {
-    if (!desktop() || event.button !== 0) return;
-    const rect = entry.drawer.getBoundingClientRect();
-    drag = { id: event.pointerId, dx: event.clientX - rect.left, dy: event.clientY - rect.top };
-    handle.setPointerCapture(event.pointerId);
-    header.classList.add("is-dragging");
-  });
-  handle.addEventListener("pointermove", (event) => {
-    if (drag?.id === event.pointerId) place(event.clientX - drag.dx, event.clientY - drag.dy);
-  });
-  const stop = () => { drag = null; header.classList.remove("is-dragging"); };
-  handle.addEventListener("lostpointercapture", stop);
-  handle.addEventListener("pointercancel", stop);
-  handle.addEventListener("pointerup", (event) => {
-    if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
-    stop();
-  });
-  handle.addEventListener("keydown", (event) => {
-    if (!desktop()) return;
-    const direction = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
-    if (!direction) return;
-    event.preventDefault();
-    const rect = entry.drawer.getBoundingClientRect();
-    const step = event.shiftKey ? 40 : 10;
-    place(rect.left + direction[0] * step, rect.top + direction[1] * step);
-  });
-  window.addEventListener("resize", () => {
-    if (desktop() && entry.drawer.style.left) {
-      const rect = entry.drawer.getBoundingClientRect();
-      place(rect.left, rect.top);
-    }
-  });
 }
 
 function fitPartyDrawer(party) {
   const fit = Math.ceil(party.getBoundingClientRect().height);
   if (fit > 0) drawers.left.drawer.style.setProperty("--drawer-fit", `${fit + 2}px`);
 }
+
+// The rules book is the fourth bookmark; asking for it brings its panel out.
+export function showRules() { drawers.rules?.set(true); }
 
 // Leaving a game for the lobby: every panel put away, and nothing of that game's story or turn left behind.
 export function resetDrawers() {
@@ -200,6 +166,7 @@ function paintPartyRail(game) {
   const open = drawers.left.drawer.dataset.open === "true";
   // On a phone the rail is hidden, so the Party button carries the mark: amber while another hero is still deciding.
   drawers.left.tab.dataset.turn = game.party.some((hero) => !hero.isYou && hero.presence !== "away" && !hero.down && !hero.fallen && (hero.tableStatus === "acting" || (hero.tableStatus === "waiting" && game.mode !== "combat"))) ? "thinking" : "";
+  const measure = () => document.body.style.setProperty("--rail-h", `${Math.ceil(rail.getBoundingClientRect().height)}px`);
   rail.replaceChildren(...game.party.map((hero) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -233,6 +200,7 @@ function paintPartyRail(game) {
     button.addEventListener("click", () => { app.drawerAuto.left = false; drawers.left.set(drawers.left.drawer.dataset.open !== "true"); paintPartyRail(game); });
     return button;
   }));
+  measure();
 }
 
 // Called on every paint of the game: the party tab's dots, the words in the language of the game, and the map coming up by itself on your turn.
