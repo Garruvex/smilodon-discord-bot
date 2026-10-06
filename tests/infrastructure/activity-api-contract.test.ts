@@ -22,7 +22,7 @@ describe("Activity API contract", () => {
       for (const match of source.matchAll(/kind: "([A-Za-z]+)"/g)) if (match[1] !== undefined) emitted.add(match[1]);
     }
     // Management uses /manage; openRoll opens a local dialog.
-    for (const local of ["invite", "decide", "remove", "revoke", "resize", "openRoll"]) emitted.delete(local);
+    for (const local of ["invite", "decide", "remove", "revoke", "presence", "resize", "openRoll"]) emitted.delete(local);
     expect([...emitted].filter((kind) => !Object.hasOwn(activityActions, kind))).toEqual([]);
   });
 

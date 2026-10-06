@@ -294,6 +294,10 @@ export async function openTableManagement() {
           }
           void write({ kind: "remove", userId: member.userId }, remove);
         });
+        if (live) {
+          const presence = makeButton(text(member.away ? "markBack" : "markAway"), () => void write({ kind: "presence", userId: member.userId, away: !member.away }, presence));
+          row.append(presence);
+        }
         row.append(remove);
       }
       settings.append(row);

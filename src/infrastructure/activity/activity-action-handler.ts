@@ -65,6 +65,11 @@ export function createActivityActionHandler(options: {
             if (target === null) return { kind: "refused", reason: "invalidAction" };
             return lobby.retireSeat(key, userId, target, id).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
           }
+          case "setPresence": {
+            const target = textValue(action.userId, 64);
+            if (target === null || typeof action.away !== "boolean") return { kind: "refused", reason: "invalidAction" };
+            return activityPlay.setPresenceFor(key, userId, target, action.away, id).then(mapPlayResult);
+          }
           case "withdrawJoin": return lobby.withdrawOngoingJoin(key, userId).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
           case "submit": {
             const text = textValue(action.text, maxActionLength);

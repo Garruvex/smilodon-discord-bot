@@ -170,6 +170,19 @@ function freeSeatButton(seatUserId) {
   return button;
 }
 
+// The organizer marks another player away (or back), so a table is not left waiting on someone who has gone quiet.
+function presenceButton(targetUserId, isAway) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "party-free-seat party-presence ui-control";
+  button.textContent = t(isAway ? "activity.party.markBack" : "activity.party.markAway");
+  button.addEventListener("click", () => {
+    button.disabled = true;
+    void performAction({ kind: "setPresence", userId: targetUserId, away: !isAway });
+  });
+  return button;
+}
+
 // A seat nobody has taken yet, drawn as an outline the size of a hero card, so the panel is as tall as the table can ever be.
 function openSeat() {
   const seat = document.createElement("div");
@@ -286,6 +299,7 @@ export function renderParty(members) {
     if (tags !== null) copy.append(tags);
     card.append(sigil, copy);
     if (selectTarget) card.append(selectTarget);
+    if (hero.presenceUserId !== undefined) card.append(presenceButton(hero.presenceUserId, hero.presence === "away"));
     if (hero.seatUserId !== undefined) card.append(freeSeatButton(hero.seatUserId));
     if (hero.presence === "away" || hero.fallen || hero.down) {
       const condition = document.createElement("span");

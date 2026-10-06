@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { CampaignLobbyService, ServiceResult } from "../../application/campaign/campaign-lobby-service.js";
+import type { CampaignPlayController } from "../../application/campaign/campaign-play-controller.js";
 import type { CampaignRecord } from "../../application/campaign/ports/campaign-record.js";
 import type { CampaignKey, CampaignUnitOfWork } from "../../application/campaign/ports/campaign-store.js";
 import type { AdventureSummary } from "../../application/campaign/ports/adventure-library.js";
@@ -19,7 +20,7 @@ export interface ActivityTableManagement {
   readonly lifecycle: CampaignRecord["lifecycle"];
   readonly maxPlayers: number;
   readonly playerCount: number;
-  readonly members: readonly { readonly userId: string; readonly displayName?: string; readonly heroName: string | null; readonly ready: boolean }[];
+  readonly members: readonly { readonly userId: string; readonly displayName?: string; readonly heroName: string | null; readonly ready: boolean; readonly away: boolean }[];
   readonly requests: readonly { readonly userId: string; readonly displayName?: string; readonly status: string; readonly entrance: string | null; readonly expiresAt: number }[];
 }
 export interface ActivityInviteMember { readonly userId: string; readonly displayName: string }
@@ -31,6 +32,7 @@ export class ActivityTableService {
   public constructor(private readonly options: {
     readonly unitOfWork: CampaignUnitOfWork;
     readonly lobby: CampaignLobbyService;
+    readonly play: Pick<CampaignPlayController, "setPresenceFor">;
     readonly creator: Pick<CampaignGameCreator, "create" | "modelConfigured">;
     readonly adventures: { listForGuild(guildId: string): readonly AdventureSummary[] };
     readonly isAdmin: (guildId: string, userId: string) => Promise<boolean>;
@@ -92,7 +94,7 @@ export class ActivityTableService {
       return { kind: "ok", value: {
         campaignId: key.campaignId, name: record.name, lifecycle: record.lifecycle, maxPlayers: record.lobby.maxPlayers,
         playerCount: campaign === undefined ? members.length : Object.keys(campaign.state.members).length,
-        members: members.map((member) => ({ userId: member.userId, heroName: member.label?.name ?? (member.heroId === null ? null : campaign?.state.characters[member.heroId]?.name ?? null), ready: member.status === "ready" })),
+        members: members.map((member) => ({ userId: member.userId, heroName: member.label?.name ?? (member.heroId === null ? null : campaign?.state.characters[member.heroId]?.name ?? null), ready: member.status === "ready", away: campaign?.state.members[member.userId]?.availability === "away" })),
         requests: Object.entries(record.joinRequests ?? {}).filter(([, request]) => request.expiresAt > this.options.now()).map(([userId, request]) => ({ userId, status: request.status, entrance: request.entrance ?? null, expiresAt: request.expiresAt })),
       } };
     });
@@ -134,6 +136,16 @@ export class ActivityTableService {
       : await this.options.lobby.retireSeat(key, actorId, userId, `manage:${randomUUID()}`);
     if (result.kind === "ok") this.options.refresh(key);
     return result;
+  }
+
+  public async setPresence(key: CampaignKey, actorId: string, userId: string, away: boolean): Promise<ActivityTableResult<null>> {
+    const stored = await this.options.lobby.get(key);
+    if (stored === undefined) return { kind: "refused", reason: "notFound" };
+    if (stored.record.organizerId !== actorId) return { kind: "refused", reason: "notOrganizer" };
+    const result = await this.options.play.setPresenceFor(key, actorId, userId, away, `manage:${randomUUID()}`);
+    if (result.kind !== "ok") return { kind: "refused", reason: result.reason };
+    this.options.refresh(key);
+    return { kind: "ok", value: null };
   }
 
   public async revoke(key: CampaignKey, actorId: string, userId: string): Promise<ServiceResult<CampaignRecord>> {

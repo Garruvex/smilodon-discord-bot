@@ -20,6 +20,7 @@ export const activityActions = {
   joinHero: { heroRef: "string" },
   replaceHero: { heroRef: "string", "entrance?": "string" },
   retireSeat: { userId: "string" },
+  setPresence: { userId: "string", away: "boolean" },
   withdrawJoin: {},
   submit: { text: "string", "roundNumber?": "integer", "sceneId?": "string" },
   speak: { text: "string" },

@@ -282,6 +282,11 @@ export class CampaignPlayController {
     return this.perform(key, userId, interactionId, () => ({ kind: "markReturned", userId }));
   }
 
+  // The organizer marks another player away or back; the engine refuses anyone else.
+  public setPresenceFor(key: CampaignKey, actorId: UserId, targetId: UserId, away: boolean, interactionId: string): Promise<PlayResult> {
+    return this.perform(key, actorId, interactionId, () => ({ kind: away ? "markAway" : "markReturned", userId: targetId }));
+  }
+
   // Outside a fight: put on or take off armor or a shield the hero carries.
   public wear(key: CampaignKey, userId: UserId, itemId: ContentId<"item">, interactionId: string): Promise<PlayResult> {
     return this.asHero(key, userId, interactionId, (characterId) => ({ kind: "wearItem", characterId, itemId }));
