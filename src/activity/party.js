@@ -149,40 +149,6 @@ export function renderEnemies(enemies, allies = app.currentSnapshot?.allies ?? [
 }
 
 
-// The organizer's way out of a full table with someone away: free their seat. It asks for a second press first, since it removes their hero from the table.
-function freeSeatButton(seatUserId) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "party-free-seat ui-control";
-  button.textContent = t("activity.party.freeSeat");
-  let armed = null;
-  button.addEventListener("click", () => {
-    if (armed === null) {
-      button.textContent = t("activity.party.freeSeatSure");
-      button.dataset.armed = "true";
-      armed = setTimeout(() => { armed = null; button.textContent = t("activity.party.freeSeat"); delete button.dataset.armed; }, 4000);
-      return;
-    }
-    clearTimeout(armed);
-    armed = null;
-    void performAction({ kind: "retireSeat", userId: seatUserId });
-  });
-  return button;
-}
-
-// The organizer marks another player away (or back), so a table is not left waiting on someone who has gone quiet.
-function presenceButton(targetUserId, isAway) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "party-free-seat party-presence ui-control";
-  button.textContent = t(isAway ? "activity.party.markBack" : "activity.party.markAway");
-  button.addEventListener("click", () => {
-    button.disabled = true;
-    void performAction({ kind: "setPresence", userId: targetUserId, away: !isAway });
-  });
-  return button;
-}
-
 // A seat nobody has taken yet, drawn as an outline the size of a hero card, so the panel is as tall as the table can ever be.
 function openSeat() {
   const seat = document.createElement("div");
@@ -299,8 +265,6 @@ export function renderParty(members) {
     if (tags !== null) copy.append(tags);
     card.append(sigil, copy);
     if (selectTarget) card.append(selectTarget);
-    if (hero.presenceUserId !== undefined) card.append(presenceButton(hero.presenceUserId, hero.presence === "away"));
-    if (hero.seatUserId !== undefined) card.append(freeSeatButton(hero.seatUserId));
     if (hero.presence === "away" || hero.fallen || hero.down) {
       const condition = document.createElement("span");
       condition.className = "party-condition-overlay";

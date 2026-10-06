@@ -115,10 +115,6 @@ export interface ActivityTableView {
     readonly conditions: readonly string[];
     readonly imageUrl: string | null;
     readonly isYou: boolean;
-    // Only for the organizer, on an away player's hero: whose seat the "free seat" button releases.
-    readonly seatUserId?: string;
-    // Only for the organizer, on another player's hero: whose presence the "mark away / back" button changes.
-    readonly presenceUserId?: string;
     // Where the hero stands in a fight (the zone's name), otherwise null.
     readonly zone: string | null;
     // While the owner is away: the hero of the player who plays this one for them. Null otherwise.
@@ -363,8 +359,6 @@ export function buildActivityTableView(
       conditions: hero.conditions,
       imageUrl: partySheet?.origin === undefined && !hasPicture(record.images?.[`hero:${hero.characterId}`]) ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/characters/${encodeURIComponent(hero.characterId)}`,
       isYou: hero.ownerUserId === userId,
-      ...(record.organizerId === userId && hero.ownerUserId !== userId ? { presenceUserId: hero.ownerUserId } : {}),
-      ...(record.organizerId === userId && hero.ownerUserId !== userId && (state.encounter === null || state.encounter.status === "ended") ? { seatUserId: hero.ownerUserId } : {}),
       zone: panel.combat?.party.find((combatant) => combatant.name === hero.name)?.zone ?? null,
       playedBy: ((): string | null => {
         const owner = state.members[hero.ownerUserId];
