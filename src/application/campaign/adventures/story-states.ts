@@ -33,6 +33,8 @@ export type StateSearch =
   | { readonly kind: "tooLarge"; readonly states: number };
 
 export const maxStates = 100_000;
+// The search runs inside the bot, so it gives up after this long rather than hold everything else up (the coarse check stands in).
+export const maxSearchMilliseconds = 400;
 
 const flagOn = (state: StoryState, flag: string): boolean => (state.flags.get(flag) ?? 0) > 0;
 
@@ -286,7 +288,8 @@ function dedupe(states: readonly StoryState[]): StoryState[] {
 }
 
 // Every state the story can reach, and those from which the table cannot force an ending.
-export function searchStoryStates(bible: AdventureBible, endings: readonly string[], limit = maxStates): StateSearch {
+export function searchStoryStates(bible: AdventureBible, endings: readonly string[], limit = maxStates, milliseconds = maxSearchMilliseconds): StateSearch {
+  const deadline = Date.now() + milliseconds;
   const story = new Story(bible, new Set(endings));
   const states = new Map<string, StoryState>();
   const moves = new Map<string, readonly { readonly label: string; readonly targets: readonly string[] }[]>();
@@ -301,7 +304,7 @@ export function searchStoryStates(bible: AdventureBible, endings: readonly strin
     queue.push(key);
   }
   for (let head = 0; head < queue.length; head += 1) {
-    if (states.size > limit) return { kind: "tooLarge", states: states.size };
+    if (states.size > limit || (head % 256 === 0 && Date.now() > deadline)) return { kind: "tooLarge", states: states.size };
     const key = queue[head] as string;
     const state = states.get(key) as StoryState;
     // An ending is where the story finishes: nothing after it matters.

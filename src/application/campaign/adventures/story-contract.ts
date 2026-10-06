@@ -213,7 +213,7 @@ export function analyzeStoryContract(bible: AdventureBible): readonly StoryFindi
         });
       }
     } else if (search?.kind === "tooLarge") {
-      found({ severity: "warning", rule: "ending-stranded", message: `The adventure has more than ${search.states} story states, too many to check one by one; only the coarse check was made.`, fix: "Split the adventure, or use fewer flags that only matter together." });
+      found({ severity: "warning", rule: "ending-stranded", message: `The adventure has too many story states to check one by one (gave up after ${search.states}); only the coarse check was made.`, fix: "Split the adventure, or use fewer flags that only matter together." });
     }
     const finishesAnyway = search?.kind === "complete" || reachableEndings.some((scene) => pessimistic.scenes.has(scene.id));
     for (const ending of finishesAnyway ? [] : reachableEndings) {
