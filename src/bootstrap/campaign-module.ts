@@ -291,7 +291,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
       }
     },
   });
-  const catalog = new AdventureCatalog({ unitOfWork, clock, content, library: adventures });
+  const catalog = new AdventureCatalog({ unitOfWork, clock, content, library: adventures, storyContract: "enforce" });
   // The Author never writes heroes: it borrows the bundled adventure's, in the language asked for.
   const author = model === null ? null : new AdventureAuthor({ client: model, content, heroesFor: (language): typeof starter.en.heroes => starter[language].heroes });
   const intake = new AdventureIntake({ catalog, author, glossaries });
