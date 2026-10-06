@@ -357,6 +357,7 @@ export const campaignZhTW = {
   "activity.creator.classOption.warlock": "契術師",
   "activity.creator.classOption.wizard": "法師",
   "activity.button.allGames": "所有遊戲",
+  "activity.scene.objective": "目標",
   "activity.scene.label": "目前場景",
   "activity.artwork.viewScene": "查看完整場景圖片",
   "activity.artwork.viewPortrait": "查看完整角色肖像",

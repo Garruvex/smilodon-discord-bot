@@ -77,6 +77,9 @@ export function paintGame(game) {
   document.querySelector("#live-campaign").textContent = game.campaignName;
   document.querySelector("#live-adventure").textContent = game.adventureTitle.toLocaleUpperCase();
   document.querySelector("#live-scene-eyebrow").textContent = game.kind === "lobby" ? t("activity.lobby.setupEyebrow") : t("activity.scene.label");
+  const objective = document.querySelector("#live-scene-objective");
+  objective.hidden = game.kind !== "table" || !game.scene.objective;
+  objective.textContent = game.kind === "table" && game.scene.objective ? `${t("activity.scene.objective")}: ${game.scene.objective}` : "";
   document.querySelector("#live-scene-title").textContent = game.kind === "lobby" ? t("activity.lobby.chooseCharacter") : game.scene.title;
   document.querySelector("#live-scene-description").textContent = game.kind === "lobby"
     ? t("activity.lobby.chooseCharacterDescription")

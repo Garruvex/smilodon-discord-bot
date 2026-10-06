@@ -358,6 +358,7 @@ export const campaignEn = {
   "activity.creator.classOption.wizard": "Wizard",
   "activity.button.allGames": "All games",
   "activity.scene.label": "CURRENT SCENE",
+  "activity.scene.objective": "Goal",
   "activity.artwork.viewScene": "View full scene image",
   "activity.artwork.viewPortrait": "View full character portrait",
   "activity.artwork.viewPartyPortrait": "View {name}'s full portrait",

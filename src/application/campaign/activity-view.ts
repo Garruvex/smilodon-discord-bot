@@ -47,7 +47,7 @@ export interface ActivityTableView {
   // The story's day, time of day and weather, when the adventure keeps a clock.
   readonly world: null | { readonly day: number; readonly time: string; readonly weather: string | null };
   // fallbackImageUrl: the scene's own picture, when imageUrl is a fight's picture that may not be there yet.
-  readonly scene: { readonly title: string; readonly description: string; readonly imageUrl: string | null; readonly fallbackImageUrl?: string | null };
+  readonly scene: { readonly title: string; readonly description: string; readonly objective: string | null; readonly imageUrl: string | null; readonly fallbackImageUrl?: string | null };
   // present and needed: how many players vote, and how many Stay votes keep the party where it is. closesAt: when the window closes (epoch ms), or null.
   readonly pendingMove: null | { readonly sceneId: string; readonly sceneTitle: string; readonly sceneDescription: string; readonly proposedBy: string | null; readonly supporters: readonly string[]; readonly staying: readonly string[]; readonly choiceByYou: "go" | "stay" | null; readonly present: number; readonly needed: number; readonly closesAt: number | null };
   readonly canVoteMove: boolean;
@@ -445,6 +445,7 @@ export function buildActivityTableView(
     scene: {
       title: panel.sceneTitle,
       description: scene?.publicDescription ?? "",
+      objective: scene?.objective ?? null,
       imageUrl: panel.combat !== null && hasPicture(record.images?.[`encounter:${panel.combat.encounterId}`])
         ? `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/encounters/${encodeURIComponent(panel.combat.encounterId)}`
         : scene === undefined ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/scenes/${encodeURIComponent(scene.id)}`,

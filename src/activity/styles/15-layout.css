@@ -198,3 +198,5 @@ body[data-game-kind="lobby"] .story-now { display: none; }
 
 .action-leads { display: grid; gap: 6px; margin-bottom: 8px; }
 .action-leads .action-lead { justify-self: start; text-align: left; font-size: 12px; }
+
+.live-scene-objective { margin: 6px 0 0; font-weight: 700; }

@@ -25,6 +25,7 @@ startScene: scene:square
 scenes:
   - id: scene:square
     title: The Village Square
+    objective: Find out why the well's water went bad.   # PUBLIC: one line saying what the party is trying to do here; shown in the Activity. No secrets.
     publicDescription: >-          # PUBLIC. What anyone can see and hear.
       A dry stone well stands in the middle of the square. A sour smell hangs over it.
     dmNotes: >-                    # DM-ONLY. What happens here and how the party moves on.

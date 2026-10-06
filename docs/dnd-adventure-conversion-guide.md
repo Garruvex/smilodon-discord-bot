@@ -80,6 +80,8 @@ The narrator and the NPCs are language models and will happily invent. Give them
 - `attempts`: how many tries (1 to 10). Raise it for anything the story needs.
 - `onFailure`: use it. Even `[{ kind: notice, text: "..." }]` helps; `{ kind: set, flag: ... }` or `{ kind: goto, ... }` makes it a branch.
 - `ending: true` on a scene: the story can finish here.
+- `objective`: one public line per scene saying what the party is trying to do ("Find out why the water went bad"). The Activity shows it, so a mystery always says
+  what to work toward. Name no secret.
 
 ## Checklist before you hand it over
 

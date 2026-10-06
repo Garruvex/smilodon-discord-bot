@@ -134,7 +134,7 @@ const documentSchema = z
     startTime: z.object({ day: z.number().int().min(1).max(10_000).optional(), time: z.enum(timesOfDay), weather: z.enum(weathers).optional() }).strict().optional(),
     scenes: z
       .array(
-        z.object({ id: sceneId, title: text, publicDescription: text, details: text.optional(), dmNotes: text, npcIds: z.array(npcId), exits: z.array(z.object({ to: sceneId, requires: requirementSchema.optional(), hidden: z.boolean().optional(), hint: text.optional() }).strict()).optional(), onEnter: z.array(enterEffectSchema).optional(), onLongRest: z.array(enterEffectSchema).optional(), ending: z.boolean().optional() }).strict(),
+        z.object({ id: sceneId, title: text, publicDescription: text, details: text.optional(), dmNotes: text, npcIds: z.array(npcId), exits: z.array(z.object({ to: sceneId, requires: requirementSchema.optional(), hidden: z.boolean().optional(), hint: text.optional() }).strict()).optional(), onEnter: z.array(enterEffectSchema).optional(), onLongRest: z.array(enterEffectSchema).optional(), ending: z.boolean().optional(), objective: text.optional() }).strict(),
       )
       .min(1),
     npcs: z.array(
