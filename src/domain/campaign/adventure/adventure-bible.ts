@@ -157,6 +157,9 @@ export interface BibleNpc {
   readonly voice: string;
   readonly publicDescription: string;
   readonly secret: string;
+  // What this NPC will tell, each telling a clue the party then knows. Asking the NPC reveals the clue when the question names one of the topics
+  // (words, in any language the adventure is written in); a tell without topics is given to any question. This is the free, no-roll way to learn it.
+  readonly tells?: readonly { readonly clue: ClueId; readonly topics?: readonly string[] }[];
   // Present when this NPC trades. Prices are gold, authored (items carry no
   // inherent value of their own — engine/shop.ts's buyItem/sellItem/hagglePrice
   // never invent one). sellPrice absent means this NPC won't buy that item back.

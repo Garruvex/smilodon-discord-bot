@@ -506,6 +506,9 @@ export function buildDialogueNarratorPrompt(request: DialogueNarratorRequest): {
     zh ? "Write up to 350 Traditional Chinese characters (Taiwan usage) in the narration field." : "Write up to 150 words of English in the narration field.",
     `Play ${request.npc.name} as the particular person established by this adventure, in their own voice (${request.npc.voice}). Let their manner, priorities, and knowledge shape what they say. A brief gesture or reaction is welcome when grounded in their public description or the current scene; do not repeat the scene's atmosphere every reply. If the hero makes several statements or asks several questions, address each relevant point naturally in one reply. Do not invent an extra exchange with the hero, narrate the hero's actions, or make the NPC know facts they have not learned.`,
     grounding,
+    ...(request.tells === undefined || request.tells.length === 0
+      ? []
+      : [`This NPC is willing to tell the hero the following, which the adventure has decided they share now. Say it in the NPC's own voice and manner, naturally and completely, adding nothing to it and leaving nothing out: ${request.tells.map((tell) => `"${tell}"`).join(" ")}`]),
     "Never mention dice, DCs, or checks.",
   ].join("\n");
   const situation =

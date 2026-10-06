@@ -144,6 +144,7 @@ const documentSchema = z
           voice: text,
           publicDescription: text,
           secret: text,
+          tells: z.array(z.object({ clue: clueId, topics: z.array(text).max(30).optional() }).strict()).max(20).optional(),
           shop: z
             .object({
               stock: z.array(z.object({ itemId: contentId("item"), buyPrice: z.number().int().min(0), sellPrice: z.number().int().min(0).optional() }).strict()).min(1),
@@ -254,6 +255,7 @@ export function parseAdventureDocument(source: string): AdventureDocument {
     for (const id of scene.npcIds) if (!npcIds.has(id)) problems.push(`${scene.id} lists unknown ${id}.`);
   }
   for (const npc of data.npcs) {
+    for (const tell of npc.tells ?? []) if (!data.clues.some((clue) => clue.id === tell.clue)) problems.push(`${npc.id} tells unknown ${tell.clue}.`);
     if (npc.shop !== undefined) problems.push(...duplicates(`${npc.id} shop`, npc.shop.stock.map((entry) => entry.itemId)));
   }
   // Monster IDs are checked against the ruleset when the fight starts; the
@@ -302,7 +304,8 @@ export function parseAdventureDocument(source: string): AdventureDocument {
   // zod's .optional() leaves the key present with value undefined, which
   // exactOptionalPropertyTypes treats as different from the key being
   // absent; strip it so an npc with no shop matches BibleNpc exactly.
-  const npcs = data.npcs.map(({ shop, ...npc }) => {
+  const npcs = data.npcs.map(({ shop, tells, ...rest }) => {
+    const npc = tells === undefined ? rest : { ...rest, tells: tells.map(({ topics, ...tell }) => (topics === undefined ? tell : { ...tell, topics })) };
     if (shop === undefined) return npc;
     const stock = shop.stock.map(({ sellPrice, ...entry }) => (sellPrice === undefined ? entry : { ...entry, sellPrice }));
     return { ...npc, shop: { stock } };
@@ -344,7 +347,7 @@ export function checkEditionsMatch(editions: readonly AdventureDocument[]): read
       startTime: document.bible.startTime ?? null,
       scenes: document.bible.scenes.map((scene) => [scene.id, scene.npcIds, scene.ending ?? null, scene.exits?.map(({ hint: _hint, ...exit }) => exit) ?? null, withoutWords(scene.onEnter ?? null), withoutWords(scene.onLongRest ?? null)]),
       interactions: (document.bible.interactions ?? []).map(({ label: _label, dmNotes: _notes, ...mechanics }) => withoutWords(mechanics)),
-      npcs: document.bible.npcs.map((npc) => [npc.id, npc.shop ?? null]),
+      npcs: document.bible.npcs.map((npc) => [npc.id, npc.shop ?? null, (npc.tells ?? []).map((tell) => tell.clue)]),
       clocks: document.bible.clocks.map((clock) => [clock.id, clock.sceneId, clock.segments, clock.onFull]),
       clues: document.bible.clues.map((clue) => [clue.id, clue.sceneId]),
       encounters: document.bible.encounters.map((encounter) => ({

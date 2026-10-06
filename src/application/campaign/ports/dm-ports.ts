@@ -147,6 +147,8 @@ export interface DialogueNarratorRequest {
   readonly question: string | null;
   readonly press: { readonly skill: string; readonly total: number; readonly dc: number; readonly success: boolean; readonly headline: RollMoment | null } | null;
   readonly secretRevealed: boolean;
+  // What the NPC tells in this reply (facts the adventure says this NPC shares, already decided): the narrator voices them, adding nothing.
+  readonly tells?: readonly string[];
 }
 
 // A ritual (or cantrip) spell cast outside combat (engine/utility-magic.ts):

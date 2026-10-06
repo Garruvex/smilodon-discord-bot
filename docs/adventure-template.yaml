@@ -72,6 +72,13 @@ npcs:
     voice: Soft-spoken and tired; speaks in short, careful sentences.
     publicDescription: A thin old woman leaning on a walking stick.     # PUBLIC. Do not list items she carries unless you mean description only.
     secret: She knows about the shrine and has been afraid to say so.   # DM-ONLY
+    # WHAT THEY WILL TELL. Asking the NPC reveals the clue; no roll. `topics` are words a question may contain (use both languages if the table
+    # plays in both); leave `topics` out and the NPC tells it to any question. This is how a hero gets an answer by simply asking.
+    tells:
+      - clue: clue:sour-since-storm
+        topics: [water, sour, smell, storm, well]
+      - clue: clue:rune
+        topics: [rune, mark, symbol, stick]
 
 # --- Clues ---------------------------------------------------------------------------------------------
 # Every next step the table needs must be learnable. Reveal it for free (arrival effect or an automatic interaction).

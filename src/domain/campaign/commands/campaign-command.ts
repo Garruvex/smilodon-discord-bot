@@ -157,7 +157,8 @@ export type ShopCommand =
 export type DialogueCommand =
   | { readonly kind: "askNpc"; readonly characterId: CharacterId; readonly npcId: NpcId; readonly question: string }
   | { readonly kind: "pressNpc"; readonly characterId: CharacterId; readonly npcId: NpcId; readonly skill: Skill }
-  | { readonly kind: "recordDialogueNarration"; readonly dialogueId: string; readonly text: string };
+  // reveals: the clues this conversation gave the party (what the NPC told), decided by the adventure and never by the model.
+  | { readonly kind: "recordDialogueNarration"; readonly dialogueId: string; readonly text: string; readonly reveals?: readonly { readonly clueId: string; readonly text: string }[] };
 
 // Casting a spell outside combat (engine/utility-magic.ts). Scoped to ritual
 // casting only (SpellDefinition.ritual) or a cantrip (level 0): both are

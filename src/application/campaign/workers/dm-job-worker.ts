@@ -14,6 +14,7 @@ import { sceneNoteCompactionThreshold } from "../../../domain/campaign/engine/dm
 import { encounterRecords } from "../dm/combat-records.js";
 import { checkLabel, roundRecords } from "../dm/round-records.js";
 import { fallbackPlan } from "../dm/fallback-planner.js";
+import { tellsFor } from "../dm/npc-tells.js";
 import { plannerStory, resolveStoryEffects } from "../dm/story-effects.js";
 import type { RuntimeLogger } from "../campaign-runtime.js";
 import type { CampaignKey, CampaignUnitOfWork, OutboxItem, StoredCampaign } from "../ports/campaign-store.js";
@@ -414,14 +415,15 @@ export class DmJobWorker {
     const current = loaded.stored.state.dialogues[dialogueId];
     if (current !== undefined && Object.values(loaded.stored.state.dialogues).some((dialogue) => dialogue.npcId === current.npcId && Number(dialogue.id.split(":")[1]) < Number(dialogueId.split(":")[1]))) return false;
     const request = this.dialogueNarratorRequest(loaded, dialogueId);
+    const told = current?.kind === "ask" ? tellsFor(loaded.bible.npcs.find((npc) => npc.id === current.npcId), current.question, loaded.stored.state, loaded.bible) : [];
     let text: string;
     try {
-      text = (await this.options.narrator.narrateDialogue(request)).text;
+      text = (await this.options.narrator.narrateDialogue(told.length === 0 ? request : { ...request, tells: told.map((tell) => tell.text) })).text;
     } catch (error) {
       if (item.attempts + 1 < this.maxAttempts) throw error;
       text = fallbackDialogueNarration(request);
     }
-    await this.options.bus.execute(item.key, { kind: "recordDialogueNarration", dialogueId, text }, { commandId: `${item.id}:dialogue-narration`, actor: system });
+    await this.options.bus.execute(item.key, { kind: "recordDialogueNarration", dialogueId, text, ...(told.length === 0 ? {} : { reveals: told }) }, { commandId: `${item.id}:dialogue-narration`, actor: system });
     return true;
   }
 

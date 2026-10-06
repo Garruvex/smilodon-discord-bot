@@ -76,3 +76,13 @@ describe("the adventure template", () => {
     expect({ errors: report.errors, warnings: report.warnings }).toEqual({ errors: [], warnings: [] });
   });
 });
+
+describe("what NPCs tell", () => {
+  it("counts as a free way to a clue, so a clue gate an NPC answers is not a stranded ending", () => {
+    const scenes = [scene("scene:a", { npcIds: ["npc:hag" as never], exits: [{ to: "scene:b" as never, requires: { clues: ["clue:truth"] } }] }), scene("scene:b", { ending: true, exits: [] })];
+    const bare = story(scenes, [interaction("search", "scene:a", { check: { skill: "investigation", dc: 15 }, onSuccess: [{ kind: "reveal", clue: "clue:truth" }] })]);
+    expect(rules(bare)).toContain("ending-stranded");
+    const told: AdventureBible = { ...bare, npcs: [{ id: "npc:hag", name: "Hag", voice: "", publicDescription: "", secret: "", tells: [{ clue: "clue:truth" as never, topics: ["truth"] }] } as never] };
+    expect(rules(told)).toEqual([]);
+  });
+});

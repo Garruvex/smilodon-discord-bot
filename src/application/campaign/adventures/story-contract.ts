@@ -98,6 +98,8 @@ function play(bible: AdventureBible, mode: Mode): Progress {
       if (!progress.done.has(`enter:${scene.id}`)) {
         progress.done.add(`enter:${scene.id}`);
         apply(bible, progress, scene.onEnter ?? [], mode);
+        // Whoever is here tells what they tell to anyone who asks: a way to a clue that needs no roll.
+        for (const npcId of scene.npcIds) for (const tell of bible.npcs.find((npc) => npc.id === npcId)?.tells ?? []) progress.clues.add(tell.clue);
         changed = true;
       }
       // Exits: only those whose requirements hold; no exits listed means anywhere.
@@ -129,6 +131,7 @@ function holders(bible: AdventureBible): { readonly flags: Map<string, string[]>
     }
   };
   for (const scene of bible.scenes) scan(scene.onEnter ?? [], scene.id);
+  for (const npc of bible.npcs) for (const tell of npc.tells ?? []) note(clues, tell.clue, npc.id);
   for (const interaction of bible.interactions ?? []) scan([...interaction.onSuccess, ...interaction.onFailure, ...interaction.tiers.flatMap((tier) => tier.effects)], interaction.id);
   for (const encounter of bible.encounters) {
     scan(encounter.onVictory ?? [], encounter.id);

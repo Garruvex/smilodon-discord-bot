@@ -41,15 +41,18 @@ forward, and write down the way forward *when things go badly*.
 4. **Give every gate a free key.** For each flag, clue or exit the story needs next, make sure at least one way to get it needs *no roll*: an
    interaction without a `check`, an arrival effect (`onEnter`), or a fight result. If you keep a rolled way (it feels better to roll), keep the free
    way too, or give the rolled interaction more `attempts`, or an `onFailure` that moves on at a cost.
-5. **Plant the clues.** A player must be able to learn what to do next. Every important next step needs a clue that is revealed without a roll
+5. **Let NPCs answer.** For each NPC who knows something the story needs, list it in `tells` (a clue plus the words a question may contain). A hero who
+   asks them gets the clue with no roll and the NPC says it in their own voice. Without `tells`, an NPC knows only what their public description says,
+   and questions about the plot go nowhere. Include the words players are likely to use (the thing, the person, the place), in each language the table plays.
+6. **Plant the clues.** A player must be able to learn what to do next. Every important next step needs a clue that is revealed without a roll
    (arrival effect or an automatic interaction). Put a better version behind a roll if you like.
-6. **Schedule time-based events.** If something happens "at midnight" or "when the alarm sounds", do not rely on a player saying "I wait". Say it
+7. **Schedule time-based events.** If something happens "at midnight" or "when the alarm sounds", do not rely on a player saying "I wait". Say it
    in a clue the table learns for free, and (once the engine supports it) start it from the scene's arrival or a clock, never from a request.
-7. **Make failure a branch, not a wall.** A lost negotiation can lead to the fight. A failed search can cost time. A failed lock can be broken,
+8. **Make failure a branch, not a wall.** A lost negotiation can lead to the fight. A failed search can cost time. A failed lock can be broken,
    noisily. The story continues; it just gets harder.
-8. **Add a floor ending.** If the party fails everything, there is still a scene that closes the story (the village suffers, the culprit escapes,
+9. **Add a floor ending.** If the party fails everything, there is still a scene that closes the story (the village suffers, the culprit escapes,
    the festival goes on without them). Mark it `ending: true`.
-9. **Run the checker and fix what it says.** Then read the warnings.
+10. **Run the checker and fix what it says.** Then read the warnings.
 
 ## Do not invent
 

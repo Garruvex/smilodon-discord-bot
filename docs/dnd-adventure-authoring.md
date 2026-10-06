@@ -36,6 +36,19 @@ A scene may be marked `ending: true`: the story can finish there. Mark every fin
 can still reach. `npm run adventure:check -- <file>` checks the story contract (see `docs/dnd-adventure-conversion-guide.md`), and
 `docs/adventure-template.yaml` is a complete adventure to start from.
 
+An NPC may list what they will tell:
+
+```yaml
+npcs:
+  - id: npc:hag
+    secret: ...
+    tells:
+      - { clue: clue:grievance, topics: [curse, contract, 詛咒, 契約] }   # asking about any of these reveals the clue, no roll
+      - { clue: clue:the-way }                                           # no topics: any question to this NPC gives it
+```
+
+Asking is a free, no-roll route to the clue; the engine decides what is told and the narrator only voices it. The story contract counts it.
+
 ## Effects
 
 | kind | does |

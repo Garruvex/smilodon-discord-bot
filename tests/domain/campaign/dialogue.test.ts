@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { deriveSheet, type BuildChoices } from "../../../src/domain/campaign/character/character-build.js";
 import type { CharacterSheet } from "../../../src/domain/campaign/character/character-sheet.js";
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
-import { newCampaign, jamie, organizer, run, reject, system, d20Roll, type Step } from "./campaign-fixtures.js";
+import { kinds, newCampaign, jamie, organizer, run, reject, system, d20Roll, type Step } from "./campaign-fixtures.js";
 
 // The same Bard as shop.test.ts: CHA 16 (+3), proficient in Persuasion,
 // Deception, and Insight, so a +5 modifier against the press DC of 20.
@@ -128,6 +128,19 @@ describe("recordDialogueNarration", () => {
     expect(reject(asked.state, jamie, { kind: "recordDialogueNarration", dialogueId, text: "The smith shrugs." })).toEqual({ code: "systemOnly" });
     const narrated = run(asked.state, system, { kind: "recordDialogueNarration", dialogueId, text: "The smith shrugs." });
     expect(narrated.state.dialogues[dialogueId]).toBeUndefined();
+  });
+
+  it("teaches the party what the NPC told, once, and never again", () => {
+    const asked = run(campaignWithSable(), jamie, { kind: "askNpc", characterId: "c-borin", npcId: "npc:smith", question: "Who forged this blade?" });
+    const dialogueId = Object.keys(asked.state.dialogues)[0] ?? "";
+    const told = run(asked.state, system, { kind: "recordDialogueNarration", dialogueId, text: "He forged it himself.", reveals: [{ clueId: "clue:the-smith-forged-it", text: "The smith forged the blade himself." }] });
+    expect(kinds(told.events)).toContain("clueRevealed");
+    expect(told.state.clues).toContainEqual({ id: "clue:the-smith-forged-it", text: "The smith forged the blade himself." });
+    // The same clue told again is not added twice.
+    const again = run(told.state, jamie, { kind: "askNpc", characterId: "c-borin", npcId: "npc:smith", question: "Who forged this blade again?" });
+    const id2 = Object.keys(again.state.dialogues)[0] ?? "";
+    const twice = run(again.state, system, { kind: "recordDialogueNarration", dialogueId: id2, text: "Yes.", reveals: [{ clueId: "clue:the-smith-forged-it", text: "The smith forged the blade himself." }] });
+    expect(twice.state.clues.filter((clue) => clue.id === "clue:the-smith-forged-it")).toHaveLength(1);
   });
 
   it("rejects narrating a dialogue that no longer exists", () => {
