@@ -12,6 +12,8 @@
     "build:activity": "esbuild src/activity/main.js --bundle --format=esm --target=es2022 --minify --outfile=assets/activity/activity.js && tsx src/scripts/build-activity-styles.ts && tsx src/scripts/build-activity-i18n.ts",
     "activity:api-docs": "tsx src/scripts/activity-api-docs.ts",
     "check": "npm run typecheck && npm run lint && npm run migrations:check && npm run test",
+    "adventure:check": "tsx src/scripts/adventure-check.ts",
+    "adventure:guide": "tsx src/scripts/build-authoring-guide.ts",
     "campaign:harness": "tsx src/scripts/campaign-harness.ts",
     "command:create": "tsx src/scripts/generate-command.ts",
     "config:validate": "tsx src/scripts/validate-guild-config.ts",

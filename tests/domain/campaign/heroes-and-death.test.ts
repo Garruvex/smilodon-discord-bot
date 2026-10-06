@@ -68,6 +68,32 @@ describe("joining as a new hero", () => {
     expect(run(joined, system, { kind: "openRound" }).state.round?.participants).toEqual(["c-mira", "c-borin-2"]);
   });
 
+  it("takes a wiped party's new heroes at the level the party had reached, not level 1", () => {
+    const base = newCampaign();
+    const wiped: CampaignState = {
+      ...base,
+      characters: Object.fromEntries(Object.entries(base.characters).map(([id, sheet]) => [id, { ...sheet, level: 3 }])),
+      heroStatus: Object.fromEntries(Object.keys(base.characters).map((id) => [id, { ...(base.heroStatus[id] as NonNullable<(typeof base.heroStatus)[string]>), hp: 0, dead: true }])),
+    };
+    expect(reject(wiped, jamie, { kind: "joinHero", sheet: newHero("c-borin-2", "u-jamie", 1) })).toMatchObject({ code: "invalidHero" });
+    const joined = run(wiped, jamie, { kind: "joinHero", sheet: newHero("c-borin-2", "u-jamie", 3) }).state;
+    expect(joined.members["u-jamie"]?.characterId).toBe("c-borin-2");
+  });
+
+  it("takes the table up again when a wiped party's first new hero joins", () => {
+    const base = newCampaign();
+    const wiped: CampaignState = {
+      ...base,
+      round: null,
+      heroStatus: Object.fromEntries(Object.keys(base.characters).map((id) => [id, { ...(base.heroStatus[id] as NonNullable<(typeof base.heroStatus)[string]>), hp: 0, dead: true }])),
+    };
+    const waiting = run(wiped, system, { kind: "openRound" }).state;
+    expect(waiting.status).toBe("waitingForPlayers");
+    const joined = run(waiting, jamie, { kind: "joinHero", sheet: newHero("c-borin-2", "u-jamie") });
+    expect(joined.state.status).toBe("active");
+    expect(joined.state.round).toMatchObject({ status: "collecting", participants: ["c-borin-2"] });
+  });
+
   it("lets a new player join the party", () => {
     const sheet: CharacterSheet = { ...mira, id: "c-pip", ownerUserId: "u-sam", name: "Pip" };
     const joined = run(newCampaign(), organizer, { kind: "joinHero", sheet }).state;

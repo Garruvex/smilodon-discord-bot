@@ -1,5 +1,6 @@
 import type { SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import { AdventureDocumentError, checkAdventureContent, parseAdventureDocument, type AdventureDocument } from "./adventure-document.js";
+import { analyzeStoryContract } from "./story-contract.js";
 import { rehearseEncounter, type RehearsalResult } from "./adventure-smoke.js";
 
 // Plan §3, Campaign source: both ways in (an uploaded file, or one the
@@ -34,7 +35,13 @@ const maxReported = 25;
 // cross-references (the strict schema), the limits, the ruleset content (an
 // adventure can only use monsters, items and spells the ruleset has), and a
 // headless rehearsal of every fight.
-export function validateAdventure(source: string, content: SealedContent): AdventureReport {
+// storyContract: "warn" (the default) reports the story contract's findings as warnings; "enforce" makes its errors, and a missing ending, errors
+// (the Author writes under it, and it is how adventures will be held once they have been converted).
+export interface ValidateOptions {
+  readonly storyContract?: "warn" | "enforce";
+}
+
+export function validateAdventure(source: string, content: SealedContent, options: ValidateOptions = {}): AdventureReport {
   const failed = (errors: readonly string[]): AdventureReport => ({ ok: false, errors: errors.slice(0, maxReported), warnings: [], document: null, rehearsals: [] });
   if (Buffer.byteLength(source, "utf8") > adventureLimits.maxBytes) return failed([`The file is larger than ${adventureLimits.maxBytes / 1000} KB.`]);
 
@@ -60,6 +67,12 @@ export function validateAdventure(source: string, content: SealedContent): Adven
   }
   if (document.bible.encounters.length === 0) warnings.push("The adventure has no fights.");
   warnings.push(...routeWarnings(document));
+  // The story contract (see story-contract.ts). Reported as warnings until the adventures that break it are fixed; then its errors become errors.
+  for (const finding of analyzeStoryContract(document.bible)) {
+    const line = `Story contract (${finding.rule}): ${finding.message} Fix: ${finding.fix}`;
+    if (options.storyContract === "enforce" && (finding.severity === "error" || finding.rule === "no-ending")) errors.push(line);
+    else warnings.push(line);
+  }
   return { ok: errors.length === 0, errors: errors.slice(0, maxReported), warnings, document, rehearsals };
 }
 
@@ -94,7 +107,7 @@ export function routeWarnings(document: AdventureDocument): readonly string[] {
   const warnings: string[] = [];
   for (const scene of scenes) {
     if (!reached.has(scene.id)) warnings.push(`${scene.id} cannot be reached from the start scene by its exits.`);
-    if (scene.exits?.length === 0) warnings.push(`${scene.id} has no way out; the party would be stuck there.`);
+    if (scene.exits?.length === 0 && scene.ending !== true) warnings.push(`${scene.id} has no way out; the party would be stuck there.`);
   }
   for (const scene of document.bible.linear === true ? [] : scenes) {
     for (const exit of scene.exits ?? []) {

@@ -57,6 +57,10 @@ export interface PlannerProposal {
   readonly roundNumber: number;
   readonly actions: readonly PlannerAction[];
   readonly effects: readonly PlannerEffect[];
+  // Authored interactions that happen as the story's own doing (the stall director's fallback step): no hero, no roll, no fee.
+  readonly worldSteps?: readonly string[];
+  // Phases of the day the story passes this round by itself (a table waiting for a fight set at night): no hero's doing.
+  readonly worldTime?: number;
 }
 
 export type PlannerEffect =
@@ -101,6 +105,10 @@ export interface NarratorRequest {
   // Set for the adventure's opening, told before the first round (round 0, no
   // outcomes): the heroes to introduce as the party.
   readonly opening?: { readonly heroes: readonly { readonly name: string; readonly className: string | null }[] };
+  // Facts the last attempt invented (the adventure did not establish them): tell it again without them.
+  readonly avoid?: readonly string[];
+  // The table has gone several rounds without the story moving: something the scene has ready, in the players' words, for the narration to point at.
+  readonly nudge?: string;
 }
 
 // One combat round's flourish, or (final) the fight's closing narration
@@ -114,6 +122,8 @@ export interface CombatNarratorRequest {
   readonly beats: readonly CombatBeat[];
   // Set on the closing narration.
   readonly outcome: EncounterOutcome | null;
+  // Facts the last attempt invented (the adventure did not establish them): tell it again without them.
+  readonly avoid?: readonly string[];
 }
 
 // A settled trade's NPC reaction (plan §6, Narrator): the price, the check
@@ -130,6 +140,8 @@ export interface TradeNarratorRequest {
   readonly listedPrice: number;
   readonly finalPrice: number;
   readonly haggle: { readonly skill: string; readonly total: number; readonly dc: number; readonly success: boolean; readonly headline: RollMoment | null } | null;
+  // Facts the last attempt invented (the adventure did not establish them): tell it again without them.
+  readonly avoid?: readonly string[];
 }
 
 // A settled conversation with an NPC (engine/dialogue.ts): a plain question
@@ -147,6 +159,10 @@ export interface DialogueNarratorRequest {
   readonly question: string | null;
   readonly press: { readonly skill: string; readonly total: number; readonly dc: number; readonly success: boolean; readonly headline: RollMoment | null } | null;
   readonly secretRevealed: boolean;
+  // What the NPC tells in this reply (facts the adventure says this NPC shares, already decided): the narrator voices them, adding nothing.
+  readonly tells?: readonly string[];
+  // Facts the last attempt invented (the adventure did not establish them): say it again without them.
+  readonly avoid?: readonly string[];
 }
 
 // A ritual (or cantrip) spell cast outside combat (engine/utility-magic.ts):
@@ -159,6 +175,8 @@ export interface UtilityCastNarratorRequest {
   readonly language: CampaignLanguage;
   readonly heroName: string;
   readonly spell: { readonly id: string; readonly name: string };
+  // Facts the last attempt invented (the adventure did not establish them): tell it again without them.
+  readonly avoid?: readonly string[];
 }
 
 // A settled travel or environmental hazard (engine/travel.ts): the save, its
@@ -174,6 +192,8 @@ export interface HazardNarratorRequest {
   readonly success: boolean;
   readonly headline: RollMoment | null;
   readonly exhaustionGained: number;
+  // Facts the last attempt invented (the adventure did not establish them): tell it again without them.
+  readonly avoid?: readonly string[];
 }
 
 export interface CampaignNarrator {
@@ -221,6 +241,23 @@ export interface SceneNoteJudgment {
   readonly decision: "keep" | "reword" | "drop";
   readonly text: string;
   readonly reason: string;
+}
+
+// Every kind of line that can state a fact to the table.
+export type NarrationKind = "narration" | "opening" | "dialogue" | "combat" | "trade" | "spell" | "hazard";
+
+// A line about to be shown, to be read against what the adventure established. Returns what it invented (an item, a price, a demand, a person): empty when nothing.
+export interface NarrationAuditRequest {
+  readonly context: DmContext;
+  readonly language: CampaignLanguage;
+  readonly kind: NarrationKind;
+  readonly text: string;
+  // What was committed in this moment (the outcomes, what the NPC was told to say), which the context above does not yet hold.
+  readonly facts: readonly string[];
+}
+
+export interface CampaignNarrationAuditor {
+  audit(request: NarrationAuditRequest): Promise<readonly string[]>;
 }
 
 export interface CampaignSceneNoteJudge {

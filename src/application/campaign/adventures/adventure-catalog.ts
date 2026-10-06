@@ -17,6 +17,9 @@ export interface AdventureCatalogOptions {
   readonly library: UploadedAdventureLibrary;
   // A server may hold this many adventures waiting for approval or approved.
   readonly maxPerGuild?: number;
+  // Whether an uploaded adventure must pass the story contract ("enforce") or only be warned ("warn", the default while older adventures are
+  // converted). Adventures the Author wrote are always held to it.
+  readonly storyContract?: "warn" | "enforce";
 }
 
 export type SubmitResult =
@@ -40,6 +43,8 @@ export type DecisionResult =
 
 export type RemovalResult =
   | { readonly kind: "ok"; readonly adventure: StoredAdventure }
+  // A game or lobby still uses this version, so it cannot be deleted for good.
+  | { readonly kind: "inUse" }
   | { readonly kind: "notFound" }
   | { readonly kind: "notAllowed" }
   // Only an approved adventure is removed (a draft is discarded) and only a removed one restored.
@@ -66,7 +71,8 @@ export class AdventureCatalog {
   // with its ID made unique to the server. A file is data: nothing in it is an
   // instruction to the bot.
   public async submit(input: { guildId: string; uploaderUserId: string; source: StoredAdventure["source"]; text: string; isAdmin?: boolean }): Promise<SubmitResult> {
-    const report = validateAdventure(input.text, this.options.content);
+    // An adventure the Author wrote is always held to the story contract; an upload is held to it when the table's setting says so.
+    const report = validateAdventure(input.text, this.options.content, { storyContract: input.source === "author" ? "enforce" : (this.options.storyContract ?? "warn") });
     if (!report.ok || report.document === null) return { kind: "invalid", report };
     const canonical = canonicalize(report.document, input.guildId);
     const { bible } = canonical;
@@ -140,6 +146,30 @@ export class AdventureCatalog {
     return result;
   }
 
+  // Deletes a removed adventure for good: it leaves the list and cannot be restored. Refused while any game or lobby still uses this version,
+  // since those keep the stored text. The uploader or a DnD Admin may.
+  public async purge(key: string, userId: string, isAdmin: boolean): Promise<RemovalResult> {
+    return this.options.unitOfWork.transaction(async (tx): Promise<RemovalResult> => {
+      const found = await tx.loadAdventure(key);
+      if (found === undefined) return { kind: "notFound" };
+      if (found.uploaderUserId !== userId && !isAdmin) return { kind: "notAllowed" };
+      if (found.status !== "removed") return { kind: "wrongStatus" };
+      const records = await tx.listRecords(found.guildId, ["lobby", "active", "paused"]);
+      if (records.some(({ record }) => record.adventure.adventureId === found.id && record.adventure.version === found.version && record.language === found.language)) return { kind: "inUse" };
+      const next: StoredAdventure = { ...found, status: "discarded" };
+      await tx.saveAdventure(next);
+      return { kind: "ok", adventure: next };
+    });
+  }
+
+  // The stored text, for the uploader or a DnD Admin to fix and upload again.
+  public async exportText(key: string, userId: string, isAdmin: boolean): Promise<{ readonly kind: "ok"; readonly adventure: StoredAdventure } | { readonly kind: "notFound" } | { readonly kind: "notAllowed" }> {
+    const found = await this.get(key);
+    if (found === undefined || found.status === "discarded") return { kind: "notFound" };
+    if (found.uploaderUserId !== userId && !isAdmin) return { kind: "notAllowed" };
+    return { kind: "ok", adventure: found };
+  }
+
   // Puts a removed adventure back, if the server has room for it.
   public async restore(key: string, userId: string, isAdmin: boolean): Promise<RemovalResult> {
     const result = await this.options.unitOfWork.transaction(async (tx): Promise<RemovalResult> => {
@@ -160,7 +190,7 @@ export class AdventureCatalog {
   // A stored draft checked again, for a review reopened after the private screen was dismissed.
   public async review(key: string): Promise<{ readonly adventure: StoredAdventure; readonly report: AdventureReport } | undefined> {
     const adventure = await this.get(key);
-    return adventure === undefined ? undefined : { adventure, report: validateAdventure(adventure.yaml, this.options.content) };
+    return adventure === undefined ? undefined : { adventure, report: validateAdventure(adventure.yaml, this.options.content, { storyContract: adventure.source === "author" ? "enforce" : (this.options.storyContract ?? "warn") }) };
   }
 
   public get(key: string): Promise<StoredAdventure | undefined> {

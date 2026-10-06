@@ -1,0 +1,103 @@
+# Converting a story into an adventure
+
+This guide is for whoever turns a story (a module, a one-shot, an outline) into the adventure format: a person, or any language model. Give a
+model this file, `docs/adventure-template.yaml`, the format reference (`docs/dnd-adventure-authoring.md`), and the source story. Then run the
+checker until it is clean:
+
+```
+npm run adventure:check -- path/to/adventure.yaml
+```
+
+The checker prints every problem with what to do about it. Exit code 1 means there are errors. **Do not stop until it prints OK and you have
+read the warnings.**
+
+## The one rule
+
+> From every state the story can reach, the table has a way forward to an ending, even if every roll fails and nobody guesses a clever idea.
+
+A mystery cannot ask players to guess the exact words that move it on. The engine plays what you wrote: it rolls the checks you list, applies
+the results you list, and goes where your exits and `goto` effects say. Anything you do not write down cannot happen. So write down the way
+forward, and write down the way forward *when things go badly*.
+
+## What the checker enforces
+
+| Rule | It means | How to fix it |
+| --- | --- | --- |
+| `unreachable-scene` | No exit, `goto` or arrival leads to the scene, even when everything succeeds. | Add the exit or `goto`, or delete the scene. |
+| `dead-end-scene` | A scene lists `exits: []` and is not an ending, so the party is stuck. | Give it an exit, or mark it `ending: true`. |
+| `unsatisfiable-requirement` | An exit or interaction needs a flag or clue that nothing ever sets or reveals. | Set the flag or reveal the clue somewhere, or drop the requirement. |
+| `ending-stranded` | Some state the story can reach (after any choice, including an optional branch) has no way left to an ending once rolls fail and fights are lost. The checker plays every state separately: a branch that shuts its own way back, an exit closed by `notFlags`, or a flag set to `0` all count, and it prints the shortest way into the trap. | Add a floor ending that bad luck cannot close, and give gates a no-roll way (an automatic interaction, an NPC `tells`, an arrival effect, or a `fallback` step), an `onFailure` that moves on, and every fight an `onDefeat` that lets the story go on at a cost. Good endings may need success. |
+| `rolled-gate` (warning) | One roll, one attempt, no failure branch decides something the story needs. | Add attempts, an `onFailure`, or another interaction that gives the same result. |
+| `no-ending` (warning) | No scene is marked `ending: true`, so finishing cannot be checked. | Mark the final scene(s). |
+
+A table where every hero falls is not a separate case: the engine waits, each player takes a new hero (a fresh preset, no loot) at the level the party had reached, and the first one to join takes the table up again. The scene, flags and clues are unchanged, so the checks above already cover it, and a lost fight's `onDefeat` still applies.
+
+## How to convert, step by step
+
+1. **List the beats.** Write the story as a short chain: how it starts, the discoveries, the confrontations, how it can end. Note every
+   different ending the source allows (a peaceful one, a violent one, a failure).
+2. **Make scenes** for each place. Give every scene `exits` (the places the party can go next) except an ending. Mark each final scene
+   `ending: true`. Use `requires` on an exit only when the story really gates it.
+3. **Make interactions** for each thing the players can do that matters: talk, search, persuade, climb, fight, pay, rest. Write the `label`
+   in the players' words, because the Activity shows it to them as a suggestion.
+4. **Give every gate a free key.** For each flag, clue or exit the story needs next, make sure at least one way to get it needs *no roll*: an
+   interaction without a `check`, an arrival effect (`onEnter`), or a fight result. If you keep a rolled way (it feels better to roll), keep the free
+   way too, or give the rolled interaction more `attempts`, or an `onFailure` that moves on at a cost.
+5. **Let NPCs answer.** For each NPC who knows something the story needs, list it in `tells` (a clue plus the words a question may contain). A hero who
+   asks them gets the clue with no roll and the NPC says it in their own voice. Without `tells`, an NPC knows only what their public description says,
+   and questions about the plot go nowhere. Include the words players are likely to use (the thing, the person, the place), in each language the table plays.
+6. **Plant the clues.** A player must be able to learn what to do next. Every important next step needs a clue that is revealed without a roll
+   (arrival effect or an automatic interaction). Put a better version behind a roll if you like. Mark a clue `free: true` when it is safe to hand to a
+   table that is stuck (a nudge, not the answer to a mystery): the engine gives it after about eight rounds of acting without progress (rounds everyone passes do not count). Clues not marked free are
+   never handed over.
+7. **Schedule time-based events.** If something happens "at midnight" or "when the alarm sounds", do not rely on a player saying "I wait". Say it
+   in a clue the table learns for free, and give the fight a `schedule` so it breaks out by itself: `schedule: { requires: { clues: [clue:strikes-at-midnight] }, time: night, afterRounds: 2 }`
+   starts it on the first round the party acts once they are in the scene, know the clue, it is night (needs a `startTime`), and two rounds have passed. Every part is
+   optional. Never make the table ask for the event. A table that waits in the scene (two rounds, or `afterRounds` if longer) with everything else in
+   place has the time of day brought to it: the story passes to that hour and the fight breaks out.
+8. **Name the step the engine may take for a stuck table.** On each point where the story could stall, mark ONE interaction `fallback: true`: the step
+   a patient guide would simply let happen. If the table goes about ten rounds of acting without the story moving, the engine takes that step for them with no
+   roll and no fee (after a hint at three rounds and a clue marked `free: true` at six). It happens as a world event beside the players' own
+   actions; it never replaces what someone chose to do. Rounds where everyone passes count too. Only an adventure can authorize this, so choose steps that do not take
+   away a choice the story established (reading the rune, opening the gate, the elder finally speaking) and never one that decides an ending.
+9. **Make failure a branch, not a wall.** (A lost fight too: give each fight an `onDefeat`: the party is carried off, robbed, or driven back, and the story goes on.) A lost negotiation can lead to the fight. A failed search can cost time. A failed lock can be broken,
+   noisily. The story continues; it just gets harder.
+10. **Add a floor ending.** If the party fails everything, there is still a scene that closes the story (the village suffers, the culprit escapes,
+   the festival goes on without them). Mark it `ending: true`.
+11. **Record where it came from, and what you left out.** Give every scene, NPC, clue and fight a `provenance.references` entry (its id and the
+   passage or heading it came from). List in `provenance.omitted` every location, character, clue, fight or rule of the source that you did not
+   keep, with the reason. Do not drop content silently, and do not merge scenes just to keep the adventure short.
+12. **Run the checker and fix what it says.** Then read the warnings.
+
+## Do not invent
+
+The narrator and the NPCs are language models and will happily invent. Give them nothing to invent from, and do not invite it.
+
+- **Items:** an item exists only if you list it in an `reward` or `keepsake`, or the heroes' sheets. Do not describe a worn or carried object (a
+  coin, a ring, a sword) in an NPC's `publicDescription` unless you mean it as description only; the engine treats what a person wears or carries
+  as theirs, not as loot.
+- **Terms and prices:** an NPC's demands and offers come from your `dmNotes`, `secret` and interactions. If the source gives a price, write it down; if
+  it does not, do not make one up.
+- **Hints reveal, they do not create.** A clue's `publicText` states a fact that is already true in the story.
+- **Never put a secret in a public field.** `publicDescription`, `details`, `publicText` and `label` may reach the players.
+
+## Writing the fields
+
+- `label`: what the players are doing, in their words ("Ask the innkeeper about the old well"). This is a suggestion button, not a command.
+- `dmNotes`: when it applies. Planner-only.
+- `check`: omit it for something that simply happens. Prefer omitting it for every step the story cannot go on without.
+- `attempts`: how many tries (1 to 10). Raise it for anything the story needs.
+- `onFailure`: use it. Even `[{ kind: notice, text: "..." }]` helps; `{ kind: set, flag: ... }` or `{ kind: goto, ... }` makes it a branch.
+- `ending: true` on a scene: the story can finish here.
+- `objective`: one public line per scene saying what the party is trying to do ("Find out why the water went bad"). The Activity shows it, so a mystery always says
+  what to work toward. Name no secret.
+
+## Checklist before you hand it over
+
+- [ ] `npm run adventure:check` prints OK and no `ending-stranded`.
+- [ ] Every important next step has a clue that needs no roll.
+- [ ] Every "at midnight / when the bell rings" event is something the table is told about for free.
+- [ ] There is at least one ending a failing table can still reach.
+- [ ] No item, price or demand appears that the source story does not state.
+- [ ] Nothing secret is in a public field.
+- [ ] Everything in the source is either in the adventure (with a reference) or in `provenance.omitted`.

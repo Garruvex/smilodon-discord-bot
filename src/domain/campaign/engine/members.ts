@@ -5,7 +5,7 @@ import { actsForOwner } from "../character/ownership.js";
 import type { Skill } from "../rules/skills.js";
 import { abilities, type Ability } from "../rules/effects.js";
 import type { CharacterId, CheckId, Instant, UserId } from "../core/ids.js";
-import { isFallen, presentMembers, type CampaignState } from "../state/campaign-state.js";
+import { isFallen, levelForNewHero, presentMembers, type CampaignState } from "../state/campaign-state.js";
 import { deadlineAfter, type Decision } from "./decision.js";
 import { rollTimerId, roundTimerId } from "./ids.js";
 import type { Rejection } from "./rejection.js";
@@ -228,8 +228,12 @@ export function joinHero(decision: Decision, sheet: CharacterSheet, entrance?: s
   if (problems.length > 0) return { code: "invalidHero", problems };
   const arrival = entrance?.trim();
   if (arrival !== undefined && (arrival.length === 0 || arrival.length > 500)) return { code: "invalidHero", problems: ["Character entrance must be 1–500 characters."] };
+  // A wiped party (every hero fallen) is waiting for someone to play on: the first new hero takes the table up again, so nobody has to ask.
+  const heroes = Object.values(state.characters);
+  const wiped = heroes.length > 0 && heroes.every((hero) => isFallen(state, hero.id)) && state.status === "waitingForPlayers" && state.pausedBy === null && state.round === null;
   decision.emit({ kind: "heroJoined", sheet, ...(arrival === undefined ? {} : { entrance: arrival }) });
   if (arrival !== undefined) decision.request({ kind: "deliver", delivery: { kind: "heroArrival", characterId: sheet.id } });
+  if (wiped && ctx.actor.kind === "user" && decision.state.members[sheet.ownerUserId]?.availability === "present") continueCampaign(decision);
   return null;
 }
 
@@ -238,9 +242,8 @@ function heroProblems(state: CampaignState, sheet: CharacterSheet, decision: Dec
   const problems: string[] = [];
   const content = decision.ctx.rules.content;
   if (state.characters[sheet.id] !== undefined) problems.push(`Hero ${sheet.id} already exists.`);
-  const living = Object.values(state.characters).filter((other) => !isFallen(state, other.id));
-  const partyLevel = Math.max(1, ...living.map((other) => other.level));
-  if (sheet.level !== partyLevel) problems.push(`A new hero starts at the party's level (${partyLevel}), not ${sheet.level}.`);
+  const level = levelForNewHero(state);
+  if (sheet.level !== level) problems.push(`A new hero starts at the party's level (${level}), not ${sheet.level}.`);
   if (!Number.isInteger(sheet.maxHp) || sheet.maxHp < 1) problems.push("Maximum HP must be at least 1.");
   for (const id of sheet.equipment) if (content.find(id)?.kind !== "item") problems.push(`Unknown item ${id}.`);
   for (const id of sheet.features) if (content.find(id)?.kind !== "feature") problems.push(`Unknown feature ${id}.`);

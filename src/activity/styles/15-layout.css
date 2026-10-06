@@ -193,3 +193,8 @@ body[data-game-kind="lobby"] .story-now { display: none; }
 .live-ally .ally-sigil img { position: absolute; inset: 9px; width: 18px; height: 18px; filter: brightness(0) opacity(.68); }
 .live-ally .live-party-sigil { background: #d7e0bd; }
 .live-ally[data-condition="down"], .live-enemy[data-condition="down"], .live-enemy[data-condition="fled"] { opacity: .55; }
+
+.action-leads { display: grid; gap: 6px; margin-bottom: 8px; }
+.action-leads .action-lead { justify-self: start; text-align: left; font-size: 12px; }
+
+.live-scene-objective { margin: 6px 0 0; font-weight: 700; }

@@ -27,7 +27,7 @@ export function handleDialogueCommand(decision: Decision, command: DialogueComma
     case "pressNpc":
       return pressNpc(decision, command);
     case "recordDialogueNarration":
-      return recordDialogueNarration(decision, command.dialogueId, command.text);
+      return recordDialogueNarration(decision, command.dialogueId, command.text, command.reveals ?? []);
   }
 }
 
@@ -124,12 +124,17 @@ function settleDialogue(decision: Decision, dialogue: DialogueRecord, revealSecr
   decision.request({ kind: "narrateDialogue", dialogueId: dialogue.id });
 }
 
-function recordDialogueNarration(decision: Decision, dialogueId: string, text: string): Rejection | null {
+function recordDialogueNarration(decision: Decision, dialogueId: string, text: string, reveals: readonly { readonly clueId: string; readonly text: string }[]): Rejection | null {
   const { state, ctx } = decision;
   if (ctx.actor.kind !== "system") return { code: "systemOnly" };
   const trimmed = text.trim();
   if (trimmed.length === 0) return { code: "emptyNarration" };
   if (state.dialogues[dialogueId] === undefined) return { code: "staleNarration" };
+  // What the NPC told is learned for good, once; a clue the party already has is not told again.
+  for (const reveal of reveals) {
+    if (state.clues.some((known) => known.id === reveal.clueId)) continue;
+    decision.emit({ kind: "clueRevealed", roundNumber: state.lastRoundNumber, clueId: reveal.clueId, text: reveal.text });
+  }
   decision.emit({ kind: "dialogueNarrated", dialogueId, text: trimmed });
   decision.request({ kind: "deliver", delivery: { kind: "dialogueNarrated", dialogueId } });
   return null;

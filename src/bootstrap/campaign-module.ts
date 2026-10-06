@@ -27,6 +27,7 @@ import { libraryHeroRef } from "../application/campaign/library/library-types.js
 import { CampaignRuntime } from "../application/campaign/campaign-runtime.js";
 import { LlmCampaignChronicler } from "../application/campaign/dm/llm-chronicler.js";
 import { LlmCampaignNarrator, LlmCampaignPlanner } from "../application/campaign/dm/llm-dm.js";
+import { LlmNarrationAuditor } from "../application/campaign/dm/llm-narration-auditor.js";
 import { LlmSceneNoteJudge } from "../application/campaign/dm/llm-scene-note-judge.js";
 import type { CampaignNarrator, CampaignPlanner } from "../application/campaign/ports/dm-ports.js";
 import type { CampaignTransaction, CampaignUnitOfWork } from "../application/campaign/ports/campaign-store.js";
@@ -211,7 +212,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     bus,
     rolls: new RollWorker(unitOfWork, bus, new CryptoRandomSource(), clock),
     timers: new TimerWorker(unitOfWork, bus, clock),
-    dm: new DmJobWorker({ unitOfWork, bus, planner, narrator, ...(model === null ? {} : { chronicler: new LlmCampaignChronicler({ client: model, cacheKey }), noteJudge: new LlmSceneNoteJudge({ client: model, cacheKey }) }), adventures, glossaries, rulesets, logger }),
+    dm: new DmJobWorker({ unitOfWork, bus, planner, narrator, ...(model === null ? {} : { chronicler: new LlmCampaignChronicler({ client: model, cacheKey }), noteJudge: new LlmSceneNoteJudge({ client: model, cacheKey }), ...(configuration.campaignNarrationAudit === false ? {} : { auditor: new LlmNarrationAuditor({ client: model, cacheKey }) }) }), adventures, glossaries, rulesets, logger }),
     delivery: new DeliveryWorker(unitOfWork, presenter, {
       clock,
       onAbandoned: async (key, item): Promise<void> => {
@@ -290,7 +291,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
       }
     },
   });
-  const catalog = new AdventureCatalog({ unitOfWork, clock, content, library: adventures });
+  const catalog = new AdventureCatalog({ unitOfWork, clock, content, library: adventures, storyContract: "enforce" });
   // The Author never writes heroes: it borrows the bundled adventure's, in the language asked for.
   const author = model === null ? null : new AdventureAuthor({ client: model, content, heroesFor: (language): typeof starter.en.heroes => starter[language].heroes });
   const intake = new AdventureIntake({ catalog, author, glossaries });

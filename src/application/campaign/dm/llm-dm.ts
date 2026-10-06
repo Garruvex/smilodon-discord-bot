@@ -340,6 +340,11 @@ export const roundNarratorJsonSchema: Record<string, unknown> = {
   properties: { narration: { type: "string" }, note: { type: "string" } },
 };
 
+// A retry after the narration auditor found invented facts: name them so the next telling leaves them out.
+function avoidLine(avoid: readonly string[] | undefined): string {
+  return avoid === undefined || avoid.length === 0 ? "" : `\n\nYour last telling invented facts the adventure never established: ${avoid.map((entry) => `"${entry}"`).join(", ")}. Tell it again without them, and without replacing them with other invented facts.`;
+}
+
 export function buildNarratorPrompt(request: NarratorRequest): { system: string; user: string } {
   const zh = request.language === "zh-TW";
   if (request.opening !== undefined) return buildOpeningPrompt(request, request.opening.heroes);
@@ -359,6 +364,12 @@ export function buildNarratorPrompt(request: NarratorRequest): { system: string;
     "Never write dialogue, choices, or feelings for the heroes; describe what they did and what the world does in response. NPCs may speak in their voice.",
     "When a decision is needed, end with a concrete opportunity to act grounded in the adventure or resolved outcomes. Ask a question when helpful; a clear situation can speak for itself. Avoid repeating a generic 'What do you do?' every round. Invite the listed quiet heroes by name without choosing an action or feeling for them.",
   ].join("\n");
+  const stalled = request.nudge === undefined
+    ? ""
+    : `\nThe table has been circling without the story moving. End the narration with one concrete, natural thing in the scene that invites this kind of action, in the world's own terms: "${request.nudge}". Never present it as a choice, a game option, a skill, or a check, and do not say it is a hint.`;
+  const avoided = request.avoid === undefined || request.avoid.length === 0
+    ? ""
+    : `\nYour last telling invented facts the adventure never established: ${request.avoid.map((entry) => `"${entry}"`).join(", ")}. Tell it again without them, and without replacing them with other invented facts.`;
   const outcomes = request.outcomes.map((outcome) => `- ${describeOutcome(outcome)}`).join("\n");
   const spotlight = request.spotlight.length > 0 ? `\nQuiet heroes to invite: ${request.spotlight.join(", ")}.` : "";
   const threat =
@@ -366,7 +377,7 @@ export function buildNarratorPrompt(request: NarratorRequest): { system: string;
       ? ""
       : `\nA fight breaks out right after this: ${request.threat} End on the fight erupting instead of a question; do not describe any attacks.`;
   return {
-    ...splitPrompt(request.context, rules, `Round ${request.roundNumber} outcomes:\n${outcomes || "- Nobody acted."}${spotlight}${threat}`),
+    ...splitPrompt(request.context, rules, `Round ${request.roundNumber} outcomes:\n${outcomes || "- Nobody acted."}${spotlight}${threat}${stalled}${avoided}`),
   };
 }
 
@@ -389,7 +400,7 @@ function buildOpeningPrompt(
     "End by turning to the table: ask what the heroes do, in your own words, so the players know it is their turn.",
   ].join("\n");
   const party = heroes.map((hero) => (hero.className === null ? hero.name : `${hero.name} (${hero.className})`)).join(", ");
-  return splitPrompt(request.context, rules, `Open the adventure. The party: ${party}.`);
+  return splitPrompt(request.context, rules, `Open the adventure. The party: ${party}.${avoidLine(request.avoid)}`);
 }
 
 export function parseNarratorOutput(text: string): string {
@@ -519,7 +530,7 @@ export function buildTradeNarratorPrompt(request: TradeNarratorRequest): { syste
         ? ` They talked you into a better price with a ${request.haggle.skill} appeal.`
         : ` They tried a ${request.haggle.skill} appeal to talk the price, but it didn't move you.`;
   const result = request.completed ? " The deal goes through." : " They come up short and cannot complete it.";
-  return splitPrompt(request.context, rules, `${deal}${haggle}${result}`);
+  return splitPrompt(request.context, rules, `${deal}${haggle}${result}${avoidLine(request.avoid)}`);
 }
 
 // Whether the NPC gives anything up (a plain answer, or their secret on a
@@ -541,6 +552,10 @@ export function buildDialogueNarratorPrompt(request: DialogueNarratorRequest): {
     "Stay inside the fiction. The NPC never talks about what the players or heroes have or have not said, learned, established, asked, or counted as separate questions, and never refers to the story, the scene notes, or what they are allowed to know. When the NPC does not give something up, they decline the way a person would: dodge with a quip, answer a question with a question, name a price or a favour, hint without confirming, change the subject, or say honestly that they do not know. Never confirm or deny a detail the context does not state, and never claim the hero's knowledge is lacking. A short vague answer in the NPC's voice beats a refusal that explains itself.",
     "Terms belong to the adventure, not to the NPC's improvising. The NPC never invents a demand, price, payment, tribute, trade, favour, deadline, or condition, and never asks the heroes for an item, coin, or gift, including something another character wears or carries. Only terms the context above states may be named. When the heroes ask what the NPC wants and the context gives no terms, the NPC voices their grievance or mood and asks what the heroes offer, without setting a price or an object.",
     "Keep the NPC's voice their own. Take their manner and verbal habits only from the voice given above. Never copy or echo the hero's wording, sounds, catchphrases, laughs, nicknames, or sentence endings, and never end a line with a word the hero's message ended with just because the hero used it. Treat the hero's message as what was said to the NPC, not as a style to imitate.",
+    ...(request.tells === undefined || request.tells.length === 0
+      ? []
+      : [`This NPC is willing to tell the hero the following, which the adventure has decided they share now. Say it in the NPC's own voice and manner, naturally and completely, adding nothing to it and leaving nothing out: ${request.tells.map((tell) => `"${tell}"`).join(" ")}`]),
+    ...(request.avoid === undefined || request.avoid.length === 0 ? [] : [`Your last answer invented facts the adventure never established: ${request.avoid.map((entry) => `"${entry}"`).join(", ")}. Answer again without them, and without replacing them with other invented facts.`]),
     "Never mention dice, DCs, or checks.",
   ].join("\n");
   const situation =
@@ -564,7 +579,7 @@ export function buildUtilityCastNarratorPrompt(request: UtilityCastNarratorReque
     "Describe what the spell reveals or does, drawing only on the scene and ledger context above. Never invent a new magic item, passage, or plot fact the text above doesn't already give; if there is nothing notable, say so plainly.",
     "Never mention dice, DCs, or checks; this spell needed none.",
   ].join("\n");
-  return splitPrompt(request.context, rules, `${request.heroName} casts ${request.spell.name}.`);
+  return splitPrompt(request.context, rules, `${request.heroName} casts ${request.spell.name}.${avoidLine(request.avoid)}`);
 }
 
 // Whether the save succeeded and whether it cost a level of Exhaustion are
@@ -580,7 +595,7 @@ export function buildHazardNarratorPrompt(request: HazardNarratorRequest): { sys
   const situation = request.success
     ? `${request.heroName} pushes through the hazard, unscathed.`
     : `${request.heroName} is worn down by the hazard, gaining a level of Exhaustion.`;
-  return splitPrompt(request.context, rules, situation);
+  return splitPrompt(request.context, rules, `${situation}${avoidLine(request.avoid)}`);
 }
 
 // ---------------------------------------------------------------- Combat
@@ -609,7 +624,7 @@ export function buildCombatNarratorPrompt(request: CombatNarratorRequest): { sys
   ].join("\n");
   const beats = request.beats.map((beat) => `- ${describeBeat(beat)}`).join("\n");
   const heading = request.final ? `The fight ended (${request.outcome ?? "over"}). Final beats:` : `Combat round ${request.round}:`;
-  return splitPrompt(request.context, rules, `${heading}\n${beats || "- Nothing decisive happened."}`);
+  return splitPrompt(request.context, rules, `${heading}\n${beats || "- Nothing decisive happened."}${avoidLine(request.avoid)}`);
 }
 
 export function describeBeat(beat: CombatBeat): string {
@@ -645,6 +660,8 @@ export function describeBeat(beat: CombatBeat): string {
 }
 
 // ---------------------------------------------------------------- Shared
+
+export const renderContext = (context: DmContext): string => renderSections(context.sections);
 
 function renderSections(sections: DmContext["sections"]): string {
   return sections.map((section) => `## ${section.layer}. ${section.title}\n${section.text}`).join("\n\n");

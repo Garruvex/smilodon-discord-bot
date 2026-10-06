@@ -5,20 +5,25 @@ import type { CampaignEvent } from "../../../domain/campaign/events/campaign-eve
 import { dcLadder, rollModeReasons } from "../../../domain/campaign/rules/difficulty.js";
 import { abilities } from "../../../domain/campaign/rules/effects.js";
 import { lootGold } from "../../../domain/campaign/rules/house-rules.js";
+import { timesOfDay } from "../../../domain/campaign/rules/world-rules.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
-import type { SceneId } from "../../../domain/campaign/adventure/adventure-bible.js";
+import type { CampaignLanguage, SceneId } from "../../../domain/campaign/adventure/adventure-bible.js";
 import type { CampaignCommandBus } from "../campaign-command-bus.js";
 import { assembleContext, defaultContextBudget, renderTranscript, type ContextAudience } from "../dm/context-assembler.js";
 import { latestSummaryRound } from "../../../domain/campaign/engine/dm.js";
 import { sceneNoteCompactionThreshold } from "../../../domain/campaign/engine/dm.js";
 import { encounterRecords } from "../dm/combat-records.js";
 import { checkLabel, roundRecords } from "../dm/round-records.js";
+import { fallbackPlan } from "../dm/fallback-planner.js";
+import { tellsFor } from "../dm/npc-tells.js";
+import { defaultStall, directPlan, openLead, plainLabel, scheduledEffects, scheduledWait, stalledRounds, stallLevel, type StallConfig } from "../dm/stall-director.js";
 import { plannerStory, resolveStoryEffects } from "../dm/story-effects.js";
 import type { RuntimeLogger } from "../campaign-runtime.js";
 import type { CampaignKey, CampaignUnitOfWork, OutboxItem, StoredCampaign } from "../ports/campaign-store.js";
 import type {
   AdventureCatalog,
   CampaignChronicler,
+  CampaignNarrationAuditor,
   CampaignNarrator,
   CampaignPlanner,
   CampaignSceneNoteJudge,
@@ -27,7 +32,10 @@ import type {
   DmContext,
   HazardNarratorRequest,
   NarratedOutcome,
+  NarrationKind,
   NarratorRequest,
+  PlannerProposal,
+  PlannerRequest,
   TradeNarratorRequest,
   UtilityCastNarratorRequest,
 } from "../ports/dm-ports.js";
@@ -41,6 +49,8 @@ export interface DmJobWorkerOptions {
   // Condenses rounds in the background; without one, summaries are simply not made.
   readonly chronicler?: CampaignChronicler;
   readonly noteJudge?: CampaignSceneNoteJudge;
+  // Reads each narration and NPC line against what the adventure established, so an invented item or demand is told again without it. Without one, lines go as written.
+  readonly auditor?: CampaignNarrationAuditor;
   readonly adventures: AdventureCatalog;
   readonly glossaries: Readonly<Record<string, Glossary>>;
   // Resolves each campaign's pinned ruleset, so the narrator can be given reference cards for the monsters in a fight.
@@ -51,6 +61,8 @@ export interface DmJobWorkerOptions {
   readonly random?: () => number;
   // Where a failed planning attempt is written, so the reason is not lost with the organizer notice.
   readonly logger?: RuntimeLogger;
+  // How patient the story is with a table that is not making progress (rounds before a hint, a free clue, the adventure's fallback step). Default 3, 6, 9; false turns it off.
+  readonly stall?: StallConfig | false;
 }
 
 const system = { kind: "system" } as const;
@@ -123,23 +135,26 @@ export class DmJobWorker {
     // feedback instead of asking the model to repeat the same invalid plan.
     const previousFailure = loaded.events.findLast((event) => event.kind === "plannerFailed" && event.roundNumber === roundNumber);
     let problems: readonly string[] = previousFailure?.kind === "plannerFailed" ? previousFailure.problems : [];
+    const requestFor = (previousProblems: readonly string[]): PlannerRequest => ({
+      context: this.context("planner", loaded),
+      roundNumber,
+      actions,
+      vocabulary: {
+        abilities,
+        skills,
+        dcTiers: Object.keys(dcLadder),
+        rollModeReasons: Object.keys(rollModeReasons),
+      },
+      story: plannerStory(loaded.bible, loaded.stored.state),
+      previousProblems,
+    });
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
-        const proposal = await this.options.planner.plan({
-          context: this.context("planner", loaded),
-          roundNumber,
-          actions,
-          vocabulary: {
-            abilities,
-            skills,
-            dcTiers: Object.keys(dcLadder),
-            rollModeReasons: Object.keys(rollModeReasons),
-          },
-          story: plannerStory(loaded.bible, loaded.stored.state),
-          previousProblems: problems,
-        });
+        // A round nobody acted in has nothing for the model to judge: only the story's own clock runs (see direct).
+        const proposal = actions.length === 0 ? fallbackPlan(requestFor([])) : await this.options.planner.plan(requestFor(problems));
         const wallet = loaded.stored.ruleset.houseRules[lootGold.id] === "split" ? "hero" : "pool";
-        const resolved = resolveStoryEffects(proposal, loaded.bible, loaded.stored.state, { wallet, ...(this.options.random === undefined ? {} : { random: this.options.random }) });
+        const directed = this.direct(loaded, proposal);
+        const resolved = resolveStoryEffects(directed.proposal, directed.bible, loaded.stored.state, { wallet, ...(this.options.random === undefined ? {} : { random: this.options.random }) });
         if (resolved.kind === "invalid") {
           problems = resolved.problems;
           this.options.logger?.warn({ campaignId: item.key.campaignId, roundNumber, attempt, problems }, "Planner proposal was invalid");
@@ -161,6 +176,18 @@ export class DmJobWorker {
     }
     // A provider hiccup should not hold the round for the organizer: the job is tried again later, and only the last try holds it.
     if (item.attempts + 1 < this.maxAttempts) throw new Error(`The planner failed: ${problems.join(" ")}`);
+    // The round is not held for the organizer: it is planned without the model (plain, and only what the adventure already wrote), as a
+    // narrator outage already is. Only if even that plan is refused does the round wait for the organizer.
+    const wallet = loaded.stored.ruleset.houseRules[lootGold.id] === "split" ? "hero" : "pool";
+    const plainPlan = this.direct(loaded, fallbackPlan(requestFor([])));
+    const plain = resolveStoryEffects(plainPlan.proposal, plainPlan.bible, loaded.stored.state, { wallet, ...(this.options.random === undefined ? {} : { random: this.options.random }) });
+    if (plain.kind === "resolved") {
+      const outcome = await this.options.bus.execute(item.key, { kind: "applyRoundPlan", proposal: plain.proposal }, { commandId: `${item.id}:${item.attempts}:plan:fallback`, actor: system });
+      if (outcome.kind !== "rejected" || outcome.rejection.code !== "invalidPlan") {
+        this.options.logger?.error({ campaignId: item.key.campaignId, roundNumber, problems }, "The planner failed on every try; the round was planned without it");
+        return;
+      }
+    }
     this.options.logger?.error({ campaignId: item.key.campaignId, roundNumber, problems }, "Round held: the planner failed on every try");
     await this.options.bus.execute(
       item.key,
@@ -177,9 +204,13 @@ export class DmJobWorker {
     let text: string;
     let note = "";
     try {
-      const narrated = await this.options.narrator.narrate(request);
-      text = narrated.text;
-      note = narrated.note ?? "";
+      // Read against what the adventure established: an invented item or demand is told again once without it, and a line that still invents is replaced by the plain one.
+      const narrated = await this.audited(item, "narration", request, outcomeFacts(request), (asked) => this.options.narrator.narrate(asked));
+      if (narrated === undefined) text = fallbackNarration(request);
+      else {
+        text = narrated.text;
+        note = narrated.note ?? "";
+      }
     } catch (error) {
       if (item.attempts + 1 < this.maxAttempts) throw error;
       text = fallbackNarration(request);
@@ -200,7 +231,10 @@ export class DmJobWorker {
     const request = this.narratorRequest(loaded, roundNumber);
     let text: string;
     try {
-      text = (await this.options.narrator.narrate(request)).text;
+      // A retelling is read like the first telling; one that still invents, or cannot be checked, leaves the earlier telling standing.
+      const told = await this.audited(item, "narration", request, outcomeFacts(request), (asked) => this.options.narrator.narrate(asked));
+      if (told === undefined) return;
+      text = told.text;
     } catch (error) {
       if (item.attempts + 1 < this.maxAttempts) throw error;
       return;
@@ -342,7 +376,8 @@ export class DmJobWorker {
     };
     let text: string;
     try {
-      text = (await this.options.narrator.narrate(request)).text;
+      const told = await this.audited(item, "opening", request, heroes.map((hero) => `${hero.name} is one of the party.`), (asked) => this.options.narrator.narrate(asked));
+      text = told?.text ?? fallbackOpening(loaded, heroes.map((hero) => hero.name));
     } catch (error) {
       if (item.attempts + 1 < this.maxAttempts) throw error;
       text = fallbackOpening(loaded, heroes.map((hero) => hero.name));
@@ -360,7 +395,10 @@ export class DmJobWorker {
     const request = this.combatNarratorRequest(loaded, encounterId, round, final);
     let text: string;
     try {
-      text = (await this.options.narrator.narrateCombat(request)).text;
+      const told = await this.audited(item, "combat", request, [JSON.stringify(request.beats), ...(request.outcome === null ? [] : [`The fight ended: ${JSON.stringify(request.outcome)}`])], (asked) => this.options.narrator.narrateCombat(asked));
+      // A flourish that invents is simply left out; the closing narration falls back to its template.
+      if (told === undefined && !final) return;
+      text = told?.text ?? fallbackCombatNarration(request);
     } catch (error) {
       if (!final) return;
       if (item.attempts + 1 < this.maxAttempts) throw error;
@@ -383,7 +421,8 @@ export class DmJobWorker {
     const request = this.tradeNarratorRequest(loaded, tradeId);
     let text: string;
     try {
-      text = (await this.options.narrator.narrateTrade(request)).text;
+      const facts = [`${request.heroName} ${request.direction === "buy" ? "buys" : "sells"} ${request.itemName} with ${request.npc.name}: listed at ${request.listedPrice} gold, settled at ${request.finalPrice} gold, ${request.completed ? "done" : "not done"}.`];
+      text = (await this.audited(item, "trade", request, facts, (asked) => this.options.narrator.narrateTrade(asked)))?.text ?? fallbackTradeNarration(request);
     } catch (error) {
       if (item.attempts + 1 < this.maxAttempts) throw error;
       text = fallbackTradeNarration(request);
@@ -400,14 +439,18 @@ export class DmJobWorker {
     const current = loaded.stored.state.dialogues[dialogueId];
     if (current !== undefined && Object.values(loaded.stored.state.dialogues).some((dialogue) => dialogue.npcId === current.npcId && Number(dialogue.id.split(":")[1]) < Number(dialogueId.split(":")[1]))) return false;
     const request = this.dialogueNarratorRequest(loaded, dialogueId);
+    const told = current?.kind === "ask" ? tellsFor(loaded.bible.npcs.find((npc) => npc.id === current.npcId), current.question, loaded.stored.state, loaded.bible) : [];
     let text: string;
     try {
-      text = (await this.options.narrator.narrateDialogue(request)).text;
+      const asked = told.length === 0 ? request : { ...request, tells: told.map((tell) => tell.text) };
+      const facts = [`${request.heroName} says to ${request.npc.name}: "${request.question ?? ""}"`, ...told.map((tell) => `${request.npc.name} may say: ${tell.text}`), ...(request.npc.secret === null ? [] : [`${request.npc.name} may reveal: ${request.npc.secret}`])];
+      const said = await this.audited(item, "dialogue", asked, facts, async (next) => ({ text: (await this.options.narrator.narrateDialogue(next)).text }));
+      text = said?.text ?? fallbackDialogueNarration(request);
     } catch (error) {
       if (item.attempts + 1 < this.maxAttempts) throw error;
       text = fallbackDialogueNarration(request);
     }
-    await this.options.bus.execute(item.key, { kind: "recordDialogueNarration", dialogueId, text }, { commandId: `${item.id}:dialogue-narration`, actor: system });
+    await this.options.bus.execute(item.key, { kind: "recordDialogueNarration", dialogueId, text, ...(told.length === 0 ? {} : { reveals: told }) }, { commandId: `${item.id}:dialogue-narration`, actor: system });
     return true;
   }
 
@@ -420,7 +463,8 @@ export class DmJobWorker {
     const request = this.utilityCastNarratorRequest(loaded, castId);
     let text: string;
     try {
-      text = (await this.options.narrator.narrateUtilityCast(request)).text;
+      // A spell's description is where a hidden door or a secret could be made up: it may say only what the scene already holds.
+      text = (await this.audited(item, "spell", request, [`${request.heroName} casts ${request.spell.name}.`], (asked) => this.options.narrator.narrateUtilityCast(asked)))?.text ?? fallbackUtilityCastNarration(request);
     } catch (error) {
       if (item.attempts + 1 < this.maxAttempts) throw error;
       text = fallbackUtilityCastNarration(request);
@@ -436,7 +480,8 @@ export class DmJobWorker {
     const request = this.hazardNarratorRequest(loaded, hazardId);
     let text: string;
     try {
-      text = (await this.options.narrator.narrateHazard(request)).text;
+      const facts = [`${request.heroName} made a ${request.ability} save (${request.total} against DC ${request.dc}): ${request.success ? "success" : "failure"}${request.exhaustionGained > 0 ? `, gaining ${request.exhaustionGained} level of Exhaustion` : ""}.`];
+      text = (await this.audited(item, "hazard", request, facts, (asked) => this.options.narrator.narrateHazard(asked)))?.text ?? fallbackHazardNarration(request);
     } catch (error) {
       if (item.attempts + 1 < this.maxAttempts) throw error;
       text = fallbackHazardNarration(request);
@@ -573,7 +618,61 @@ export class DmJobWorker {
     }
     const spotlight = [...(record?.passed ?? []), ...(record?.missed ?? [])].map(nameOf);
     const threat = findEncounter(loaded.bible, state.pendingEncounter?.id ?? null)?.publicDescription ?? null;
-    return { context: this.context("narrator", loaded), language: state.language, roundNumber, outcomes, spotlight, threat };
+    // A table that keeps circling is nudged toward something the scene has ready (the first step of the director).
+    const lead = this.options.stall === false || stallLevel(stalledRounds(loaded.events), this.options.stall ?? defaultStall) < 1 ? undefined : openLead(loaded.bible, state);
+    return { context: this.context("narrator", loaded), language: state.language, roundNumber, outcomes, spotlight, threat, ...(lead === undefined ? {} : { nudge: plainLabel(lead.label) }) };
+  }
+
+  // Tells it, has the line read against what the adventure established (when an auditor is set up), and tells it again once without what it invented.
+  // Returns undefined when the second telling still invents: the caller then uses the plain line. An auditor that fails never blocks play.
+  private async audited<R extends { readonly context: DmContext; readonly language: CampaignLanguage; readonly avoid?: readonly string[] }, T extends { readonly text: string }>(
+    item: OutboxItem,
+    kind: NarrationKind,
+    request: R,
+    facts: readonly string[],
+    generate: (request: R) => Promise<T>,
+  ): Promise<T | undefined> {
+    const first = await generate(request);
+    const auditor = this.options.auditor;
+    if (auditor === undefined) return first;
+    // A line that could not be checked is not shown: the caller's plain line, built from committed facts only, is used instead.
+    const invented = async (text: string): Promise<readonly string[] | null> => {
+      try {
+        return await auditor.audit({ context: request.context, language: request.language, kind, text, facts });
+      } catch (error) {
+        // A hiccup is tried again with the whole job; only on the last attempt is the plain line used instead.
+        if (item.attempts + 1 < this.maxAttempts) throw error;
+        this.options.logger?.warn({ err: error, kind }, "The narration auditor failed; the plain line is used");
+        return null;
+      }
+    };
+    const found = await invented(first.text);
+    if (found === null) return undefined;
+    if (found.length === 0) return first;
+    this.options.logger?.warn({ kind, invented: found }, "A line invented facts; it is told again without them");
+    const second = await generate({ ...request, avoid: found });
+    const again = await invented(second.text);
+    if (again === null) return undefined;
+    if (again.length === 0) return second;
+    this.options.logger?.warn({ kind, invented: again }, "The second telling still invented facts; the plain line is used");
+    return undefined;
+  }
+
+  // The stall director's step for this round (see dm/stall-director.ts), logged when it acts.
+  private direct(loaded: Loaded, proposal: PlannerProposal): { readonly proposal: PlannerProposal; readonly bible: Loaded["bible"] } {
+    // What the adventure scheduled to happen on its own now (a fight at midnight), unless this round already starts one.
+    const due = proposal.effects.some((effect) => effect.kind === "startEncounter") ? [] : scheduledEffects(loaded.bible, loaded.stored.state, loaded.events);
+    if (due.length > 0) proposal = { ...proposal, effects: [...proposal.effects, ...due] };
+    // A fight waiting only for its time of day: the time comes, and the fight with it.
+    const wait = due.length > 0 || proposal.effects.some((effect) => effect.kind === "startEncounter") ? 0 : scheduledWait(loaded.bible, loaded.stored.state, loaded.events);
+    if (wait > 0) {
+      const atThatTime = { ...loaded.stored.state, world: { ...(loaded.stored.state.world as NonNullable<typeof loaded.stored.state.world>), time: timesOfDay[(timesOfDay.indexOf(loaded.stored.state.world?.time ?? "dawn") + wait) % timesOfDay.length] ?? "dawn" } };
+      proposal = { ...proposal, worldTime: wait, effects: [...proposal.effects, ...scheduledEffects(loaded.bible, atThatTime, loaded.events)] };
+    }
+    if (this.options.stall === false) return { proposal, bible: loaded.bible };
+    const level = stallLevel(stalledRounds(loaded.events), this.options.stall ?? defaultStall);
+    if (level >= 2) this.options.logger?.warn({ level, sceneId: loaded.stored.state.sceneId }, "The table has stalled; the stall director is helping");
+    return directPlan(proposal, loaded.bible, loaded.stored.state, level);
   }
 
   private glossary(loaded: Loaded): Glossary {
@@ -664,6 +763,11 @@ function fallbackHazardNarration(request: HazardNarratorRequest): string {
     : zh
       ? `${request.heroName}被這段路程磨得筋疲力盡。`
       : `${request.heroName} is worn down by the ordeal.`;
+}
+
+// What a round committed, for the auditor: who tried what and how it came out, and the fight it leads into.
+function outcomeFacts(request: NarratorRequest): readonly string[] {
+  return [...request.outcomes.map((outcome) => `${outcome.heroName} attempted: "${outcome.action}" (${outcome.result.kind})`), ...(request.threat === null ? [] : [request.threat])];
 }
 
 function fallbackNarration(request: NarratorRequest): string {

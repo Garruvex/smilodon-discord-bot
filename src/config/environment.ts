@@ -139,6 +139,8 @@ const environmentSchema = z.object({
   CAMPAIGN_PROVIDER: z.enum(["openai", "gemini"]).default("openai"),
   CAMPAIGN_MODE: z.enum(["chat_completions", "responses"]).optional(),
   CAMPAIGN_REASONING_EFFORT: z.enum(["none", "low", "medium", "high", "xhigh", "max"]).default("none"),
+  // "off" skips the second model call that reads each narration against the adventure (fewer calls, more invention may reach the table).
+  CAMPAIGN_NARRATION_AUDIT: z.enum(["on", "off"]).default("on"),
   CAMPAIGN_GEMINI_THINKING_BUDGET: z.coerce.number().int().min(-1).max(32_768).optional(),
   // Campaign pictures: an OpenAI-compatible image model, its own connection
   // (the key and address default to OPENAI_API_KEY / OPENAI_BASE_URL, and are
@@ -286,6 +288,7 @@ export function loadConfiguration(
     chat: buildChatConfiguration(parsed.data),
     utilityChat: buildUtilityChatConfiguration(parsed.data),
     campaign: buildCampaignConfiguration(parsed.data),
+    campaignNarrationAudit: parsed.data.CAMPAIGN_NARRATION_AUDIT === "on",
     campaignImages: buildCampaignImages(parsed.data),
     portraitGenerationLimit: { maxPerWindow: parsed.data.CAMPAIGN_PORTRAIT_MAX_PER_WINDOW, windowMinutes: parsed.data.CAMPAIGN_PORTRAIT_WINDOW_MINUTES },
     chatDelivery: {

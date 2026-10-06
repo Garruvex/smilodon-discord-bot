@@ -104,6 +104,9 @@ export interface BibleInteraction {
   readonly onFailure: readonly BibleEffect[];
   // Extra results for a roll that reaches a higher total; each tier's effects join the success ones. Ascending by dc.
   readonly tiers: readonly { readonly dc: number; readonly effects: readonly BibleEffect[] }[];
+  // If the table stalls (rounds pass and the story does not move), the engine may take this step for them, with no roll and no fee. Only an
+  // adventure can authorize that, so nobody is moved against what the story established.
+  readonly fallback?: boolean;
 }
 
 export const interactionsOf = (bible: AdventureBible): readonly BibleInteraction[] => bible.interactions ?? [];
@@ -127,6 +130,8 @@ export interface BibleClue {
   readonly sceneId: SceneId;
   readonly publicText: string;
   readonly dmNotes: string;
+  // The adventure allows this clue to be given to a table that is stuck. Any other clue may be the answer to something, so it is never handed over.
+  readonly free?: boolean;
 }
 
 export interface BibleScene {
@@ -144,6 +149,10 @@ export interface BibleScene {
   readonly exits?: readonly { readonly to: SceneId; readonly requires?: BibleRequirement; readonly hidden?: boolean; readonly hint?: string }[];
   // What happens whenever the party arrives here by any route: clues, flags, rewards, notices, keepsakes (each lands only once).
   readonly onEnter?: readonly Exclude<BiblePartyEffect, { readonly kind: "goto" | "encounter" | "clock" }>[];
+  // What the party is trying to do here, in a line the table can read ("Find out why the water went bad"). PUBLIC: it is shown in the Activity, so it names no secret.
+  readonly objective?: string;
+  // The story can end here. Every adventure that lists exits marks its final scenes, so the story contract can check the way to one stays open.
+  readonly ending?: boolean;
   // What happens when the party takes a long rest here: the same kinds as onEnter.
   readonly onLongRest?: readonly Exclude<BiblePartyEffect, { readonly kind: "goto" | "encounter" | "clock" }>[];
 }
@@ -155,6 +164,9 @@ export interface BibleNpc {
   readonly voice: string;
   readonly publicDescription: string;
   readonly secret: string;
+  // What this NPC will tell, each telling a clue the party then knows. Asking the NPC reveals the clue when the question names one of the topics
+  // (words, in any language the adventure is written in); a tell without topics is given to any question. This is the free, no-roll way to learn it.
+  readonly tells?: readonly { readonly clue: ClueId; readonly topics?: readonly string[] }[];
   // Present when this NPC trades. Prices are gold, authored (items carry no
   // inherent value of their own — engine/shop.ts's buyItem/sellItem/hagglePrice
   // never invent one). sellPrice absent means this NPC won't buy that item back.
@@ -192,8 +204,15 @@ export interface BibleEncounter {
   readonly triggers?: readonly BibleTrigger[];
   // Story effects when the party wins (a fight never starts another fight).
   readonly onVictory?: readonly BiblePartyEffect[];
+  // Story effects when the party loses it. A lost fight must still leave the story a way on: set the flag that lets the story go forward at a cost,
+  // or move the party somewhere (captured, left for dead). Without it nothing authored happens when the party loses.
+  readonly onDefeat?: readonly BiblePartyEffect[];
   // Which side is taken by surprise (the story says so outright). Absent: nobody, unless the ambush below catches the party.
   readonly surprised?: "party" | "foes";
+  // The fight breaks out by itself when all of this holds, on a round where the party acts: they are in this scene, the requirement is met,
+  // it is that time of day (needs a start time), and they have spent that many rounds here. Without it the fight starts only when an
+  // interaction or the Planner starts it. Use it for what happens on its own ("at midnight the scarecrow rises").
+  readonly schedule?: { readonly requires?: BibleRequirement; readonly time?: TimeOfDay; readonly afterRounds?: number };
   // The foes lie in wait: unless some hero's passive Perception reaches this, the party starts the fight surprised.
   readonly ambush?: { readonly dc: number };
   // Something dreadful as the fight breaks out: each hero saves (their own bonus), and one who fails is frightened until their first turn ends.
@@ -298,6 +317,7 @@ export function encounterSpec(encounter: BibleEncounter, bible?: AdventureBible)
     effects: trigger.effects.flatMap((effect, position) => fightEffectsOf(effect, `${id}:trigger${index}:${position}`, bible)),
   }));
   const onVictory = (encounter.onVictory ?? []).flatMap((effect, position) => withArrival(storyEffectOf(effect, `${id}:victory:${position}`, bible), bible));
+  const onDefeat = (encounter.onDefeat ?? []).flatMap((effect, position) => withArrival(storyEffectOf(effect, `${id}:defeat:${position}`, bible), bible));
   return {
     id,
     zones,
@@ -311,6 +331,7 @@ export function encounterSpec(encounter: BibleEncounter, bible?: AdventureBible)
     ...(reinforcements === undefined ? {} : { reinforcements }),
     ...(triggers.length === 0 ? {} : { triggers }),
     ...(onVictory.length === 0 ? {} : { onVictory }),
+    ...(onDefeat.length === 0 ? {} : { onDefeat }),
     ...(surprised === undefined ? {} : { surprised }),
     ...(ambush === undefined ? {} : { ambush }),
     ...(dread === undefined ? {} : { dread }),

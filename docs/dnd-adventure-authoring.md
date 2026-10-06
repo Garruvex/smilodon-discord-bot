@@ -23,6 +23,7 @@ interactions:
     requires: { flags: [gate-open], notFlags: [drunk], clues: [clue:well] }
     pay: 0                              # gold the hero pays
     attempts: 1                         # tries allowed (default one; failure is not freely retryable)
+    fallback: true                      # the engine may take this step for a stalled table (no roll, no fee) after about ten rounds of the table acting with no progress (rounds everyone passes are not counted)
     onSuccess: [{ kind: set, flag: refreshed }]
     onFailure:
       - { kind: hurt, count: 2, sides: 6, damageType: poison }   # dice decide; each rolling hero is hurt by their own failure
@@ -31,6 +32,26 @@ interactions:
 ```
 
 Anything the players try that is not listed is still planned by the model as before; interactions never limit play.
+
+A scene may be marked `ending: true`: the story can finish there. Mark every final scene, including a floor ending a table that fails everything
+can still reach. `npm run adventure:check -- <file>` checks the story contract (see `docs/dnd-adventure-conversion-guide.md`), and
+`docs/adventure-template.yaml` is a complete adventure to start from.
+
+An NPC may list what they will tell:
+
+```yaml
+npcs:
+  - id: npc:hag
+    secret: ...
+    tells:
+      - { clue: clue:grievance, topics: [curse, contract, 詛咒, 契約] }   # asking about any of these reveals the clue, no roll
+      - { clue: clue:the-way }                                           # no topics: any question to this NPC gives it
+```
+
+Asking is a free, no-roll route to the clue; the engine decides what is told and the narrator only voices it. The story contract counts it.
+
+A clue may be marked `free: true`: a nudge that is safe to hand over. When the table goes about eight rounds of acting without the story moving (passing rounds do not count), the engine gives the
+scene's next free clue. Any other clue may be the answer to something, so it is never handed over.
 
 ## Effects
 
@@ -72,6 +93,7 @@ encounters:
     monsters:
       - { monsterId: monster:awakened-shrub, zoneId: centre, npcId: npc:scarecrow }   # an NPC gives a reskinned monster its name
       - { monsterId: monster:goblin, zoneId: centre, stats: { hp: 20, armorClass: 15, toHit: 2, damage: 1 } }   # tougher or weaker than the SRD block
+    schedule: { requires: { clues: [clue:strikes-at-midnight] }, time: night, afterRounds: 2 }   # breaks out by itself (all parts optional; time needs a startTime)
     ambush: { dc: 13 }                  # foes lie in wait: the party is surprised unless a hero's passive Perception reaches this
     surprised: foes                     # or say outright who is surprised
     dread: { ability: wis, dc: 11 }     # every hero saves; one who fails is frightened until their first turn ends
@@ -82,7 +104,24 @@ encounters:
           - { kind: add, monsters: [...] }     # foes arrive
           - { kind: end }                      # a truce: the fight ends as a win
     onVictory: [{ kind: set, flag: settled }, { kind: goto, scene: scene:hut }]
+    onDefeat: [{ kind: goto, scene: scene:cell }]    # a lost fight still leaves the story a way on (the same kinds as onVictory)
 ```
+
+## Where it came from (provenance)
+
+An adventure converted from a source keeps a record of it, beside the story and never played or shown to the narrator:
+
+```yaml
+provenance:
+  references:                       # which passage each part came from
+    - { id: scene:cellar, passage: "Area 3, The Cellar (p. 12)" }
+    - { id: npc:warden, passage: "Appendix B, Warden Hale" }
+  omitted:                          # whatever the conversion could not keep, and why
+    - { item: "the flooded crypt below the cellar", reason: "needs a level 3 party" }
+```
+
+`references` ids must exist. The organizer sees the `omitted` list when reviewing the adventure. When you convert with the bot's Author, the
+notes it was given are stored as `provenance.source` exactly as written.
 
 ## What the engine keeps for itself
 

@@ -23,7 +23,7 @@ import { checkCompatibility, type ImportConflict } from "./library/compatibility
 import type { CharacterLibrary } from "./library/character-library.js";
 import { instantiateHero } from "./library/instantiate.js";
 import { raiseToLevel } from "../../domain/campaign/character/leveling.js";
-import { isFallen } from "../../domain/campaign/state/campaign-state.js";
+import { isFallen, levelForNewHero } from "../../domain/campaign/state/campaign-state.js";
 import { libraryHeroRef, savedSnapshotIdOf, type LibrarySnapshot } from "./library/library-types.js";
 import type { DerivedSheet } from "../../domain/campaign/character/character-build.js";
 import type { RulesetCatalog } from "./rules/ruleset-catalog.js";
@@ -436,7 +436,7 @@ export class CampaignLobbyService {
         await this.options.unitOfWork.transaction((tx) => tx.saveRecord(updated, loaded.stored!.revision));
         return ok(updated);
       }
-      const partyLevel = Math.max(1, ...Object.values(state.characters).filter((hero) => !isFallen(state, hero.id)).map((hero) => hero.level));
+      const partyLevel = levelForNewHero(state);
       const outcome = await this.options.bus.execute(key, { kind: "joinHero", sheet: raiseToLevel(joining, partyLevel), entrance: request.entrance ?? "A new companion joins the party." }, { commandId: `dnd:${interactionId}`, actor: { kind: "user", userId } });
       if (outcome.kind !== "accepted") return refused(outcome.kind === "notFound" ? "notFound" : "savedCharacterProblem");
       return this.finishOngoingJoin(key, userId, joining.id);
@@ -465,7 +465,7 @@ export class CampaignLobbyService {
       const isSaved = savedSnapshotIdOf(heroRef) !== null;
       const turn = prepared.value.id === heroRef ? 1 : Number(/-(\d+)$/.exec(prepared.value.id)?.[1] ?? 1);
       const joining = isSaved ? prepared.value : { ...prepared.value, id: `${heroRef}-${turn}`, name: turn >= 2 ? `${prepared.value.name} ${numerals[turn] ?? turn}` : prepared.value.name };
-      const partyLevel = Math.max(1, ...Object.values(state.characters).filter((hero) => !isFallen(state, hero.id)).map((hero) => hero.level));
+      const partyLevel = levelForNewHero(state);
       const outcome = await this.options.bus.execute(key, { kind: "joinHero", sheet: raiseToLevel(joining, partyLevel), entrance: arrival === undefined || arrival === "" ? "A new companion joins the party." : arrival }, { commandId: `dnd:${interactionId}`, actor: { kind: "user", userId } });
       if (outcome.kind !== "accepted") return refused(outcome.kind === "notFound" ? "notFound" : "savedCharacterProblem");
       // The lobby record keeps which hero the seat took (the preset or the saved hero), not the numbered character it became.
@@ -499,7 +499,7 @@ export class CampaignLobbyService {
               await this.returnQueuedJoinToApproval(record.key, userId, currentRequest.queueId);
               return false;
             }
-            const partyLevel = Math.max(1, ...Object.values(state.characters).filter((hero) => !isFallen(state, hero.id)).map((hero) => hero.level));
+            const partyLevel = levelForNewHero(state);
             const commandId = `dnd:queued-join:${currentRequest.queueId ?? currentRequest.expiresAt}`;
             const outcome = await this.options.bus.execute(record.key, { kind: "joinHero", sheet: raiseToLevel(currentRequest.queuedHero, partyLevel), entrance: currentRequest.entrance ?? "A new companion joins the party." }, { commandId, actor: { kind: "user", userId } });
             if (outcome.kind !== "accepted") {
@@ -548,7 +548,7 @@ export class CampaignLobbyService {
         + queuedIds.filter((id) => id === preset.id || id.startsWith(`${preset.id}-`)).length;
       sheet = { ...rest, id: used === 0 ? preset.id : `${preset.id}-${used + 1}`, className, ownerUserId: userId };
     }
-    const partyLevel = Math.max(1, ...Object.values(state.characters).filter((hero) => !isFallen(state, hero.id)).map((hero) => hero.level));
+    const partyLevel = levelForNewHero(state);
     if (sheet.level > partyLevel) return refused("savedCharacterProblem");
     return ok(sheet);
   }

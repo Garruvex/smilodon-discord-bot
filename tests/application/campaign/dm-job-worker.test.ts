@@ -12,7 +12,8 @@ import type { CampaignKey } from "../../../src/application/campaign/ports/campai
 import { SeededRandomSource } from "../../../src/application/campaign/random/seeded-random-source.js";
 import { RulesetCatalog } from "../../../src/application/campaign/rules/ruleset-catalog.js";
 import { ManualClock } from "../../../src/application/campaign/time/manual-clock.js";
-import { DmJobWorker } from "../../../src/application/campaign/workers/dm-job-worker.js";
+import { DmJobWorker, type DmJobWorkerOptions } from "../../../src/application/campaign/workers/dm-job-worker.js";
+import type { CampaignNarrationAuditor } from "../../../src/application/campaign/ports/dm-ports.js";
 import { RollWorker } from "../../../src/application/campaign/workers/roll-worker.js";
 import { enSrd51Glossary } from "../../../src/application/i18n/campaign/glossary/en/srd-5.1.js";
 import { zhTwSrd51Glossary } from "../../../src/application/i18n/campaign/glossary/zh-TW/srd-5.1.js";
@@ -70,7 +71,7 @@ interface Table {
   readonly narrator: ScriptedNarrator;
 }
 
-async function table(planner: ScriptedPlanner, narrator: ScriptedNarrator, state = startState()): Promise<Table> {
+async function table(planner: ScriptedPlanner, narrator: ScriptedNarrator, state = startState(), extra: Partial<DmJobWorkerOptions> = {}): Promise<Table> {
   const store = new InMemoryCampaignStore();
   const clock = new ManualClock(0);
   const content = ruleset().content;
@@ -91,6 +92,7 @@ async function table(planner: ScriptedPlanner, narrator: ScriptedNarrator, state
     adventures: { find: (id, version): AdventureBible | undefined => (id === testBible.id && version === testBible.version ? testBible : undefined) },
     glossaries: { en: enSrd51Glossary, "zh-TW": zhTwSrd51Glossary },
     maxAttempts: 2,
+    ...extra,
   });
   const rolls = new RollWorker(store, bus, new SeededRandomSource(4), clock);
   return { store, bus, worker, rolls, planner, narrator };
@@ -233,54 +235,82 @@ describe("DmJobWorker", () => {
     expect(stored?.state.round?.status).toBe("resolving");
   });
 
-  it("tries a failed plan again later, then holds the round for the organizer, applying nothing", async () => {
+  it("tries a failed plan again later, then plans the round without the model so play is never held", async () => {
     const planner = new ScriptedPlanner([offLadder, new Error("provider timeout"), offLadder, new Error("provider timeout")]);
     const { store, bus, worker } = await table(planner, new ScriptedNarrator([]));
     await closeRoundOne(bus);
-    // The first try fails and the job is queued again; the round is not held yet.
+    // The first try fails and the job is queued again; the round is not planned yet.
     expect(await worker.runOnce()).toMatchObject({ processed: 0, failed: [{ id: expect.any(String) as string, error: "The planner failed: The planner call failed: provider timeout" }] });
-    expect((await events(store)).some((event) => event.kind === "plannerFailed")).toBe(false);
+    expect((await events(store)).some((event) => event.kind === "roundPlanApplied")).toBe(false);
     expect(await worker.runOnce()).toEqual({ processed: 1, failed: [] });
 
+    // Only the last try falls back: a plain plan with no story effect, so the organizer is not asked to step in.
     const log = await events(store);
-    expect(log.at(-1)).toEqual({ kind: "plannerFailed", roundNumber: 1, problems: ["The planner call failed: provider timeout"] });
-    expect(log.some((event) => event.kind === "roundPlanApplied")).toBe(false);
-    const deliveries = await store.transaction((tx) => tx.pendingOutbox("deliver"));
-    expect(deliveries.map((item) => item.request)).toContainEqual({
-      kind: "deliver",
-      delivery: { kind: "organizerNotice", notice: "plannerFailed", roundNumber: 1 },
-    });
-
-    // The organizer's retry queues a fresh planner job.
-    planner.requests.length = 0;
-    const retry = new ScriptedPlanner([sneak]);
-    await bus.execute(key, { kind: "retryPlan" }, { commandId: "retry", actor: organizer });
-    const retried = new DmJobWorker({
-      unitOfWork: store,
-      bus,
-      planner: retry,
-      narrator: new ScriptedNarrator([]),
-      adventures: { find: (): AdventureBible => testBible },
-      glossaries: { en: enSrd51Glossary },
-    });
-    await retried.runOnce();
-    expect(retry.requests[0]?.previousProblems).toEqual(["The planner call failed: provider timeout"]);
-    expect((await store.transaction((tx) => tx.loadCampaign(key)))?.state.round?.status).toBe("resolving");
+    expect(log.some((event) => event.kind === "roundPlanApplied")).toBe(true);
+    expect(log.some((event) => event.kind === "plannerFailed")).toBe(false);
   });
 
-  it("carries validation feedback into an organizer retry so the round can reach its roll", async () => {
-    const planner = new ScriptedPlanner([offLadder, offLadder, offLadder, offLadder, sneak]);
+  it("plans the round without the model when it keeps proposing invalid plans", async () => {
+    const planner = new ScriptedPlanner([offLadder, offLadder, offLadder, offLadder]);
     const { store, bus, worker } = await table(planner, new ScriptedNarrator([]));
     await closeRoundOne(bus);
     await worker.runOnce();
     await worker.runOnce();
-    expect((await store.transaction((tx) => tx.loadCampaign(key)))?.state.round?.status).toBe("planning");
-    await bus.execute(key, { kind: "retryPlan" }, { commandId: "retry-validation", actor: organizer });
-    await worker.runOnce();
-    expect(planner.requests[4]?.previousProblems).toEqual(['c-mira: DC tier "tricky" is not on the ladder.']);
-    const state = (await store.transaction((tx) => tx.loadCampaign(key)))?.state;
-    expect(state?.round?.status).toBe("resolving");
-    expect(state?.checks["r1:c-mira"]?.status).toBe("pending");
+    const log = await events(store);
+    expect(log.some((event) => event.kind === "roundPlanApplied")).toBe(true);
+    expect(log.some((event) => event.kind === "plannerFailed")).toBe(false);
+  });
+
+  describe("reading each telling against what the adventure established", () => {
+    const automatic = (): ScriptedPlanner => new ScriptedPlanner([{ roundNumber: 1, actions: [{ characterId: "c-mira", resolution: { kind: "automatic", reason: "No one is looking." } }] }]);
+    const auditor = (answers: (string[] | Error)[]): { audited: string[]; auditor: CampaignNarrationAuditor } => {
+      const audited: string[] = [];
+      return { audited, auditor: { audit: (request) => { audited.push(request.text); const answer = answers.shift() ?? []; return answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer); } } };
+    };
+
+    it("lets an honest line through untouched", async () => {
+      const narrator = new ScriptedNarrator([{ text: "Mira slips by the guard.", note: "" }]);
+      const watch = auditor([[]]);
+      const { store, bus, worker } = await table(automatic(), narrator, startState(), { auditor: watch.auditor });
+      await closeRoundOne(bus);
+      await worker.runOnce();
+      await worker.runOnce();
+      expect(watch.audited).toEqual(["Mira slips by the guard."]);
+      expect(narrator.requests).toHaveLength(1);
+      expect((await events(store)).filter((event) => event.kind === "narrationRecorded")).toHaveLength(1);
+    });
+
+    it("tells a line again, once, without what it invented", async () => {
+      const narrator = new ScriptedNarrator([{ text: "Mira pockets a silver coin.", note: "" }, { text: "Mira slips by the guard.", note: "" }]);
+      const watch = auditor([["a silver coin"], []]);
+      const { store, bus, worker } = await table(automatic(), narrator, startState(), { auditor: watch.auditor });
+      await closeRoundOne(bus);
+      await worker.runOnce();
+      await worker.runOnce();
+      expect(narrator.requests[1]?.avoid).toEqual(["a silver coin"]);
+      expect(await events(store)).toContainEqual({ kind: "narrationRecorded", roundNumber: 1, text: "Mira slips by the guard." });
+    });
+
+    it("uses the plain line when the second telling still invents", async () => {
+      const narrator = new ScriptedNarrator([{ text: "A silver coin.", note: "" }, { text: "A gold ring.", note: "" }]);
+      const watch = auditor([["a silver coin"], ["a gold ring"]]);
+      const { store, bus, worker } = await table(automatic(), narrator, startState(), { auditor: watch.auditor });
+      await closeRoundOne(bus);
+      await worker.runOnce();
+      await worker.runOnce();
+      expect(await events(store)).toContainEqual({ kind: "narrationRecorded", roundNumber: 1, text: "Mira: I sneak past Garrick." });
+    });
+
+    it("tries again when the auditor fails, and on the last try uses the plain line rather than one it could not check", async () => {
+      const narrator = new ScriptedNarrator([{ text: "Mira slips by the guard.", note: "" }, { text: "Mira slips by the guard.", note: "" }]);
+      const watch = auditor([new Error("503"), new Error("503")]);
+      const { store, bus, worker } = await table(automatic(), narrator, startState(), { auditor: watch.auditor });
+      await closeRoundOne(bus);
+      await worker.runOnce();
+      expect(await worker.runOnce()).toMatchObject({ processed: 0, failed: [{ error: "503" }] });
+      expect(await worker.runOnce()).toEqual({ processed: 1, failed: [] });
+      expect(await events(store)).toContainEqual({ kind: "narrationRecorded", roundNumber: 1, text: "Mira: I sneak past Garrick." });
+    });
   });
 
   it("falls back to template narration when the Narrator keeps failing, so play continues", async () => {
@@ -484,6 +514,19 @@ describe("the opening", () => {
     await t.bus.execute(key, { kind: "ready" }, { commandId: "r1", actor: alex });
     await t.bus.execute(key, { kind: "ready" }, { commandId: "r2", actor: jamie });
     expect((await t.store.transaction((tx) => tx.loadCampaign(key)))?.state).toMatchObject({ opening: "done", round: { number: 1, status: "collecting" } });
+  });
+
+  it("reads the opening against the adventure too, and opens from the adventure's own text when it invents", async () => {
+    const narrator = new ScriptedNarrator([{ text: "The innkeeper hands you a silver key. What do you do?" }, { text: "The innkeeper hands you a gold key. What do you do?" }]);
+    const audited: string[] = [];
+    const auditor = { audit: (request: { kind: string; text: string }) => { audited.push(`${request.kind}: ${request.text}`); return Promise.resolve(["a key"]); } };
+    const t = await table(new ScriptedPlanner([]), narrator, startState(), { auditor });
+    await t.bus.execute(key, { kind: "beginAdventure" }, { commandId: "b1", actor: system });
+    await t.worker.runOnce();
+    expect(audited[0]).toMatch(/^opening: /);
+    expect(narrator.requests[1]?.avoid).toEqual(["a key"]);
+    const opening = (await events(t.store)).find((event) => event.kind === "openingRecorded");
+    expect(opening?.kind === "openingRecorded" ? opening.text : "").toContain(testBible.premise);
   });
 
   it("falls back to the adventure's own text when the Narrator keeps failing, so the table can start", async () => {
