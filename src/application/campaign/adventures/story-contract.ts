@@ -51,7 +51,8 @@ const met = (requires: BibleRequirement | undefined, progress: Progress): boolea
 const hasRoutes = (bible: AdventureBible): boolean => bible.scenes.some((scene) => scene.exits !== undefined);
 
 // Whether an interaction is certain to apply by itself: no roll, nothing to pay.
-const certain = (interaction: BibleInteraction): boolean => interaction.check === null && interaction.pay === 0;
+// A fallback step happens anyway when the table stalls, so it counts as certain whatever it would otherwise roll or cost.
+const certain = (interaction: BibleInteraction): boolean => interaction.fallback === true || (interaction.check === null && interaction.pay === 0);
 
 function apply(bible: AdventureBible, progress: Progress, effects: readonly BibleEffect[], mode: Mode, depth = 0): boolean {
   let changed = false;

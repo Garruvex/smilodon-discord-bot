@@ -104,6 +104,9 @@ export interface BibleInteraction {
   readonly onFailure: readonly BibleEffect[];
   // Extra results for a roll that reaches a higher total; each tier's effects join the success ones. Ascending by dc.
   readonly tiers: readonly { readonly dc: number; readonly effects: readonly BibleEffect[] }[];
+  // If the table stalls (rounds pass and the story does not move), the engine may take this step for them, with no roll and no fee. Only an
+  // adventure can authorize that, so nobody is moved against what the story established.
+  readonly fallback?: boolean;
 }
 
 export const interactionsOf = (bible: AdventureBible): readonly BibleInteraction[] => bible.interactions ?? [];

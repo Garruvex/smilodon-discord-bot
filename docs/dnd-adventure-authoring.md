@@ -23,6 +23,7 @@ interactions:
     requires: { flags: [gate-open], notFlags: [drunk], clues: [clue:well] }
     pay: 0                              # gold the hero pays
     attempts: 1                         # tries allowed (default one; failure is not freely retryable)
+    fallback: true                      # the engine may take this step for a stalled table (no roll, no fee) after about nine rounds with no progress
     onSuccess: [{ kind: set, flag: refreshed }]
     onFailure:
       - { kind: hurt, count: 2, sides: 6, damageType: poison }   # dice decide; each rolling hero is hurt by their own failure

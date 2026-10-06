@@ -48,11 +48,15 @@ forward, and write down the way forward *when things go badly*.
    (arrival effect or an automatic interaction). Put a better version behind a roll if you like.
 7. **Schedule time-based events.** If something happens "at midnight" or "when the alarm sounds", do not rely on a player saying "I wait". Say it
    in a clue the table learns for free, and (once the engine supports it) start it from the scene's arrival or a clock, never from a request.
-8. **Make failure a branch, not a wall.** A lost negotiation can lead to the fight. A failed search can cost time. A failed lock can be broken,
+8. **Name the step the engine may take for a stuck table.** On each point where the story could stall, mark ONE interaction `fallback: true`: the step
+   a patient guide would simply let happen. If the table goes about nine rounds without the story moving, the engine takes that step for them with no
+   roll and no fee (after a hint at three rounds and a free clue at six). Only an adventure can authorize this, so choose steps that do not take
+   away a choice the story established (reading the rune, opening the gate, the elder finally speaking) and never one that decides an ending.
+9. **Make failure a branch, not a wall.** A lost negotiation can lead to the fight. A failed search can cost time. A failed lock can be broken,
    noisily. The story continues; it just gets harder.
-9. **Add a floor ending.** If the party fails everything, there is still a scene that closes the story (the village suffers, the culprit escapes,
+10. **Add a floor ending.** If the party fails everything, there is still a scene that closes the story (the village suffers, the culprit escapes,
    the festival goes on without them). Mark it `ending: true`.
-10. **Run the checker and fix what it says.** Then read the warnings.
+11. **Run the checker and fix what it says.** Then read the warnings.
 
 ## Do not invent
 

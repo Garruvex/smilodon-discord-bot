@@ -112,6 +112,7 @@ const interactionSchema = z
     requires: requirementSchema.default({}),
     pay: z.number().int().min(0).max(100_000).default(0),
     attempts: z.number().int().min(1).max(10).default(1),
+    fallback: z.boolean().optional(),
     onSuccess: z.array(effectSchema).default([]),
     onFailure: z.array(effectSchema).default([]),
     tiers: z.array(z.object({ dc: z.number().int().min(2).max(30), effects: z.array(effectSchema).min(1) }).strict()).default([]),

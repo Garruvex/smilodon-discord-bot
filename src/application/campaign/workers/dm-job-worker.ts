@@ -15,6 +15,7 @@ import { encounterRecords } from "../dm/combat-records.js";
 import { checkLabel, roundRecords } from "../dm/round-records.js";
 import { fallbackPlan } from "../dm/fallback-planner.js";
 import { tellsFor } from "../dm/npc-tells.js";
+import { defaultStall, directPlan, openLead, plainLabel, stalledRounds, stallLevel, type StallConfig } from "../dm/stall-director.js";
 import { plannerStory, resolveStoryEffects } from "../dm/story-effects.js";
 import type { RuntimeLogger } from "../campaign-runtime.js";
 import type { CampaignKey, CampaignUnitOfWork, OutboxItem, StoredCampaign } from "../ports/campaign-store.js";
@@ -30,6 +31,7 @@ import type {
   HazardNarratorRequest,
   NarratedOutcome,
   NarratorRequest,
+  PlannerProposal,
   PlannerRequest,
   TradeNarratorRequest,
   UtilityCastNarratorRequest,
@@ -54,6 +56,8 @@ export interface DmJobWorkerOptions {
   readonly random?: () => number;
   // Where a failed planning attempt is written, so the reason is not lost with the organizer notice.
   readonly logger?: RuntimeLogger;
+  // How patient the story is with a table that is not making progress (rounds before a hint, a free clue, the adventure's fallback step). Default 3, 6, 9; false turns it off.
+  readonly stall?: StallConfig | false;
 }
 
 const system = { kind: "system" } as const;
@@ -143,7 +147,8 @@ export class DmJobWorker {
       try {
         const proposal = await this.options.planner.plan(requestFor(problems));
         const wallet = loaded.stored.ruleset.houseRules[lootGold.id] === "split" ? "hero" : "pool";
-        const resolved = resolveStoryEffects(proposal, loaded.bible, loaded.stored.state, { wallet, ...(this.options.random === undefined ? {} : { random: this.options.random }) });
+        const directed = this.direct(loaded, proposal);
+        const resolved = resolveStoryEffects(directed.proposal, directed.bible, loaded.stored.state, { wallet, ...(this.options.random === undefined ? {} : { random: this.options.random }) });
         if (resolved.kind === "invalid") {
           problems = resolved.problems;
           this.options.logger?.warn({ campaignId: item.key.campaignId, roundNumber, attempt, problems }, "Planner proposal was invalid");
@@ -168,7 +173,8 @@ export class DmJobWorker {
     // The round is not held for the organizer: it is planned without the model (plain, and only what the adventure already wrote), as a
     // narrator outage already is. Only if even that plan is refused does the round wait for the organizer.
     const wallet = loaded.stored.ruleset.houseRules[lootGold.id] === "split" ? "hero" : "pool";
-    const plain = resolveStoryEffects(fallbackPlan(requestFor([])), loaded.bible, loaded.stored.state, { wallet, ...(this.options.random === undefined ? {} : { random: this.options.random }) });
+    const plainPlan = this.direct(loaded, fallbackPlan(requestFor([])));
+    const plain = resolveStoryEffects(plainPlan.proposal, plainPlan.bible, loaded.stored.state, { wallet, ...(this.options.random === undefined ? {} : { random: this.options.random }) });
     if (plain.kind === "resolved") {
       const outcome = await this.options.bus.execute(item.key, { kind: "applyRoundPlan", proposal: plain.proposal }, { commandId: `${item.id}:${item.attempts}:plan:fallback`, actor: system });
       if (outcome.kind !== "rejected" || outcome.rejection.code !== "invalidPlan") {
@@ -589,7 +595,17 @@ export class DmJobWorker {
     }
     const spotlight = [...(record?.passed ?? []), ...(record?.missed ?? [])].map(nameOf);
     const threat = findEncounter(loaded.bible, state.pendingEncounter?.id ?? null)?.publicDescription ?? null;
-    return { context: this.context("narrator", loaded), language: state.language, roundNumber, outcomes, spotlight, threat };
+    // A table that keeps circling is nudged toward something the scene has ready (the first step of the director).
+    const lead = this.options.stall === false || stallLevel(stalledRounds(loaded.events), this.options.stall ?? defaultStall) < 1 ? undefined : openLead(loaded.bible, state);
+    return { context: this.context("narrator", loaded), language: state.language, roundNumber, outcomes, spotlight, threat, ...(lead === undefined ? {} : { nudge: plainLabel(lead.label) }) };
+  }
+
+  // The stall director's step for this round (see dm/stall-director.ts), logged when it acts.
+  private direct(loaded: Loaded, proposal: PlannerProposal): { readonly proposal: PlannerProposal; readonly bible: Loaded["bible"] } {
+    if (this.options.stall === false) return { proposal, bible: loaded.bible };
+    const level = stallLevel(stalledRounds(loaded.events), this.options.stall ?? defaultStall);
+    if (level >= 2) this.options.logger?.warn({ level, sceneId: loaded.stored.state.sceneId }, "The table has stalled; the stall director is helping");
+    return directPlan(proposal, loaded.bible, loaded.stored.state, level);
   }
 
   private glossary(loaded: Loaded): Glossary {

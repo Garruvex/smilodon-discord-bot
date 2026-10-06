@@ -101,6 +101,8 @@ export interface NarratorRequest {
   // Set for the adventure's opening, told before the first round (round 0, no
   // outcomes): the heroes to introduce as the party.
   readonly opening?: { readonly heroes: readonly { readonly name: string; readonly className: string | null }[] };
+  // The table has gone several rounds without the story moving: something the scene has ready, in the players' words, for the narration to point at.
+  readonly nudge?: string;
 }
 
 // One combat round's flourish, or (final) the fight's closing narration

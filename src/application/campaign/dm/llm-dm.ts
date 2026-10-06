@@ -317,6 +317,9 @@ export function buildNarratorPrompt(request: NarratorRequest): { system: string;
     "Never write dialogue, choices, or feelings for the heroes; describe what they did and what the world does in response. NPCs may speak in their voice.",
     "When a decision is needed, end with a concrete opportunity to act grounded in the adventure or resolved outcomes. Ask a question when helpful; a clear situation can speak for itself. Avoid repeating a generic 'What do you do?' every round. Invite the listed quiet heroes by name without choosing an action or feeling for them.",
   ].join("\n");
+  const stalled = request.nudge === undefined
+    ? ""
+    : `\nThe table has been circling without the story moving. End the narration with one concrete, natural thing in the scene that invites this kind of action, in the world's own terms: "${request.nudge}". Never present it as a choice, a game option, a skill, or a check, and do not say it is a hint.`;
   const outcomes = request.outcomes.map((outcome) => `- ${describeOutcome(outcome)}`).join("\n");
   const spotlight = request.spotlight.length > 0 ? `\nQuiet heroes to invite: ${request.spotlight.join(", ")}.` : "";
   const threat =
@@ -324,7 +327,7 @@ export function buildNarratorPrompt(request: NarratorRequest): { system: string;
       ? ""
       : `\nA fight breaks out right after this: ${request.threat} End on the fight erupting instead of a question; do not describe any attacks.`;
   return {
-    ...splitPrompt(request.context, rules, `Round ${request.roundNumber} outcomes:\n${outcomes || "- Nobody acted."}${spotlight}${threat}`),
+    ...splitPrompt(request.context, rules, `Round ${request.roundNumber} outcomes:\n${outcomes || "- Nobody acted."}${spotlight}${threat}${stalled}`),
   };
 }
 

@@ -108,6 +108,7 @@ interactions:
     sceneId: scene:square
     label: Study the old rune on the well's rim
     dmNotes: No roll. Reveals the way into the shrine.
+    fallback: true                           # if the table stalls (about nine rounds with no progress), the engine takes THIS step for them
     onSuccess:
       - { kind: reveal, clue: clue:rune }
       - { kind: set, flag: door-open }       # the free key to the gate in scene:well-shaft
