@@ -346,6 +346,9 @@ export class Application {
       void this.memberWelcomeService.handleMemberJoin(member).catch((error: unknown) => {
         this.logger.error({ error, guildId: member.guild.id, userId: member.id }, "Unable to process member join");
       });
+      void this.dependencies.raidService.handleJoin(member).catch((error: unknown) => {
+        this.logger.error({ error, guildId: member.guild.id, userId: member.id }, "Unable to check a join for a raid");
+      });
     });
 
     this.client.on(Events.GuildMemberRemove, (member) => {

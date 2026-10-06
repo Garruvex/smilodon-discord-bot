@@ -1,4 +1,5 @@
 import type { Language } from "../application/i18n/language.js";
+import type { LinkAction, RaidAction, SecurityWindow } from "../domain/security/detection-policy.js";
 import type { TrapAction, TrapDeleteWindow, TrapTimeoutDuration } from "../domain/security/trap-policy.js";
 import type { GuildConfiguration, LinkFixPlatform, ProgressBarSettings } from "./guild-configuration.js";
 import {
@@ -101,6 +102,26 @@ export interface UpdateGuildConfigurationInput {
   trapTimeout?: TrapTimeoutDuration;
   securityExemptRoleIds?: readonly string[];
   securityLogChannelId?: string | null;
+  spamEnabled?: boolean;
+  spamChannels?: number;
+  spamWindow?: SecurityWindow;
+  spamAction?: TrapAction;
+  spamDeleteWindow?: TrapDeleteWindow;
+  spamTimeout?: TrapTimeoutDuration;
+  linksEnabled?: boolean;
+  linksAction?: LinkAction;
+  linksDeleteWindow?: TrapDeleteWindow;
+  linksTimeout?: TrapTimeoutDuration;
+  linksBlockedDomains?: readonly string[];
+  linksAllowedDomains?: readonly string[];
+  linksSuspicious?: boolean;
+  linksInvites?: boolean;
+  raidEnabled?: boolean;
+  raidJoins?: number;
+  raidWindow?: SecurityWindow;
+  raidAction?: RaidAction;
+  raidAccountAgeDays?: number;
+  raidTimeout?: TrapTimeoutDuration;
 }
 
 export interface CreateGuildConfigurationInput {
@@ -367,5 +388,25 @@ export function applyGuildConfigurationUpdate(
   if (input.trapTimeout !== undefined) next.security.trap.timeout = input.trapTimeout;
   if (input.securityExemptRoleIds !== undefined) next.security.exemptRoleIds = [...input.securityExemptRoleIds];
   if (input.securityLogChannelId !== undefined) next.security.logChannelId = input.securityLogChannelId;
+  if (input.spamEnabled !== undefined) next.security.spam.enabled = input.spamEnabled;
+  if (input.spamChannels !== undefined) next.security.spam.channels = input.spamChannels;
+  if (input.spamWindow !== undefined) next.security.spam.window = input.spamWindow;
+  if (input.spamAction !== undefined) next.security.spam.action = input.spamAction;
+  if (input.spamDeleteWindow !== undefined) next.security.spam.deleteWindow = input.spamDeleteWindow;
+  if (input.spamTimeout !== undefined) next.security.spam.timeout = input.spamTimeout;
+  if (input.linksEnabled !== undefined) next.security.links.enabled = input.linksEnabled;
+  if (input.linksAction !== undefined) next.security.links.action = input.linksAction;
+  if (input.linksDeleteWindow !== undefined) next.security.links.deleteWindow = input.linksDeleteWindow;
+  if (input.linksTimeout !== undefined) next.security.links.timeout = input.linksTimeout;
+  if (input.linksBlockedDomains !== undefined) next.security.links.blockedDomains = [...input.linksBlockedDomains];
+  if (input.linksAllowedDomains !== undefined) next.security.links.allowedDomains = [...input.linksAllowedDomains];
+  if (input.linksSuspicious !== undefined) next.security.links.suspicious = input.linksSuspicious;
+  if (input.linksInvites !== undefined) next.security.links.invites = input.linksInvites;
+  if (input.raidEnabled !== undefined) next.security.raid.enabled = input.raidEnabled;
+  if (input.raidJoins !== undefined) next.security.raid.joins = input.raidJoins;
+  if (input.raidWindow !== undefined) next.security.raid.window = input.raidWindow;
+  if (input.raidAction !== undefined) next.security.raid.action = input.raidAction;
+  if (input.raidAccountAgeDays !== undefined) next.security.raid.accountAgeDays = input.raidAccountAgeDays;
+  if (input.raidTimeout !== undefined) next.security.raid.timeout = input.raidTimeout;
   return guildConfigurationFileSchema.parse(next);
 }

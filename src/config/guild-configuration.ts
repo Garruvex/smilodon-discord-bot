@@ -1,4 +1,5 @@
 import type { Language } from "../application/i18n/language.js";
+import type { LinkConfiguration, RaidConfiguration, SpamConfiguration } from "../domain/security/detection-policy.js";
 import type { TrapConfiguration } from "../domain/security/trap-policy.js";
 
 // The top-level features, in display order. GuildFeatureConfiguration also
@@ -212,6 +213,12 @@ export interface GuildSecurityConfiguration {
   // A channel that no member has a reason to post in: whoever does is a
   // compromised account or a spam bot, and is dealt with automatically.
   trap: TrapConfiguration;
+  // The same message posted across several channels in moments.
+  spam: SpamConfiguration;
+  // Links to hosts that are blocked, or look made to deceive.
+  links: LinkConfiguration;
+  // Many accounts joining at once.
+  raid: RaidConfiguration;
   // Roles never actioned by any security feature (moderators, trusted bots).
   exemptRoleIds: readonly string[];
   // Where security actions are reported. Unset falls back to the audit log.

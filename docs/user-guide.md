@@ -363,6 +363,9 @@ no real member has a reason to use gives them away.
 | `/settings-security create-channel` | Makes a channel with an ordinary name (like `general-2`), puts it last in the list, and posts a notice in English, 繁體中文 and 日本語 telling members not to post there. Needs Manage Channels. |
 | `/settings-security use-channel <channel>` | Uses a channel you already have instead, and posts the same notice (run it again to repost). |
 | `/settings-security trap [enabled] [channel] [action] [delete-history] [timeout-duration]` | Turns the trap on (it needs a channel), and sets what happens to whoever posts there: **time out** (default, 28 days), **kick** or **ban**. `delete-history` also removes their other messages from the last 10 minutes, 30 minutes or hour (default 1 hour), or only the one in the trap channel when off. |
+| `/settings-security spam [enabled] [channels] [window] [action] [delete-history] [timeout-duration]` | Catches the same message posted in `channels` different channels (default 3) within `window` (default 1 minute). It is judged by repetition alone, so it works for a scam in any language or one that is just a picture. Removes every copy, then acts (default **time out for 1 day**). |
+| `/settings-security links [enabled] [action] [blocked-domains] [allowed-domains] [suspicious] [invites] [delete-history] [timeout-duration]` | Removes messages with a link to a blocked site, a lookalike of a well-known brand (`discord-nitro-free.com`, `disc0rd.gift`), a mixed-alphabet address, or a raw IP link (`suspicious`, on by default), and optionally invites to other Discord servers (`invites`). `action` is **delete** (default, only the message), or also time out, kick or ban. `blocked-domains` / `allowed-domains` take names separated by commas or spaces; type `none` to empty one. An allowed site is never refused. |
+| `/settings-security raid [enabled] [joins] [window] [action] [account-age-days] [timeout-duration]` | Notices `joins` members joining within `window` (default 10 in 30 seconds) and tells the log channel. `action` is **alert** (default, touches no one) or time out, kick or ban the joiners: everyone in the burst and each later joiner while it lasts. With `account-age-days` above 0, only accounts newer than that are actioned. |
 | `/settings-security exempt [add-/remove-roles]` | Roles that are never actioned. |
 | `/settings-security log [channel] [clear-channel]` | Where actions are reported, in the server's language. Unset uses the audit-log channel; with neither, nothing is reported. |
 | `/settings-security status` | Checks that it can work: the channel exists and everyone can post there, and the bot has the permission the action needs. |
@@ -370,6 +373,15 @@ no real member has a reason to use gives them away.
 The trap channel has to stay visible to everyone. A hidden channel is hidden
 from a hacked account too, so it would catch nothing; the notice and its place
 at the bottom of the list keep real members out of it.
+
+Link inspection judges a link by its name alone. It never opens or looks up a
+link, so nothing a member posts leaves the bot. Names are matched narrowly on
+purpose: `discord.com`, `discord.gift`, `discordapp.com`, `discord.js.org` and
+Steam's own sites are never called lookalikes, a bare word like `discord.js` in
+a sentence is not a link, and a wholly Chinese or Japanese address is never
+"mixed-alphabet". If a legitimate site is caught, add it to `allowed-domains`.
+Raid protection logs once when a raid starts; joiners it actions after that are
+not logged one by one.
 
 Never actioned, whatever you configure: bots and webhooks, the server owner,
 Bot Administrators, your exempt roles, and anyone with Administrator, Manage
