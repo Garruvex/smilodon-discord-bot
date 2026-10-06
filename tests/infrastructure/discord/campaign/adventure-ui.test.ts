@@ -259,17 +259,11 @@ class Scripted implements StructuredModelClient {
   }
 }
 
+// What a model would reply: the template adventure as YAML in one string (no heroes, version or language), which passes the checks and the story contract.
 function modelReply(): string {
-  const { version: _v, language: _l, ...story } = starter.en.bible;
-  return JSON.stringify({
-    ...story,
-    id: "the-lost-chapel",
-    npcs: story.npcs.map(({ shop: _shop, ...npc }) => npc),
-    encounters: story.encounters.map((encounter) => ({
-      ...encounter,
-      monsters: encounter.monsters.map((monster) => ({ monsterId: monster.monsterId, zoneId: monster.zoneId, npcId: monster.npcId ?? null, fleeBelowHpFraction: monster.fleeBelowHpFraction ?? null })),
-    })),
-  });
+  const text = readFileSync(new URL("../../../../docs/adventure-template.yaml", import.meta.url), "utf8").replaceAll(String.fromCharCode(13, 10), String.fromCharCode(10));
+  const story = text.slice(0, text.indexOf(String.fromCharCode(10) + "heroes:")).replace("id: template-adventure", "id: the-lost-chapel").split(String.fromCharCode(10)).filter((row) => !row.startsWith("version:") && !row.startsWith("language:")).join(String.fromCharCode(10));
+  return JSON.stringify({ yaml: story });
 }
 
 describe("the adventure commands", () => {
@@ -342,7 +336,7 @@ describe("the adventure commands", () => {
     expect(long.replies.at(-1)?.content).toContain("Keep the idea under 2000 characters");
 
     const failing = fakeCommand({ idea: "x" });
-    await intakeFor(new Scripted(["not json", "not json"])).intake.author(failing.interaction);
+    await intakeFor(new Scripted(["not json", "not json", "not json"])).intake.author(failing.interaction);
     expect(failing.replies.at(-1)?.content).toContain("could not write an adventure that passes the checks");
 
     const down = fakeCommand({ idea: "x" });
