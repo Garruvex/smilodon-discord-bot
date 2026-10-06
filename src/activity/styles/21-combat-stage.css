@@ -264,3 +264,11 @@ body[data-game-kind="table"]:has(#live-screen:not([hidden])):has(.encounter-boar
 .encounter-board .encounter-terrain { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin: 6px 0 14px; }
 .encounter-board .terrain-tag { padding: 2px 8px; border: 1px solid #b59c70; border-radius: 999px; background: #fffaf0b3; color: #4b3d2a; font: 700 10.5px/1.4 var(--sans); }
 .encounter-board .terrain-tag.is-difficult { border-color: #a3584a; background: #f6ddd2; color: #7a2f25; }
+
+/* On the party rail: a pulsing amber dot for who is still thinking, a green check for who has finished. */
+.party-rail .rail-mark { position: absolute; right: -3px; bottom: -3px; display: grid; place-items: center; width: 14px; height: 14px; border: 2px solid var(--stage-stone); border-radius: 50%; background: #d98c2b; }
+.party-rail .rail-hero[data-turn="finished"] .rail-mark { background: #79ad5c; }
+.party-rail .rail-hero[data-turn="finished"] .rail-mark::before { content: "\2713"; color: #1f2a1a; font: 700 9px/1 var(--sans); }
+.party-rail .rail-hero[data-turn="thinking"] .rail-mark { animation: rail-think 1.4s ease-in-out infinite; }
+@keyframes rail-think { 50% { transform: scale(1.3); box-shadow: 0 0 0 4px #d98c2b55; } }
+@media (prefers-reduced-motion: reduce) { .party-rail .rail-hero[data-turn="thinking"] .rail-mark { animation: none; } }

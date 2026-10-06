@@ -1,6 +1,7 @@
 import { app } from "./state.js";
 import { iconImage, setArtwork } from "./dom.js";
 import { t } from "./i18n.js";
+import { partyStatusText } from "./party.js";
 import { buildStoryFeed, buildStoryStrip, onStoryNews, resetStory, retranslateStory, storyOpened } from "./story.js";
 
 // The party, the map and the story sit in panels that slide in from the edge of the screen, each with a tab on its edge. They are built once,
@@ -160,7 +161,13 @@ function paintPartyRail(game) {
     if (hero.isYou) button.classList.add("is-you");
     const share = hero.maxHp > 0 ? Math.max(0, Math.min(100, Math.round(hero.hp / hero.maxHp * 100))) : 0;
     button.style.setProperty("--hp", `${share}%`);
-    button.title = `${hero.name} · ${hero.hp} / ${hero.maxHp}`;
+    // Who is still thinking (their turn now, or in a scene not yet in) and who has finished: a pulsing dot or a check on the portrait.
+    const status = hero.tableStatus ?? "waiting";
+    const thinking = state === "well" && (status === "acting" || (status === "waiting" && game.mode !== "combat"));
+    const finished = state === "well" && ["done", "submitted", "passed"].includes(status);
+    if (thinking) button.dataset.turn = "thinking";
+    else if (finished) button.dataset.turn = "finished";
+    button.title = `${hero.name} · ${hero.hp} / ${hero.maxHp} · ${partyStatusText(hero)}`;
     button.setAttribute("aria-label", button.title);
     button.setAttribute("aria-controls", drawers.left.drawer.id);
     button.setAttribute("aria-expanded", String(open));
@@ -180,3 +187,4 @@ function paintPartyRail(game) {
 }
 
   paintPartyRail(game);
+    if (thinking || finished) button.append(Object.assign(document.createElement("i"), { className: "rail-mark" }));
