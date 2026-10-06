@@ -126,6 +126,8 @@ export function mountDrawers() {
     const open = [...order].reverse().find((side) => drawers[side].drawer.dataset.open === "true");
     if (open !== undefined && !document.querySelector("dialog[open]")) drawers[open].set(false);
   });
+  // Keyboard order follows the screen on wide displays: the story's bookmark, the party rail, then the map and the rules.
+  document.body.append(drawers.right.tab, rail, drawers.bottom.tab, ...(drawers.rules === undefined ? [] : [drawers.rules.tab]));
   paintTitles();
 }
 
