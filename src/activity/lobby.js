@@ -88,12 +88,16 @@ export async function loadGames() {
   emptyElement.hidden = true;
   setMessage(t("activity.lobby.loading"));
   const payload = await requestJson("/api/activity/games");
-  app.tableOptions = await requestJson("/api/activity/table-options").catch(() => null);
   const create = document.querySelector("#table-create");
-  create.hidden = !app.tableOptions?.canCreate;
-  try { await loadCharacters(); } catch {
+  create.hidden = true;
+  void requestJson("/api/activity/table-options").then((options) => {
+    app.tableOptions = options;
+    create.hidden = !options?.canCreate;
+  }).catch((error) => { console.warn("Table options could not be loaded.", error); });
+  void loadCharacters().catch((error) => {
     document.querySelector("#lobby-character-count").textContent = t("activity.creator.unavailable");
-  }
+    console.warn("Character library could not be loaded.", error);
+  });
   userElement.textContent = payload.user?.displayName ?? t("activity.lobby.connectedUser");
   gamesElement.replaceChildren(...(payload.games ?? []).map(createGameCard));
   gamesElement.dataset.signature = JSON.stringify(payload.games);

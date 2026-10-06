@@ -13,7 +13,49 @@ import { designPreviewSnapshot, previewStoryNext } from "./preview.js";
 import { renderGame } from "./render.js";
 import { mountDrawers } from "./drawers.js";
 import { authenticate } from "./session.js";
-import { wireTableLifecycle } from "./table-lifecycle.js";
+import { openCreateTable, wireTableLifecycle } from "./table-lifecycle.js";
+import { loadGames } from "./lobby.js";
+import { loadCharacters } from "./character-builder.js";
+
+try {
+  const saved = localStorage.getItem("fntu.activity.uiLanguage");
+  if (saved === "en" || saved === "zh-TW") app.languagePreference = saved;
+} catch { /* Storage may be unavailable in an embedded browser. */ }
+
+document.querySelector("#activity-language").addEventListener("change", async (event) => {
+  const chosen = event.target.value;
+  const language = chosen === "auto" ? app.discordLanguage : chosen;
+  try {
+    await setLanguage(language);
+  } catch (error) {
+    event.target.value = app.languagePreference ?? "auto";
+    console.warn("Could not change Activity language.", error);
+    return;
+  }
+  app.languagePreference = chosen === "auto" ? null : chosen;
+  event.target.value = chosen;
+  try {
+    if (app.languagePreference === null) localStorage.removeItem("fntu.activity.uiLanguage");
+    else localStorage.setItem("fntu.activity.uiLanguage", chosen);
+  } catch { /* Keep the choice for this session. */ }
+  try {
+    if (app.currentSnapshot !== null) renderGame(app.currentSnapshot);
+    else if (app.sessionToken !== null && !document.querySelector("#table-setup-screen").hidden) {
+      const values = Object.fromEntries(new FormData(document.querySelector("#table-create-form")));
+      await openCreateTable();
+      const form = document.querySelector("#table-create-form");
+      const gameLanguage = form.elements.namedItem("language");
+      gameLanguage.value = values.language;
+      gameLanguage.dispatchEvent(new Event("change"));
+      for (const [name, value] of Object.entries(values)) {
+        if (name === "language") continue;
+        const field = form.elements.namedItem(name);
+        if (field) field.value = value;
+      }
+    } else if (app.sessionToken !== null && !document.querySelector("#lobby-screen").hidden) await loadGames();
+    else if (app.sessionToken !== null && !document.querySelector("#characters-screen").hidden) await loadCharacters();
+  } catch (error) { console.warn("Could not refresh Activity content after changing language.", error); }
+});
 
 bindMapControls();
 wireTableLifecycle();

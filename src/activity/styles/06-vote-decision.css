@@ -3,7 +3,8 @@
 .scene-move-decision[open] { position: fixed; z-index: 102; left: 50%; display: grid; gap: 9px; margin: 0; }
 .vote-shield { position: fixed; z-index: 100; inset: 0; background: #090b0ad9; backdrop-filter: blur(5px); }
 .vote-shield[hidden] { display: none; }
-.live-header { z-index: 103; }
+.live-header { z-index: 1; }
+body:has(.vote-shield:not([hidden])) .live-header { z-index: 103; }
 .presence-toggle { min-height: 40px; padding-inline: 13px; border-color: #b99557; background: #3a3021; color: #ffe4a7; font-weight: 800; white-space: nowrap; }
 .presence-toggle[data-presence="away"] { border-color: #7ba176; background: #273b2a; color: #e1f3dc; }
 .presence-toggle[hidden] { display: none; }

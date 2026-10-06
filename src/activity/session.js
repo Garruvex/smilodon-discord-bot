@@ -18,7 +18,7 @@ document.querySelector("#back-to-lobby").addEventListener("click", () => {
   app.currentSnapshot = null;
   liveScreen.hidden = true;
   lobbyScreen.hidden = false;
-  void setLanguage(app.discordLanguage).then(() => returnToTables()).catch((error) => showError(error instanceof Error ? error.message : t("activity.status.couldNotLoad")));
+  void setLanguage(app.languagePreference ?? app.discordLanguage).then(() => returnToTables()).catch((error) => showError(error instanceof Error ? error.message : t("activity.status.couldNotLoad")));
 });
 
 document.querySelector("#lobby-retry").addEventListener("click", () => {
@@ -53,7 +53,7 @@ export function renewSession() {
 
 export async function authenticate() {
   app.discordLanguage = languageFromBrowser();
-  await setLanguage(app.discordLanguage);
+  await setLanguage(app.languagePreference ?? app.discordLanguage);
   app.connectionStage = "Activity setup";
   app.discordConnected = false;
   errorElement.hidden = true;
@@ -69,9 +69,6 @@ export async function authenticate() {
   app.connectionStage = "Discord connection";
   setMessage(t("activity.connection.waitDiscord"));
   await withTimeout(app.discordSdk.ready(), 12000, t("activity.connection.discordTimeout"));
-  const localeResult = await app.discordSdk.commands.userSettingsGetLocale().catch(() => ({ locale: app.discordLanguage }));
-  app.discordLanguage = languageFromDiscordLocale(localeResult.locale);
-  await setLanguage(app.discordLanguage);
   app.discordConnected = true;
   // Let the picture-in-picture window take clicks; without this it only shows the table. A refusal must not stop the sign-in.
   void app.discordSdk.commands.setConfig({ use_interactive_pip: true }).catch((error) => console.warn("Interactive picture-in-picture was not enabled.", error));
@@ -96,6 +93,15 @@ export async function authenticate() {
   if (typeof session.access_token !== "string" || typeof app.sessionToken !== "string") throw new Error(t("activity.connection.invalidSession"));
   const identity = await app.discordSdk.commands.authenticate({ access_token: session.access_token });
   app.discordUserId = identity.user.id;
+  if (typeof session.locale === "string") app.discordLanguage = languageFromDiscordLocale(session.locale);
+  else {
+    const localeResult = await app.discordSdk.commands.userSettingsGetLocale().catch((error) => {
+      console.warn("Discord locale lookup failed; using the browser language.", error);
+      return null;
+    });
+    if (typeof localeResult?.locale === "string") app.discordLanguage = languageFromDiscordLocale(localeResult.locale);
+  }
+  await setLanguage(app.languagePreference ?? app.discordLanguage);
   userElement.textContent = identity.user.global_name || identity.user.username;
   serverElement.textContent = t("activity.connection.thisServer");
   app.connectionStage = "Loading games";

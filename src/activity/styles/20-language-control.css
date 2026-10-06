@@ -1,0 +1,4 @@
+.activity-language-bar { display: flex; justify-content: flex-end; align-items: center; gap: 9px; min-height: 42px; padding: 5px clamp(18px, 4vw, 52px); border-bottom: 1px solid #66503a; background: #241d19; color: #f4ead8; font-size: 12px; font-weight: 700; }
+.activity-language-bar select { min-height: 30px; padding: 3px 25px 3px 9px; border: 1px solid #a88b64; border-radius: 6px; background: #3a2c24; color: #fff4dc; font: inherit; cursor: pointer; }
+.activity-language-bar select:focus-visible { outline: 2px solid #e5c988; outline-offset: 2px; }
+@media (max-width: 480px) { .activity-language-bar { justify-content: space-between; } }

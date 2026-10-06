@@ -36,6 +36,8 @@ export async function setLanguage(language) {
   app.activityStrings = await response.json();
   app.uiLanguage = normalized;
   document.documentElement.lang = normalized;
+  const selector = document.querySelector("#activity-language");
+  if (selector) selector.value = app.languagePreference ?? "auto";
   applyStaticTranslations();
 }
 

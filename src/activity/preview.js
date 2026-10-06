@@ -89,7 +89,7 @@ export function designPreviewSnapshot() {
     party: [
       { ...hero("aria", "Aria Vell", "Wizard", "High Elf", 27, 34, true), tableStatus: new URLSearchParams(window.location.search).has("round") ? "waiting" : "acting", ...(new URLSearchParams(window.location.search).has("dead") ? { hp: 0, fallen: true } : {}) },
       { ...hero("thorne", "Thorne Oakshield", "Paladin", "Hill Dwarf", 38, 42), tableStatus: "submitted", intent: "I put my shoulder to the stuck door and heave it open." },
-      { ...hero("mira", "Mira Fen", "Ranger", "Wood Elf", 22, 31), tableStatus: "passed" },
+      { ...hero("mira", "Mira Fen", "Ranger", "Wood Elf", 22, 31), tableStatus: new URLSearchParams(window.location.search).has("collect") || new URLSearchParams(window.location.search).has("vote") ? "passed" : "done" },
       { ...hero("pip", "Pip Underbough", "Rogue", "Lightfoot Halfling", 19, 28), tableStatus: "waiting" },
       { ...hero("sable", "Sable Dusk", "Cleric", "Tiefling", 29, 33), tableStatus: "waiting" },
       { ...hero("kestrel", "Kestrel Vale", "Bard", "Human", 25, 30), tableStatus: "waiting" },

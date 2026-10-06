@@ -237,7 +237,7 @@ export function renderParty(members) {
       name.append(you);
     }
     const status = document.createElement("span");
-    status.className = "live-party-status party-status-icon";
+    status.className = "party-status-label";
     const statusText = partyStatusText(hero);
     status.title = statusText;
     status.setAttribute("aria-label", statusText);
@@ -325,6 +325,7 @@ export function partyStatusText(hero) {
   if (hero.fallen) return t("activity.party.dead");
   if (hero.down) return t("activity.party.down");
   if (hero.presence === "away") return t("activity.party.presence.away");
+  if (hero.tableStatus === "done") return t("activity.party.done");
   const statusWords = { acting: t("activity.party.turnNow"), submitted: hero.presence === "ready" ? t("activity.party.ready") : t("activity.party.actionIn"), passed: t("activity.party.passed"), missed: t("activity.party.missed"), away: t("activity.party.away"), waiting: t("activity.party.waiting") };
   return statusWords[hero.tableStatus] ?? statusWords.waiting;
 }

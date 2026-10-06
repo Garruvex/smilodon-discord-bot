@@ -4,7 +4,7 @@ import { featureText } from "./feature-texts.js";
 import { performAction } from "./actions.js";
 import { setLiveMessage } from "./dom.js";
 
-// The Sheet tab: what the hero is good at, how far they have come, and what they can do, read from the numbers the game holds.
+// Overview: the hero's abilities, training, progress and features from the game state.
 const abilityOrder = ["str", "dex", "con", "int", "wis", "cha"];
 const camel = (slug) => slug.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
 export const abilityName = (ability) => t(`activity.sheet.ability.${ability}`);
@@ -38,19 +38,33 @@ function progressBlock(sheet) {
   else {
     const bar = document.createElement("span");
     bar.className = "sheet-xp ui-meter";
+    bar.setAttribute("role", "progressbar");
+    bar.setAttribute("aria-label", t("activity.sheet.progress"));
+    bar.setAttribute("aria-valuemin", String(floor));
+    bar.setAttribute("aria-valuemax", String(next));
+    bar.setAttribute("aria-valuenow", String(Math.max(floor, Math.min(next, xp))));
+    bar.setAttribute("aria-valuetext", t("activity.sheet.xp", { xp: xp.toLocaleString(), next: next.toLocaleString(), level: level + 1 }));
     const fill = document.createElement("i");
     fill.style.width = `${Math.max(0, Math.min(100, Math.round(((xp - floor) / Math.max(1, next - floor)) * 100)))}%`;
     bar.append(fill);
     lines.push(bar, Object.assign(document.createElement("p"), { className: "sheet-note", textContent: t("activity.sheet.xp", { xp: xp.toLocaleString(), next: next.toLocaleString(), level: level + 1 }) }));
   }
-  const dice = [...new Set(sheet.hitDice.dice)].map((sides) => `d${sides}`).join(" / ");
-  lines.push(Object.assign(document.createElement("p"), { className: "sheet-note", textContent: t("activity.sheet.hitDice", { left: sheet.hitDice.left, max: sheet.hitDice.max, dice }) }));
-  const choices = document.createElement("button");
-  choices.type = "button";
-  choices.className = "ui-control";
-  choices.textContent = t("activity.sheet.choices");
-  choices.addEventListener("click", () => document.dispatchEvent(new CustomEvent("open-level-up")));
-  return block("activity.sheet.progress", ...lines, choices);
+  const summary = document.createElement("div");
+  summary.className = "hero-progress-summary";
+  summary.append(...lines);
+  return summary;
+}
+
+export function renderHeroProgress(sheet) {
+  let progress = document.querySelector("#hero-progress");
+  if (progress === null) {
+    progress = document.createElement("section");
+    progress.id = "hero-progress";
+    progress.className = "hero-progress";
+    document.querySelector("#live-hero-subtitle").after(progress);
+  }
+  progress.hidden = !sheet;
+  progress.replaceChildren(...(sheet ? [progressBlock(sheet)] : []));
 }
 
 function skillsBlock(sheet) {
@@ -108,18 +122,8 @@ function featuresBlock(sheet) {
   return block("activity.sheet.features", list);
 }
 
-// Paints the Sheet tab from the snapshot's heroSheet; the panel is made the first time it is needed.
-export function renderSheet(game) {
-  let panel = document.querySelector("#hero-panel-sheet");
-  if (panel === null) {
-    panel = document.createElement("section");
-    panel.className = "hero-tab-panel";
-    panel.id = "hero-panel-sheet";
-    panel.setAttribute("role", "tabpanel");
-    panel.setAttribute("aria-labelledby", "hero-tab-sheet");
-    panel.hidden = true;
-    document.querySelector(".hero-body").append(panel);
-  }
+export function renderOverview(game) {
+  const panel = document.querySelector("#hero-panel-overview");
   const sheet = game.heroSheet;
   if (sheet === null || sheet === undefined) { panel.replaceChildren(); return; }
   const strip = document.createElement("div");
@@ -142,5 +146,14 @@ export function renderSheet(game) {
     );
     scores.append(tile);
   }
-  panel.replaceChildren(strip, block("activity.sheet.abilities", scores), progressBlock(sheet), skillsBlock(sheet), featuresBlock(sheet), ...(game.canSaveProgress ? [saveBlock()] : []));
+  panel.replaceChildren(strip, block("activity.sheet.abilities", scores), skillsBlock(sheet), featuresBlock(sheet), ...(game.canSaveProgress ? [saveBlock()] : []));
+}
+
+// Other heroes and enemies expose public table details, rather than your private sheet.
+export function renderPublicOverview(profile, status) {
+  const strip = document.createElement("div");
+  strip.className = "sheet-strip";
+  strip.append(stat(t("activity.detail.status"), status));
+  if (profile.zone) strip.append(stat(t("activity.detail.location"), profile.zone));
+  document.querySelector("#hero-panel-overview").replaceChildren(strip);
 }

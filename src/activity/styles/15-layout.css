@@ -1,11 +1,12 @@
 /* The party, the map and the story live in panels that slide in from the screen's edges, so the page itself is the scene and your hero.
-   Party on the left, story on the right, map along the bottom; below 900px all three share one bottom dock. */
+   Story is a compact overlay on desktop and a short sheet in smaller windows. */
 :root {
   --drawer-gutter: clamp(16px, 3.5vw, 48px);
-  --drawer-side-h: min(calc(100vh - 48px), 680px);
+  --drawer-side-h: calc(100% - 24px);
   --drawer-map-h: min(68vh, 520px);
   --drawer-left-w: 320px;
   --drawer-right-w: 340px;
+  --drawer-story-h: min(40vh, 360px);
   /* As wide as the page's own panels: the shell is 1120px with a gutter on each side. */
   --drawer-map-w: min(calc(1120px - 2 * var(--drawer-gutter)), calc(100vw - 2 * var(--drawer-gutter)));
 }
@@ -39,20 +40,21 @@ body.drawer-open-right .drawer-tab[data-side="right"] { right: var(--drawer-righ
 .drawer-dots i[data-state="dead"] { background: #b4584c; }
 .drawer-dots i[data-state="away"] { background: #6b6358; }
 
-.drawer { position: fixed; z-index: 57; top: calc((100vh - var(--drawer-side-h)) / 2); height: var(--drawer-side-h); display: flex; flex-direction: column; border: 1px solid var(--ui-border-strong, #9c7a4b); background: var(--ui-paper-raised, #f3e7cb); color: var(--ui-ink, #33241a); box-shadow: 0 10px 40px #000a; transition: transform .22s ease; }
-.drawer[data-side="left"] { --left-h: min(var(--drawer-fit, var(--drawer-side-h)), var(--drawer-side-h)); top: calc((100vh - var(--left-h)) / 2); height: var(--left-h); left: 0; width: min(var(--drawer-left-w), 92vw); border-left: 0; border-radius: 0 12px 12px 0; transform: translateX(-104%); }
+.drawer { position: fixed; z-index: 57; top: calc((100% - var(--drawer-side-h)) / 2); height: var(--drawer-side-h); display: flex; flex-direction: column; border: 1px solid var(--ui-border-strong, #9c7a4b); background: var(--ui-paper-raised, #f3e7cb); color: var(--ui-ink, #33241a); box-shadow: 0 10px 40px #000a; transition: transform .22s ease; }
+.drawer[data-side="left"] { --left-h: min(var(--drawer-fit, var(--drawer-side-h)), var(--drawer-side-h)); top: calc((100% - var(--left-h)) / 2); height: var(--left-h); left: 0; width: min(var(--drawer-left-w), 92vw); border-left: 0; border-radius: 0 12px 12px 0; transform: translateX(-104%); }
 .drawer[data-side="right"] { right: 0; width: min(var(--drawer-right-w), 92vw); border-right: 0; border-radius: 12px 0 0 12px; transform: translateX(104%); }
 .drawer[data-side="bottom"] { z-index: 55; top: auto; bottom: 0; left: 50%; width: var(--drawer-map-w); height: var(--drawer-map-h); border-bottom: 0; border-radius: 12px 12px 0 0; transform: translate(-50%, 104%); }
 .drawer[data-open="true"] { transform: none; }
 .drawer[data-side="bottom"][data-open="true"] { transform: translate(-50%, 0); }
 .drawer-body { flex: 1; min-height: 0; overflow: auto; }
+.drawer[data-side="left"] .drawer-body { scrollbar-gutter: stable; }
 .drawer[data-side="left"] .party-section { margin: 0; padding: 8px; border: 0; background: transparent; box-shadow: none; }
 .drawer[data-side="left"] .section-heading { display: none; }
 .party-free-seat { position: absolute; z-index: 6; right: 8px; bottom: 6px; padding: 3px 10px; font-size: 11px; font-weight: 700; }
 .party-free-seat[data-armed="true"] { background: #a8362c; border-color: #a8362c; color: #fff0d4; }
 .party-open-seat { display: flex; align-items: center; justify-content: center; box-sizing: border-box; height: var(--seat-h, 96px); min-height: 0; border: 2px dashed #b39a70; border-radius: 10px; background: transparent; color: #8a7350; font-size: 13px; font-weight: 700; letter-spacing: .06em; }
 .drawer[data-side="left"] .live-party-grid { grid-template-columns: minmax(0, 1fr); }
-/* One line for the class and level, so the whole party fits without scrolling. */
+/* Keep the class and level on one line; the roster scrolls only when it cannot fit the viewport. */
 .drawer[data-side="left"] .party-class-line { display: flex; gap: 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .drawer[data-side="right"] .drawer-body { display: flex; flex-direction: column; overflow: hidden; }
 /* The map fills its sheet: the tab already names it, so no title or fold control; the key is one quiet row, and the map takes all the rest. */
@@ -141,6 +143,12 @@ body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer { display: 
 body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab { display: flex; }
 body[data-game-kind="lobby"] .story-now { display: none; }
 
+/* A compact overlay keeps the page in place while the story is open. */
+@media (min-width: 901px) {
+  :root { --drawer-right-w: 300px; }
+  .drawer[data-side="right"] { --story-panel-h: min(55vh, 480px); top: calc((100% - var(--story-panel-h)) / 2); height: var(--story-panel-h); }
+}
+
 /* Below 900px: one bottom dock, Party | Map | Story, and each panel is a sheet above it. */
 @media (max-width: 900px) {
   .drawer[data-side="bottom"] .live-map-viewport { height: calc(62vh - 78px); }
@@ -156,6 +164,8 @@ body[data-game-kind="lobby"] .story-now { display: none; }
   .drawer-tab[data-side="bottom"][aria-expanded="true"] { bottom: 0; }
   .drawer-dots { flex-direction: row; }
   .drawer, .drawer[data-side="left"], .drawer[data-side="right"], .drawer[data-side="bottom"] { top: auto; bottom: 44px; left: 0; right: 0; width: auto; height: 62vh; border: 1px solid var(--ui-border-strong, #9c7a4b); border-radius: 12px 12px 0 0; transform: translateY(110%); }
+  .drawer[data-side="left"] { height: min(var(--drawer-fit, 62vh), calc(100% - 56px)); }
+  .drawer[data-side="right"] { height: var(--drawer-story-h); }
   .drawer[data-open="true"], .drawer[data-side="bottom"][data-open="true"] { transform: none; }
   .live-shell { padding-bottom: 60px; }
   .story-now { min-height: 0; padding: 8px 10px; font-size: 14px; }

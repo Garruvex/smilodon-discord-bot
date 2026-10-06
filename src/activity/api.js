@@ -46,7 +46,7 @@ export async function requestJson(url, options = {}) {
   if (options.body !== undefined) headers.set("Content-Type", "application/json");
   if (app.sessionToken !== null) headers.set("Authorization", `Bearer ${app.sessionToken}`);
   const response = await fetchWithTimeout(url, { ...options, headers, cache: "no-store" });
-  const payload = await response.json().catch(() => ({}));
+  const payload = await withTimeout(response.json().catch(() => ({})), 12000, t("activity.connection.serverTimeout"));
   // A session that ran out (an hour passes, or the bot restarted) is renewed quietly with Discord and the request is made once more.
   if (response.status === 401 && !options.renewed && app.discordSdk !== null && url !== "/api/activity/session") {
     const renewed = await renewSession().then(() => true, () => false);

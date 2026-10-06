@@ -106,7 +106,6 @@ export function renderTable(game) {
   renderWorld(game.world);
   document.querySelector(".live-phase").dataset.mode = game.mode;
   document.querySelector("#live-screen").dataset.mode = game.mode;
-  renderCombatTurn(game);
   const turn = document.querySelector("#live-turn");
   const ownStatus = game.submission === "action" ? t("activity.status.actionSubmitted") : game.submission === "pass" ? t("activity.status.passedRound") : game.pendingRoll ? t("activity.status.rollNeeded") : t("activity.status.waitTurn");
   turn.textContent = game.pendingMove ? t("activity.status.moveDecision") : game.yourTurn ? game.turn?.busy ? t("activity.status.resolvingAction") : t("activity.hero.turn") : game.mode === "collecting" && game.myHero ? ownStatus : game.activeName ? t("activity.status.activeTurnPossessive", { name: game.activeName }) : t("activity.status.waitTable");
@@ -121,7 +120,6 @@ export function renderTable(game) {
   document.querySelector("#live-hero-hp").textContent = hero ? t("activity.hero.hp", { hp: hero.hp, max: hero.maxHp }) : "";
   document.querySelector("#live-hero-ac").textContent = hero ? t("activity.hero.ac", { value: hero.armorClass }) : "";
   document.querySelector("#live-hero-health").style.width = hero ? `${Math.max(0, Math.min(100, (hero.hp / Math.max(1, hero.maxHp)) * 100))}%` : "0%";
-  document.querySelector("#live-resources").replaceChildren();
   if (hero) {
     renderEquipment(hero);
   } else {
@@ -133,27 +131,9 @@ export function renderTable(game) {
   renderTableControls(game);
   renderTableActions(game);
   renderCharacterWorkspace(game);
-  paintSection("enemies", [game.foes, game.allies, app.selectedEnemyName, app.uiLanguage], () => renderEnemies(game.foes, game.allies ?? []));
+  paintSection("enemies", [game.foes, game.allies, game.order, game.roundNumber, game.upcomingNames, app.selectedEnemyName, app.uiLanguage], () => renderEnemies(game.foes, game.allies ?? []));
   paintSection("party", [game.party, game.mode, game.upcomingNames, app.selectedPartyCharacterId, app.selectedEnemyName, app.uiLanguage], () => renderParty(game.party));
   setLiveMessage(game.submission === "action" ? t("activity.status.actionIn") : game.submission === "pass" ? t("activity.status.youPassed") : "");
   updateRollPrompt(["paused", "safety", "recovery"].includes(game.mode) ? null : game.pendingRoll);
-}
-
-
-export function renderCombatTurn(game) {
-  const strip = document.querySelector("#combat-turn-strip");
-  const visible = game.mode === "combat";
-  strip.hidden = !visible;
-  if (!visible) return;
-  document.querySelector("#combat-active-name").textContent = game.activeName ?? t("activity.phase.waiting");
-  const upcoming = document.querySelector("#combat-upcoming");
-  upcoming.replaceChildren(...(game.upcomingNames ?? []).slice(0, 1).map((name, index) => {
-    const item = document.createElement("span");
-    item.className = "initiative-next-name";
-    item.dataset.position = String(index + 1);
-    item.textContent = name;
-    return item;
-  }));
-  if (!upcoming.childElementCount) upcoming.textContent = t("activity.combat.noUpcoming");
 }
 

@@ -187,22 +187,25 @@ export function openLevelUp() {
   if (!box.open && app.currentSnapshot?.levelUp) box.showModal();
 }
 
-// The strip across the top of your hero page while an improvement waits, and a quiet link to the same dialog when only changes are possible.
+// Level-up choices stay beside progress under your hero's name on every workspace tab.
 export function renderLevelUpBanner(game) {
   let banner = document.querySelector("#level-up-banner");
   if (banner === null) {
     banner = document.createElement("div");
     banner.id = "level-up-banner";
     banner.className = "level-up-banner";
-    document.querySelector(".hero-body").before(banner);
+    document.querySelector("#hero-progress").append(banner);
   }
   const level = game.levelUp;
   const owed = level?.owed === true;
-  banner.hidden = !owed;
-  if (!owed) { banner.replaceChildren(); return; }
+  const available = level !== null && level !== undefined && (owed || level.classPlan != null || level.fightingStyle != null || level.warlock != null);
+  banner.hidden = !available;
+  if (!available) { banner.replaceChildren(); return; }
+  document.querySelector("#hero-progress").hidden = false;
+  banner.classList.toggle("has-pending-choices", owed);
   banner.replaceChildren(
-    Object.assign(document.createElement("span"), { textContent: t("activity.levelUp.banner", { count: level.pendingAsi }) }),
-    button(t("activity.levelUp.open"), () => openLevelUp(), { primary: true }),
+    ...(owed ? [Object.assign(document.createElement("span"), { textContent: t("activity.levelUp.banner", { count: level.pendingAsi }) })] : []),
+    button(t(owed ? "activity.levelUp.open" : "activity.sheet.choices"), () => openLevelUp(), { primary: owed }),
   );
   const box = document.querySelector("#level-up");
   if (box?.open) paintLevelUp(game);

@@ -4,7 +4,7 @@ import { artIconPrefix, iconForClass, iconImage, liveActions, makeButton, setArt
 import { classText, t } from "./i18n.js";
 import { partyStatusText } from "./party.js";
 import { openRules } from "./rules-book.js";
-import { renderSheet } from "./hero-sheet.js";
+import { renderOverview, renderPublicOverview, renderHeroProgress } from "./hero-sheet.js";
 import { renderCompanions } from "./companions.js";
 import { renderJournal } from "./journal.js";
 import { renderLevelUpBanner } from "./level-up.js";
@@ -12,8 +12,9 @@ import { renderReplacementBanner } from "./replacement.js";
 
 export function renderEquipment(hero) {
   const target = document.querySelector("#live-equipment");
-  const equipped = [...(hero.worn ?? []).map((name) => ({ name, icon: "shield" })), ...(hero.weapons ?? []).map((name) => ({ name, icon: "attack" }))].slice(0, 4);
+  const equipped = [...new Map([...(hero.worn ?? []).map((name) => ({ name, icon: "shield" })), ...(hero.weapons ?? []).map((name) => ({ name, icon: "attack" }))].map((item) => [item.name, item])).values()];
   target.replaceChildren();
+  target.hidden = equipped.length === 0;
   if (equipped.length === 0) return;
   const label = document.createElement("span");
   label.className = "equipment-label";
@@ -116,9 +117,18 @@ export function setWorkspaceTabs(game, tabs) {
     button.id = `hero-tab-${id}`; button.setAttribute("aria-selected", String(app.selectedWorkspaceTab === id));
     button.setAttribute("aria-controls", `hero-panel-${id}`); button.tabIndex = app.selectedWorkspaceTab === id ? 0 : -1;
     button.textContent = t(key); button.addEventListener("click", () => { app.selectedWorkspaceTab = id; renderCharacterWorkspace(game); });
+    button.addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const index = tabs.findIndex(([tabId]) => tabId === id);
+      const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+      app.selectedWorkspaceTab = tabs[next][0];
+      renderCharacterWorkspace(game);
+      document.querySelector(`#hero-tab-${app.selectedWorkspaceTab}`).focus();
+    });
     return button;
   }));
-  for (const id of ["overview", "sheet", "actions", "spells", "inventory", "trade", "companions", "journal"]) {
+  for (const id of ["overview", "actions", "spells", "inventory", "trade", "companions", "journal"]) {
     const panel = document.querySelector(`#hero-panel-${id}`);
     panel.hidden = !tabs.some(([tabId]) => tabId === id) || app.selectedWorkspaceTab !== id;
   }
@@ -168,9 +178,20 @@ export function renderHeroResources(hero) {
 
 
 export function renderCharacterWorkspace(game) {
-  document.querySelector("#hero-panel-actions").append(liveActions);
+  // Keep equipment outside the overview panel, whose contents are repainted.
+  let equipmentPanel = document.querySelector("#live-equipment");
+  if (!equipmentPanel) {
+    equipmentPanel = document.createElement("section");
+    equipmentPanel.id = "live-equipment";
+    equipmentPanel.className = "hero-equipment";
+  }
+  document.querySelector(".hero-stats").append(equipmentPanel);
+  if (app.selectedWorkspaceTab === "sheet") app.selectedWorkspaceTab = "overview";
+  const actionsPanel = document.querySelector("#hero-panel-actions");
+  if (liveActions.parentElement !== actionsPanel) actionsPanel.append(liveActions);
   const enemy = game.foes.find((foe) => foe.name === app.selectedEnemyName);
   if (enemy) {
+    renderHeroProgress(null);
     renderLevelUpBanner({ levelUp: null });
     renderReplacementBanner({ replacement: null });
     document.querySelector("#live-turn").textContent = enemy.active ? t("activity.party.turnNow") : "";
@@ -196,8 +217,10 @@ export function renderCharacterWorkspace(game) {
     const enemyConditions = document.querySelector("#member-overview-conditions");
     enemyConditions.replaceChildren();
     document.querySelector("#member-overview").hidden = false;
-    document.querySelector("#live-resources").replaceChildren();
     document.querySelector("#live-equipment").replaceChildren();
+    document.querySelector("#live-equipment").hidden = true;
+    renderHitDiceLine(null);
+    renderPublicOverview(enemy, enemy.active ? t("activity.party.turnNow") : t("activity.party.waiting"));
     if (!game.myHero) document.querySelector("#hero-panel-overview").hidden = false;
     return;
   }
@@ -217,7 +240,7 @@ export function renderCharacterWorkspace(game) {
   turnLabel.textContent = selected.tableStatus === "acting" && viewingOwn ? t("activity.hero.turn") : partyStatusText(selected);
   document.querySelector("#hero-workspace-label").textContent = viewingOwn ? t("activity.hero.label") : t("activity.hero.viewingMember");
   document.querySelector("#live-hero-name").textContent = profile.name;
-  document.querySelector("#live-hero-subtitle").textContent = `${profile.raceName ?? t("activity.hero.adventurer")} ${classText(profile.className) ?? t("activity.hero.heroClass")} ${profile.level}`;
+  document.querySelector("#live-hero-subtitle").textContent = `${profile.raceName ?? t("activity.hero.adventurer")} ${classText(profile.className) ?? t("activity.hero.heroClass")}${viewingOwn && game.heroSheet ? "" : ` ${profile.level}`}`;
   document.querySelector("#live-hero-class").textContent = (classText(profile.className) ?? t("activity.hero.adventurerCaps")).toLocaleUpperCase();
   const sigil = document.querySelector("#live-hero-sigil");
   sigil.replaceChildren(iconImage(iconForClass(profile.className)));
@@ -230,29 +253,29 @@ export function renderCharacterWorkspace(game) {
   renderHitDiceLine(selected);
 
   const tabs = viewingOwn
-    ? [["overview", "activity.tab.overview"], ["sheet", "activity.tab.sheet"], ["actions", "activity.tab.actions"], ["spells", "activity.tab.spells"], ["inventory", "activity.tab.inventory"], ["trade", "activity.tab.trade"], ...(game.companions?.length ? [["companions", "activity.tab.companions"]] : [])]
+    ? [["overview", "activity.tab.overview"], ["actions", "activity.tab.actions"], ["spells", "activity.tab.spells"], ["inventory", "activity.tab.inventory"], ["trade", "activity.tab.trade"], ...(game.companions?.length ? [["companions", "activity.tab.companions"]] : [])]
     : ownHero
       ? [["overview", "activity.tab.overview"], ["actions", "activity.tab.myActions"], ["trade", "activity.tab.trade"]]
       : [["overview", "activity.tab.overview"], ["trade", "activity.tab.trade"]];
   tabs.push(["journal", "activity.tab.journal"]);
   if (!tabs.some(([id]) => id === app.selectedWorkspaceTab)) app.selectedWorkspaceTab = viewingOwn ? "actions" : "overview";
-  renderSheet(game);
+  if (viewingOwn && game.heroSheet) renderOverview(game);
+  else renderPublicOverview(selected, partyStatusText(selected));
+  renderHeroProgress(viewingOwn ? game.heroSheet : null);
   renderCompanions(viewingOwn ? game : { companions: [] });
   renderJournal(game);
   renderLevelUpBanner(viewingOwn ? game : { levelUp: null });
   renderReplacementBanner(viewingOwn ? game : { replacement: null });
   setWorkspaceTabs(game, tabs);
 
-  const resources = document.querySelector("#live-resources");
   const equipment = document.querySelector("#live-equipment");
-  resources.replaceChildren();
   equipment.replaceChildren();
+  equipment.hidden = !viewingOwn;
   if (viewingOwn) {
     renderEquipment(ownHero);
     renderSpellbook(ownHero);
     renderInventory(ownHero);
   } else {
-    resources.replaceChildren();
     document.querySelector("#live-spellbook").replaceChildren();
     document.querySelector("#live-inventory").replaceChildren();
   }

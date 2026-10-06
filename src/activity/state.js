@@ -24,6 +24,7 @@ export const app = {
   rollingCheck: false,
   uiLanguage: "en",
   discordLanguage: "en",
+  languagePreference: null,
   activityStrings: {},
   selectedPartyCharacterId: null,
   selectedWorkspaceTab: "actions",
