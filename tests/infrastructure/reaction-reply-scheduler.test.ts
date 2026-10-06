@@ -1,3 +1,4 @@
+import { defaultSecurity } from "../../src/config/guild-configuration-schema.js";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -76,7 +77,7 @@ function profile(overrides: { reactionReplies?: boolean; chatbot?: boolean; minR
       channelHistoryLimit: 8, reactionReplyWaitMinMinutes: 2, reactionReplyWaitMaxMinutes: 5, reactionReplyMinReactors: overrides.minReactors ?? 1, channelMemoryModes: {}, personaDriftEnabled: false,
       contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
-    security: { trap: { enabled: false, channelId: null, action: "timeout", deleteWindow: "1h", timeout: "28d" }, exemptRoleIds: [], logChannelId: null },
+    security: defaultSecurity,
     sourceFile: "test.yaml",
   };
 }

@@ -53,6 +53,26 @@ export function trapReadiness(guild: Guild, profile: GuildConfiguration): Readin
     }
   }
 
+  // The other detectors need the permission for what they do, too.
+  if (me) {
+    const { spam, links, raid } = profile.security;
+    const needs = (action: TrapAction): void => {
+      const permission = actionPermission[action];
+      if (!me.permissions.has(permission.flag)) {
+        lines.push({ name: "missing-permission", params: { permission: permission.label, action } });
+      }
+    };
+    if (spam.enabled) {
+      if (spam.action !== "report") needs(spam.action);
+      if (spam.action !== "report" && !me.permissions.has(PermissionFlagsBits.ManageMessages)) lines.push({ name: "spam-missing-delete" });
+    }
+    if (links.enabled) {
+      if (links.action !== "delete" && links.action !== "report") needs(links.action);
+      if (links.action !== "report" && !me.permissions.has(PermissionFlagsBits.ManageMessages)) lines.push({ name: "links-missing-delete" });
+    }
+    if (raid.enabled && raid.action !== "alert") needs(raid.action);
+  }
+
   const logChannelId = profile.security.logChannelId ?? profile.channels.auditLog;
   if (!logChannelId) {
     lines.push({ name: "no-log" });

@@ -274,6 +274,21 @@ export class Application {
       });
     });
 
+    // A message can be posted clean and edited to carry the link afterwards, so
+    // link inspection looks at edits too. Edits that leave the text alone (an
+    // embed appearing, a pin) are skipped.
+    this.client.on(Events.MessageUpdate, (oldMessage, newMessage) => {
+      if (!this.ready) return;
+      void (async (): Promise<void> => {
+        const message = newMessage.partial ? await newMessage.fetch() : newMessage;
+        if (!message.inGuild() || message.author.bot) return;
+        if (oldMessage.content !== null && oldMessage.content === message.content) return;
+        await this.dependencies.linkGuardService.handle(message);
+      })().catch((error: unknown) => {
+        this.logger.error({ error }, "Message edit link check failed");
+      });
+    });
+
     this.client.on(Events.MessageReactionAdd, (reaction, user) => {
       if (!this.ready) return;
       void (async (): Promise<void> => {
@@ -345,6 +360,9 @@ export class Application {
     this.client.on(Events.GuildMemberAdd, (member) => {
       void this.memberWelcomeService.handleMemberJoin(member).catch((error: unknown) => {
         this.logger.error({ error, guildId: member.guild.id, userId: member.id }, "Unable to process member join");
+      });
+      void this.dependencies.raidService.handleJoin(member).catch((error: unknown) => {
+        this.logger.error({ error, guildId: member.guild.id, userId: member.id }, "Unable to check a join for a raid");
       });
     });
 

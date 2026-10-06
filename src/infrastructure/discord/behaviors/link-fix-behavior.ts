@@ -1,27 +1,23 @@
-import type { EmbedBuilder, Message } from "discord.js";
+import type { Message } from "discord.js";
 import type { Logger } from "pino";
 
 import { BehaviorEvent, BehaviorResult, type BotBehavior } from "../../../application/behaviors/behavior.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
 import type { GuildLinkFixPlatformConfiguration, LinkFixPlatform } from "../../../config/guild-configuration.js";
-import { extractBilibiliLinks } from "../../../domain/links/bilibili-link.js";
 import { extractLinkRewrites, type LinkRewriteMatch } from "../../../domain/links/link-rewrite.js";
-import type { BilibiliEmbedService } from "../../links/bilibili-embed-service.js";
 import { isInGameChannel, type IsGameChannel } from "./game-channel-guard.js";
 
 function enabledRewritePlatforms(platforms: GuildLinkFixPlatformConfiguration): ReadonlySet<LinkFixPlatform> {
   return new Set(
-    (Object.keys(platforms) as LinkFixPlatform[]).filter((key) => key !== "bilibili" && platforms[key]),
+    (Object.keys(platforms) as LinkFixPlatform[]).filter((key) => platforms[key]),
   );
 }
 
-// Discord hard limits: message content is capped at 2000 characters, and a
-// single message can carry at most 10 embeds. A message packed with many
+// Discord caps message content at 2000 characters. A message packed with many
 // matched links (spam, a link dump, or just an enthusiastic user) could
 // otherwise build a reply that Discord rejects outright — silently dropping
 // the fix for every link in it, not just the ones past the limit.
 const discordMessageContentMaxChars = 2_000;
-const discordMaxEmbedsPerMessage = 10;
 
 // Keeps whole rewritten URLs (never truncates one mid-string) and stops
 // once adding the next line — including its joining newline — would push
@@ -44,7 +40,6 @@ export class LinkFixBehavior implements BotBehavior<BehaviorEvent.MessageCreated
 
   public constructor(
     private readonly profiles: GuildConfigurationProvider,
-    private readonly bilibiliEmbeds: BilibiliEmbedService,
     private readonly logger: Logger,
     // The narrator owns a D&D game's channels; link fixes stay out of them.
     private readonly isGameChannel: IsGameChannel | null = null,
@@ -56,9 +51,7 @@ export class LinkFixBehavior implements BotBehavior<BehaviorEvent.MessageCreated
     if (!profile?.features.linkFix) return false;
     if (!profile.channels.linkFix.has(message.channelId)) return false;
     const enabledPlatforms = enabledRewritePlatforms(profile.linkFixPlatforms);
-    const hasLinks =
-      extractLinkRewrites(message.content, enabledPlatforms).length > 0 ||
-      (profile.linkFixPlatforms.bilibili && extractBilibiliLinks(message.content).length > 0);
+    const hasLinks = extractLinkRewrites(message.content, enabledPlatforms).length > 0;
     return hasLinks && !(await isInGameChannel(message, this.isGameChannel));
   }
 
@@ -68,39 +61,23 @@ export class LinkFixBehavior implements BotBehavior<BehaviorEvent.MessageCreated
     if (!profile) return BehaviorResult.Continue;
     const enabledPlatforms = enabledRewritePlatforms(profile.linkFixPlatforms);
     const rewrites = extractLinkRewrites(message.content, enabledPlatforms);
-    const bilibiliLinks = profile.linkFixPlatforms.bilibili ? extractBilibiliLinks(message.content) : [];
-    if (rewrites.length === 0 && bilibiliLinks.length === 0) return BehaviorResult.Continue;
+    const content = buildRewriteContent(rewrites);
+    if (!content) return BehaviorResult.Continue;
 
-    // Cap before fetching, not just before sending — no point building an
-    // embed Discord will reject the whole message over.
-    const bilibiliEmbeds = (await Promise.all(
-      bilibiliLinks.slice(0, discordMaxEmbedsPerMessage).map((link) => this.bilibiliEmbeds.buildEmbed(link).catch((error: unknown) => {
-        this.logger.warn(
-          { error, guildId: message.guildId, channelId: message.channelId, messageId: message.id },
-          "Failed to build Bilibili embed",
-        );
-        return null;
-      })),
-    )).filter((embed): embed is EmbedBuilder => embed !== null);
-
-    if (rewrites.length === 0 && bilibiliEmbeds.length === 0) return BehaviorResult.Continue;
+    try {
+      await message.reply({ content, allowedMentions: { repliedUser: false } });
+    } catch (error: unknown) {
+      this.logger.warn(
+        { error, guildId: message.guildId, channelId: message.channelId, messageId: message.id },
+        "Failed to post rewritten link",
+      );
+      return BehaviorResult.Continue;
+    }
 
     await message.suppressEmbeds(true).catch((error: unknown) => {
       this.logger.warn(
         { error, guildId: message.guildId, channelId: message.channelId, messageId: message.id },
         "Failed to suppress the original message's embed for link fix",
-      );
-    });
-
-    const content = buildRewriteContent(rewrites);
-    await message.reply({
-      ...(content ? { content } : {}),
-      embeds: bilibiliEmbeds,
-      allowedMentions: { repliedUser: false },
-    }).catch((error: unknown) => {
-      this.logger.warn(
-        { error, guildId: message.guildId, channelId: message.channelId, messageId: message.id },
-        "Failed to post rewritten link",
       );
     });
 

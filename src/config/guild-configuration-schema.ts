@@ -1,6 +1,10 @@
 import { z } from "zod";
 
 import { defaultLanguage, languages } from "../application/i18n/language.js";
+import {
+  linkActions, maxListedDomains, raidAccountAgeLimits, raidActions, raidJoinLimits, securityWindows, spamActions,
+  spamChannelLimits,
+} from "../domain/security/detection-policy.js";
 import { trapActions, trapDeleteWindows, trapTimeoutDurations } from "../domain/security/trap-policy.js";
 import { CHAT_LIMITS, MUSIC_LIMITS, PANEL_LIMITS } from "./guild-configuration-limits.js";
 
@@ -22,7 +26,24 @@ const timezoneSchema = z.string().trim().min(1).refine(isValidTimeZone, {
 }).default("UTC");
 
 const defaultTrap = { enabled: false, channelId: null, action: "timeout" as const, deleteWindow: "1h" as const, timeout: "28d" as const };
-const defaultSecurity = { trap: defaultTrap, exemptRoleIds: [] as string[], logChannelId: null };
+const defaultSpam = {
+  enabled: false, channels: spamChannelLimits.default, window: "1m" as const,
+  action: "timeout" as const, deleteWindow: "1h" as const, timeout: "1d" as const,
+};
+const defaultLinks = {
+  enabled: false, action: "delete" as const, deleteWindow: "1h" as const, timeout: "1d" as const,
+  blockedDomains: [] as string[], allowedDomains: [] as string[], suspicious: true, invites: false,
+};
+const defaultRaid = {
+  enabled: false, joins: raidJoinLimits.default, window: "30s" as const, action: "alert" as const,
+  accountAgeDays: raidAccountAgeLimits.default, timeout: "1d" as const,
+};
+export const defaultSecurity = {
+  trap: defaultTrap, spam: defaultSpam, links: defaultLinks, raid: defaultRaid,
+  exemptRoleIds: [] as string[], logChannelId: null,
+};
+
+const domainList = z.array(z.string().regex(/^(?:[a-z0-9-]+\.)+[a-z]{2,}$/)).max(maxListedDomains).default([]);
 
 const guildSecuritySchema = z
   .object({
@@ -35,6 +56,38 @@ const guildSecuritySchema = z
         timeout: z.enum(trapTimeoutDurations).default("28d"),
       })
       .default(defaultTrap),
+    spam: z
+      .object({
+        enabled: z.boolean().default(false),
+        channels: z.number().int().min(spamChannelLimits.min).max(spamChannelLimits.max).default(spamChannelLimits.default),
+        window: z.enum(securityWindows).default("1m"),
+        action: z.enum(spamActions).default("timeout"),
+        deleteWindow: z.enum(trapDeleteWindows).default("1h"),
+        timeout: z.enum(trapTimeoutDurations).default("1d"),
+      })
+      .default(defaultSpam),
+    links: z
+      .object({
+        enabled: z.boolean().default(false),
+        action: z.enum(linkActions).default("delete"),
+        deleteWindow: z.enum(trapDeleteWindows).default("1h"),
+        timeout: z.enum(trapTimeoutDurations).default("1d"),
+        blockedDomains: domainList,
+        allowedDomains: domainList,
+        suspicious: z.boolean().default(true),
+        invites: z.boolean().default(false),
+      })
+      .default(defaultLinks),
+    raid: z
+      .object({
+        enabled: z.boolean().default(false),
+        joins: z.number().int().min(raidJoinLimits.min).max(raidJoinLimits.max).default(raidJoinLimits.default),
+        window: z.enum(securityWindows).default("30s"),
+        action: z.enum(raidActions).default("alert"),
+        accountAgeDays: z.number().int().min(raidAccountAgeLimits.min).max(raidAccountAgeLimits.max).default(raidAccountAgeLimits.default),
+        timeout: z.enum(trapTimeoutDurations).default("1d"),
+      })
+      .default(defaultRaid),
     exemptRoleIds: snowflakeList,
     logChannelId: snowflake.nullable().default(null),
   })

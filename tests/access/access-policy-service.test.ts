@@ -1,3 +1,4 @@
+import { defaultSecurity } from "../../src/config/guild-configuration-schema.js";
 import type { ChatInputCommandInteraction } from "discord.js";
 import { describe, expect, it } from "vitest";
 
@@ -126,7 +127,7 @@ function guildConfiguration(): GuildConfiguration {
       ambientCooldownSeconds: 20,
       channelHistoryLimit: 8, reactionReplyWaitMinMinutes: 2, reactionReplyWaitMaxMinutes: 5, reactionReplyMinReactors: 1, channelMemoryModes: {}, personaDriftEnabled: false, contextScanChannelIds: [], contextDailyChannelIds: [], contextSeedDays: 7,
     },
-    security: { trap: { enabled: false, channelId: null, action: "timeout", deleteWindow: "1h", timeout: "28d" }, exemptRoleIds: [], logChannelId: null },
+    security: defaultSecurity,
     sourceFile: "test.yaml",
   };
 }
