@@ -8,6 +8,7 @@ import { hitDicePool } from "../../domain/campaign/character/character-build.js"
 import type { SealedContent, Glossary } from "../../domain/campaign/rules/content-registry.js";
 import type { CheckTest } from "../../domain/campaign/character/character-sheet.js";
 import { findScene } from "../../domain/campaign/adventure/adventure-bible.js";
+import { availableInteractions } from "./dm/interactions.js";
 import { levelingMode, resolveHouseRules } from "../../domain/campaign/rules/house-rules.js";
 import type { CombatView, DeathSavesView } from "./views/campaign-views.js";
 import { companionsOf } from "../../domain/campaign/companions/companion-roster.js";
@@ -190,6 +191,8 @@ export interface ActivityTableView {
   // The story so far, newest last: what the table has read in the Adventure channel and what the fight did.
   readonly story: readonly StoryEntry[];
   readonly rolls: readonly { readonly id: string; readonly test: CheckTest; readonly natural: number; readonly total: number; readonly dc: number; readonly success: boolean; readonly moment: "natural20" | "natural1" | null }[];
+  // What the party could try here, in the adventure's own words: the authored interactions open right now. A mystery cannot ask players to guess its triggers.
+  readonly leads: readonly { readonly id: string; readonly label: string }[];
   readonly submittedCount: number;
   readonly participantCount: number;
   readonly submission: "action" | "pass" | "missed" | "excused" | null;
@@ -596,6 +599,7 @@ export function buildActivityTableView(
     pendingRollCount: panel.pendingRolls.length,
     story: buildActivityStory(state, events, bible, glossary, ownCharacterId),
     rolls: ownCharacterId === null ? [] : recentRolls(state, ownCharacterId),
+    leads: availableInteractions(bible, state).map((interaction) => ({ id: interaction.id, label: interaction.label })),
     submittedCount: state.round == null ? 0 : Object.values(state.round.submissions).filter((submission) => submission.kind === "action" || submission.kind === "pass").length,
     participantCount: state.round?.participants.length ?? 0,
     submission: roundSubmission?.kind === "action" ? "action" : roundSubmission?.kind ?? null,

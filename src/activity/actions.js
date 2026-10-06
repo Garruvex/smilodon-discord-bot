@@ -348,6 +348,21 @@ export function buildTableActions(game, liveActions, log) {
     const input = draftInput(document.createElement("textarea"), "action", t("activity.action.submit"), t("activity.action.inputPlaceholder"));
     input.maxLength = 500;
     input.rows = 2;
+    // The things the scene has ready, so the table is never left guessing the words that move the story. Tapping one fills the box; the player can still change it.
+    if (game.leads?.length) {
+      const leads = document.createElement("div");
+      leads.className = "action-leads";
+      const heading = document.createElement("p");
+      heading.className = "action-hint";
+      heading.textContent = t("activity.action.leads");
+      leads.append(heading);
+      for (const lead of game.leads) {
+        const button = makeButton(lead.label, () => { input.value = lead.label; drafts.action = lead.label; input.focus(); });
+        button.classList.add("action-lead");
+        leads.append(button);
+      }
+      composer.push(leads);
+    }
     composer.push(input);
     // Seen while typing too, which a placeholder is not.
     const hint = document.createElement("p");
