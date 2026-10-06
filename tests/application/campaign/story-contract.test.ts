@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { searchStoryStates } from "../../../src/application/campaign/adventures/story-states.js";
 import { analyzeStoryContract } from "../../../src/application/campaign/adventures/story-contract.js";
 import type { AdventureBible, BibleInteraction, BibleScene } from "../../../src/domain/campaign/adventure/adventure-bible.js";
 
@@ -170,5 +171,35 @@ describe("endings", () => {
     expect(rules(story(scenes, [rolled]))).toEqual([]);
     // Without the floor ending, a bad roll closes the story.
     expect(rules(story(scenes.slice(0, 2).map((entry, index) => (index === 0 ? scene("scene:a", { exits: [{ to: "scene:good" as never, requires: { flags: ["door-open"] } }] }) : entry)), [rolled]))).toContain("ending-stranded");
+  });
+});
+
+describe("keeping the search small without changing what it finds", () => {
+  const states = (bible: AdventureBible): number => {
+    const result = searchStoryStates(bible, bible.scenes.filter((candidate) => candidate.ending === true).map((candidate) => candidate.id), 100_000, 10_000);
+    return result.kind === "complete" ? result.states : -1;
+  };
+  const gate = (n: number): readonly BibleInteraction[] => Array.from({ length: n }, (_, i) => interaction(`pull-${i}`, "scene:a", { check: { skill: "athletics", dc: 10 }, onSuccess: [{ kind: "set", flag: `lever-${i}` }], onFailure: [{ kind: "set", flag: `lever-${i}` }] }));
+
+  it("merges every way of ending in the same scene into one state", () => {
+    const readers = Array.from({ length: 6 }, (_, i) => scene(`scene:r${i}`, { exits: [{ to: "scene:end" as never }] }));
+    const bible = story([scene("scene:a", { exits: [{ to: "scene:end" as never }] }), scene("scene:end", { ending: true, exits: [] }), ...readers], [...gate(6)]);
+    expect(states(bible)).toBeLessThanOrEqual(3);
+  });
+
+  it("does not treat going where a plain exit already goes as a choice of its own", () => {
+    const bible = story([scene("scene:a", { exits: [{ to: "scene:b" as never }] }), scene("scene:b", { exits: [{ to: "scene:a" as never }, { to: "scene:end" as never }] }), scene("scene:end", { ending: true, exits: [] })], [
+      interaction("take-the-road", "scene:a", { onSuccess: [{ kind: "goto", scene: "scene:b" as never }] }),
+    ]);
+    expect(states(bible)).toBe(3);
+  });
+
+  it("still finds a trap after the reductions", () => {
+    const bible = story([
+      scene("scene:square", { exits: [{ to: "scene:home" as never }, { to: "scene:well" as never }] }),
+      scene("scene:well", { exits: [{ to: "scene:square" as never, requires: { flags: ["rope"] } }] }),
+      scene("scene:home", { ending: true, exits: [] }),
+    ], [interaction("climb", "scene:well", { check: { skill: "athletics", dc: 12 }, onSuccess: [{ kind: "set", flag: "rope" }] })]);
+    expect(analyzeStoryContract(bible).some((finding) => finding.rule === "ending-stranded" && finding.severity === "error")).toBe(true);
   });
 });
