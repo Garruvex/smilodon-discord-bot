@@ -180,7 +180,47 @@ export function buildPlannerPrompt(request: PlannerRequest): { system: string; u
 
 // How a reply that is not JSON ends, so a log shows whether the model was cut off at its output limit or wrote something else.
 function cutOff(text: string): string {
-  return ` (${text.length} characters, ending ${JSON.stringify(text.slice(-40))})`;
+  return ` (${text.length} characters, ending ${JSON.stringify(text.slice(-40))}; reply ${JSON.stringify(text.slice(0, 4000))})`;
+}
+
+// A narrator reply that is almost JSON: a code fence around it, a raw line break inside the narration, or a plain quote in spoken
+// words that was not escaped. The text is repaired the same way every time, so a good reply is never changed.
+export function repairNarratorJson(text: string): string {
+  const body = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  let out = "";
+  let inString = false;
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body.charAt(index);
+    if (!inString) {
+      if (char === "\"") inString = true;
+      out += char;
+      continue;
+    }
+    if (char === "\\") { out += char + body.charAt(index + 1); index += 1; continue; }
+    if (char === "\n") { out += "\\n"; continue; }
+    if (char === "\r") continue;
+    if (char === "\t") { out += "\\t"; continue; }
+    if (char === "\"") {
+      // A quote closes the string only when what follows is JSON structure; otherwise it is part of the words.
+      const closes = /^\s*([,}:\]]|$)/.test(body.slice(index + 1));
+      if (closes) { inString = false; out += char; } else out += "\\\"";
+      continue;
+    }
+    out += char;
+  }
+  return out;
+}
+
+function parseNarratorJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    try {
+      return JSON.parse(repairNarratorJson(text));
+    } catch {
+      throw new Error(`Narrator output was not valid JSON${cutOff(text)}.`);
+    }
+  }
 }
 
 export function parsePlannerOutput(text: string, roundNumber: number): PlannerProposal {
@@ -351,24 +391,14 @@ function buildOpeningPrompt(
 }
 
 export function parseNarratorOutput(text: string): string {
-  let json: unknown;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    throw new Error(`Narrator output was not valid JSON${cutOff(text)}.`);
-  }
+  const json = parseNarratorJson(text);
   const parsed = narratorOutputSchema.safeParse(json);
   if (!parsed.success) throw new Error("Narrator output had no narration.");
   return restoreLineBreaks(parsed.data.narration);
 }
 
 export function parseRoundNarratorOutput(text: string): { readonly narration: string; readonly note: string } {
-  let json: unknown;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    throw new Error(`Narrator output was not valid JSON${cutOff(text)}.`);
-  }
+  const json = parseNarratorJson(text);
   const parsed = roundNarratorOutputSchema.safeParse(json);
   if (!parsed.success) throw new Error("Round narration output had the wrong shape.");
   return { narration: restoreLineBreaks(parsed.data.narration), note: restoreLineBreaks(parsed.data.note) };
