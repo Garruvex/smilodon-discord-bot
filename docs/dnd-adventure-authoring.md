@@ -23,7 +23,7 @@ interactions:
     requires: { flags: [gate-open], notFlags: [drunk], clues: [clue:well] }
     pay: 0                              # gold the hero pays
     attempts: 1                         # tries allowed (default one; failure is not freely retryable)
-    fallback: true                      # the engine may take this step for a stalled table (no roll, no fee) after about nine rounds with no progress
+    fallback: true                      # the engine may take this step for a stalled table (no roll, no fee) after about ten rounds of the table acting with no progress (rounds everyone passes are not counted)
     onSuccess: [{ kind: set, flag: refreshed }]
     onFailure:
       - { kind: hurt, count: 2, sides: 6, damageType: poison }   # dice decide; each rolling hero is hurt by their own failure
@@ -50,7 +50,7 @@ npcs:
 
 Asking is a free, no-roll route to the clue; the engine decides what is told and the narrator only voices it. The story contract counts it.
 
-A clue may be marked `free: true`: a nudge that is safe to hand over. When the table goes about six rounds without the story moving, the engine gives the
+A clue may be marked `free: true`: a nudge that is safe to hand over. When the table goes about eight rounds of acting without the story moving (passing rounds do not count), the engine gives the
 scene's next free clue. Any other clue may be the answer to something, so it is never handed over.
 
 ## Effects

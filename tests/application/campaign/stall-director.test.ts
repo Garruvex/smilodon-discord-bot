@@ -7,6 +7,7 @@ import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign
 import type { CampaignState } from "../../../src/domain/campaign/state/campaign-state.js";
 
 const resolved = { kind: "roundResolved", roundNumber: 1 } as unknown as CampaignEvent;
+const passed = { kind: "roundResolved", roundNumber: 1, quiet: true } as unknown as CampaignEvent;
 const moved = { kind: "clueRevealed", roundNumber: 1, clueId: "clue:x", text: "x" } as CampaignEvent;
 const tried = { kind: "flagSet", roundNumber: 1, flag: "tried:interaction:a", value: 1 } as unknown as CampaignEvent;
 
@@ -30,8 +31,13 @@ describe("counting a stalled table", () => {
     expect(stalledRounds([moved, resolved, tried, resolved])).toBe(2);
   });
 
+  it("does not count a round everyone passed", () => {
+    expect(stalledRounds([resolved, passed, passed, passed, resolved])).toBe(2);
+    expect(roundsInScene([resolved, passed, passed])).toBe(1);
+  });
+
   it("steps up at the configured rounds", () => {
-    expect([2, 3, 5, 6, 8, 9, 20].map((rounds) => stallLevel(rounds))).toEqual([0, 1, 1, 2, 2, 3, 3]);
+    expect([2, 5, 6, 7, 8, 9, 10, 20].map((rounds) => stallLevel(rounds))).toEqual([0, 0, 1, 1, 2, 2, 3, 3]);
   });
 });
 

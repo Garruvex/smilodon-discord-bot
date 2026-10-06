@@ -20,7 +20,8 @@ export interface StallConfig {
   readonly step: number;
 }
 
-export const defaultStall: StallConfig = { hint: 3, clue: 6, step: 9 };
+// Only more than five rounds of the table acting in one scene without the story moving count as stuck; rounds everyone passes are not counted.
+export const defaultStall: StallConfig = { hint: 6, clue: 8, step: 10 };
 
 export type StallLevel = 0 | 1 | 2 | 3;
 
@@ -41,14 +42,14 @@ const movedTheStory = (event: CampaignEvent): boolean => {
   }
 };
 
-// Rounds that finished since the story last moved.
+// Rounds the table acted in that finished since the story last moved (rounds where everyone passed do not count).
 export function stalledRounds(events: readonly CampaignEvent[]): number {
   let rounds = 0;
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
     if (event === undefined) continue;
     if (movedTheStory(event)) return rounds;
-    if (event.kind === "roundResolved") rounds += 1;
+    if (event.kind === "roundResolved" && !event.quiet) rounds += 1;
   }
   return rounds;
 }
@@ -99,7 +100,7 @@ export function roundsInScene(events: readonly CampaignEvent[]): number {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
     if (event?.kind === "sceneTransitioned") return rounds;
-    if (event?.kind === "roundResolved") rounds += 1;
+    if (event?.kind === "roundResolved" && !event.quiet) rounds += 1;
   }
   return rounds;
 }

@@ -88,7 +88,7 @@ clues:
     sceneId: scene:square
     publicText: The water went bad the night of the last storm.   # PUBLIC: states a fact that is already true.
     dmNotes: Revealed automatically by asking the villagers.
-    free: true                                                     # safe to hand to a stuck table (after about six rounds with no progress)
+    free: true                                                     # safe to hand to a stuck table (after about eight rounds of acting with no progress)
   - id: clue:rune
     sceneId: scene:square
     publicText: An old rune is scratched on the well's rim; it matches a mark on the elder's walking stick.
@@ -110,7 +110,7 @@ interactions:
     sceneId: scene:square
     label: Study the old rune on the well's rim
     dmNotes: No roll. Reveals the way into the shrine.
-    fallback: true                           # if the table stalls (about nine rounds with no progress), the engine takes THIS step for them
+    fallback: true                           # if the table stalls (about ten rounds of acting with no progress), the engine takes THIS step for them
     onSuccess:
       - { kind: reveal, clue: clue:rune }
       - { kind: set, flag: door-open }       # the free key to the gate in scene:well-shaft

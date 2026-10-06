@@ -72,7 +72,7 @@ export function evolve(state: CampaignState, event: CampaignEvent): CampaignStat
       return updateCheck(state, event.checkId, (check) => ({ ...check, status: "resolved", result: event.result }));
     case "roundResolved":
       if (state.round?.number !== event.roundNumber) return state;
-      { const { sceneMoveSettledRound: _round, sceneMoveSettledDestination: _destination, ...rest } = state; return { ...rest, round: null, quietRounds: event.quiet ? (state.quietRounds ?? 0) + 1 : 0 }; }
+      { const { sceneMoveSettledRound: _round, sceneMoveSettledDestination: _destination, ...rest } = state; return { ...rest, round: null }; }
     case "sceneTransitioned":
       return { ...omitDeclined(state), sceneId: event.sceneId, sceneChangedRound: event.roundNumber, visits: visitsAfterMove(state, event.sceneId, event.roundNumber, event.reason) };
     case "sceneVisitStarted":

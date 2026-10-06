@@ -46,7 +46,7 @@ forward, and write down the way forward *when things go badly*.
    and questions about the plot go nowhere. Include the words players are likely to use (the thing, the person, the place), in each language the table plays.
 6. **Plant the clues.** A player must be able to learn what to do next. Every important next step needs a clue that is revealed without a roll
    (arrival effect or an automatic interaction). Put a better version behind a roll if you like. Mark a clue `free: true` when it is safe to hand to a
-   table that is stuck (a nudge, not the answer to a mystery): the engine gives it after about six rounds without progress. Clues not marked free are
+   table that is stuck (a nudge, not the answer to a mystery): the engine gives it after about eight rounds of acting without progress (rounds everyone passes do not count). Clues not marked free are
    never handed over.
 7. **Schedule time-based events.** If something happens "at midnight" or "when the alarm sounds", do not rely on a player saying "I wait". Say it
    in a clue the table learns for free, and give the fight a `schedule` so it breaks out by itself: `schedule: { requires: { clues: [clue:strikes-at-midnight] }, time: night, afterRounds: 2 }`
@@ -54,7 +54,7 @@ forward, and write down the way forward *when things go badly*.
    optional. Never make the table ask for the event. A table that waits in the scene (two rounds, or `afterRounds` if longer) with everything else in
    place has the time of day brought to it: the story passes to that hour and the fight breaks out.
 8. **Name the step the engine may take for a stuck table.** On each point where the story could stall, mark ONE interaction `fallback: true`: the step
-   a patient guide would simply let happen. If the table goes about nine rounds without the story moving, the engine takes that step for them with no
+   a patient guide would simply let happen. If the table goes about ten rounds of acting without the story moving, the engine takes that step for them with no
    roll and no fee (after a hint at three rounds and a clue marked `free: true` at six). It happens as a world event beside the players' own
    actions; it never replaces what someone chose to do. Rounds where everyone passes count too. Only an adventure can authorize this, so choose steps that do not take
    away a choice the story established (reading the rune, opening the gate, the elder finally speaking) and never one that decides an ending.

@@ -122,21 +122,6 @@ describe("exploration rounds", () => {
     expect(last.state.round).toMatchObject({ number: 2, status: "collecting" });
   });
 
-  it("plans the third quiet round in a row, so pressing Pass never stops the story's own clock", () => {
-    let state = run(newCampaign(), system, { kind: "openRound" }).state;
-    const passRound = (from: typeof state) => run(run(from, alex, { kind: "pass", characterId: "c-mira" }).state, jamie, { kind: "pass", characterId: "c-borin" });
-    for (let round = 1; round <= 2; round += 1) {
-      const quiet = passRound(state);
-      expect(kinds(quiet.events)).toContain("roundResolved");
-      expect(quiet.requests.map((request) => request.kind)).not.toContain("plan");
-      state = quiet.state;
-    }
-    const third = passRound(state);
-    expect(kinds(third.events)).toEqual(["passSubmitted", "roundClosed"]);
-    expect(third.requests).toContainEqual({ kind: "plan", roundNumber: 3 });
-    expect(third.state.round).toMatchObject({ number: 3, status: "planning" });
-  });
-
   it("refuses the last pass while paused and preserves the unfinished round", () => {
     let state = run(newCampaign(), system, { kind: "openRound" }).state;
     state = run(state, alex, { kind: "pass", characterId: "c-mira" }).state;
