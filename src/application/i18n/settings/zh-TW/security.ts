@@ -35,7 +35,11 @@ export const zhTWSecurity: SettingsTextCatalog = {
   "security.spam.enabled": { label: "跨頻道洗版", description: "開啟或關閉洗版偵測" },
   "security.spam.channels": { label: "頻道數", description: "相同訊息出現在幾個不同頻道才算（2-10）" },
   "security.spam.window": { label: "時間內", description: "要在多短的時間內發生", choices: windows },
-  "security.spam.action": { label: "處理方式", description: "對這麼做的帳號如何處理", choices: actions },
+  "security.spam.action": {
+    label: "處理方式",
+    description: "對這麼做的帳號如何處理，「僅記錄」只回報，可用來安全地試用",
+    choices: { report: "僅記錄", ...actions },
+  },
   "security.spam.delete-history": {
     label: "刪除其近期訊息",
     description: "除了重複的訊息外，要往回刪除對方多久以內的其他訊息",
@@ -50,8 +54,8 @@ export const zhTWSecurity: SettingsTextCatalog = {
   "security.links.enabled": { label: "連結檢查", description: "開啟或關閉連結檢查" },
   "security.links.action": {
     label: "處理方式",
-    description: "對貼出的帳號如何處理，「刪除訊息」只刪訊息",
-    choices: { delete: "刪除訊息", ...actions },
+    description: "對貼出的帳號如何處理，「僅記錄」不做任何事，「刪除訊息」只刪訊息",
+    choices: { report: "僅記錄", delete: "刪除訊息", ...actions },
   },
   "security.links.delete-history": {
     label: "刪除其近期訊息",

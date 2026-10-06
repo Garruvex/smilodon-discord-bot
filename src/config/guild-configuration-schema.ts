@@ -2,7 +2,8 @@ import { z } from "zod";
 
 import { defaultLanguage, languages } from "../application/i18n/language.js";
 import {
-  linkActions, maxListedDomains, raidAccountAgeLimits, raidActions, raidJoinLimits, securityWindows, spamChannelLimits,
+  linkActions, maxListedDomains, raidAccountAgeLimits, raidActions, raidJoinLimits, securityWindows, spamActions,
+  spamChannelLimits,
 } from "../domain/security/detection-policy.js";
 import { trapActions, trapDeleteWindows, trapTimeoutDurations } from "../domain/security/trap-policy.js";
 import { CHAT_LIMITS, MUSIC_LIMITS, PANEL_LIMITS } from "./guild-configuration-limits.js";
@@ -60,7 +61,7 @@ const guildSecuritySchema = z
         enabled: z.boolean().default(false),
         channels: z.number().int().min(spamChannelLimits.min).max(spamChannelLimits.max).default(spamChannelLimits.default),
         window: z.enum(securityWindows).default("1m"),
-        action: z.enum(trapActions).default("timeout"),
+        action: z.enum(spamActions).default("timeout"),
         deleteWindow: z.enum(trapDeleteWindows).default("1h"),
         timeout: z.enum(trapTimeoutDurations).default("1d"),
       })

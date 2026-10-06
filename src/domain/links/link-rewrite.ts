@@ -15,9 +15,6 @@ interface LinkRewriteRule {
 
 // Community-run "embed fix" proxies that mirror the original page but serve
 // Discord-friendly Open Graph tags (video/image previews, inline players).
-// Bilibili has no comparable public proxy, so it's handled separately by
-// BilibiliEmbedService, which builds a native Discord embed from Bilibili's
-// own API instead of depending on a third-party domain.
 const rewriteRules: readonly LinkRewriteRule[] = [
   {
     key: "twitter",
@@ -46,12 +43,24 @@ const rewriteRules: readonly LinkRewriteRule[] = [
   {
     key: "reddit",
     platform: "Reddit",
-    hostnames: new Set(["reddit.com"]),
-    rewriteHostname: "rxddit.com",
+    hostnames: new Set(["reddit.com", "old.reddit.com", "redd.it"]),
+    rewriteHostname: "vxreddit.com",
+  },
+  {
+    key: "bilibili",
+    platform: "Bilibili",
+    hostnames: new Set(["bilibili.com"]),
+    rewriteHostname: "vxbilibili.com",
+  },
+  {
+    key: "bilibili",
+    platform: "Bilibili",
+    hostnames: new Set(["b23.tv"]),
+    rewriteHostname: "vxb23.tv",
   },
 ];
 
-const trackingParamPrefixes = ["utm_", "igshid", "si", "spm_id_from"];
+const trackingParams = new Set(["igshid", "si", "spm_id_from"]);
 const urlPattern = /https?:\/\/\S+/g;
 
 function stripHostPrefix(hostname: string): string {
@@ -87,7 +96,7 @@ export function extractLinkRewrites(
 
     url.hostname = rule.rewriteHostname;
     for (const key of [...url.searchParams.keys()]) {
-      if (trackingParamPrefixes.some((prefix) => key.startsWith(prefix))) {
+      if (key.startsWith("utm_") || trackingParams.has(key)) {
         url.searchParams.delete(key);
       }
     }

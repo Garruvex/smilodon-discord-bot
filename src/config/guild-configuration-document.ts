@@ -1,5 +1,5 @@
 import type { Language } from "../application/i18n/language.js";
-import type { LinkAction, RaidAction, SecurityWindow } from "../domain/security/detection-policy.js";
+import type { LinkAction, RaidAction, SecurityWindow, SpamAction } from "../domain/security/detection-policy.js";
 import type { TrapAction, TrapDeleteWindow, TrapTimeoutDuration } from "../domain/security/trap-policy.js";
 import type { GuildConfiguration, LinkFixPlatform, ProgressBarSettings } from "./guild-configuration.js";
 import {
@@ -105,7 +105,7 @@ export interface UpdateGuildConfigurationInput {
   spamEnabled?: boolean;
   spamChannels?: number;
   spamWindow?: SecurityWindow;
-  spamAction?: TrapAction;
+  spamAction?: SpamAction;
   spamDeleteWindow?: TrapDeleteWindow;
   spamTimeout?: TrapTimeoutDuration;
   linksEnabled?: boolean;

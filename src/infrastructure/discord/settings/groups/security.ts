@@ -9,6 +9,7 @@ import {
   raidActions,
   raidJoinLimits,
   securityWindows,
+  spamActions,
   spamChannelLimits,
 } from "../../../../domain/security/detection-policy.js";
 import { parseDomainList, type DomainListResult } from "../../../../domain/security/link-inspection.js";
@@ -142,7 +143,7 @@ export const security = group("security", [
       write: (v) => ({ spamWindow: v }),
     }),
     action: choice({
-      choices: trapActions,
+      choices: spamActions,
       read: (p) => p.security.spam.action,
       write: (v) => ({ spamAction: v }),
     }),

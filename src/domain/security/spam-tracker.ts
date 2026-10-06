@@ -14,13 +14,26 @@ export interface SpamAttachment {
 }
 
 const minPlainLength = 8;
-const linkPattern = /https?:\/\/|www\./i;
+const linkMatches = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi;
+
+// The links in a message, normalized so spelling variations of one address
+// compare equal. A scam pasted into many channels is usually reworded around
+// the same link, so the link is a steadier mark than the text around it.
+function normalizedLinks(content: string): string[] {
+  const links = new Set<string>();
+  for (const match of content.toLowerCase().matchAll(linkMatches)) {
+    links.add(match[0].replace(/[.,;:!?)\]>]+$/, "").replace(/^(?:https?:\/\/)?(?:www\.)?/, ""));
+  }
+  return [...links].sort();
+}
 
 // What two posts must share to count as "the same message", or null when a
 // post is too small to say anything (a "lol" in three channels is not spam).
 export function spamFingerprint(content: string, attachments: readonly SpamAttachment[]): string | null {
   const normalized = content.toLowerCase().replace(/\s+/g, " ").trim();
-  if (normalized.length >= minPlainLength || linkPattern.test(normalized)) return `text:${normalized}`;
+  const links = normalizedLinks(content);
+  if (links.length > 0) return `links:${links.join("|")}`;
+  if (normalized.length >= minPlainLength) return `text:${normalized}`;
   if (attachments.length > 0) {
     return `files:${attachments.map((file) => `${file.name.toLowerCase()}:${file.size}`).sort().join("|")}`;
   }

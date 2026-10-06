@@ -20,6 +20,17 @@ describe("spamFingerprint", () => {
     expect(spamFingerprint("http://a.co", [])).not.toBeNull();
   });
 
+  it("marks a message by its links, so rewording around one doesn't help", () => {
+    const one = spamFingerprint("free nitro!! https://Scam.example/claim.", []);
+    const two = spamFingerprint("claim it now www.scam.example/claim", []);
+    expect(one).toBe(two);
+    expect(one).not.toBe(spamFingerprint("https://other.example/claim", []));
+  });
+
+  it("tells apart messages that link to different places", () => {
+    expect(spamFingerprint("see https://a.example/1", [])).not.toBe(spamFingerprint("see https://a.example/2", []));
+  });
+
   it("fingerprints files by name and size when there is no text", () => {
     const files = [{ name: "Scam.PNG", size: 10 }];
     expect(spamFingerprint("", files)).toBe(spamFingerprint("", [{ name: "scam.png", size: 10 }]));

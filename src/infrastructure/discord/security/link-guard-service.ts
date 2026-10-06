@@ -8,6 +8,8 @@ import { decideTrapResponse } from "../../../domain/security/trap-policy.js";
 import { SecurityEnforcer, messageSubject } from "./security-enforcer.js";
 import { linkReasonTextKey } from "./security-text-keys.js";
 
+const noticeLifetimeMs = 10_000;
+
 // Removes messages carrying links the server has said it doesn't want: hosts
 // on its block list, lookalikes of well-known brands, raw IP addresses and,
 // if asked, invites to other servers. A link is judged by its name alone; it
@@ -37,16 +39,13 @@ export class LinkGuardService {
     // nothing is touched.
     const member = message.member ?? await message.guild.members.fetch(message.author.id).catch(() => null);
     if (!member) return false;
+    const action = links.action;
     // Staff exemption is the same whatever the response; "can the bot act" only
     // matters when the response is more than removing the message.
     const decision = decideTrapResponse(messageSubject(message, member, profile), {
-      action: links.action === "delete" ? "timeout" : links.action,
+      action: action === "delete" || action === "report" ? "timeout" : action,
     });
     if (decision.kind === "skip") return false;
-
-    await message.delete().catch((error: unknown) => {
-      this.logger.warn({ error, guildId: message.guildId, messageId: message.id }, "Unable to delete a message with a refused link");
-    });
 
     const text = texts[profile.language].security;
     const params = {
@@ -55,22 +54,44 @@ export class LinkGuardService {
       host: finding.host,
       reason: text.links.reason[linkReasonTextKey[finding.reason]],
     };
-    if (links.action === "delete") {
+    if (action === "report") {
+      // Log only: the message stays, so everything else carries on as usual.
+      await this.enforcer.report(profile, message.guild, text.links.log.reported(params));
+      return false;
+    }
+
+    await message.delete().catch((error: unknown) => {
+      this.logger.warn({ error, guildId: message.guildId, messageId: message.id }, "Unable to delete a message with a refused link");
+    });
+
+    if (action === "delete") {
+      await this.notify(message, text.links.notice(params));
       await this.enforcer.report(profile, message.guild, text.links.log.removed(params));
       return true;
     }
 
     const { outcome, removed } = await this.enforcer.respond({
       member,
-      response: { action: links.action, deleteWindow: links.deleteWindow, timeout: links.timeout },
+      response: { action, deleteWindow: links.deleteWindow, timeout: links.timeout },
       blocked: decision.kind === "blocked",
       at: message.createdTimestamp,
     });
     await this.enforcer.report(profile, message.guild, text.links.log[outcome]({
       ...params,
-      action: text.trap.action[links.action],
+      action: text.trap.action[action],
       removed,
     }));
     return true;
+  }
+
+  // Tells the member why their message vanished, so a false positive isn't a
+  // mystery. The notice tidies itself away; it is only for the one who posted.
+  private async notify(message: Message<true>, content: string): Promise<void> {
+    try {
+      const notice = await message.channel.send({ content, allowedMentions: { users: [message.author.id] } });
+      setTimeout(() => void notice.delete().catch(() => undefined), noticeLifetimeMs).unref();
+    } catch (error) {
+      this.logger.debug({ error, guildId: message.guildId }, "Unable to post a removed-link notice");
+    }
   }
 }

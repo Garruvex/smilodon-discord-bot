@@ -48,22 +48,32 @@ export class SpamService {
 
     const member = message.member ?? await message.guild.members.fetch(message.author.id).catch(() => null);
     if (!member) return false;
-    const decision = decideTrapResponse(messageSubject(message, member, profile), spam);
+    const action = spam.action;
+    // Staff exemption is the same whatever the response.
+    const decision = decideTrapResponse(messageSubject(message, member, profile), {
+      action: action === "report" ? "timeout" : action,
+    });
     if (decision.kind === "skip") return false;
+
+    const text = texts[profile.language].security;
+    const user = `<@${message.author.id}>`;
+    if (action === "report") {
+      // Log only: the messages stay, so everything else carries on as usual.
+      await this.enforcer.report(profile, message.guild, text.spam.log.reported({ user, channels: verdict.channels }));
+      return false;
+    }
 
     const { outcome, removed } = await this.enforcer.respond({
       member,
-      response: spam,
+      response: { action, deleteWindow: spam.deleteWindow, timeout: spam.timeout },
       blocked: decision.kind === "blocked",
       at: message.createdTimestamp,
       tracked: verdict.posts,
     });
-
-    const text = texts[profile.language].security;
     await this.enforcer.report(profile, message.guild, text.spam.log[outcome]({
-      user: `<@${message.author.id}>`,
+      user,
       channels: verdict.channels,
-      action: text.trap.action[spam.action],
+      action: text.trap.action[action],
       removed,
     }));
     return true;

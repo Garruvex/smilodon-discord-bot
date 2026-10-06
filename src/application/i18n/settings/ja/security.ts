@@ -35,7 +35,11 @@ export const jaSecurity: SettingsTextCatalog = {
   "security.spam.enabled": { label: "チャンネル横断スパム", description: "スパム検知のオン/オフを切り替えます" },
   "security.spam.channels": { label: "チャンネル数", description: "同じメッセージが何個の別チャンネルに届いたら対象にするか（2-10）" },
   "security.spam.window": { label: "期間", description: "どれくらいの短時間で起きたら対象にするか", choices: windows },
-  "security.spam.action": { label: "処置", description: "該当したアカウントへの処置です", choices: actions },
+  "security.spam.action": {
+    label: "処置",
+    description: "該当したアカウントへの処置。「ログのみ」は報告するだけで、安全に試せます",
+    choices: { report: "ログのみ", ...actions },
+  },
   "security.spam.delete-history": {
     label: "直近のメッセージを削除",
     description: "繰り返されたメッセージのほかに、どこまで遡って削除するか",
@@ -50,8 +54,8 @@ export const jaSecurity: SettingsTextCatalog = {
   "security.links.enabled": { label: "リンク検査", description: "リンク検査のオン/オフを切り替えます" },
   "security.links.action": {
     label: "処置",
-    description: "投稿したアカウントへの処置。「メッセージを削除」は投稿のみ削除します",
-    choices: { delete: "メッセージを削除", ...actions },
+    description: "投稿したアカウントへの処置。「ログのみ」は何もせず、「メッセージを削除」は投稿のみ削除します",
+    choices: { report: "ログのみ", delete: "メッセージを削除", ...actions },
   },
   "security.links.delete-history": {
     label: "直近のメッセージを削除",

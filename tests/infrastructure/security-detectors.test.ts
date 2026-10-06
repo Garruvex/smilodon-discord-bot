@@ -10,7 +10,7 @@ import { freshDocument, guildId } from "../helpers/settings-fixtures.js";
 
 const logChannelId = "600000000000000002";
 const adminRoleId = "200000000000000001";
-const logger = { warn: vi.fn(), error: vi.fn() } as never;
+const logger = { warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as never;
 
 function profile(update: UpdateGuildConfigurationInput): GuildConfiguration {
   return toGuildConfiguration(
@@ -84,12 +84,18 @@ function guildWith(channelIds: string[] = []): { guild: FakeGuild; sent: unknown
 }
 
 function messageIn(guild: FakeGuild, member: FakeMember, channelId: string, content: string, id = `m-${channelId}`): {
+  notice: Mock;
+  noticeRemoved: Mock;
   message: Record<string, unknown>;
   remove: Mock;
 } {
   const remove = vi.fn().mockResolvedValue(undefined);
+  const noticeRemoved = vi.fn().mockResolvedValue(undefined);
+  const notice = vi.fn().mockResolvedValue({ delete: noticeRemoved });
   return {
     remove,
+    notice,
+    noticeRemoved,
     message: {
       guildId,
       guild,
@@ -101,6 +107,7 @@ function messageIn(guild: FakeGuild, member: FakeMember, channelId: string, cont
       attachments: new Map(),
       author: { id: member.id, bot: false },
       member,
+      channel: { send: notice },
       delete: remove,
     },
   };
@@ -145,6 +152,29 @@ describe("SpamService", () => {
     expect(text(sent)).toContain("3 channels");
   });
 
+  it("only reports, and leaves every message in place, in log-only mode", async () => {
+    const { post, member, deleted, sent } = setup(profile({ spamEnabled: true, spamAction: "report" }));
+    await post("c1");
+    await post("c2");
+    expect(await post("c3")).toBe(false);
+    expect(member.timeout).not.toHaveBeenCalled();
+    expect(deleted.get("c1")).not.toHaveBeenCalled();
+    expect(text(sent)).toContain("Log only");
+  });
+
+  it("catches the same link reworded in each channel", async () => {
+    const { guild, sent } = guildWith(["c1", "c2", "c3"]);
+    const member = memberFor("700000000000000001", guild);
+    const service = new SpamService({ find: () => spamOn } as never, logger, () => 1_000_000);
+    const say = (channelId: string, words: string): Promise<boolean> =>
+      service.handle(messageIn(guild, member, channelId, words).message as never);
+    await say("c1", "Hey! free nitro for you: https://scam.example/claim");
+    await say("c2", "claim your gift https://www.scam.example/claim.");
+    expect(await say("c3", "WOW https://SCAM.example/claim")).toBe(true);
+    expect(member.timeout).toHaveBeenCalledOnce();
+    expect(sent).toHaveLength(1);
+  });
+
   it("does nothing while it is off", async () => {
     const { post, member } = setup(profile({ spamEnabled: false }));
     await post("c1");
@@ -181,11 +211,18 @@ describe("SpamService", () => {
   });
 });
 
+interface LinkRun {
+  handled: boolean;
+  remove: Mock;
+  notice: Mock;
+  noticeRemoved: Mock;
+}
+
 describe("LinkGuardService", () => {
   const linksOn = profile({ linksEnabled: true, linksBlockedDomains: ["evil.com"] });
 
   function setup(config = linksOn, options: MemberOptions = {}): {
-    run: (content: string) => Promise<{ handled: boolean; remove: Mock }>;
+    run: (content: string) => Promise<LinkRun>;
     member: FakeMember;
     sent: unknown[];
   } {
@@ -195,9 +232,9 @@ describe("LinkGuardService", () => {
     return {
       member,
       sent,
-      run: async (content: string): Promise<{ handled: boolean; remove: Mock }> => {
-        const { message, remove } = messageIn(guild, member, "c1", content);
-        return { handled: await service.handle(message as never), remove };
+      run: async (content: string): Promise<LinkRun> => {
+        const { message, remove, notice, noticeRemoved } = messageIn(guild, member, "c1", content);
+        return { handled: await service.handle(message as never), remove, notice, noticeRemoved };
       },
     };
   }
@@ -222,6 +259,43 @@ describe("LinkGuardService", () => {
     const { run, member } = setup(profile({ linksEnabled: true, linksBlockedDomains: ["evil.com"], linksAction: "timeout" }));
     await run("https://evil.com");
     expect(member.timeout).toHaveBeenCalledWith(24 * 60 * 60 * 1_000, expect.anything());
+  });
+
+  it("tells the member why their message went, and tidies the notice away", async () => {
+    vi.useFakeTimers();
+    try {
+      const { run } = setup();
+      const { notice, noticeRemoved } = await run("https://evil.com/x");
+      expect(notice).toHaveBeenCalledOnce();
+      expect(JSON.stringify(notice.mock.calls[0])).toContain("a blocked site");
+      expect(noticeRemoved).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(noticeRemoved).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("doesn't post a notice when it also acts on the member", async () => {
+    const { run } = setup(profile({ linksEnabled: true, linksBlockedDomains: ["evil.com"], linksAction: "timeout" }));
+    const { notice } = await run("https://evil.com");
+    expect(notice).not.toHaveBeenCalled();
+  });
+
+  it("only reports, and leaves the message and everything else alone, in log-only mode", async () => {
+    const { run, member, sent } = setup(profile({ linksEnabled: true, linksBlockedDomains: ["evil.com"], linksAction: "report" }));
+    const { handled, remove, notice } = await run("https://evil.com/x");
+    expect(handled).toBe(false);
+    expect(remove).not.toHaveBeenCalled();
+    expect(notice).not.toHaveBeenCalled();
+    expect(member.timeout).not.toHaveBeenCalled();
+    expect(text(sent)).toContain("Log only");
+  });
+
+  it("checks an edited message the same way, since it is the same message", async () => {
+    const { run } = setup();
+    expect((await run("nothing wrong here")).handled).toBe(false);
+    expect((await run("nothing wrong here https://evil.com")).handled).toBe(true);
   });
 
   it("flags a lookalike site by default", async () => {

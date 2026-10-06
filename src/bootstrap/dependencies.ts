@@ -88,7 +88,6 @@ import { LinkGuardService } from "../infrastructure/discord/security/link-guard-
 import { RaidService } from "../infrastructure/discord/security/raid-service.js";
 import { SpamService } from "../infrastructure/discord/security/spam-service.js";
 import { TrapService } from "../infrastructure/discord/security/trap-service.js";
-import { BilibiliEmbedService } from "../infrastructure/links/bilibili-embed-service.js";
 import type { ChatProvider } from "../application/chat/chat-provider.js";
 import { OpenAiCompatibleChatProvider } from "../infrastructure/chat/openai-compatible-chat-provider.js";
 import { OpenAiResponsesChatProvider } from "../infrastructure/chat/openai-responses-chat-provider.js";
@@ -257,6 +256,7 @@ export interface ApplicationDependencies {
   // exchange consolidation) before the process exits.
   chatConversationService: ChatConversationService | null;
   raidService: RaidService;
+  linkGuardService: LinkGuardService;
 }
 
 // Everything registerCommands() builds that createDependencies() (or any
@@ -694,9 +694,10 @@ export function createDependencies(
     guildConfigurationProvider,
     logger.child({ component: "reaction-arm" }),
   ));
+  const linkGuardService = new LinkGuardService(guildConfigurationProvider, logger.child({ component: "link-guard" }));
   behaviorRegistry.register(new SpamGuardBehavior(
     new SpamService(guildConfigurationProvider, logger.child({ component: "spam-guard" })),
-    new LinkGuardService(guildConfigurationProvider, logger.child({ component: "link-guard" })),
+    linkGuardService,
   ));
   behaviorRegistry.register(new TrapChannelBehavior(
     guildConfigurationProvider,
@@ -704,7 +705,6 @@ export function createDependencies(
   ));
   behaviorRegistry.register(new LinkFixBehavior(
     guildConfigurationProvider,
-    new BilibiliEmbedService(logger.child({ component: "bilibili-embed" })),
     logger.child({ component: "link-fix" }),
     campaign.isGameChannel,
   ));
@@ -731,5 +731,6 @@ export function createDependencies(
     memoryEngine,
     chatConversationService,
     raidService: new RaidService(guildConfigurationProvider, logger.child({ component: "raid-guard" })),
+    linkGuardService,
   };
 }

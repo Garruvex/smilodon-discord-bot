@@ -63,12 +63,12 @@ export function trapReadiness(guild: Guild, profile: GuildConfiguration): Readin
       }
     };
     if (spam.enabled) {
-      needs(spam.action);
-      if (!me.permissions.has(PermissionFlagsBits.ManageMessages)) lines.push({ name: "spam-missing-delete" });
+      if (spam.action !== "report") needs(spam.action);
+      if (spam.action !== "report" && !me.permissions.has(PermissionFlagsBits.ManageMessages)) lines.push({ name: "spam-missing-delete" });
     }
     if (links.enabled) {
-      if (links.action !== "delete") needs(links.action);
-      if (!me.permissions.has(PermissionFlagsBits.ManageMessages)) lines.push({ name: "links-missing-delete" });
+      if (links.action !== "delete" && links.action !== "report") needs(links.action);
+      if (links.action !== "report" && !me.permissions.has(PermissionFlagsBits.ManageMessages)) lines.push({ name: "links-missing-delete" });
     }
     if (raid.enabled && raid.action !== "alert") needs(raid.action);
   }

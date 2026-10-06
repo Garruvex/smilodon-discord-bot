@@ -1,4 +1,4 @@
-import { trapActions, type TrapAction, type TrapDeleteWindow, type TrapTimeoutDuration } from "./trap-policy.js";
+import { trapActions, type TrapDeleteWindow, type TrapTimeoutDuration } from "./trap-policy.js";
 
 // The settings shared by the detectors that watch behavior rather than a
 // bait channel: cross-channel spam, risky links, and join raids. Each answers
@@ -21,8 +21,13 @@ export const raidJoinLimits = { min: 3, max: 50, default: 10 } as const;
 // 0 turns the account-age check off.
 export const raidAccountAgeLimits = { min: 0, max: 30, default: 0 } as const;
 
+// "report" only writes to the log and touches nothing, for trying a detector
+// out on real traffic before letting it act.
+export const spamActions = ["report", ...trapActions] as const;
+export type SpamAction = (typeof spamActions)[number];
+
 // Removing the message alone is the gentlest response to a link.
-export const linkActions = ["delete", ...trapActions] as const;
+export const linkActions = ["report", "delete", ...trapActions] as const;
 export type LinkAction = (typeof linkActions)[number];
 
 // Telling staff, without touching the joiners, is the gentlest to a raid.
@@ -34,7 +39,7 @@ export interface SpamConfiguration {
   // The same message in this many different channels within the window.
   channels: number;
   window: SecurityWindow;
-  action: TrapAction;
+  action: SpamAction;
   deleteWindow: TrapDeleteWindow;
   timeout: TrapTimeoutDuration;
 }

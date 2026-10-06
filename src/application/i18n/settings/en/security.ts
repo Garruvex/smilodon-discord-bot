@@ -38,7 +38,11 @@ export const enSecurity: SettingsTextCatalog = {
   "security.spam.enabled": { label: "Cross-channel spam", description: "Turn spam detection on or off." },
   "security.spam.channels": { label: "Channels", description: "How many different channels the same message must reach (2-10)." },
   "security.spam.window": { label: "Within", description: "How quickly that has to happen.", choices: windows },
-  "security.spam.action": { label: "Action", description: "What happens to whoever does it.", choices: actions },
+  "security.spam.action": {
+    label: "Action",
+    description: "What happens to whoever does it. Log only just reports it, to try this out safely.",
+    choices: { report: "Log only", ...actions },
+  },
   "security.spam.delete-history": {
     label: "Delete their recent messages",
     description: "How far back to remove their other messages, besides the repeated one.",
@@ -53,8 +57,8 @@ export const enSecurity: SettingsTextCatalog = {
   "security.links.enabled": { label: "Link inspection", description: "Turn link inspection on or off." },
   "security.links.action": {
     label: "Action",
-    description: "What happens to whoever posts one. Delete removes only the message.",
-    choices: { delete: "Delete the message", ...actions },
+    description: "What happens to whoever posts one. Log only changes nothing; Delete removes just the message.",
+    choices: { report: "Log only", delete: "Delete the message", ...actions },
   },
   "security.links.delete-history": {
     label: "Delete their recent messages",
