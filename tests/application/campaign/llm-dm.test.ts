@@ -73,6 +73,9 @@ it("grounds an NPC's performance in their voice and the established scene", () =
   expect(prompt.system).toContain("Gruff and guarded");
   expect(prompt.system).toContain("brief gesture or reaction");
   expect(prompt.system).toContain("Do not reveal an unrevealed secret or invent new facts");
+  // An NPC who withholds does it in character, never by talking about what the players have or have not established.
+  expect(prompt.system).toContain("Stay inside the fiction");
+  expect(prompt.system).toContain("never claim the hero's knowledge is lacking");
   expect(prompt.user).toContain("What happened on the road?");
 });
 
