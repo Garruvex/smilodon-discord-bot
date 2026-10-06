@@ -64,7 +64,7 @@ export function turnOrderBar(snapshot) {
   bar.setAttribute("aria-label", t("activity.fight.order"));
   for (const entry of displayOrder) {
     const item = document.createElement("li");
-    item.className = `turn-order-item side-${entry.side}${entry.active ? " is-active" : ""}${entry.down ? " is-down" : ""}`;
+    item.className = `turn-order-item side-${entry.side}${entry.active ? " is-active" : ""}${entry.down || entry.fallen ? " is-down" : ""}${entry.fallen ? " is-dead" : ""}`;
     item.textContent = entry.name;
     if (portraitPreview) {
       const creature = (entry.side === "foes" ? snapshot.foes : [...snapshot.party, ...snapshot.allies]).find((actor) => actor.name === entry.name);
@@ -77,12 +77,25 @@ export function turnOrderBar(snapshot) {
       image.alt = "";
       portrait.append(fallback, image);
       void setArtwork(image, fallback, creature?.imageUrl, "");
+      // Health runs along the bottom of the portrait.
+      if (creature && creature.maxHp > 0) {
+        const track = document.createElement("span");
+        track.className = "turn-order-hp";
+        const fill = document.createElement("i");
+        fill.style.width = `${Math.max(0, Math.min(100, creature.hp / creature.maxHp * 100))}%`;
+        // One color for everyone; it changes only when health is low, at a quarter or less.
+        track.classList.toggle("is-low", creature.hp / creature.maxHp <= 0.25);
+        track.append(fill);
+        portrait.append(track);
+        item.title = `${entry.name} · ${creature.hp} / ${creature.maxHp}`;
+      }
+      // A downed creature is grayed out by its is-down class.
       const name = document.createElement("span");
       name.className = "turn-order-name";
       name.textContent = entry.name;
       item.replaceChildren(portrait, name);
     }
-    item.title = entry.name;
+    item.title ||= entry.name;
     if (entry.active) item.setAttribute("aria-current", "true");
     bar.append(item);
   }

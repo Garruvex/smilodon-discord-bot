@@ -5,7 +5,7 @@ import { renderCharacterWorkspace } from "./hero.js";
 import { performAction } from "./actions.js";
 import { classText, t } from "./i18n.js";
 import { fightTags, turnOrderBar } from "./fight-status.js";
-import { encounterPreview } from "./encounter-preview.js";
+import { encounterPreview, captureBattlefieldPositions, animateBattlefieldMovement, previewAttack, previewMagic, previewMelee } from "./encounter-preview.js";
 
 export function enemyRankIcon(rank) { return rank === "boss" ? "crowned-skull" : rank === "elite" ? "evil-minion" : rank === "minion" ? "minions" : "attack"; }
 
@@ -75,11 +75,13 @@ export function renderEnemies(enemies, allies = app.currentSnapshot?.allies ?? [
   const heading = (text, extra = "") => Object.assign(document.createElement("span"), { className: `live-enemies-heading${extra}`, textContent: text });
   const game = app.currentSnapshot;
   if (new URLSearchParams(window.location.search).has("design-preview") && new URLSearchParams(window.location.search).has("battlefield-preview") && game?.map?.kind === "battlefield") {
+    const previous = captureBattlefieldPositions();
     const board = encounterPreview(game, (entry) => {
       if (entry.side === "allies") return;
       app.selectedEnemyName = entry.side === "foes" ? entry.name : null;
       if (entry.side === "party") app.selectedPartyCharacterId = entry.characterId;
-      app.selectedWorkspaceTab = "overview";
+      // On your own turn the Actions tab stays where it is, so picking a target does not take you away from the buttons.
+      if (!(game.mode === "combat" && game.yourTurn)) app.selectedWorkspaceTab = "overview";
       renderParty(game.party);
       renderCharacterWorkspace(game);
       renderEnemies(game.foes, game.allies);
@@ -95,8 +97,48 @@ export function renderEnemies(enemies, allies = app.currentSnapshot?.allies ?? [
       game.activeName = game.order.find((entry) => entry.active).name;
       renderEnemies(game.foes, game.allies);
     });
+    // The round belongs to the encounter, not to the turn order, so it sits in the heading.
+    if (game.roundNumber) title.append(Object.assign(document.createElement("span"), { className: "encounter-round", textContent: t("activity.status.round", { round: game.roundNumber }) }));
     title.append(next);
-    liveEnemies.replaceChildren(title, ...[turnOrderBar(game)].filter(Boolean), board);
+    const effects = document.createElement("div");
+    effects.className = "battle-preview-controls";
+    for (const [label, run] of [
+      ["Move hero", () => {
+        const hero = game.party.find((entry) => entry.isYou);
+        if (!hero) return;
+        const current = game.map.zones.find((zone) => zone.name === hero.zone);
+        const route = game.map.edges.find((edge) => edge.from === current?.id || edge.to === current?.id);
+        if (!route) return;
+        hero.zone = game.map.zones.find((zone) => zone.id === (route.from === current.id ? route.to : route.from)).name;
+        renderEnemies(game.foes, game.allies);
+      }],
+      ["Attack · hit", () => void previewAttack(board, game.party.find((hero) => hero.isYou)?.name, game.foes[0]?.name, true)],
+      ["Attack · miss", () => void previewAttack(board, game.party.find((hero) => hero.isYou)?.name, game.foes[0]?.name, false)],
+      ["Magic bolt", () => void previewMagic(board)],
+      ["Melee", () => {
+        const hero = game.party.find((entry) => entry.isYou);
+        const foe = game.foes[0];
+        if (!hero || !foe) return;
+        if (hero.zone !== foe.zone) {
+          hero.zone = foe.zone;
+          renderEnemies(game.foes, game.allies);
+          setTimeout(() => { const currentBoard = liveEnemies.querySelector(".encounter-board"); if (currentBoard) void previewMelee(currentBoard); }, 700);
+        } else void previewMelee(board);
+      }],
+      ["Area spell", () => void previewMagic(board, true)],
+    ]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ui-control";
+      button.textContent = label;
+      button.addEventListener("click", run);
+      effects.append(button);
+    }
+    const note = document.createElement("small");
+    note.textContent = "Animation preview · attacks do not change HP";
+    effects.append(note);
+    liveEnemies.replaceChildren(title, ...[turnOrderBar(game)].filter(Boolean), effects, board);
+    requestAnimationFrame(() => animateBattlefieldMovement(board, previous));
     return;
   }
   liveEnemies.replaceChildren(...(enemies.length
@@ -199,9 +241,8 @@ export function renderParty(members) {
     const statusText = partyStatusText(hero);
     status.title = statusText;
     status.setAttribute("aria-label", statusText);
-    status.setAttribute("role", "img");
     status.dataset.status = hero.tableStatus ?? (hero.presence === "away" ? "away" : "waiting");
-    status.append(iconImage(partyStatusIcon(hero)));
+    status.textContent = statusText;
     nameLine.append(name, status);
     const subtitle = document.createElement("span");
     subtitle.className = "party-class-line";

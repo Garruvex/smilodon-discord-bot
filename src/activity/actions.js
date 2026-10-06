@@ -7,9 +7,12 @@ import { loadTable } from "./poll.js";
 import { actionGuide, spellGuide } from "./rules-book.js";
 import { openReplacement } from "./replacement.js";
 import { turnStrip } from "./fight-status.js";
+import { renderTurnBar } from "./turn-bar.js";
 import { renderGame } from "./render.js";
 
 // Where each kind of action is shown: urgent decisions on top, the round composer, a category list, or the closing button.
+// The buttons by kind of action from the latest build, which the hotbar takes its own copy of.
+let lastGroups = null;
 // Spell names as the table sends them, so a cast is confirmed by name.
 const spellNames = new Map();
 // The skill each shop is being haggled with, by the shop's NPC.
@@ -97,6 +100,14 @@ function pickerCard(config) {
   return card;
 }
 
+// Opens a spell's step-by-step card with the target already chosen, then brings the Actions tab into view.
+export function openActionPicker(key, targetId) {
+  app.picker = { key, level: null, targets: [targetId] };
+  refreshActions();
+  document.querySelector("#hero-tab-actions")?.click();
+  document.querySelector("#hero-panel-actions")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 export const actionPlacement = { acceptInvite: "top", joinHero: "top", reaction: "top", smite: "top", opportunityAttack: "top", ready: "top", begin: "top", continue: "top", toggleMoveObjection: "top", moveVote: "top", submit: "composer", pass: "composer", endTurn: "bottom" };
 
 export const actionCategoryOf = { attack: "attack", combatSpell: "spells", exploreSpell: "spells", healSpell: "spells", reviveSpell: "spells", summonCompanion: "spells", move: "move", moveScene: "move", teleport: "move", engage: "move", withdraw: "move", dash: "move", disengage: "move", useItem: "items", combatItem: "items", shield: "items", shop: "items", askNpc: "talk", pressNpc: "talk", feature: "other", wildShape: "other", combatDodge: "other", spendHitDice: "other" };
@@ -151,6 +162,10 @@ export function speechRow(game) {
 
 
 export function renderTableActions(game) {
+  // The hotbar needs buttons of its own, so the list is built a second time for it.
+  const hotbar = game.mode === "combat" && game.yourTurn === true && game.turn && !game.turn.busy;
+  if (hotbar) buildTableActions(game, document.createElement("div"), []);
+  renderTurnBar(game, performAction, hotbar ? lastGroups : null, { order: actionCategoryOrder, icon: actionCategoryIcon });
   const next = document.createElement("div");
   const log = [];
   buildTableActions(game, next, log);
@@ -211,6 +226,7 @@ export function buildTableActions(game, liveActions, log) {
   }
   const top = [], composer = [], bottom = [];
   const groups = new Map(actionCategoryOrder.map((category) => [category, []]));
+  lastGroups = groups;
   const addAction = (label, action, primary = false, selected = false) => {
     log.push(JSON.stringify(action));
     const button = makeButton(label, () => void performAction(action), primary, actionIcon[action.kind] ?? "notice");
@@ -444,8 +460,6 @@ export function buildTableActions(game, liveActions, log) {
   for (const panel of panels) liveActions.append(panel);
   if (composer.length) liveActions.append(row("action-composer", composer));
   if (note) liveActions.append(note);
-  const speech = game.mode === "collecting" && game.submission === null ? null : speechRow(game);
-  if (speech) liveActions.append(speech);
   const choiceCount = (category) => groups.get(category).filter((node) => node instanceof HTMLButtonElement).length;
   const categories = actionCategoryOrder.filter((category) => choiceCount(category) > 0);
   if (categories.length) {
@@ -479,6 +493,9 @@ export function buildTableActions(game, liveActions, log) {
     select(app.selectedActionCategory);
   }
   if (bottom.length) liveActions.append(row("action-row action-end", bottom));
+  // In-character words come after the choices: in a fight the buttons are what the turn is for.
+  const speech = game.mode === "collecting" && game.submission === null ? null : speechRow(game);
+  if (speech) liveActions.append(speech);
   if (app.picker !== null && panels.length === 0) app.picker = null;
   if (liveActions.childElementCount === 0) {
     const empty = document.createElement("span");

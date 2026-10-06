@@ -1,0 +1,266 @@
+/* The fight stage, in the board's own stone and cream. Only what the stage needs beyond the encounter styles:
+   the turn-order chain that stays in view, larger numbers, the side marks, the tap menu, the hotbar, and the board scaled to fit. */
+:root {
+  --stage-stone: #2a211b;
+  --stage-stone-line: #796546;
+  --stage-card: #f8eed5;
+  --stage-card-line: #b39a66;
+  --stage-party: #7f9a62;
+  --stage-foe: #b3483a;
+  --stage-ally: #6c8fb5;
+}
+
+/* Turn order: stays at the top of the stage while you look at the board */
+.live-enemies .turn-order-portraits { position: sticky; top: 0; z-index: 40; background: var(--ui-paper-inset, #e3d4b8); border-bottom: 1px solid var(--ui-border, #b6a181); scroll-margin-top: 0; }
+
+/* The board at one size, scaled to the room between the turn order and the hotbar */
+@media (min-width: 701px) {
+  .encounter-board { width: 1000px; max-width: none; margin-inline: auto; }
+  .encounter-board[data-layout="row"] { height: 440px; }
+  .encounter-board[data-layout="grid"] { height: 790px; }
+  .encounter-board[data-layout="row"] .encounter-area { min-height: 330px; }
+  .encounter-board[data-layout="row"] .encounter-paths { z-index: 8; pointer-events: none; }
+}
+
+/* Creatures: larger numbers and a mark for each side */
+.encounter-board .encounter-token-copy strong { font-size: 13px; }
+.encounter-board .encounter-token-copy small { color: #3d2f1c; font-size: 12px; font-weight: 700; }
+.encounter-board .encounter-hp { height: 7px; }
+.encounter-board .token-role { color: #6a5430; font: italic 700 11px/1 var(--serif); }
+.encounter-board .side-foes .token-role { color: #8a2f25; font-style: normal; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+.encounter-board .encounter-token.side-party { border-color: var(--stage-party); box-shadow: 0 7px 12px #06101665, inset 0 -4px 0 var(--stage-party); }
+.encounter-board .encounter-token.side-foes { border-color: var(--stage-foe); box-shadow: 0 7px 12px #06101665, inset 0 -4px 0 var(--stage-foe); }
+.encounter-board .encounter-token.side-allies { border: 2px dashed var(--stage-ally); }
+.encounter-board .encounter-token.is-you { outline: 2px solid #ecd295; outline-offset: 2px; }
+.encounter-board .token-ac { position: absolute; z-index: 2; top: 3px; left: 3px; min-width: 22px; height: 22px; padding: 0 3px; box-sizing: border-box; border-radius: 11px; background: var(--stage-stone); color: var(--stage-card); font: 700 11px/22px var(--sans); text-align: center; }
+.encounter-board .is-down { filter: grayscale(1); opacity: .65; }
+
+/* Tap a creature or an area: what the turn offers there */
+.encounter-board .encounter-area.has-menu { z-index: 5; }
+.encounter-board .encounter-area.is-movable { cursor: pointer; }
+.encounter-board .encounter-token.has-options .encounter-token-select { cursor: pointer; }
+.encounter-board .encounter-token.has-options::after { content: "▾ " attr(data-act); position: absolute; bottom: -12px; right: 50%; transform: translateX(50%); padding: 1px 10px; border-radius: 999px; background: var(--stage-stone); color: var(--stage-card); font: 700 11px/1.5 var(--sans); pointer-events: none; box-shadow: 0 2px 4px #0006; }
+.token-menu { position: absolute; z-index: 30; top: calc(100% - 4px); left: 50%; display: grid; gap: 5px; min-width: 190px; max-width: 260px; padding: 8px; transform: translateX(-50%); border: 1px solid var(--stage-card-line); border-radius: 10px; background: var(--stage-card); box-shadow: 0 10px 26px #0008; }
+.encounter-area > .token-menu { top: auto; bottom: 14px; }
+.token-menu .live-action-choice { justify-content: flex-start; min-height: 34px; padding: 5px 10px; font-size: 13px; text-align: left; }
+
+/* The hotbar: a stone bar with cream tiles, the same pair of colors as the board */
+body.has-turn-bar { padding-bottom: calc(var(--turn-bar-h, 64px) + 12px); }
+body.has-turn-bar .turn-strip .turn-pip { display: none; }
+#turn-bar { position: fixed; z-index: 59; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; width: max-content; max-width: calc(100% - 20px); padding: 8px 14px; border: 1px solid var(--stage-stone-line); border-radius: 12px; background: var(--stage-stone); color: var(--stage-card); box-shadow: 0 10px 28px #0009; }
+#turn-bar .hotbar-pips { display: flex; align-items: center; gap: 10px; }
+#turn-bar .hotbar-pip { display: grid; justify-items: center; gap: 2px; }
+#turn-bar .hotbar-pip small { color: #cbbd96; font-size: 10px; }
+#turn-bar .hotbar-gem { display: block; width: 14px; height: 14px; border-radius: 50%; background: #7fae5e; }
+#turn-bar .pip-bonusAction .hotbar-gem { border-radius: 2px; background: #d98c2b; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+#turn-bar .pip-reaction .hotbar-gem { border-radius: 2px; background: #6f93d6; transform: rotate(45deg) scale(.78); }
+#turn-bar .hotbar-pip.is-spent .hotbar-gem { background: #5a4636; }
+#turn-bar .hotbar-pip.is-spent small { text-decoration: line-through; opacity: .6; }
+#turn-bar .hotbar-move { padding: 3px 9px; border: 1px solid #5b4a35; border-radius: 999px; color: var(--stage-card); font-size: 12px; font-weight: 600; white-space: nowrap; }
+#turn-bar .hotbar-slots { display: flex; gap: 6px; padding: 0 12px; border-inline: 1px solid #5b4a35; }
+#turn-bar .hotbar-slot { position: relative; display: grid; justify-items: center; gap: 3px; min-width: 62px; min-height: 0; padding: 7px 10px 6px; border: 1px solid var(--stage-card-line); border-radius: 8px; background: var(--stage-card); color: var(--ui-ink, #33271e); font: 600 12px/1.1 var(--sans); cursor: pointer; }
+#turn-bar .hotbar-slot img { width: 24px; height: 24px; filter: brightness(0) opacity(.72); }
+#turn-bar .hotbar-slot b { position: absolute; top: -7px; right: -6px; min-width: 18px; padding: 1px 4px; border-radius: 999px; background: var(--ui-accent, #87352d); color: #fff8e9; font-size: 11px; text-align: center; }
+#turn-bar .hotbar-slot:hover, #turn-bar .hotbar-slot[aria-expanded="true"] { border-color: var(--ui-accent, #87352d); background: #fff5e2; }
+#turn-bar .hotbar-end { min-height: 44px; padding: 8px 18px; font-weight: 700; }
+#turn-bar .hotbar-popover { position: absolute; bottom: calc(100% + 8px); left: 50%; display: grid; gap: 5px; width: max-content; min-width: 240px; max-width: min(420px, calc(100vw - 20px)); max-height: 50vh; overflow-y: auto; padding: 8px; transform: translateX(-50%); border: 1px solid var(--stage-card-line); border-radius: 10px; background: var(--stage-card); box-shadow: 0 10px 26px #0008; }
+#turn-bar .hotbar-popover .live-action-choice { justify-content: flex-start; min-height: 38px; padding: 6px 12px; font-size: 13px; text-align: left; }
+@media (min-width: 901px) {
+  body.has-turn-bar .drawer[data-side="bottom"] { bottom: calc(var(--turn-bar-h, 64px) + 22px); }
+}
+@media (max-width: 900px) {
+  #turn-bar { bottom: 50px; gap: 8px; padding: 6px 8px; width: calc(100% - 16px); justify-content: space-between; }
+  #turn-bar .hotbar-pips { gap: 6px; flex-wrap: wrap; max-width: 76px; }
+  #turn-bar .hotbar-pip small { display: none; }
+  #turn-bar .hotbar-move { padding: 1px 6px; font-size: 10px; }
+  #turn-bar .hotbar-slots { gap: 4px; padding: 0 6px; flex: 1 1 auto; justify-content: center; }
+  #turn-bar .hotbar-slot { min-width: 0; padding: 6px 7px 5px; font-size: 10px; }
+  #turn-bar .hotbar-slot span { max-width: 52px; overflow: hidden; text-overflow: ellipsis; }
+  #turn-bar .hotbar-end { min-height: 40px; padding: 6px 10px; font-size: 12px; }
+  body.has-turn-bar { padding-bottom: calc(var(--turn-bar-h, 64px) + 60px); }
+}
+
+/* ---- Party, story and map ----
+   Wide screens: the party is a rail of portraits down the left edge; the story and the map are icon buttons down the right edge.
+   In a fight with a battlefield the battlefield is the map, so the map button goes. Narrow screens keep the dock along the bottom. */
+.party-rail { display: none; }
+.drawer-tab > img { display: none; }
+@media (min-width: 901px) {
+  body[data-game-kind="table"] .party-rail { position: fixed; z-index: 58; top: 50%; left: 3px; display: grid; gap: 8px; padding: 8px 5px; transform: translateY(-50%); border: 1px solid var(--stage-stone-line); border-radius: 0 12px 12px 0; background: var(--stage-stone); box-shadow: 0 8px 22px #0007; transition: left .22s ease; }
+  body.drawer-open-left .party-rail { left: calc(var(--drawer-left-w) + 3px); }
+  .party-rail .rail-hero { position: relative; display: block; width: 36px; height: 36px; padding: 3px; border: 0; border-radius: 50%; background: conic-gradient(var(--ring, #7fae5e) var(--hp), #5a4636 0); cursor: pointer; }
+  .party-rail .rail-hero[data-state="down"] { --ring: #d98c2b; }
+  .party-rail .rail-hero[data-state="dead"] { --ring: #b3483a; filter: grayscale(1); }
+  .party-rail .rail-hero[data-state="away"] { --ring: #8b8577; opacity: .6; }
+  .party-rail .rail-hero.is-you { box-shadow: 0 0 0 2px #ecd295; }
+  .party-rail .rail-face { position: relative; display: grid; place-items: center; width: 100%; height: 100%; overflow: hidden; border-radius: 50%; background: #e6d9bd; color: #33271e; font: 700 14px/1 var(--serif); }
+  .party-rail .rail-face > * { grid-area: 1 / 1; }
+  .party-rail .rail-face img { width: 100%; height: 100%; object-fit: cover; }
+  .party-rail .rail-face img[hidden], .party-rail .rail-face span[hidden] { display: none; }
+  .party-rail .rail-hero:focus-visible { outline: 2px solid #ecd295; outline-offset: 2px; }
+  body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab[data-side="left"] { display: none; }
+  body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab[data-side="right"], body[data-game-kind="table"]:has(#live-screen:not([hidden])) .drawer-tab[data-side="bottom"] { position: fixed; top: calc(50% - 27px); right: 0; bottom: auto; left: auto; display: grid; place-items: center; width: 46px; height: 46px; padding: 0; transform: none; writing-mode: horizontal-tb; border: 1px solid var(--stage-stone-line); border-right: 0; border-radius: 12px 0 0 12px; background: var(--stage-stone); color: var(--stage-card); }
+  .drawer-tab[data-side="bottom"], .drawer-tab[data-side="bottom"][aria-expanded="true"] { top: calc(50% + 27px); bottom: auto; }
+  .drawer-tab[data-side="right"] > span:not(.drawer-badge), .drawer-tab[data-side="bottom"] > span:not(.drawer-badge) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); transform: none; }
+  .drawer-tab[data-side="right"] img, .drawer-tab[data-side="bottom"] img { display: block; width: 24px; height: 24px; filter: brightness(0) invert(.92) sepia(.2); }
+  .drawer-tab[aria-expanded="true"] { background: #4a3b27; border-color: #ecd295; }
+  .drawer-tab .drawer-badge { position: absolute; top: -6px; left: -6px; }
+}
+body[data-game-kind="table"]:has(#live-screen:not([hidden])):has(.encounter-board) .drawer-tab[data-side="bottom"], body:has(.encounter-board) #drawer-bottom { display: none; }
+@media (max-width: 900px) { body:has(.encounter-board) .drawer-tab { width: 50%; } body:has(.encounter-board) .drawer-tab[data-side="right"] { right: 0; } }
+
+/* The round, in the encounter's heading */
+.live-enemies-heading .encounter-round { margin-left: 10px; padding: 1px 10px; border: 1px solid var(--ui-border-strong, #9d835b); border-radius: 999px; color: var(--ui-ink, #33271e); font-size: 11px; letter-spacing: .08em; }
+
+/* Turn order: larger rounded squares instead of circles */
+.turn-order-portraits .encounter-token-portrait { flex: 0 0 60px; width: 60px; height: 60px; border-radius: 14px; }
+.turn-order-portraits .encounter-token-portrait > span { font-size: 26px; }
+.live-enemies .turn-order-portraits li { flex-basis: 96px; }
+.turn-order-portraits .is-active .encounter-token-portrait { box-shadow: 0 0 0 3px #ecd295, 0 0 14px #cba34b90; }
+
+/* Rooms: light parchment with a thin brown wall, on a slightly darker parchment board; the water room is a pale blue-green */
+.encounter-board { border: 1px solid #a38c61; background-color: #d9c8a4; background-image: radial-gradient(#9d835b40 1px, transparent 1px); background-size: 18px 18px; box-shadow: inset 0 0 40px #b79c7138; }
+.encounter-board .encounter-area { border: 2px solid #8b7650; background: #f6ecd6; box-shadow: 0 2px 5px #5d4a2e30; }
+.encounter-board .encounter-area::before, .encounter-board .encounter-area::after { display: none; }
+.encounter-board .encounter-area.is-flooded, .encounter-board .encounter-area[data-zone].is-flooded { border-color: #6f938b; background: #dbe8e2; box-shadow: 0 2px 5px #2f4a4430; }
+.encounter-board .encounter-area h3 { color: #33271e; text-shadow: none; }
+.encounter-board .encounter-terrain { color: #675746; }
+.encounter-board .encounter-path-label { fill: #f6ecd6; stroke: #8b7650; }
+.encounter-board .encounter-paths text { fill: #33271e; }
+.encounter-board .encounter-path-stone, .encounter-board .encounter-path-line { stroke: #8b7650; }
+.encounter-board .encounter-board-note { color: #675746; text-shadow: none; }
+
+/* The flooded room: pale water with ripples and a lighter pool in the middle */
+.encounter-board .encounter-area.is-flooded, .encounter-board .encounter-area[data-zone].is-flooded { background-color: #dbe8e2; background-image: radial-gradient(ellipse at 50% 55%, #f1f8f4aa, transparent 62%), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='14' viewBox='0 0 28 14'%3E%3Cpath d='M0 7 q3.5 -5 7 0 t7 0 t7 0 t7 0' fill='none' stroke='%236f938b' stroke-opacity='.55' stroke-width='1.2'/%3E%3C/svg%3E"); background-size: auto, 28px 14px; }
+
+/* Creature tile: one clean rounded rectangle, a rounded-square portrait on top, name and health under it */
+.encounter-board .encounter-token, .encounter-board .encounter-token.side-party, .encounter-board .encounter-token.side-foes, .encounter-board .encounter-token.side-allies { display: flex; flex-direction: column; align-self: stretch; margin: 0; padding: 10px 8px 9px; border: 2px solid #c9b78f; border-radius: 14px; background: #fffaf0; box-shadow: 0 2px 5px #5d4a2e33; }
+.encounter-board .encounter-token.side-party { border-color: var(--stage-party); }
+.encounter-board .encounter-token.side-foes { border-color: var(--stage-foe); background: #fff3ec; }
+.encounter-board .encounter-token.side-allies { border-style: dashed; border-color: var(--stage-ally); }
+.encounter-board .encounter-token.is-active { border-width: 2px; box-shadow: 0 0 0 3px #ecd295, 0 3px 8px #5d4a2e40; }
+.encounter-board .encounter-token.is-you { outline: 0; }
+.encounter-board .encounter-token-select { flex: 0 0 auto; }
+.encounter-board .encounter-token-portrait { flex: 0 0 56px; width: 56px; height: 56px; margin: 0; border-radius: 12px; }
+.encounter-board .side-party .encounter-token-portrait { border-color: var(--stage-party); }
+.encounter-board .side-foes .encounter-token-portrait { border-color: var(--stage-foe); }
+.encounter-board .side-allies .encounter-token-portrait { border-color: var(--stage-ally); border-style: dashed; }
+.encounter-board .encounter-token.is-active .encounter-token-portrait, .encounter-board .encounter-token.is-selected .encounter-token-portrait { box-shadow: none; }
+.encounter-board .encounter-token.is-selected { box-shadow: 0 0 0 2px #33271e, 0 3px 8px #5d4a2e40; }
+.encounter-board .encounter-token .fight-tags { margin-top: auto; padding-top: 6px; }
+.encounter-board .token-ac { top: 6px; left: 6px; }
+
+/* Turn-order token: a rounded-square portrait with its health bar inside along the bottom, and no glow */
+.turn-order-portraits .encounter-token-portrait { position: relative; overflow: hidden; box-shadow: none; border-width: 3px; }
+.turn-order-portraits .side-party .encounter-token-portrait { border-color: var(--stage-party); }
+.turn-order-portraits .side-foes .encounter-token-portrait { border-color: var(--stage-foe); }
+.turn-order-portraits .side-allies .encounter-token-portrait { border-color: var(--stage-ally); }
+.turn-order-portraits .turn-order-hp { position: absolute; z-index: 2; left: 5px; right: 5px; bottom: 4px; height: 6px; border-radius: 3px; background: #1f160ec2; overflow: hidden; }
+.turn-order-portraits .turn-order-hp i { display: block; height: 100%; border-radius: 3px; background: #79ad5c; }
+.turn-order-portraits .turn-order-hp.is-low i { background: #e0503f; }
+.turn-order-portraits .is-active .encounter-token-portrait { box-shadow: none; }
+.turn-order-portraits .is-active .encounter-token-portrait { outline: 3px solid #33271e; outline-offset: 3px; }
+.turn-order-portraits .is-down .turn-order-hp i { width: 0 !important; }
+
+/* A downed creature in the turn order: grayed out, with a DOWN band across the portrait */
+.live-enemies .turn-order-portraits li.is-down { opacity: 1; text-decoration: none; }
+.turn-order-portraits .is-down .encounter-token-portrait { filter: grayscale(1) brightness(.92); border-color: #8b8577; }
+.turn-order-portraits .is-down .turn-order-name { color: #7b7466; text-decoration: none; }
+
+/* Down is plain gray; dead goes darker, dashed and struck through. */
+.turn-order-portraits .is-dead .encounter-token-portrait { filter: grayscale(1) brightness(.6); border: 3px dashed #6d675c; }
+.turn-order-portraits .is-dead .turn-order-name { color: #7b7466; text-decoration: line-through; }
+.encounter-board .is-dead { filter: grayscale(1) brightness(.75); opacity: .55; border-style: dashed; }
+
+/* Smaller creatures on the board: a 44px portrait, tighter padding, and tiles no wider than they need. */
+@media (min-width: 701px) {
+  .encounter-board .encounter-tokens { grid-template-columns: repeat(2, minmax(0, 120px)); justify-content: center; gap: 12px 10px; }
+  .encounter-board .encounter-token, .encounter-board .encounter-token.side-party, .encounter-board .encounter-token.side-foes, .encounter-board .encounter-token.side-allies { padding: 7px 6px 7px; border-radius: 12px; }
+  .encounter-board .encounter-token-portrait { flex-basis: 44px; width: 44px; height: 44px; border-radius: 10px; }
+  .encounter-board .encounter-token-portrait > span { font-size: 20px; }
+  .encounter-board .encounter-token-copy strong { font-size: 12px; }
+  .encounter-board .encounter-token-copy small { font-size: 11px; }
+}
+
+/* Less on each tile: the role line is on hover (and for screen readers); the health numbers stay. */
+@media (min-width: 701px) {
+  .encounter-board .encounter-token-copy .token-role { display: none; }
+}
+
+/* Bigger creatures, with their health inside the portrait like the turn order: one green, red at a quarter or less. */
+.encounter-board .encounter-token-portrait { position: relative; }
+.encounter-board .encounter-token-portrait .encounter-hp { position: absolute; z-index: 2; left: 6px; right: 6px; bottom: 5px; width: auto; height: 7px; margin: 0; border-radius: 4px; background: #1f160ec2; overflow: hidden; }
+.encounter-board .encounter-token-portrait .encounter-hp i { display: block; height: 100%; border-radius: 4px; background: #79ad5c; }
+.encounter-board .encounter-token-portrait .encounter-hp.is-low i { background: #e0503f; }
+.encounter-board .is-down .encounter-hp i { width: 0 !important; }
+@media (min-width: 701px) {
+  .encounter-board .encounter-tokens { grid-template-columns: repeat(2, minmax(0, 138px)); }
+  .encounter-board .encounter-token-portrait { flex-basis: 72px; width: 72px; height: 72px; border-radius: 14px; }
+  .encounter-board .encounter-token-portrait > span:not(.encounter-hp) { font-size: 30px; }
+  .encounter-board .encounter-token-copy strong { font-size: 13px; }
+  .encounter-board .encounter-token-copy small { font-size: 12px; }
+}
+
+/* No card behind a creature: the token is the portrait, with its name and health beneath on the room itself. The ring marks whose turn it is and what you picked. */
+.encounter-board .encounter-token, .encounter-board .encounter-token.side-party, .encounter-board .encounter-token.side-foes, .encounter-board .encounter-token.side-allies { padding: 2px 0 0; border: 0; background: none; box-shadow: none; }
+.encounter-board .encounter-token.is-active .encounter-token-portrait { box-shadow: 0 0 0 3px #33271e; }
+.encounter-board .encounter-token.is-selected { box-shadow: none; }
+.encounter-board .encounter-token.is-selected .encounter-token-portrait { box-shadow: 0 0 0 3px #ecd295, 0 0 0 5px #33271e; }
+.encounter-board .encounter-token.is-you .encounter-token-portrait { outline: 2px solid #ecd295; outline-offset: 2px; }
+.encounter-board .encounter-token-portrait { box-shadow: 0 3px 6px #5d4a2e55; }
+.encounter-board .encounter-token-copy strong { text-shadow: 0 1px 0 #fffaf080; }
+.encounter-board .encounter-token.is-down { opacity: 1; }
+.encounter-board .encounter-token.is-down .encounter-token-copy { opacity: .6; }
+@media (min-width: 701px) {
+  .encounter-board .encounter-tokens { grid-template-columns: repeat(2, minmax(0, 118px)); gap: 10px 8px; }
+  .encounter-board .encounter-token-portrait { flex-basis: 76px; width: 76px; height: 76px; }
+}
+
+/* A bigger token with a small plate under it for the health; tapping the token opens a bubble with its name, stats and what your turn can do to it. */
+.token-menu .token-stats { display: grid; gap: 3px; padding: 2px 2px 6px; border-bottom: 1px solid var(--stage-card-line); color: #33271e; }
+.token-menu .token-stats strong { font: 700 14px/1.2 var(--serif); }
+.token-menu .token-stats em { color: #6a5430; font: italic 700 12px/1.2 var(--serif); }
+.token-menu .token-stats span { font: 700 12px/1.3 var(--sans); }
+.token-menu .token-stats:last-child { border-bottom: 0; padding-bottom: 2px; }
+@media (min-width: 701px) {
+  .encounter-board .encounter-tokens { grid-template-columns: repeat(2, minmax(0, 104px)); }
+  .encounter-board .encounter-token-portrait { flex-basis: 88px; width: 88px; height: 88px; border-radius: 16px; }
+  .encounter-board .encounter-token-portrait > span:not(.encounter-hp) { font-size: 34px; }
+  .encounter-board .encounter-token-copy { align-self: center; width: 88%; margin-top: -10px; padding: 12px 4px 3px; border: 2px solid #c9b78f; border-radius: 0 0 10px 10px; background: #fffaf0; box-sizing: border-box; text-align: center; }
+  .encounter-board .encounter-token-copy strong { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .encounter-board .side-foes .encounter-token-copy { border-color: var(--stage-foe); background: #fff3ec; }
+  .encounter-board .side-party .encounter-token-copy { border-color: var(--stage-party); }
+  .encounter-board .encounter-token-portrait { position: relative; z-index: 1; }
+}
+
+/* Refinements: the picked token wears a clear double ring, conditions sit tight under their own plate, and the Act pill rides the top edge of its token. */
+.encounter-board .encounter-token.is-selected .encounter-token-portrait { box-shadow: 0 0 0 3px #fffaf0, 0 0 0 6px #33271e, 0 6px 10px #33271e55; }
+.encounter-board .encounter-token .fight-tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; margin-top: 4px; padding-top: 0; }
+.encounter-board .encounter-token.has-options::after { top: -9px; bottom: auto; right: 50%; z-index: 4; }
+
+/* The health number lives in the bar, so there is no plate under the token. */
+@media (min-width: 701px) {
+  .encounter-board .encounter-token-copy { display: none; }
+  .encounter-board .encounter-token-portrait .encounter-hp { left: 5px; right: 5px; bottom: 5px; height: 16px; border-radius: 5px; }
+  .encounter-board .encounter-token-portrait .encounter-hp i { position: absolute; inset: 0 auto 0 0; }
+  .encounter-board .encounter-token-portrait .encounter-hp b { position: relative; z-index: 1; display: block; color: #fffaf0; font: 700 11px/16px var(--sans); text-align: center; text-shadow: 0 1px 2px #000b; }
+}
+
+/* The copy that flies when a creature moves rides in a stand-in board so it keeps the board's token styles, with none of the board itself showing. */
+.encounter-board.battle-move-ghost { display: block; min-width: 0; height: auto; padding: 0; gap: 0; border: 0; background: none; box-shadow: none; }
+
+/* Distance between side-by-side rooms: a dashed doorway across the gap with the feet written above it. */
+.encounter-board .encounter-doorway { stroke: #8b7650; stroke-width: 3; stroke-dasharray: 6 5; stroke-linecap: round; }
+.encounter-board[data-layout="row"] .encounter-paths text { font: 700 14px var(--serif); }
+
+/* An area spell bursts from the middle of the room: a soft flash, two rings of light and a few embers, all cut to the room's shape. */
+.battle-spell-area { overflow: hidden; border: 0; background: none; box-shadow: none; }
+.battle-spell-area i { position: absolute; left: 50%; top: 50%; display: block; pointer-events: none; }
+.battle-spell-area .burst-flash { inset: 0; left: 0; top: 0; background: radial-gradient(circle at 50% 50%, #fffbe0, #ffd27acc 30%, #f0883a88 58%, #d4482e33 82%, transparent); }
+.battle-spell-area .burst-ring { width: 150%; aspect-ratio: 1; border: 5px solid #fff0b8; border-radius: 50%; box-shadow: 0 0 22px 4px #ffa83a, inset 0 0 26px #ffa83a; }
+.battle-spell-area .burst-ember { width: 10px; height: 10px; border-radius: 50%; background: #ffd77a; box-shadow: 0 0 8px #ff9a3c; }
+
+/* The facts about a room as small tags under its name: light, cover, and difficult ground in a warmer tone. */
+.encounter-board .encounter-terrain { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin: 6px 0 14px; }
+.encounter-board .terrain-tag { padding: 2px 8px; border: 1px solid #b59c70; border-radius: 999px; background: #fffaf0b3; color: #4b3d2a; font: 700 10.5px/1.4 var(--sans); }
+.encounter-board .terrain-tag.is-difficult { border-color: #a3584a; background: #f6ddd2; color: #7a2f25; }

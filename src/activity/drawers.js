@@ -1,4 +1,5 @@
 import { app } from "./state.js";
+import { iconImage, setArtwork } from "./dom.js";
 import { t } from "./i18n.js";
 import { buildStoryFeed, buildStoryStrip, onStoryNews, resetStory, retranslateStory, storyOpened } from "./story.js";
 
@@ -79,6 +80,14 @@ export function mountDrawers() {
   drawers.left.tab.append(dots);
   // Escape puts away the panel opened last.
   document.addEventListener("keydown", (event) => {
+  // On wide screens the party is a rail of portraits down the left edge, and the story and the map are icon buttons down the right.
+  const rail = document.createElement("nav");
+  rail.className = "party-rail";
+  rail.id = "party-rail";
+  document.body.append(rail);
+  drawers.left.rail = rail;
+  drawers.right.tab.prepend(iconImage("clue"));
+  drawers.bottom.tab.prepend(iconImage("move"));
     if (event.key !== "Escape") return;
     const open = [...order].reverse().find((side) => drawers[side].drawer.dataset.open === "true");
     if (open !== undefined && !document.querySelector("dialog[open]")) drawers[open].set(false);
@@ -92,6 +101,8 @@ function paintTitles() {
     entry.label.textContent = text;
     entry.drawer.setAttribute("aria-label", text);
   }
+    entry.tab.title = text;
+    entry.tab.setAttribute("aria-label", text);
 }
 
 // Leaving a game for the lobby: every panel put away, and nothing of that game's story or turn left behind.
@@ -130,7 +141,42 @@ export function syncDrawers(game) {
   }));
   // The map opens when your turn to move comes round and puts itself away when the turn is over, unless you took it over by hand.
   const turn = game.yourTurn && game.mode === "combat";
-  if (turn && !app.wasMyTurn) { app.drawerAuto.bottom = true; drawers.bottom.set(true); }
+  // It no longer opens by itself on your turn: it covered the actions. A map held open for the turn is still put away when it ends.
   if (!turn && app.wasMyTurn && app.drawerAuto.bottom) { app.drawerAuto.bottom = false; drawers.bottom.set(false); }
   app.wasMyTurn = turn;
 }
+  drawers.left?.rail?.replaceChildren();
+// One portrait per hero down the left edge, ringed with its health, so who is hurt is in view without opening the party. Tapping one opens the party.
+function paintPartyRail(game) {
+  const rail = drawers.left.rail;
+  if (rail === undefined) return;
+  const open = drawers.left.drawer.dataset.open === "true";
+  rail.replaceChildren(...game.party.map((hero) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "rail-hero";
+    const state = hero.fallen ? "dead" : hero.down ? "down" : hero.presence === "away" ? "away" : "well";
+    button.dataset.state = state;
+    if (hero.isYou) button.classList.add("is-you");
+    const share = hero.maxHp > 0 ? Math.max(0, Math.min(100, Math.round(hero.hp / hero.maxHp * 100))) : 0;
+    button.style.setProperty("--hp", `${share}%`);
+    button.title = `${hero.name} · ${hero.hp} / ${hero.maxHp}`;
+    button.setAttribute("aria-label", button.title);
+    button.setAttribute("aria-controls", drawers.left.drawer.id);
+    button.setAttribute("aria-expanded", String(open));
+    const face = document.createElement("span");
+    face.className = "rail-face";
+    const letter = document.createElement("span");
+    letter.textContent = [...hero.name][0] ?? "?";
+    letter.setAttribute("aria-hidden", "true");
+    const image = document.createElement("img");
+    image.alt = "";
+    face.append(letter, image);
+    void setArtwork(image, letter, hero.imageUrl, "");
+    button.append(face);
+    button.addEventListener("click", () => { app.drawerAuto.left = false; drawers.left.set(drawers.left.drawer.dataset.open !== "true"); paintPartyRail(game); });
+    return button;
+  }));
+}
+
+  paintPartyRail(game);

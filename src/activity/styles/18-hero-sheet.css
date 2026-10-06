@@ -81,7 +81,6 @@
 .save-row i.is-filled { background: currentColor; }
 .turn-order { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 8px; padding: 0; list-style: none; font-size: 12px; }
 .turn-order li { padding: 2px 8px; border: 1px solid var(--ui-border, #b99b6a); border-radius: 999px; background: #efe3c9; }
-.turn-order .turn-order-round { border-style: dashed; font-weight: 700; }
 .turn-order .side-foes { border-color: #9c4b3a; }
 .turn-order .is-active { background: var(--ui-accent, #8a5a2b); color: #fff4dc; font-weight: 700; }
 .turn-order .is-down { opacity: .5; text-decoration: line-through; }
@@ -101,3 +100,5 @@
 #rest-vote { flex-wrap: wrap; }
 #rest-vote > span { flex: 1 1 220px; }
 #rest-vote .ui-control { white-space: nowrap; }
+.live-enemies .turn-order { grid-column: 1 / -1; flex: 0 0 100%; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--ui-border); }
+.live-enemies .turn-order li { align-self: center; padding: 6px 10px; }

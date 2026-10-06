@@ -73,7 +73,9 @@ if (new URLSearchParams(window.location.search).has("design-preview")) {
   if (battlefieldPreview) {
     app.wasMyTurn = true;
     preview.party = preview.party.map((hero, index) => ({ ...hero, zone: index < 2 ? "Shattered dais" : "Broken gallery", imageUrl: index === 2 ? "/previews/mira.jpg" : index === 3 ? "/previews/pip.jpg" : null, deathSaves: null }));
-    preview.order = preview.order.map((entry) => ({ ...entry, down: false }));
+    // Thorne is down in this preview, so a downed creature can be seen on the board and in the turn order.
+    preview.party = preview.party.map((hero) => hero.name === "Thorne Oakshield" ? { ...hero, hp: 0, down: true } : hero);
+    preview.order = preview.order.map((entry) => ({ ...entry, down: entry.name === "Thorne Oakshield", fallen: entry.name === "Drowned Husk A" }));
     for (const entry of [...preview.party.map((hero) => ({ ...hero, side: "party" })), ...preview.allies.map((ally) => ({ ...ally, side: "party" }))]) {
       if (!preview.order.some((turn) => turn.name === entry.name)) preview.order.push({ name: entry.name, side: entry.side, down: false, active: false });
     }
