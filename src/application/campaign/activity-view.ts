@@ -115,8 +115,6 @@ export interface ActivityTableView {
     readonly conditions: readonly string[];
     readonly imageUrl: string | null;
     readonly isYou: boolean;
-    // Only for the organizer, on an away player's hero: whose seat the "free seat" button releases.
-    readonly seatUserId?: string;
     // Where the hero stands in a fight (the zone's name), otherwise null.
     readonly zone: string | null;
     // While the owner is away: the hero of the player who plays this one for them. Null otherwise.
@@ -361,7 +359,6 @@ export function buildActivityTableView(
       conditions: hero.conditions,
       imageUrl: partySheet?.origin === undefined && !hasPicture(record.images?.[`hero:${hero.characterId}`]) ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/characters/${encodeURIComponent(hero.characterId)}`,
       isYou: hero.ownerUserId === userId,
-      ...(record.organizerId === userId && hero.ownerUserId !== userId && state.members[hero.ownerUserId]?.availability === "away" && (state.encounter === null || state.encounter.status === "ended") ? { seatUserId: hero.ownerUserId } : {}),
       zone: panel.combat?.party.find((combatant) => combatant.name === hero.name)?.zone ?? null,
       playedBy: ((): string | null => {
         const owner = state.members[hero.ownerUserId];
@@ -444,8 +441,8 @@ export function buildActivityTableView(
       description: scene?.publicDescription ?? "",
       imageUrl: panel.combat !== null && hasPicture(record.images?.[`encounter:${panel.combat.encounterId}`])
         ? `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/encounters/${encodeURIComponent(panel.combat.encounterId)}`
-        : scene === undefined ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/scenes/${encodeURIComponent(scene.id)}`,
-      ...(panel.combat !== null && hasPicture(record.images?.[`encounter:${panel.combat.encounterId}`]) && scene !== undefined
+        : scene === undefined || record.images?.[scene.id] !== "done" ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/scenes/${encodeURIComponent(scene.id)}`,
+      ...(panel.combat !== null && hasPicture(record.images?.[`encounter:${panel.combat.encounterId}`]) && scene !== undefined && record.images?.[scene.id] === "done"
         ? { fallbackImageUrl: `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/scenes/${encodeURIComponent(scene.id)}` }
         : {}),
     },

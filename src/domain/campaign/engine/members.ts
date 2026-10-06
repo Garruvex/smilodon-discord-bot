@@ -96,14 +96,13 @@ export function markReturned(decision: Decision, userId: UserId): Rejection | nu
   return null;
 }
 
-// The organizer frees an away player's seat so someone else can take it. Only between fights, and never the organizer's own.
+// The organizer frees a player's seat, present or away, so someone else can take it. Only between fights, and never the organizer's own.
 export function retireMember(decision: Decision, userId: UserId): Rejection | null {
   const { state, ctx } = decision;
   if (ctx.actor.kind !== "user" || ctx.actor.userId !== state.organizerId) return { code: "notOrganizer" };
   const member = state.members[userId];
   if (member === undefined) return { code: "notMember" };
   if (userId === state.organizerId) return { code: "organizerStays" };
-  if (member.availability !== "away") return { code: "memberNotAway" };
   if (state.encounter !== null && state.encounter.status !== "ended") return { code: "inCombat" };
   const characterId = member.characterId;
   decision.emit({ kind: "memberRetired", userId, characterId, name: characterId === null ? null : (state.characters[characterId]?.name ?? null) });

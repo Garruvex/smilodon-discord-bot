@@ -241,7 +241,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
   const authority = new CampaignAuthority(input.accessPolicyService, unitOfWork);
   const creator = new CampaignGameCreator({ lobby, setup, defaultAdventureId: starterAdventureId, modelConfigured: model !== null, adventures });
   const tables = new ActivityTableService({
-    unitOfWork, lobby, creator, adventures, now: (): number => clock.now(), refresh: (key): void => cards.refresh(key),
+    unitOfWork, lobby, play: activityPlay, creator, adventures, now: (): number => clock.now(), refresh: (key): void => cards.refresh(key),
     isAdmin: async (guildId, userId): Promise<boolean> => {
       const guild = await client.guilds.fetch(guildId);
       const member = await guild.members.fetch({ user: userId, force: true });

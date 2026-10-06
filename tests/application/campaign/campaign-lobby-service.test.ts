@@ -133,6 +133,21 @@ describe("the lobby", () => {
     value(await service.joinFromActivity(key, "u-b"));
     expect((await service.get(key))?.record.lobby.members.filter((member) => member.status !== "withdrawn")).toHaveLength(2);
   });
+  it("lets the organizer remove a seated player (dropping their invite) and revoke an invitation", async () => {
+    const { service } = setup();
+    const { key } = value(await service.create(input({ maxPlayers: 2 })));
+    value(await service.join(key, "u-a"));
+    value(await service.inviteLobby(key, "u-org", "u-b"));
+    expect(refusal(await service.removeMember(key, "u-a", "u-a"))).toBe("notOrganizer");
+    expect(refusal(await service.removeMember(key, "u-org", "u-org"))).toBe("organizerStays");
+    value(await service.removeMember(key, "u-org", "u-a"));
+    expect((await service.get(key))?.record.lobby.members.filter((member) => member.status !== "withdrawn")).toHaveLength(0);
+    expect(refusal(await service.revokeJoin(key, "u-a", "u-b"))).toBe("notOrganizer");
+    value(await service.revokeJoin(key, "u-org", "u-b"));
+    expect((await service.get(key))?.record.joinRequests?.["u-b"]).toBeUndefined();
+    expect(refusal(await service.revokeJoin(key, "u-org", "u-b"))).toBe("notMember");
+  });
+
   it("seats players, lets them pick preset heroes, and lists them in order", async () => {
     const { service } = setup();
     const { key } = value(await service.create(input()));

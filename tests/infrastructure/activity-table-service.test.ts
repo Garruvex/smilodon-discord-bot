@@ -25,7 +25,7 @@ function setup(): { store: InMemoryCampaignStore; lobby: CampaignLobbyService; s
   const isAdmin = vi.fn((_guildId: string, userId: string): Promise<boolean> => Promise.resolve(userId === "organizer"));
   const isMember = vi.fn((_guildId: string, userId: string): Promise<boolean> => Promise.resolve(userId !== "outsider"));
   const searchMembers = vi.fn((): Promise<readonly { userId: string; displayName: string }[]> => Promise.resolve([{ userId: "player", displayName: "Player" }]));
-  const service = new ActivityTableService({ unitOfWork: store, lobby, creator: { create, modelConfigured: true }, adventures: { listForGuild: (): ReturnType<typeof adventures.list> => adventures.list() }, isAdmin, isMember, searchMembers, memberName: (_guildId, userId): Promise<string> => Promise.resolve(userId), now: (): number => clock.now(), refresh: vi.fn() });
+  const service = new ActivityTableService({ unitOfWork: store, lobby, play: { setPresenceFor: vi.fn(() => Promise.resolve({ kind: "ok" as const })) }, creator: { create, modelConfigured: true }, adventures: { listForGuild: (): ReturnType<typeof adventures.list> => adventures.list() }, isAdmin, isMember, searchMembers, memberName: (_guildId, userId): Promise<string> => Promise.resolve(userId), now: (): number => clock.now(), refresh: vi.fn() });
   return { store, lobby, service, create, searchMembers, isMember };
 }
 

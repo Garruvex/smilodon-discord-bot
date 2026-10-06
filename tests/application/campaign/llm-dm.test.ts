@@ -73,6 +73,13 @@ it("grounds an NPC's performance in their voice and the established scene", () =
   expect(prompt.system).toContain("Gruff and guarded");
   expect(prompt.system).toContain("brief gesture or reaction");
   expect(prompt.system).toContain("Do not reveal an unrevealed secret or invent new facts");
+  // An NPC who withholds does it in character, never by talking about what the players have or have not established.
+  expect(prompt.system).toContain("Stay inside the fiction");
+  // The NPC does not invent terms: a coin the hag asks for must come from the adventure, never from the model.
+  expect(prompt.system).toContain("never invents a demand, price, payment");
+  // The NPC's manner comes from their own voice, not from echoing the hero's wording.
+  expect(prompt.system).toContain("Never copy or echo the hero's wording");
+  expect(prompt.system).toContain("never claim the hero's knowledge is lacking");
   expect(prompt.user).toContain("What happened on the road?");
 });
 
@@ -111,6 +118,9 @@ describe("planner prompt and schema", () => {
     expect(prompt.system).toContain("professional Dungeon Master");
     expect(prompt.system).toContain("never invent traversable routes");
     expect(prompt.system).toContain("separate cards");
+    // An item a player says they pick up is not gained unless the scene or a reward establishes it.
+    expect(buildPlannerPrompt(plannerRequest).system).toContain("mark it impossible and say in reason that nothing like it is here to take");
+    expect(prompt.system).toContain("never say a hero picked up");
     expect(prompt.user).toContain("我悄悄溜過去");
     const opening = buildNarratorPrompt({ ...narratorRequest, opening: { heroes: [{ name: "Mira", className: "Rogue" }] } });
     expect(opening.system).toContain("professional Dungeon Master");

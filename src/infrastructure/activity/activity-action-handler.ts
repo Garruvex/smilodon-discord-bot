@@ -60,11 +60,6 @@ export function createActivityActionHandler(options: {
             const entrance = typeof action.entrance === "string" ? action.entrance.slice(0, 600) : undefined;
             return lobby.replaceFallenHero(key, userId, heroRef, entrance, id).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
           }
-          case "retireSeat": {
-            const target = textValue(action.userId, 64);
-            if (target === null) return { kind: "refused", reason: "invalidAction" };
-            return lobby.retireSeat(key, userId, target, id).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
-          }
           case "withdrawJoin": return lobby.withdrawOngoingJoin(key, userId).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
           case "submit": {
             const text = textValue(action.text, maxActionLength);

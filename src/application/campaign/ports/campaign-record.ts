@@ -128,8 +128,8 @@ export interface CampaignRecord {
   readonly visibility?: CampaignVisibility;
   // Requests and invitations for people joining after play has started.
   readonly joinRequests?: Readonly<Record<UserId, { readonly status: "requested" | "invited" | "approved" | "queued"; readonly entrance?: string; readonly expiresAt: number; readonly queuedHero?: CharacterSheet; readonly queueId?: string }>>;
-  // What became of each picture.
-  readonly images?: Readonly<Record<string, "made" | "done" | "skipped" | "failed">>;
+  // What became of each picture. "held": painted and kept, but never posted because the party had left that scene; the Activity shows only what the channel got.
+  readonly images?: Readonly<Record<string, "made" | "done" | "held" | "skipped" | "failed">>;
   // Legacy counters from campaigns created before picture budgets were removed.
   readonly imageBudget?: { readonly limit: number; readonly used: number };
   // The subject of the picture posted last, which the organizer's Redo repaints.

@@ -118,6 +118,8 @@ const tableManagementSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("decide"), userId: z.string().regex(/^\d{17,20}$/), approve: z.boolean(), entrance: z.string().trim().max(500).default("") }),
   z.object({ kind: z.literal("resize"), maxPlayers: z.number().int().min(1).max(6) }),
   z.object({ kind: z.literal("remove"), userId: z.string().regex(/^\d{17,20}$/) }),
+  z.object({ kind: z.literal("revoke"), userId: z.string().regex(/^\d{17,20}$/) }),
+  z.object({ kind: z.literal("presence"), userId: z.string().regex(/^\d{17,20}$/), away: z.boolean() }),
 ]);
 
 interface ActivitySession {
@@ -261,6 +263,8 @@ async function respond(
       const result = action.kind === "invite" ? await campaigns.tables.invite(key, session.userId, action.userId, action.entrance)
         : action.kind === "decide" ? await campaigns.tables.decide(key, session.userId, action.userId, action.approve, action.entrance)
         : action.kind === "resize" ? await campaigns.tables.resize(key, session.userId, action.maxPlayers)
+        : action.kind === "presence" ? await campaigns.tables.setPresence(key, session.userId, action.userId, action.away)
+        : action.kind === "revoke" ? await campaigns.tables.revoke(key, session.userId, action.userId)
         : await campaigns.tables.remove(key, session.userId, action.userId);
       if (result.kind === "refused") return writeJson(response, result.reason === "notOrganizer" ? 403 : 409, { error: result.reason }, headers);
       return writeJson(response, 200, { updated: true }, headers);

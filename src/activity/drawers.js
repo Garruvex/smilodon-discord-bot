@@ -11,22 +11,32 @@ const drawers = {};
 const order = [];
 
 // The bookmarks and the portrait rail ride the panels' edge. While a panel slides, they read where its edge really is on every frame (--dock-w), so they never drift from it,
-// and when one panel is going out as another comes in they stay with the wider of the two.
+// and when one panel is going out as another comes in they stay with the wider of the two. When nothing is moving the value is dropped and the stylesheet owns it
+// (it knows each open panel's width), so a measurement taken mid-slide, or before a resize, can never be left behind.
 function placeDock() {
-  if (!window.matchMedia("(min-width: 901px)").matches) return;
+  if (!window.matchMedia("(min-width: 901px)").matches) { document.body.style.removeProperty("--dock-w"); return; }
   let edge = 0;
+  let moving = false;
   for (const entry of Object.values(drawers)) {
-    const right = entry.drawer.getBoundingClientRect().right;
-    if (entry.drawer.dataset.open === "true" || right > 0) edge = Math.max(edge, right);
+    if (entry.drawer.getAnimations().length === 0) continue;
+    moving = true;
+    const box = entry.drawer.getBoundingClientRect();
+    if (box.right > 0 && box.left < window.innerWidth && box.top < window.innerHeight && box.bottom > 0) edge = Math.max(edge, box.right);
   }
-  document.body.style.setProperty("--dock-w", `${Math.round(edge)}px`);
+  if (moving) document.body.style.setProperty("--dock-w", `${Math.round(edge)}px`);
+  else document.body.style.removeProperty("--dock-w");
 }
+let settleTimer = 0;
 function followDock() {
   const end = performance.now() + 450;
   const tick = () => { placeDock(); if (performance.now() < end) requestAnimationFrame(tick); };
   requestAnimationFrame(tick);
+  // However the slide ended (an event missed, a hidden tab), the measured value does not outlive it: the stylesheet's own rule takes over.
+  clearTimeout(settleTimer);
+  settleTimer = setTimeout(() => document.body.style.removeProperty("--dock-w"), 600);
 }
 window.addEventListener("resize", placeDock);
+// A slide ends (or is cut short) on its own events, so the measured value is dropped the moment the panel stops.
 
 function makeDrawer(side, titleKey, body, onOpen) {
   const drawer = document.createElement("aside");
@@ -67,6 +77,8 @@ function makeDrawer(side, titleKey, body, onOpen) {
     followDock();
   };
   tab.addEventListener("click", () => { app.drawerAuto[side] = false; entry.set(drawer.dataset.open !== "true"); });
+  drawer.addEventListener("transitionend", placeDock);
+  drawer.addEventListener("transitioncancel", placeDock);
   document.body.append(drawer, tab);
   drawers[side] = entry;
   order.push(side);
@@ -172,6 +184,11 @@ function paintPartyRail(game) {
   // On a phone the rail is hidden, so the Party button carries the mark: amber while another hero is still deciding.
   drawers.left.tab.dataset.turn = game.party.some((hero) => !hero.isYou && hero.presence !== "away" && !hero.down && !hero.fallen && (hero.tableStatus === "acting" || (hero.tableStatus === "waiting" && game.mode !== "combat"))) ? "thinking" : "";
   const measure = () => document.body.style.setProperty("--rail-h", `${Math.ceil(rail.getBoundingClientRect().height)}px`);
+  // The rail is hidden on a narrow screen (height 0) and comes back when the window widens, with no repaint to measure it again: it is watched, so Story and Map never sit on it.
+  if (rail.dataset.watched === undefined) {
+    rail.dataset.watched = "true";
+    new ResizeObserver(measure).observe(rail);
+  }
   rail.replaceChildren(...game.party.map((hero) => {
     const button = document.createElement("button");
     button.type = "button";
