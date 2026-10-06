@@ -169,12 +169,22 @@ export class ImageWorker {
       const found = bible === undefined ? undefined : await this.describe(request, item.key, record, bible);
       if (saved === undefined || found === undefined || channelId === null) return void (await this.mark(item.key, subject, "failed"));
       if (request.kind === "sceneImage" && !(await this.sceneIsCurrent(item.key, request.sceneId))) {
-        await this.mark(item.key, subject, "done");
+        await this.mark(item.key, subject, "held");
         return;
       }
       await sink.post(channelId, saved, found.caption);
       await this.mark(item.key, subject, "done");
       if (!keptPictures.has(request.kind)) await assets.remove(item.key, subject).catch(() => undefined);
+      return;
+    }
+    // The party arrives in a scene that already has its picture (painted before, or held back while they were elsewhere): the same picture is posted again, never painted twice.
+    if ((existing === "done" || existing === "held") && !forced && request.kind === "sceneImage" && asked.kind === "sceneImage" && asked.roundNumber > 0) {
+      const saved = await assets.load(item.key, subject);
+      const found = bible === undefined ? undefined : await this.describe(request, item.key, record, bible);
+      if (saved !== undefined && found !== undefined && channelId !== null && await this.sceneIsCurrent(item.key, request.sceneId)) {
+        await sink.post(channelId, saved, found.caption);
+        await this.mark(item.key, subject, "done");
+      }
       return;
     }
     if (existing !== undefined && !forced) return;
@@ -210,7 +220,7 @@ export class ImageWorker {
     await assets.save(item.key, subject, image);
     await this.mark(item.key, subject, "made");
     if (request.kind === "sceneImage" && !(await this.sceneIsCurrent(item.key, request.sceneId))) {
-      await this.mark(item.key, subject, "done");
+      await this.mark(item.key, subject, "held");
       return;
     }
     await sink.post(channelId, image, described.caption);
@@ -351,7 +361,7 @@ export class ImageWorker {
   }
 
   // Records what became of a picture on the campaign record.
-  private async mark(key: CampaignKey, subject: string, status: "made" | "done" | "skipped" | "failed"): Promise<void> {
+  private async mark(key: CampaignKey, subject: string, status: "made" | "done" | "held" | "skipped" | "failed"): Promise<void> {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         await this.options.unitOfWork.transaction(async (tx) => {

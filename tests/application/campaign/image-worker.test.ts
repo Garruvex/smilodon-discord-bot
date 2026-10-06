@@ -137,13 +137,25 @@ describe("scene pictures", () => {
     expect(t.painter.prompts).toHaveLength(1);
   });
 
+  it("posts the saved picture again when the party arrives back in a scene, without painting twice", async () => {
+    const t = await table();
+    await ask(t, chapel);
+    await t.worker.runOnce();
+    expect(t.posted).toHaveLength(1);
+    await ask(t, chapel, "return", 2);
+    await t.worker.runOnce();
+    expect(t.posted).toHaveLength(2);
+    expect(t.painter.prompts).toHaveLength(1);
+    expect((await recordOf(t)).images?.[chapel]).toBe("done");
+  });
+
   it("keeps a late picture for its original scene without posting it into the current scene", async () => {
     const t = await table();
     await ask(t, "scene:old-watchtower");
     await t.worker.runOnce();
     expect(t.posted).toEqual([]);
     expect(t.painter.prompts[0]).toContain(starter.en.bible.scenes.find((scene) => scene.id === "scene:old-watchtower")?.title);
-    expect((await recordOf(t)).images?.["scene:old-watchtower"]).toBe("done");
+    expect((await recordOf(t)).images?.["scene:old-watchtower"]).toBe("held");
     expect(await t.shelf.load(t.key, "scene:old-watchtower")).toBeDefined();
     expect(await t.r.store.transaction((tx) => tx.pendingOutbox("sceneImage"))).toEqual([]);
   });
@@ -184,7 +196,7 @@ describe("scene pictures", () => {
     expect((await t.worker.runOnce()).failed).toEqual([]);
     expect(t.painter.prompts).toHaveLength(1);
     expect(t.posted).toEqual([]);
-    expect((await recordOf(t)).images?.[chapel]).toBe("done");
+    expect((await recordOf(t)).images?.[chapel]).toBe("held");
     expect(await t.shelf.load(t.key, chapel)).toBeDefined();
   });
 
@@ -234,7 +246,7 @@ describe("scene pictures", () => {
     await ask(t, "scene:old-watchtower");
     expect((await t.worker.runOnce()).failed).toEqual([]);
     expect(t.painter.prompts).toHaveLength(2);
-    expect((await recordOf(t)).images).toEqual({ [chapel]: "done", "scene:old-watchtower": "done" });
+    expect((await recordOf(t)).images).toEqual({ [chapel]: "done", "scene:old-watchtower": "held" });
   });
 
   it("leaves text play alone when the model fails: tries twice, then the scene goes without", async () => {
@@ -296,7 +308,7 @@ describe("scene pictures", () => {
     expect((await t.worker.runOnce()).failed).toEqual([]);
     expect(t.posted).toEqual([]);
     expect(t.painter.prompts).toHaveLength(1);
-    expect((await recordOf(t)).images?.[chapel]).toBe("done");
+    expect((await recordOf(t)).images?.[chapel]).toBe("held");
     expect(await t.shelf.load(t.key, chapel)).toBeDefined();
     expect(await t.r.store.transaction((tx) => tx.pendingOutbox("sceneImage"))).toEqual([]);
   });

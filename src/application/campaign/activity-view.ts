@@ -447,8 +447,8 @@ export function buildActivityTableView(
       description: scene?.publicDescription ?? "",
       imageUrl: panel.combat !== null && hasPicture(record.images?.[`encounter:${panel.combat.encounterId}`])
         ? `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/encounters/${encodeURIComponent(panel.combat.encounterId)}`
-        : scene === undefined ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/scenes/${encodeURIComponent(scene.id)}`,
-      ...(panel.combat !== null && hasPicture(record.images?.[`encounter:${panel.combat.encounterId}`]) && scene !== undefined
+        : scene === undefined || record.images?.[scene.id] !== "done" ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/scenes/${encodeURIComponent(scene.id)}`,
+      ...(panel.combat !== null && hasPicture(record.images?.[`encounter:${panel.combat.encounterId}`]) && scene !== undefined && record.images?.[scene.id] === "done"
         ? { fallbackImageUrl: `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/scenes/${encodeURIComponent(scene.id)}` }
         : {}),
     },
