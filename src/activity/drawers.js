@@ -13,11 +13,14 @@ const order = [];
 // The bookmarks and the portrait rail ride the panels' edge. While a panel slides, they read where its edge really is on every frame (--dock-w), so they never drift from it,
 // and when one panel is going out as another comes in they stay with the wider of the two.
 function placeDock() {
-  if (!window.matchMedia("(min-width: 901px)").matches) return;
+  // Narrow screens lay the panels out as a lower deck and the stylesheet owns --dock-w there, so a value left from the wide layout is cleared.
+  if (!window.matchMedia("(min-width: 901px)").matches) { document.body.style.removeProperty("--dock-w"); return; }
   let edge = 0;
   for (const entry of Object.values(drawers)) {
-    const right = entry.drawer.getBoundingClientRect().right;
-    if (entry.drawer.dataset.open === "true" || right > 0) edge = Math.max(edge, right);
+    const box = entry.drawer.getBoundingClientRect();
+    // A panel that is shut sits off screen (past the left or right edge, or below the bottom one) and does not hold the tabs out.
+    const onScreen = box.right > 0 && box.left < window.innerWidth && box.top < window.innerHeight && box.bottom > 0;
+    if (entry.drawer.dataset.open === "true" || onScreen) edge = Math.max(edge, box.right);
   }
   document.body.style.setProperty("--dock-w", `${Math.round(edge)}px`);
 }
