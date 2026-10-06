@@ -111,6 +111,9 @@ describe("planner prompt and schema", () => {
     expect(prompt.system).toContain("professional Dungeon Master");
     expect(prompt.system).toContain("never invent traversable routes");
     expect(prompt.system).toContain("separate cards");
+    // An item a player says they pick up is not gained unless the scene or a reward establishes it.
+    expect(buildPlannerPrompt(plannerRequest).system).toContain("mark it impossible and say in reason that nothing like it is here to take");
+    expect(prompt.system).toContain("never say a hero picked up");
     expect(prompt.user).toContain("我悄悄溜過去");
     const opening = buildNarratorPrompt({ ...narratorRequest, opening: { heroes: [{ name: "Mira", className: "Rogue" }] } });
     expect(opening.system).toContain("professional Dungeon Master");
