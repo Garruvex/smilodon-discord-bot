@@ -1843,6 +1843,8 @@ export const campaignZhTW = {
   "campaign.adventure.previewScenes": "場景：{scenes}",
   "campaign.adventure.previewPeople": "人物：{people}",
   "campaign.adventure.previewFights": "戰鬥：",
+  "campaign.adventure.previewOmitted": "轉換時略去的內容：",
+  "campaign.adventure.previewOmittedItem": "{item}（{reason}）",
   "campaign.adventure.previewFight": "• {scene}：{description}（{monsters}）",
   "campaign.adventure.previewHeroes": "英雄：{heroes}",
   "campaign.adventure.previewWarnings": "值得留意：",

@@ -107,6 +107,22 @@ encounters:
     onDefeat: [{ kind: goto, scene: scene:cell }]    # a lost fight still leaves the story a way on (the same kinds as onVictory)
 ```
 
+## Where it came from (provenance)
+
+An adventure converted from a source keeps a record of it, beside the story and never played or shown to the narrator:
+
+```yaml
+provenance:
+  references:                       # which passage each part came from
+    - { id: scene:cellar, passage: "Area 3, The Cellar (p. 12)" }
+    - { id: npc:warden, passage: "Appendix B, Warden Hale" }
+  omitted:                          # whatever the conversion could not keep, and why
+    - { item: "the flooded crypt below the cellar", reason: "needs a level 3 party" }
+```
+
+`references` ids must exist. The organizer sees the `omitted` list when reviewing the adventure. When you convert with the bot's Author, the
+notes it was given are stored as `provenance.source` exactly as written.
+
 ## What the engine keeps for itself
 
 Flags named `tried:<interaction>`, `done:<interaction>`, `reward:<id>` and `notice:<id>` belong to the engine; authored flag names are

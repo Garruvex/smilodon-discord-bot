@@ -172,6 +172,37 @@ function author(client: StructuredModelClient): AdventureAuthor {
 }
 
 describe("the Adventure Author", () => {
+  it("keeps the notes it was given exactly, and what the model says came from where and was left out", async () => {
+    const provenance = [
+      "provenance:",
+      "  source: INVENTED BY THE MODEL",
+      "  references:",
+      "    - { id: scene:square, passage: 'Area 1, the square' }",
+      "  omitted:",
+      "    - { item: the flooded crypt, reason: needs a level 3 party }",
+      "",
+    ].join(String.fromCharCode(10));
+    const notes = ["Area 1: a village square.", "The crypt below floods."].join(String.fromCharCode(10));
+    const client = new Scripted([modelReply((yaml) => provenance + yaml)]);
+    const result = await author(client).write({ language: "en", idea: "", notes });
+    if (result.kind !== "written") throw new Error(JSON.stringify(result));
+    expect(result.omitted).toEqual([{ item: "the flooded crypt", reason: "needs a level 3 party" }]);
+    const document = parseAdventureDocument(result.yaml);
+    // The source is the organizer's text, never what the model retyped; it never reaches the story the engine plays.
+    expect(document.provenance).toEqual({ source: notes, references: [{ id: "scene:square", passage: "Area 1, the square" }], omitted: [{ item: "the flooded crypt", reason: "needs a level 3 party" }] });
+    expect(JSON.stringify(document.bible)).not.toContain("flooded crypt");
+    expect(client.requests[0]?.system).toContain("provenance.omitted");
+  });
+
+  it("asks again when a reference names something that is not in the adventure", async () => {
+    const bad = ["provenance:", "  references:", "    - { id: scene:nowhere, passage: somewhere }", ""].join(String.fromCharCode(10));
+    const client = new Scripted([modelReply((yaml) => bad + yaml), modelReply()]);
+    const result = await author(client).write({ language: "en", idea: "x", notes: "" });
+    if (result.kind !== "written") throw new Error(JSON.stringify(result));
+    expect(result.attempts).toBe(2);
+    expect(client.requests[1]?.user).toContain("provenance refers to unknown scene:nowhere");
+  });
+
   it("turns an idea into an adventure that passes every check and the story contract, with the shipped heroes and no invented ones", async () => {
     const client = new Scripted([modelReply()]);
     const result = await author(client).write({ language: "en", idea: "A haunted chapel above a fishing village.", notes: "" });

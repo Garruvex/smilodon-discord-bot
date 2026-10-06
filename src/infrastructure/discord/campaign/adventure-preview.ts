@@ -60,6 +60,9 @@ export function renderReview(input: { report: AdventureReport; adventure: Stored
       t.previewHeroes({ heroes: preview.heroes.map((hero) => hero.name).join(" · ") }),
     );
   }
+  // What the conversion left out is the organizer's to see before approving.
+  const omitted = report.document?.provenance?.omitted ?? [];
+  if (omitted.length > 0) lines.push("", t.previewOmitted, ...omitted.slice(0, 10).map((entry) => `• ${t.previewOmittedItem({ item: entry.item, reason: entry.reason })}`), ...(omitted.length > 10 ? [`• … +${omitted.length - 10}`] : []));
   if (report.document !== null) lines.push("", `-# ${t.previewNoSpoilers}`);
 
   const content = lines.join("\n");

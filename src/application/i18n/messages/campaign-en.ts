@@ -1845,6 +1845,8 @@ export const campaignEn = {
   "campaign.adventure.previewScenes": "Scenes: {scenes}",
   "campaign.adventure.previewPeople": "People: {people}",
   "campaign.adventure.previewFights": "Fights:",
+  "campaign.adventure.previewOmitted": "Left out of the conversion:",
+  "campaign.adventure.previewOmittedItem": "{item} ({reason})",
   "campaign.adventure.previewFight": "• {scene}: {description} ({monsters})",
   "campaign.adventure.previewHeroes": "Heroes: {heroes}",
   "campaign.adventure.previewWarnings": "Worth a look:",

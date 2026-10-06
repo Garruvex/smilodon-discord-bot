@@ -12,9 +12,18 @@ import { timesOfDay, weathers } from "../../../domain/campaign/rules/world-rules
 // player picks it.
 export type PresetHero = Omit<CharacterSheet, "ownerUserId"> & { readonly class: string };
 
+// Where an adventure came from, kept beside the story and never played: the text it was converted from, which passage each scene, NPC, clue
+// or fight came from, and what the conversion left out and why. Nothing here reaches the engine or the narrator.
+export interface AdventureProvenance {
+  readonly source?: string;
+  readonly references: readonly { readonly id: string; readonly passage: string }[];
+  readonly omitted: readonly { readonly item: string; readonly reason: string }[];
+}
+
 export interface AdventureDocument {
   readonly bible: AdventureBible;
   readonly heroes: readonly PresetHero[];
+  readonly provenance?: AdventureProvenance;
 }
 
 const sceneId = z.string().regex(/^scene:[a-z0-9-]+$/) as unknown as z.ZodType<SceneId>;
@@ -119,6 +128,14 @@ const interactionSchema = z
   })
   .strict();
 
+const provenanceSchema = z
+  .object({
+    source: z.string().max(20_000).optional(),
+    references: z.array(z.object({ id: z.string().max(80), passage: z.string().max(400) }).strict()).max(300).default([]),
+    omitted: z.array(z.object({ item: z.string().max(300), reason: z.string().max(400) }).strict()).max(100).default([]),
+  })
+  .strict();
+
 const documentSchema = z
   .object({
     id: z.string().regex(/^[a-z0-9-]+$/),
@@ -129,6 +146,7 @@ const documentSchema = z
     startingLevel: z.number().int().min(1).max(10).optional(),
     suggestedParty: z.object({ min: z.number().int().min(1).max(8), max: z.number().int().min(1).max(8) }).strict().refine((party) => party.min <= party.max).optional(),
     dmOverview: text,
+    provenance: provenanceSchema.optional(),
     startScene: sceneId,
     linear: z.boolean().optional(),
     startTime: z.object({ day: z.number().int().min(1).max(10_000).optional(), time: z.enum(timesOfDay), weather: z.enum(weathers).optional() }).strict().optional(),
@@ -289,6 +307,8 @@ export function parseAdventureDocument(source: string): AdventureDocument {
     }
   }
   problems.push(...interactionProblems(data));
+  const known = new Set<string>([...sceneIds, ...npcIds, ...data.clues.map((clue) => clue.id), ...encounterIds, ...data.interactions.map((interaction) => interaction.id), ...data.clocks.map((clock) => clock.id)]);
+  for (const reference of data.provenance?.references ?? []) if (!known.has(reference.id)) problems.push(`provenance refers to unknown ${reference.id}.`);
   const heroes: PresetHero[] = data.heroes.map((hero) => {
     const skills: Partial<Record<Skill, SkillProficiency>> = {};
     for (const [skill, proficiency] of Object.entries(hero.skills)) {
@@ -303,7 +323,7 @@ export function parseAdventureDocument(source: string): AdventureDocument {
   });
   if (problems.length > 0) throw new AdventureDocumentError(problems);
 
-  const { heroes: _heroes, startingLevel, suggestedParty, linear, startTime, encounters, interactions, scenes, ...rest } = data;
+  const { heroes: _heroes, provenance, startingLevel, suggestedParty, linear, startTime, encounters, interactions, scenes, ...rest } = data;
   // zod's .optional() leaves the key present with value undefined, which
   // exactOptionalPropertyTypes treats as different from the key being
   // absent; strip it so an npc with no shop matches BibleNpc exactly.
@@ -335,7 +355,7 @@ export function parseAdventureDocument(source: string): AdventureDocument {
     ...(linear === undefined ? {} : { linear }),
     ...(startTime === undefined ? {} : { startTime: clean(startTime) as unknown as NonNullable<AdventureBible["startTime"]> }),
   };
-  return { bible, heroes };
+  return { bible, heroes, ...(provenance === undefined ? {} : { provenance: { ...(provenance.source === undefined ? {} : { source: provenance.source }), references: provenance.references, omitted: provenance.omitted } }) };
 }
 
 // Two language editions of one adventure must describe the same structure.

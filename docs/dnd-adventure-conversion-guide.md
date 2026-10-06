@@ -62,7 +62,10 @@ forward, and write down the way forward *when things go badly*.
    noisily. The story continues; it just gets harder.
 10. **Add a floor ending.** If the party fails everything, there is still a scene that closes the story (the village suffers, the culprit escapes,
    the festival goes on without them). Mark it `ending: true`.
-11. **Run the checker and fix what it says.** Then read the warnings.
+11. **Record where it came from, and what you left out.** Give every scene, NPC, clue and fight a `provenance.references` entry (its id and the
+   passage or heading it came from). List in `provenance.omitted` every location, character, clue, fight or rule of the source that you did not
+   keep, with the reason. Do not drop content silently, and do not merge scenes just to keep the adventure short.
+12. **Run the checker and fix what it says.** Then read the warnings.
 
 ## Do not invent
 
@@ -95,3 +98,4 @@ The narrator and the NPCs are language models and will happily invent. Give them
 - [ ] There is at least one ending a failing table can still reach.
 - [ ] No item, price or demand appears that the source story does not state.
 - [ ] Nothing secret is in a public field.
+- [ ] Everything in the source is either in the adventure (with a reference) or in `provenance.omitted`.
