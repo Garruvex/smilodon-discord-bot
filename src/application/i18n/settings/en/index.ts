@@ -4,6 +4,7 @@ import { enChat } from "./chat.js";
 import { enMemory } from "./memory.js";
 import { enCommunity } from "./community.js";
 import { enMusic } from "./music.js";
+import { enSecurity } from "./security.js";
 
 // Every registered setting's text, one spread per settings group.
 export const enSettingsText: SettingsTextCatalog = {
@@ -12,4 +13,5 @@ export const enSettingsText: SettingsTextCatalog = {
   ...enChat,
   ...enMemory,
   ...enCommunity,
+  ...enSecurity,
 };

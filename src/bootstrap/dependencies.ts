@@ -81,6 +81,8 @@ import { ReactionReplyScheduler } from "../infrastructure/discord/behaviors/reac
 import { ChannelEditScheduler } from "../application/concurrency/channel-edit-scheduler.js";
 import type { MessageReactionWatchStore } from "../application/chat/message-reaction-watch.js";
 import { LinkFixBehavior } from "../infrastructure/discord/behaviors/link-fix-behavior.js";
+import { TrapChannelBehavior } from "../infrastructure/discord/behaviors/trap-channel-behavior.js";
+import { TrapService } from "../infrastructure/discord/security/trap-service.js";
 import { BilibiliEmbedService } from "../infrastructure/links/bilibili-embed-service.js";
 import type { ChatProvider } from "../application/chat/chat-provider.js";
 import { OpenAiCompatibleChatProvider } from "../infrastructure/chat/openai-compatible-chat-provider.js";
@@ -661,6 +663,10 @@ export function createDependencies(
     messageReactionWatchStore,
     guildConfigurationProvider,
     logger.child({ component: "reaction-arm" }),
+  ));
+  behaviorRegistry.register(new TrapChannelBehavior(
+    guildConfigurationProvider,
+    new TrapService(guildConfigurationProvider, logger.child({ component: "trap-channel" })),
   ));
   behaviorRegistry.register(new LinkFixBehavior(
     guildConfigurationProvider,

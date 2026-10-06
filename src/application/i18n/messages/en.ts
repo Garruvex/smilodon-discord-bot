@@ -324,6 +324,16 @@ export const en = {
   "setup.status.duration.minutes": "{minutes}m",
   "setup.status.duration.minutesSeconds": "{minutes}m {seconds}s",
   "setup.status.footer": "Change these in the admin panel or with the /settings-… commands. New here? Try /setup guide.",
+
+  "security.trap.noticeTitle": "Please don't post in this channel",
+  "security.trap.noticeBody": "This channel is not for conversation. Anything posted here is deleted automatically, and the account that posted it is restricted until a moderator reviews it.",
+  "security.trap.topic": "Please don't post in this channel",
+  "security.trap.action.timeout": "timed out",
+  "security.trap.action.kick": "kicked",
+  "security.trap.action.ban": "banned",
+  "security.trap.log.acted": "{user} posted in {channel} and was {action}. {removed} of their messages were removed.",
+  "security.trap.log.blocked": "{user} posted in {channel} but could not be {action}: their highest role is above mine, or I'm missing the permission. Their message was removed.",
+  "security.trap.log.error": "{user} posted in {channel}, but something went wrong while handling it. Check the bot's logs.",
 } as const satisfies Record<string, string>;
 
 export type MessageKey = keyof typeof en;

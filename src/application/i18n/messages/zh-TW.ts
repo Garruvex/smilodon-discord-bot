@@ -292,4 +292,14 @@ export const zhTW = {
   "setup.status.duration.minutes": "{minutes} 分鐘",
   "setup.status.duration.minutesSeconds": "{minutes} 分 {seconds} 秒",
   "setup.status.footer": "可以在管理面板或用 /settings-… 指令修改。第一次使用？試試 /setup guide",
+
+  "security.trap.noticeTitle": "請不要在這個頻道發言",
+  "security.trap.noticeBody": "這個頻道不是用來聊天的。在此發出的任何訊息都會被自動刪除，發言的帳號也會被限制，直到管理員審核為止",
+  "security.trap.topic": "請不要在這個頻道發言",
+  "security.trap.action.timeout": "禁言",
+  "security.trap.action.kick": "踢出",
+  "security.trap.action.ban": "封鎖",
+  "security.trap.log.acted": "{user} 在 {channel} 發言，已被{action}，並刪除了其 {removed} 則訊息",
+  "security.trap.log.blocked": "{user} 在 {channel} 發言，但無法{action}：對方的最高身分組高於我，或我缺少權限。其訊息已刪除",
+  "security.trap.log.error": "{user} 在 {channel} 發言，但處理時發生問題，請查看機器人日誌",
 } as const satisfies TranslationCatalog;

@@ -4,6 +4,7 @@ import { zhTWChat } from "./chat.js";
 import { zhTWMemory } from "./memory.js";
 import { zhTWCommunity } from "./community.js";
 import { zhTWMusic } from "./music.js";
+import { zhTWSecurity } from "./security.js";
 
 // Every registered setting's text, one spread per settings group.
 export const zhTWSettingsText: SettingsTextCatalog = {
@@ -12,4 +13,5 @@ export const zhTWSettingsText: SettingsTextCatalog = {
   ...zhTWChat,
   ...zhTWMemory,
   ...zhTWCommunity,
+  ...zhTWSecurity,
 };
