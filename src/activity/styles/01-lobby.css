@@ -3,7 +3,7 @@
 .lobby-shell { width: min(980px, 100%); margin: 0 auto; padding: 28px clamp(18px, 4vw, 52px) 22px; }
 .lobby-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
 .lobby-brand { display: flex; align-items: center; gap: 12px; }
-.lobby-brand-mark { display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid #776747; border-radius: 13px; background: linear-gradient(145deg, #343729, #1e241e); color: var(--gold); font-size: 24px; }
+.lobby-brand-mark { display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid #776747; border-radius: 13px; background: #343729; color: var(--gold); font-size: 24px; }
 .lobby-brand h1 { margin: 2px 0 0; font: 23px/1.15 var(--serif); }
 .server-badge { max-width: 45%; overflow: hidden; border: 1px solid #39453a; border-radius: 999px; text-overflow: ellipsis; white-space: nowrap; }
 .lobby-intro h2 { margin: 6px 0 4px; font: 31px/1.2 var(--serif); }
@@ -11,8 +11,8 @@
 .lobby-message { margin: 17px 0 10px; }
 .lobby-games { display: grid; }
 .lobby-card { display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 16px; }
-.lobby-card-art { display: grid; width: 74px; height: 88px; place-items: center; overflow: hidden; border: 1px solid #65583c; border-radius: 11px; background: radial-gradient(ellipse at 50% 28%, #6c7657, #344638 54%, #202a22); color: #eddaa0; font: 29px/1 var(--serif); }
-.lobby-card[data-lifecycle="active"] .lobby-card-art { background: radial-gradient(ellipse at 50% 30%, #76513e, #47342c 53%, #24211d); color: #e8b690; }
+.lobby-card-art { display: grid; width: 74px; height: 88px; place-items: center; overflow: hidden; border: 1px solid #65583c; border-radius: 11px; background: #6c7657; color: #eddaa0; font: 29px/1 var(--serif); }
+.lobby-card[data-lifecycle="active"] .lobby-card-art { background: #76513e; color: #e8b690; }
 .lobby-card[data-lifecycle="paused"] .lobby-card-art { color: #d8d4bd; }
 .lobby-card-copy { min-width: 0; }
 .lobby-card-status { display: inline-flex; align-items: center; gap: 7px; color: #a8b99c; font-size: 9px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }

@@ -8,11 +8,21 @@ let watcher = null;
 let openCategory = null;
 let last = null;
 
+// The turn's pieces are drawn as icons, so a tile reads without a word of explanation: a sword for the action, a running figure for the bonus action, a shield for the reaction.
+const pieceIcon = { action: "attack", bonusAction: "dash", reaction: "shield", move: "move" };
+const icon = (name) => {
+  const node = document.createElement("i");
+  node.className = "hotbar-icon";
+  node.style.setProperty("--icon", `url("/art-icons/${name}.svg")`);
+  node.setAttribute("aria-hidden", "true");
+  return node;
+};
+
 const gem = (key, left) => {
   const pip = document.createElement("span");
   pip.className = `hotbar-pip pip-${key}${left ? "" : " is-spent"}`;
   pip.title = `${t(`activity.fight.${key}`)} · ${t(left ? "activity.fight.available" : "activity.fight.used")}`;
-  pip.append(Object.assign(document.createElement("i"), { className: "hotbar-gem" }), Object.assign(document.createElement("small"), { textContent: t(`activity.fight.${key}`) }));
+  pip.append(icon(pieceIcon[key]), Object.assign(document.createElement("small"), { textContent: t(`activity.fight.${key}`) }));
   return pip;
 };
 
@@ -20,7 +30,11 @@ const gem = (key, left) => {
 const tile = (key, value, label, left) => {
   const node = document.createElement("span");
   node.className = `hotbar-pip hotbar-count count-${key}${left ? "" : " is-spent"}`;
-  node.append(Object.assign(document.createElement("b"), { textContent: value }), Object.assign(document.createElement("small"), { textContent: label }));
+  const row = document.createElement("span");
+  row.className = "hotbar-row";
+  if (pieceIcon[key] !== undefined) row.append(icon(pieceIcon[key]));
+  row.append(Object.assign(document.createElement("b"), { textContent: value }));
+  node.append(row, Object.assign(document.createElement("small"), { textContent: label }));
   return node;
 };
 
@@ -46,7 +60,7 @@ function draw(force) {
   pips.className = "hotbar-pips";
   pips.append(gem("action", budget.action), gem("bonusAction", budget.bonusAction), gem("reaction", budget.reaction));
   pips.append(tile("move", t("activity.fight.feetShort", { feet: budget.movement }), t("activity.fight.movementLabel"), budget.movement > 0));
-  if (budget.attacksLeft > 1) pips.append(tile("attacks", String(budget.attacksLeft), t("activity.fight.attacksLabel"), true));
+  if (budget.attacksLeft > 1) pips.append(tile("attacks", `×${budget.attacksLeft}`, t("activity.fight.attacksLabel"), true));
   const slots = document.createElement("div");
   slots.className = "hotbar-slots";
   const choicesOf = (category) => (groups.get(category) ?? []).filter((node) => node instanceof HTMLButtonElement);

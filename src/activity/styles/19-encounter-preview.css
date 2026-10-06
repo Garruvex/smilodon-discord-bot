@@ -1,4 +1,4 @@
-.encounter-board { grid-column: 1 / -1; width: 100%; min-width: 0; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; padding: 20px; border: 1px solid #b59c70; border-radius: 14px; background-color: #ddd0af; background-image: radial-gradient(#99875d40 1px,transparent 1px); background-size: 20px 20px; box-sizing: border-box; }
+.encounter-board { grid-column: 1 / -1; width: 100%; min-width: 0; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; padding: 20px; border: 1px solid #b59c70; border-radius: 14px; background-color: #ddd0af; background-image: none; background-size: 20px 20px; box-sizing: border-box; }
 .encounter-area { min-width: 0; display: flex; flex-direction: column; padding: 18px; border: 2px solid #a68b5d; border-radius: 24px; background: #f6ebd5ed; box-shadow: inset 0 0 24px #96794718; }
 .encounter-area.is-flooded { background: #dbe6dfed; border-color: #78988e; }
 .encounter-area:last-of-type { grid-column: 1 / -1; }
@@ -32,20 +32,20 @@
 @media (max-width: 700px) { .encounter-board { grid-template-columns: minmax(0,1fr); padding: 12px; gap: 14px; } .encounter-area { padding: 14px; } }
 
 /* The encounter is a ruined observatory, with creature medallions above parchment bubbles. */
-.encounter-board { position: relative; gap: 28px; padding: 30px; border: 4px double #a98a50; border-radius: 8px; background-color: #252b2b; background-image: radial-gradient(ellipse at 30% 0%,#889da13a,transparent 55%), repeating-linear-gradient(0deg,transparent 0 78px,#090e1280 79px 82px), repeating-linear-gradient(90deg,transparent 0 118px,#090e1250 119px 122px); box-shadow: inset 0 0 70px #090c11,0 8px 24px #20180e35; }
-.encounter-area { position: relative; isolation: isolate; padding: 20px; border: 1px solid #7e806b; border-radius: 48% 48% 18px 18px / 26px 26px 18px 18px; background: radial-gradient(ellipse at 50% 15%,#a5ab9745,transparent 70%),repeating-linear-gradient(0deg,#4b5149 0 46px,#353b36 47px 49px); box-shadow: inset 0 0 35px #121b1b90,0 0 0 5px #151d1c,0 0 0 6px #7e806b70; }
-.encounter-area::before { content: ""; position: absolute; z-index: -1; pointer-events: none; width: 180px; height: 180px; left: calc(50% - 90px); top: 55px; border: 2px solid #cfbb7630; border-radius: 50%; box-shadow: 0 0 0 12px #cfbb7610,0 0 0 14px #cfbb7620; background: conic-gradient(from 0deg,transparent 0 44deg,#cfbb7620 45deg 46deg,transparent 47deg 89deg,#cfbb7620 90deg 91deg,transparent 92deg 179deg,#cfbb7620 180deg 181deg,transparent 182deg); }
-.encounter-area.is-flooded { border-color: #718f99; background: radial-gradient(ellipse at 75% 35%,#6d999a50,transparent 55%),repeating-radial-gradient(ellipse at 30% 65%,#24454b 0 17px,#31535a 18px 19px,#24454b 20px 35px); box-shadow: inset 0 0 45px #0c1e27,0 0 0 5px #152a2d,0 0 0 6px #678e9970; }
-.encounter-area[data-zone="broken-gallery"] { background: linear-gradient(105deg,#151d2460,transparent 40%,#151d2480),repeating-linear-gradient(90deg,#4a4c47 0 62px,#272f30 63px 68px); }
+.encounter-board { position: relative; gap: 28px; padding: 30px; border: 4px double #a98a50; border-radius: 8px; background-color: #252b2b; background-image: none; box-shadow: inset 0 0 70px #090c11,0 8px 24px #20180e35; }
+.encounter-area { position: relative; isolation: isolate; padding: 20px; border: 1px solid #7e806b; border-radius: 48% 48% 18px 18px / 26px 26px 18px 18px; background: #4b5149; box-shadow: inset 0 0 35px #121b1b90,0 0 0 5px #151d1c,0 0 0 6px #7e806b70; }
+.encounter-area::before { content: ""; position: absolute; z-index: -1; pointer-events: none; width: 180px; height: 180px; left: calc(50% - 90px); top: 55px; border: 2px solid #cfbb7630; border-radius: 50%; box-shadow: 0 0 0 12px #cfbb7610,0 0 0 14px #cfbb7620; background: #cfbb76; }
+.encounter-area.is-flooded { border-color: #718f99; background: #24454b; box-shadow: inset 0 0 45px #0c1e27,0 0 0 5px #152a2d,0 0 0 6px #678e9970; }
+.encounter-area[data-zone="broken-gallery"] { background: #4a4c47; }
 .encounter-area h3 { color: #f3dfaa; text-align: center; font-family: Georgia,serif; font-size: 21px; letter-spacing: .5px; text-shadow: 0 2px 3px #000; }
 .encounter-terrain { color: #c4cbbd; text-align: center; margin-bottom: 24px; }
 .encounter-tokens { grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 20px 14px; }
-.encounter-token { position: relative; padding: 0 8px 8px; margin-top: 12px; background: linear-gradient(135deg,#f8eed5,#e1cda6); border-color: #b39a66; border-radius: 7px 7px 14px 14px; box-shadow: 0 7px 12px #06101665,inset 0 0 14px #9d754d20; }
-.encounter-token.side-foes { background: linear-gradient(135deg,#f5e2cd,#d9b7a3); border-color: #bd8070; }
+.encounter-token { position: relative; padding: 0 8px 8px; margin-top: 12px; background: #f8eed5; border-color: #b39a66; border-radius: 7px 7px 14px 14px; box-shadow: 0 7px 12px #06101665,inset 0 0 14px #9d754d20; }
+.encounter-token.side-foes { background: #f5e2cd; border-color: #bd8070; }
 .encounter-token-select { flex-direction: column; gap: 8px; text-align: center; }
-.encounter-token-portrait { position: relative; margin-top: -16px; flex: 0 0 62px; width: 62px; height: 62px; border: 3px solid #b7aa72; background: radial-gradient(circle at 35% 25%,#60785b,#253a30); color: #fff0c5; box-shadow: 0 0 0 2px #26352a,0 5px 8px #05100c65,inset 0 0 0 3px #e5ca7c30; }
-.side-foes .encounter-token-portrait { background: radial-gradient(circle at 35% 25%,#94604c,#392529); border-color: #c18769; box-shadow: 0 0 0 2px #442928,0 5px 8px #180c0c65; }
-.side-allies .encounter-token-portrait { background: radial-gradient(circle at 35% 25%,#697d96,#2e3e53); border-color: #b4c8d6; }
+.encounter-token-portrait { position: relative; margin-top: -16px; flex: 0 0 62px; width: 62px; height: 62px; border: 3px solid #b7aa72; background: #60785b; color: #fff0c5; box-shadow: 0 0 0 2px #26352a,0 5px 8px #05100c65,inset 0 0 0 3px #e5ca7c30; }
+.side-foes .encounter-token-portrait { background: #94604c; border-color: #c18769; box-shadow: 0 0 0 2px #442928,0 5px 8px #180c0c65; }
+.side-allies .encounter-token-portrait { background: #697d96; border-color: #b4c8d6; }
 .encounter-token-portrait img:first-child { width: 100%; height: 100%; }
 .encounter-token-copy { width: 100%; gap: 6px; }
 .encounter-token-copy strong { font-family: Georgia,serif; font-size: 14px; color: #342719; }
@@ -61,7 +61,7 @@
 @media (max-width: 700px) { .encounter-board { padding: 18px; gap: 24px; } .encounter-tokens { grid-template-columns: repeat(auto-fit,minmax(125px,1fr)); gap: 20px 12px; } }
 
 /* One connected scene. Area boundaries, rather than card order, express location. */
-.encounter-board { display: block; height: 800px; padding: 0; border-color: #a38c61; background-color: #726f61; background-image: radial-gradient(ellipse at 50% 70%,#78928b55,transparent 55%),radial-gradient(ellipse at 25% 15%,#c4bfa16b,transparent 65%),linear-gradient(115deg,transparent 36%,#454b4220 36.2%,transparent 36.6%),linear-gradient(25deg,transparent 68%,#454b4230 68.2%,transparent 68.5%),repeating-linear-gradient(0deg,transparent 0 158px,#494c402e 159px 161px),repeating-linear-gradient(90deg,transparent 0 238px,#494c4020 239px 241px); box-shadow: inset 0 0 60px #343e3655,0 8px 24px #20180e35; }
+.encounter-board { display: block; height: 800px; padding: 0; border-color: #a38c61; background-color: #726f61; background-image: none; box-shadow: inset 0 0 60px #343e3655,0 8px 24px #20180e35; }
 .encounter-paths { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .encounter-board { background-size: auto; }
 .live-enemies .turn-order-portraits { gap: 12px; flex-wrap: nowrap; overflow-x: auto; padding: 8px 3px 14px; }

@@ -13,7 +13,7 @@ export function encounterPreview(game, select) {
   const row = zones.length <= 3;
   board.dataset.layout = row ? "row" : "grid";
   const positions = new Map(zones.map((zone, index) => [zone.id, { x: (index + .5) * 1000 / zones.length, y: row ? 205 : index % 2 ? 475 : 190 }]));
-  const paths = svgElement("svg", { viewBox: row ? "0 0 1000 440" : "0 0 1000 800", preserveAspectRatio: "none", class: "encounter-paths", "aria-label": "Routes between combat areas" });
+  const paths = svgElement("svg", { viewBox: row ? "0 0 1000 440" : "0 0 1000 800", preserveAspectRatio: "none", class: "encounter-paths", "aria-label": t("activity.board.routes") });
   for (const edge of game.map.edges) {
     const from = positions.get(edge.from);
     const to = positions.get(edge.to);
@@ -61,7 +61,8 @@ export function encounterPreview(game, select) {
     const terrain = document.createElement("p");
     terrain.className = "encounter-terrain";
     // Each fact about the room is its own small tag, so the line reads at a glance.
-    for (const [text, kind] of [[zone.lighting, "light"], [zone.cover ? `${zone.cover === "half" ? "Half" : "Three-quarters"} cover` : "Open ground", "cover"], [zone.difficult ? "Difficult terrain" : null, "difficult"]]) {
+    const words = game.mapText ?? {};
+    for (const [text, kind] of [[zone.lighting ? { bright: words.lightBright, dim: words.lightDim, dark: words.lightDark }[zone.lighting] ?? zone.lighting : null, "light"], [zone.cover ? { half: words.coverHalf, "three-quarters": words.coverThreeQuarters }[zone.cover] : words.openGround, "cover"], [zone.difficult ? words.difficult : null, "difficult"]]) {
       if (text) terrain.append(Object.assign(document.createElement("span"), { className: `terrain-tag is-${kind}`, textContent: text }));
     }
     area.append(title, terrain);
@@ -80,7 +81,7 @@ export function encounterPreview(game, select) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "encounter-token-select";
-      button.setAttribute("aria-label", `${entry.name}, ${entry.hp} / ${entry.maxHp} HP, at ${zone.name}`);
+      button.setAttribute("aria-label", t("activity.board.tokenLabel", { name: entry.name, hp: entry.hp, max: entry.maxHp, zone: zone.name }));
       button.title = `${entry.name} · ${entry.hp} / ${entry.maxHp} HP`;
       button.setAttribute("aria-pressed", String(selected));
       const options = creatureOptions(game, entry);
@@ -131,7 +132,7 @@ export function encounterPreview(game, select) {
       if (chips) details.append(chips);
       const menu = menuElement(creatureKey(entry), options, entry.name, details);
       if (menu) { token.append(menu); area.classList.add("has-menu"); }
-      if (entry.ownerName) token.title = `Summoned by ${entry.ownerName}`;
+      if (entry.ownerName) token.title = t("activity.board.summonedBy", { name: entry.ownerName });
       tokens.append(token);
     }
     area.append(tokens);
@@ -148,7 +149,7 @@ export function encounterPreview(game, select) {
   }
   const note = document.createElement("p");
   note.className = "encounter-board-note";
-  note.textContent = "Creatures inside the same boundary share an area. Paths show travel distance; marker spacing is illustrative.";
+  note.textContent = t("activity.board.note");
   board.append(note);
   requestAnimationFrame(fitBoards);
   return board;

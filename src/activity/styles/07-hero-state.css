@@ -1,6 +1,6 @@
 /* Character state: keep health and protection prominent, with live effects grouped below. */
 .hero-stats { display: flex; flex-direction: column; gap: 9px; overflow: visible; }
-.hero-stats .vitals { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "hp armor" "meter meter"; align-items: center; gap: 8px 10px; padding: 10px 11px; border-color: #aa8a58; border-radius: 7px; background: linear-gradient(145deg, #f0e1c3, #e2cfaa); box-shadow: inset 0 1px #fff4dd; }
+.hero-stats .vitals { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "hp armor" "meter meter"; align-items: center; gap: 8px 10px; padding: 10px 11px; border-color: #aa8a58; border-radius: 7px; background: #f0e1c3; box-shadow: inset 0 1px #fff4dd; }
 .hero-stats .vital-top { display: contents; }
 .hero-stats .vital-top span:first-child { grid-area: hp; color: #39271c; font: 700 17px/1.2 var(--serif); white-space: nowrap; }
 .hero-stats .vital-top span:last-child { grid-area: armor; padding: 5px 8px; border: 1px solid #9e8053; border-radius: 5px; background: #d4bd91; color: #482f20; font-size: 12px; font-weight: 800; white-space: nowrap; }
@@ -46,7 +46,7 @@
 .live-party-copy > .party-class-line > span { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Resources: spell slots and class feature uses as pips, under the vitals on every tab. */
-.hero-resources { display: grid; margin: 0 0 12px 12px; border: 1px solid #aa8a58; border-radius: 7px; background: linear-gradient(145deg, #f0e1c3, #e2cfaa); box-shadow: inset 0 1px #fff4dd; }
+.hero-resources { display: grid; margin: 0 0 12px 12px; border: 1px solid #aa8a58; border-radius: 7px; background: #f0e1c3; box-shadow: inset 0 1px #fff4dd; }
 .hero-resources h3 { margin: 0; color: #735d45; font-size: 9px; font-weight: 900; letter-spacing: .13em; text-transform: uppercase; }
 .hero-resources [hidden] { display: none; }
 .hr-slots { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); }
@@ -57,9 +57,9 @@
 .hr-uses:empty { display: none; }
 .hr-pips { display: inline-flex; flex: 0 0 auto; color: #4a3626; font-size: 11px; font-weight: 800; }
 .hr-pip { border: 1.5px solid #8a3a2e; border-radius: 50%; box-sizing: border-box; background: transparent; }
-.hr-pip[data-state="full"] { background: radial-gradient(circle at 35% 30%, #c45a46, #8a3a2e); box-shadow: 0 1px 2px #4a1f1840; }
+.hr-pip[data-state="full"] { background: #c45a46; box-shadow: 0 1px 2px #4a1f1840; }
 .hr-use .hr-pip { border-color: #5f6f3f; }
-.hr-use .hr-pip[data-state="full"] { background: radial-gradient(circle at 35% 30%, #8fa263, #5f6f3f); }
+.hr-use .hr-pip[data-state="full"] { background: #8fa263; }
 .hero-resources { gap: 6px; padding: 8px 10px 9px; }
 .hr-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 12px; }
 .hr-slot .hr-label { min-width: 10px; font-size: 11px; font-weight: 900; }

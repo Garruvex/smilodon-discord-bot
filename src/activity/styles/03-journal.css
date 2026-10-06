@@ -2,7 +2,7 @@
 .live-shell h1, .live-shell h2 { line-height: 1.12; }
 .live-header h1 { font-size: 35px; }
 .live-feature-grid { position: relative; }
-.live-feature-grid::before { content: ""; position: absolute; left: 28.5%; top: 12px; bottom: 15px; width: 8px; pointer-events: none; background: repeating-linear-gradient(0deg, transparent 0 65px, #433023 65px 69px, #d1b487 69px 73px, transparent 73px 84px); }
+.live-feature-grid::before { content: ""; position: absolute; left: 28.5%; top: 12px; bottom: 15px; width: 8px; pointer-events: none; background: none; }
 .live-feature-grid > .party-section { background: transparent; border: 0; box-shadow: none; }
 .live-feature-grid > .live-hero { transform-origin: left center; }
 .live-party-copy span { font-size: 12px; }
@@ -103,20 +103,20 @@
 .lobby-intro p { color: #e8d9bb; font-size: 16px; }
 .lobby-message { min-height: 24px; color: #f0dfbf; font-size: 14px; }
 .lobby-games { gap: 14px; }
-.lobby-card { min-height: 118px; border: 2px solid #967044; border-radius: 8px; background: linear-gradient(145deg, #f3e4c7, #e1cb9f); box-shadow: inset 0 0 0 2px #fff0c970, 0 6px 14px #10080650; color: #39271c; }
+.lobby-card { min-height: 118px; border: 2px solid #967044; border-radius: 8px; background: #f3e4c7; box-shadow: inset 0 0 0 2px #fff0c970, 0 6px 14px #10080650; color: #39271c; }
 .lobby-card-art, .lobby-card[data-lifecycle="active"] .lobby-card-art, .lobby-card[data-lifecycle="paused"] .lobby-card-art { font-size: 34px; }
-.lobby-card[data-lifecycle="paused"] .lobby-card-art { background: radial-gradient(ellipse at 50% 40%, #77705b, #4a4535 58%, #25231b); }
+.lobby-card[data-lifecycle="paused"] .lobby-card-art { background: #77705b; }
 .lobby-card[data-lifecycle="paused"] .lobby-card-status { color: #7a6537; }
 .lobby-card h3 { margin: 4px 0 2px; font-size: 26px; }
 .lobby-card-adventure { color: #6a5139; font-size: 15px; }
 .lobby-card-players { margin-top: 6px; color: #4e3826; font-size: 14px; }
-.lobby-card-action { min-width: 132px; min-height: 44px; border: 1px solid #58211e; border-radius: 5px; background: linear-gradient(180deg, #a43c31, #72241f); box-shadow: inset 0 1px #e4ad8260, 0 2px 0 #4a211c; color: #fff0d4; font-size: 15px; }
+.lobby-card-action { min-width: 132px; min-height: 44px; border: 1px solid #58211e; border-radius: 5px; background: #a43c31; box-shadow: inset 0 1px #e4ad8260, 0 2px 0 #4a211c; color: #fff0d4; font-size: 15px; }
 .lobby-card-action:disabled { border-color: #b49a6d; background: #d3bf99; box-shadow: none; color: #7a6850; }
 .lobby-empty, .lobby-error { border: 2px dashed #a58658; background: #f0dfbb; color: #39271c; }
 .lobby-empty h2, .lobby-error h2 { color: #302018; font-size: 26px; }
 .lobby-empty p, .lobby-error p { color: #6a5139; font-size: 15px; }
 .empty-sigil { color: #8f342c; }
-.lobby-error .lobby-retry { min-height: 42px; padding: 9px 20px; border: 1px solid #58211e; border-radius: 5px; background: linear-gradient(180deg, #a43c31, #72241f); color: #fff0d4; font-size: 15px; }
+.lobby-error .lobby-retry { min-height: 42px; padding: 9px 20px; border: 1px solid #58211e; border-radius: 5px; background: #a43c31; color: #fff0d4; font-size: 15px; }
 .lobby-footer { border-top-color: #6d4a3a; color: #dcccab; font-size: 13px; }
 @media (max-width: 580px) {
   .lobby-intro h2 { font-size: 30px; }
@@ -515,7 +515,7 @@ body { background: #30251f; }
 .live-party-card[data-condition="dead"] .party-condition-overlay { background: #671e1b72; }
 .live-party-card[data-condition="down"] .party-condition-overlay { inset: auto 6px 6px auto; display: block; padding: 4px 7px; border: 1px solid #9d382f; border-radius: 999px; background: #a23c32; font-size: 9px; letter-spacing: .08em; }
 .live-party-card[data-condition="down"] .party-health > i { background: #a23c32; }
-.live-enemy .party-health > i { background: linear-gradient(90deg, #a33c32, #c45c43); }
+.live-enemy .party-health > i { background: #a33c32; }
 .live-enemy.is-active { border-color: var(--ui-accent); box-shadow: inset 0 0 0 2px #87352d35; }
 @media (max-width: 760px) {
   .live-feature-grid { display: grid; grid-template-columns: minmax(0, 1fr); }

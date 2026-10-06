@@ -18,7 +18,7 @@ body:not(:has(#live-screen:not([hidden]))) .activity-language-bar > .live-headin
 /* All games stays at the top right of the table;  */
 .live-header { justify-content: space-between; align-items: center; }
 .live-header-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-.live-header-actions .lobby-retry { margin: 0; white-space: nowrap; border-color: #987344; border-radius: 5px; background: linear-gradient(180deg, #6f2b26, #4b1f1c); color: #f0dfbf; }
+.live-header-actions .lobby-retry { margin: 0; white-space: nowrap; border-color: #987344; border-radius: 5px; background: #6f2b26; color: #f0dfbf; }
 }
 
 /* The language picker sits in the page's background, as quiet as the "Live campaign data" line: no bar, muted small text, a plain select that shows its border only when pointed at. */
@@ -39,17 +39,17 @@ body:not(:has(#live-screen:not([hidden]))) .activity-language-bar > .live-headin
 .live-header-status .live-phase, .live-header-status .live-round { justify-content: center; text-align: center; }
 .live-header-status .live-phase > span:first-child { justify-content: center; }
 .live-world-card[data-kind="day"] { border-color: #b59a63; background: #4a3b27; }
-.live-world-card[data-value="dawn"] { border-color: #d9a066; background: linear-gradient(120deg, #6b4a3a, #4a3340); color: #ffe4c4; }
-.live-world-card[data-value="morning"] { border-color: #d1b765; background: linear-gradient(120deg, #6a5a2c, #463c22); color: #fff0c4; }
-.live-world-card[data-value="midday"] { border-color: #e1c25a; background: linear-gradient(120deg, #7d6a22, #54481a); color: #fff3c0; }
-.live-world-card[data-value="afternoon"] { border-color: #d49a58; background: linear-gradient(120deg, #744a22, #4f321a); color: #ffe6c0; }
-.live-world-card[data-value="dusk"] { border-color: #b17aa0; background: linear-gradient(120deg, #6a3a5c, #3b2742); color: #f6dcef; }
-.live-world-card[data-value="night"] { border-color: #6f84b8; background: linear-gradient(120deg, #2f3d63, #1f2640); color: #dbe5ff; }
-.live-world-card[data-kind="weather"] { border-color: #7aa0aa; background: linear-gradient(120deg, #35505a, #26373f); color: #dcf0f4; }
-.live-world-card[data-value="rain"], .live-world-card[data-value="storm"] { border-color: #6f93c4; background: linear-gradient(120deg, #2f4a70, #212f4a); color: #d8e8ff; }
-.live-world-card[data-value="snow"], .live-world-card[data-value="fog"] { border-color: #a9b4bd; background: linear-gradient(120deg, #55606a, #3a434b); color: #f0f5f8; }
-.live-world-card[data-value="wind"] { border-color: #8fb59a; background: linear-gradient(120deg, #3f5f4b, #2b4235); color: #e0f3e6; }
-.live-world-card[data-value="clear"] { border-color: #8fbfd0; background: linear-gradient(120deg, #3f6a7b, #2c4b58); color: #e4f6fc; }
+.live-world-card[data-value="dawn"] { border-color: #d9a066; background: #6b4a3a; color: #ffe4c4; }
+.live-world-card[data-value="morning"] { border-color: #d1b765; background: #6a5a2c; color: #fff0c4; }
+.live-world-card[data-value="midday"] { border-color: #e1c25a; background: #7d6a22; color: #fff3c0; }
+.live-world-card[data-value="afternoon"] { border-color: #d49a58; background: #744a22; color: #ffe6c0; }
+.live-world-card[data-value="dusk"] { border-color: #b17aa0; background: #6a3a5c; color: #f6dcef; }
+.live-world-card[data-value="night"] { border-color: #6f84b8; background: #2f3d63; color: #dbe5ff; }
+.live-world-card[data-kind="weather"] { border-color: #7aa0aa; background: #35505a; color: #dcf0f4; }
+.live-world-card[data-value="rain"], .live-world-card[data-value="storm"] { border-color: #6f93c4; background: #2f4a70; color: #d8e8ff; }
+.live-world-card[data-value="snow"], .live-world-card[data-value="fog"] { border-color: #a9b4bd; background: #55606a; color: #f0f5f8; }
+.live-world-card[data-value="wind"] { border-color: #8fb59a; background: #3f5f4b; color: #e0f3e6; }
+.live-world-card[data-value="clear"] { border-color: #8fbfd0; background: #3f6a7b; color: #e4f6fc; }
 
 /* The rules book is the fourth bookmark: a panel from the left edge like the story, with its tab under the map. */
 .drawer[data-side="rules"] .drawer-body { display: flex; flex-direction: column; overflow: hidden; }

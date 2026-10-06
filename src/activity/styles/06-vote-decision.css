@@ -1,5 +1,5 @@
 /* A scene change waiting for the table: one readable card with where to, the tally and the clock. */
-.scene-move-decision { display: none; width: min(560px, calc(100vw - 32px)); max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; margin: auto; padding: 22px 24px; border: 2px solid #efc65f; border-left-width: 7px; border-radius: 14px; background: linear-gradient(115deg, #382616 0%, #211b16 72%); color: #f8e9c9; box-shadow: 0 18px 70px #000a; }
+.scene-move-decision { display: none; width: min(560px, calc(100vw - 32px)); max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; margin: auto; padding: 22px 24px; border: 2px solid #efc65f; border-left-width: 7px; border-radius: 14px; background: #382616; color: #f8e9c9; box-shadow: 0 18px 70px #000a; }
 .scene-move-decision[open] { position: fixed; z-index: 102; left: 50%; display: grid; gap: 9px; margin: 0; }
 .vote-shield { position: fixed; z-index: 100; inset: 0; background: #090b0ad9; backdrop-filter: blur(5px); }
 .vote-shield[hidden] { display: none; }
@@ -13,12 +13,12 @@ body:has(.vote-shield:not([hidden])) .live-header { z-index: 103; }
 .live-header > .lobby-brand { grid-area: brand; }
 .live-header-status { grid-area: status; justify-self: start; }
 .live-header-status { display: flex; align-items: center; gap: 8px; }
-.live-header-status .live-phase { min-height: 40px; box-sizing: border-box; padding: 8px 12px; border: 1px solid #b34d3d; border-left: 4px solid #e3ba5c; border-radius: 6px; background: linear-gradient(120deg, #702b27, #48201d); color: #fff0d2; font-size: 12px; font-weight: 850; box-shadow: 0 3px 10px #0007; }
+.live-header-status .live-phase { min-height: 40px; box-sizing: border-box; padding: 8px 12px; border: 1px solid #b34d3d; border-left: 4px solid #e3ba5c; border-radius: 6px; background: #702b27; color: #fff0d2; font-size: 12px; font-weight: 850; box-shadow: 0 3px 10px #0007; }
 .live-header-status .live-phase > span:first-child { gap: 8px; }
 .live-header-status .live-phase > span:first-child::before { width: 18px; height: 18px; }
-.live-header-status .live-phase[data-mode="combat"] { border-color: #dc7864; background: linear-gradient(120deg, #8b352c, #54211d); color: #fff1dc; }
+.live-header-status .live-phase[data-mode="combat"] { border-color: #dc7864; background: #8b352c; color: #fff1dc; }
 .live-header-status .live-phase[data-mode="combat"] > span:first-child::before { background-image: url("/art-icons/attack.svg"); filter: brightness(0) saturate(100%) invert(76%) sepia(21%) saturate(624%) hue-rotate(322deg); }
-.live-round { display: inline-flex; min-height: 40px; align-items: center; box-sizing: border-box; padding: 7px 11px; border: 1px solid #d1ad63; border-radius: 6px; background: linear-gradient(145deg, #f0dfb9, #cfb37b); color: #39271c; font-size: 12px; font-weight: 900; white-space: nowrap; box-shadow: inset 0 1px #fff8e7, 0 3px 10px #0005; }
+.live-round { display: inline-flex; min-height: 40px; align-items: center; box-sizing: border-box; padding: 7px 11px; border: 1px solid #d1ad63; border-radius: 6px; background: #f0dfb9; color: #39271c; font-size: 12px; font-weight: 900; white-space: nowrap; box-shadow: inset 0 1px #fff8e7, 0 3px 10px #0005; }
 .live-round:empty { display: none; }
 .live-heading-right { grid-area: actions; justify-self: end; }
 .scene-move-decision .move-prompt { color: #ffda82; font-size: 13px; font-weight: 850; letter-spacing: .045em; text-transform: uppercase; }

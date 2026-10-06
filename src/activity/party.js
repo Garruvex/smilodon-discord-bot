@@ -74,7 +74,9 @@ function makeAlly(ally) { return combatCard(ally, { side: "party", owner: ally.o
 export function renderEnemies(enemies, allies = app.currentSnapshot?.allies ?? []) {
   const heading = (text, extra = "") => Object.assign(document.createElement("span"), { className: `live-enemies-heading${extra}`, textContent: text });
   const game = app.currentSnapshot;
-  if (new URLSearchParams(window.location.search).has("design-preview") && new URLSearchParams(window.location.search).has("battlefield-preview") && game?.map?.kind === "battlefield") {
+  // A fight with a battlefield is drawn as the board; the sample controls (next turn, test attacks) are only for the design preview.
+  const preview = new URLSearchParams(window.location.search).has("design-preview");
+  if (game?.map?.kind === "battlefield" && game.party.some((hero) => hero.zone !== null && hero.zone !== undefined)) {
     const previous = captureBattlefieldPositions();
     const board = encounterPreview(game, (entry) => {
       if (entry.side === "allies") return;
@@ -99,7 +101,7 @@ export function renderEnemies(enemies, allies = app.currentSnapshot?.allies ?? [
     });
     // The round belongs to the encounter, not to the turn order, so it sits in the heading.
     if (game.roundNumber) title.append(Object.assign(document.createElement("span"), { className: "encounter-round", textContent: t("activity.status.round", { round: game.roundNumber }) }));
-    title.append(next);
+    if (preview) title.append(next);
     const effects = document.createElement("div");
     effects.className = "battle-preview-controls";
     for (const [label, run] of [
@@ -137,7 +139,7 @@ export function renderEnemies(enemies, allies = app.currentSnapshot?.allies ?? [
     const note = document.createElement("small");
     note.textContent = "Animation preview · attacks do not change HP";
     effects.append(note);
-    liveEnemies.replaceChildren(title, ...[turnOrderBar(game)].filter(Boolean), effects, board);
+    liveEnemies.replaceChildren(title, ...[turnOrderBar(game)].filter(Boolean), ...(preview ? [effects] : []), board);
     requestAnimationFrame(() => animateBattlefieldMovement(board, previous));
     return;
   }

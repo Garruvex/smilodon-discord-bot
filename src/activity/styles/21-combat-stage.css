@@ -51,11 +51,14 @@ body.has-turn-bar .turn-strip .turn-pip { display: none; }
 #turn-bar .hotbar-pips { display: flex; align-items: stretch; gap: 6px; }
 #turn-bar .hotbar-pip { display: grid; align-content: center; justify-items: center; gap: 4px; min-width: 62px; min-height: 54px; padding: 6px 10px; border: 1px solid #5b4a35; border-radius: 8px; background: #3a2c24; box-sizing: border-box; }
 #turn-bar .hotbar-pip small { color: #cbbd96; font-size: 10.5px; font-weight: 600; line-height: 1.1; text-align: center; white-space: nowrap; }
-#turn-bar .hotbar-gem { display: block; width: 16px; height: 16px; border-radius: 50%; background: #7fae5e; }
-#turn-bar .pip-bonusAction .hotbar-gem { border-radius: 2px; background: #d98c2b; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
-#turn-bar .pip-reaction .hotbar-gem { border-radius: 2px; background: #6f93d6; transform: rotate(45deg) scale(.78); }
+#turn-bar .hotbar-icon { display: block; width: 24px; height: 24px; background: var(--tint, #cbbd96); -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+#turn-bar .pip-action { --tint: #8fc46c; }
+#turn-bar .pip-bonusAction { --tint: #e59a3a; }
+#turn-bar .pip-reaction { --tint: #7ea2e6; }
+#turn-bar .count-move { --tint: #e9dcb8; }
+#turn-bar .hotbar-row { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 24px; }
 #turn-bar .hotbar-pip.is-spent { background: #2e2520; }
-#turn-bar .hotbar-pip.is-spent .hotbar-gem { background: #5a4636; }
+#turn-bar .hotbar-pip.is-spent .hotbar-icon { background: #5a4636; }
 #turn-bar .hotbar-pip.is-spent small { text-decoration: line-through; opacity: .6; }
 #turn-bar .hotbar-count b { color: var(--stage-card); font: 700 16px/1 var(--sans); white-space: nowrap; }
 #turn-bar .hotbar-count.count-move b { color: #a9cf8a; }
@@ -143,7 +146,7 @@ body.has-turn-bar .turn-strip .turn-pip { display: none; }
 .turn-order-portraits .is-active .encounter-token-portrait { box-shadow: 0 0 0 3px #ecd295, 0 0 14px #cba34b90; }
 
 /* Rooms: light parchment with a thin brown wall, on a slightly darker parchment board; the water room is a pale blue-green */
-.encounter-board { border: 1px solid #a38c61; background-color: #d9c8a4; background-image: radial-gradient(#9d835b40 1px, transparent 1px); background-size: 18px 18px; box-shadow: inset 0 0 40px #b79c7138; }
+.encounter-board { border: 1px solid #a38c61; background-color: #d9c8a4; background-image: none; background-size: 18px 18px; }
 .encounter-board .encounter-area { border: 2px solid #8b7650; background: #f6ecd6; box-shadow: 0 2px 5px #5d4a2e30; }
 .encounter-board .encounter-area::before, .encounter-board .encounter-area::after { display: none; }
 .encounter-board .encounter-area.is-flooded, .encounter-board .encounter-area[data-zone].is-flooded { border-color: #6f938b; background: #dbe8e2; box-shadow: 0 2px 5px #2f4a4430; }
@@ -155,7 +158,7 @@ body.has-turn-bar .turn-strip .turn-pip { display: none; }
 .encounter-board .encounter-board-note { color: #675746; text-shadow: none; }
 
 /* The flooded room: pale water with ripples and a lighter pool in the middle */
-.encounter-board .encounter-area.is-flooded, .encounter-board .encounter-area[data-zone].is-flooded { background-color: #dbe8e2; background-image: radial-gradient(ellipse at 50% 55%, #f1f8f4aa, transparent 62%), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='14' viewBox='0 0 28 14'%3E%3Cpath d='M0 7 q3.5 -5 7 0 t7 0 t7 0 t7 0' fill='none' stroke='%236f938b' stroke-opacity='.55' stroke-width='1.2'/%3E%3C/svg%3E"); background-size: auto, 28px 14px; }
+.encounter-board .encounter-area.is-flooded, .encounter-board .encounter-area[data-zone].is-flooded { background-color: #dbe8e2; background-image: none; }
 
 /* Creature tile: one clean rounded rectangle, a rounded-square portrait on top, name and health under it */
 .encounter-board .encounter-token, .encounter-board .encounter-token.side-party, .encounter-board .encounter-token.side-foes, .encounter-board .encounter-token.side-allies { display: flex; flex-direction: column; align-self: stretch; margin: 0; padding: 10px 8px 9px; border: 2px solid #c9b78f; border-radius: 14px; background: #fffaf0; box-shadow: 0 2px 5px #5d4a2e33; }
