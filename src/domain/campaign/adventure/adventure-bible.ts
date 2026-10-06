@@ -144,6 +144,8 @@ export interface BibleScene {
   readonly exits?: readonly { readonly to: SceneId; readonly requires?: BibleRequirement; readonly hidden?: boolean; readonly hint?: string }[];
   // What happens whenever the party arrives here by any route: clues, flags, rewards, notices, keepsakes (each lands only once).
   readonly onEnter?: readonly Exclude<BiblePartyEffect, { readonly kind: "goto" | "encounter" | "clock" }>[];
+  // The story can end here. Every adventure that lists exits marks its final scenes, so the story contract can check the way to one stays open.
+  readonly ending?: boolean;
   // What happens when the party takes a long rest here: the same kinds as onEnter.
   readonly onLongRest?: readonly Exclude<BiblePartyEffect, { readonly kind: "goto" | "encounter" | "clock" }>[];
 }

@@ -32,6 +32,10 @@ interactions:
 
 Anything the players try that is not listed is still planned by the model as before; interactions never limit play.
 
+A scene may be marked `ending: true`: the story can finish there. Mark every final scene, including a floor ending a table that fails everything
+can still reach. `npm run adventure:check -- <file>` checks the story contract (see `docs/dnd-adventure-conversion-guide.md`), and
+`docs/adventure-template.yaml` is a complete adventure to start from.
+
 ## Effects
 
 | kind | does |

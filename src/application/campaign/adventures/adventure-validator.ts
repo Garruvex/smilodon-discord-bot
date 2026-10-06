@@ -1,5 +1,6 @@
 import type { SealedContent } from "../../../domain/campaign/rules/content-registry.js";
 import { AdventureDocumentError, checkAdventureContent, parseAdventureDocument, type AdventureDocument } from "./adventure-document.js";
+import { analyzeStoryContract } from "./story-contract.js";
 import { rehearseEncounter, type RehearsalResult } from "./adventure-smoke.js";
 
 // Plan §3, Campaign source: both ways in (an uploaded file, or one the
@@ -60,6 +61,8 @@ export function validateAdventure(source: string, content: SealedContent): Adven
   }
   if (document.bible.encounters.length === 0) warnings.push("The adventure has no fights.");
   warnings.push(...routeWarnings(document));
+  // The story contract (see story-contract.ts). Reported as warnings until the adventures that break it are fixed; then its errors become errors.
+  warnings.push(...analyzeStoryContract(document.bible).map((finding) => `Story contract (${finding.rule}): ${finding.message} Fix: ${finding.fix}`));
   return { ok: errors.length === 0, errors: errors.slice(0, maxReported), warnings, document, rehearsals };
 }
 
@@ -94,7 +97,7 @@ export function routeWarnings(document: AdventureDocument): readonly string[] {
   const warnings: string[] = [];
   for (const scene of scenes) {
     if (!reached.has(scene.id)) warnings.push(`${scene.id} cannot be reached from the start scene by its exits.`);
-    if (scene.exits?.length === 0) warnings.push(`${scene.id} has no way out; the party would be stuck there.`);
+    if (scene.exits?.length === 0 && scene.ending !== true) warnings.push(`${scene.id} has no way out; the party would be stuck there.`);
   }
   for (const scene of document.bible.linear === true ? [] : scenes) {
     for (const exit of scene.exits ?? []) {

@@ -1,0 +1,177 @@
+# ADVENTURE TEMPLATE. A complete, valid, minimal adventure. Copy it, replace the story, keep the shape.
+# Read docs/dnd-adventure-conversion-guide.md first. Check your work with:  npm run adventure:check -- your-file.yaml
+#
+# THE ONE RULE: from every state the story can reach, the table has a way forward to an ending, even if every
+# roll fails and nobody guesses a clever idea. The checker enforces it.
+#
+# Words in comments marked PUBLIC reach the players. Everything marked DM-ONLY never does.
+
+id: template-adventure             # a-z, 0-9 and - only
+version: "1"
+language: en                       # en or zh-TW. One file per language; the structure must match, the words may differ.
+title: The Well Below
+premise: >-                        # PUBLIC. Two or three sentences that set up the hook.
+  The village's well has gone sour, and the elder will pay anyone who finds out why.
+startingLevel: 1
+suggestedParty: { min: 2, max: 4 }
+dmOverview: >-                     # DM-ONLY. The truth: who did what and why, how it can end well, how it can end badly.
+  A drowned shrine under the well is leaking. The elder knows and is afraid. The party can seal it
+  (good ending), or flee and let the village move on (floor ending).
+startScene: scene:square
+
+# --- Scenes --------------------------------------------------------------------------------------------
+# Every scene except an ending lists `exits`. Mark each final scene `ending: true`. Include a floor ending that a
+# party that fails everything can still reach.
+scenes:
+  - id: scene:square
+    title: The Village Square
+    publicDescription: >-          # PUBLIC. What anyone can see and hear.
+      A dry stone well stands in the middle of the square. A sour smell hangs over it.
+    dmNotes: >-                    # DM-ONLY. What happens here and how the party moves on.
+      The elder asks the party to look into the well. Talking to villagers reveals the smell began after the last storm.
+    npcIds: [npc:elder]
+    exits:
+      - to: scene:well-shaft
+      - to: scene:the-road-away
+  - id: scene:well-shaft
+    title: Down the Well
+    publicDescription: Damp stone walls close in. Something below drips steadily.
+    dmNotes: The way to the shrine is blocked by a sealed door that opens with the rune the party learns in the square.
+    npcIds: []
+    exits:
+      - to: scene:square
+      - to: scene:shrine
+        requires: { flags: [door-open] }     # an exit may need a flag. Make sure something sets it WITHOUT a roll.
+  - id: scene:shrine
+    title: The Drowned Shrine
+    publicDescription: A flooded chamber, an altar half under black water, something moving beneath it.
+    dmNotes: The seal on the altar can be repaired, or the thing beneath must be driven off.
+    npcIds: []
+    exits:
+      - to: scene:well-shaft
+      - to: scene:sealed                     # the good ending
+        requires: { flags: [shrine-handled] }
+  - id: scene:sealed
+    ending: true                             # a final scene: the story can finish here
+    title: A Clean Well
+    publicDescription: The water runs clear. The elder weeps with relief.
+    dmNotes: The good ending.
+    npcIds: [npc:elder]
+    exits: []
+  - id: scene:the-road-away
+    ending: true                             # the FLOOR ending: a party that fails everything can still finish
+    title: The Road Away
+    publicDescription: You leave the village behind. Behind you, the well stays sour.
+    dmNotes: The bad ending. The village moves on without them.
+    npcIds: []
+    exits: []
+
+npcs:
+  - id: npc:elder
+    name: Elder Maren
+    voice: Soft-spoken and tired; speaks in short, careful sentences.
+    publicDescription: A thin old woman leaning on a walking stick.     # PUBLIC. Do not list items she carries unless you mean description only.
+    secret: She knows about the shrine and has been afraid to say so.   # DM-ONLY
+
+# --- Clues ---------------------------------------------------------------------------------------------
+# Every next step the table needs must be learnable. Reveal it for free (arrival effect or an automatic interaction).
+clues:
+  - id: clue:sour-since-storm
+    sceneId: scene:square
+    publicText: The water went bad the night of the last storm.   # PUBLIC: states a fact that is already true.
+    dmNotes: Revealed automatically by asking the villagers.
+  - id: clue:rune
+    sceneId: scene:square
+    publicText: An old rune is scratched on the well's rim; it matches a mark on the elder's walking stick.
+    dmNotes: Revealed by looking closely at the well. A roll gives a better version; the free route always works.
+
+clocks: []
+
+# --- Interactions: what the players can do ---------------------------------------------------------------
+# `label` is PUBLIC (shown as a suggestion button). `check` omitted = it simply happens. Anything the story cannot
+# go on without needs a way with NO check. Use `onFailure` and `attempts` so a bad roll moves the story, not stops it.
+interactions:
+  - id: interaction:ask-the-villagers
+    sceneId: scene:square
+    label: Ask the villagers when the water went bad
+    dmNotes: No roll. Always works.
+    onSuccess:
+      - { kind: reveal, clue: clue:sour-since-storm }
+  - id: interaction:study-the-well-rune
+    sceneId: scene:square
+    label: Study the old rune on the well's rim
+    dmNotes: No roll. Reveals the way into the shrine.
+    onSuccess:
+      - { kind: reveal, clue: clue:rune }
+      - { kind: set, flag: door-open }       # the free key to the gate in scene:well-shaft
+  - id: interaction:read-the-rune-deeply
+    sceneId: scene:square
+    label: Try to read what the rune really says (Arcana)
+    dmNotes: A rolled bonus. The story never needs it.
+    check: { skill: arcana, dc: 12 }
+    attempts: 2
+    onSuccess:
+      - { kind: notice, text: The rune is a binding. Something below is held in by it. }
+    onFailure:
+      - { kind: notice, text: The rune's meaning slips away from you. }
+  - id: interaction:repair-the-seal
+    sceneId: scene:shrine
+    label: Repair the broken seal on the altar
+    dmNotes: The rolled way. If it fails the thing beneath attacks, and winning the fight settles the shrine too.
+    check: { skill: religion, dc: 12 }
+    attempts: 2
+    onSuccess:
+      - { kind: set, flag: shrine-handled }
+    onFailure:
+      - { kind: encounter, encounter: encounter:thing-beneath }   # failing branches onward; it does not stop the story
+  - id: interaction:drive-off-the-thing
+    sceneId: scene:shrine
+    label: Drive the thing beneath the altar back into the dark
+    dmNotes: No roll. A fight settles the shrine.
+    onSuccess:
+      - { kind: encounter, encounter: encounter:thing-beneath }
+
+encounters:
+  - id: encounter:thing-beneath
+    sceneId: scene:shrine
+    publicDescription: Black water surges and something many-limbed rises.
+    dmNotes: The fight settles the shrine whether the party seals it or drives the thing off.
+    zones:
+      - { id: ledge, name: The Ledge }
+      - { id: water, name: The Black Water }
+    edges:
+      - { from: ledge, to: water, feet: 10 }
+    partyZoneId: ledge
+    monsters:
+      - { monsterId: monster:giant-crab, zoneId: water }
+    onVictory:
+      - { kind: set, flag: shrine-handled }
+
+# The ready-made heroes the adventure ships with. Copy them as they are; do not invent bonuses.
+heroes:
+  - id: c-borin
+    name: Borin
+    class: fighter
+    abilityScores: { str: 16, dex: 12, con: 15, int: 10, wis: 12, cha: 8 }
+    proficiencyBonus: 2
+    skills: { athletics: proficient, perception: proficient, intimidation: proficient, survival: proficient }
+    savingThrows: [str, con]
+    level: 1
+    maxHp: 12
+    hitDie: 10
+    speed: 30
+    equipment: [item:longsword, item:chain-mail, item:shield]
+    features: [feature:fighting-style-dueling, feature:second-wind]
+  - id: c-mira
+    name: Mira
+    class: rogue
+    abilityScores: { str: 8, dex: 16, con: 12, int: 13, wis: 10, cha: 14 }
+    proficiencyBonus: 2
+    skills: { stealth: expertise, perception: expertise, acrobatics: proficient, deception: proficient, investigation: proficient, persuasion: proficient }
+    savingThrows: [dex, int]
+    level: 1
+    maxHp: 9
+    hitDie: 8
+    speed: 30
+    equipment: [item:shortsword, item:shortbow, item:leather-armor]
+    features: [feature:sneak-attack, feature:thieves-cant]
