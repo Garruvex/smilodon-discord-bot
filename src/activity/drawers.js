@@ -11,25 +11,32 @@ const drawers = {};
 const order = [];
 
 // The bookmarks and the portrait rail ride the panels' edge. While a panel slides, they read where its edge really is on every frame (--dock-w), so they never drift from it,
-// and when one panel is going out as another comes in they stay with the wider of the two.
+// and when one panel is going out as another comes in they stay with the wider of the two. When nothing is moving the value is dropped and the stylesheet owns it
+// (it knows each open panel's width), so a measurement taken mid-slide, or before a resize, can never be left behind.
 function placeDock() {
-  // Narrow screens lay the panels out as a lower deck and the stylesheet owns --dock-w there, so a value left from the wide layout is cleared.
   if (!window.matchMedia("(min-width: 901px)").matches) { document.body.style.removeProperty("--dock-w"); return; }
   let edge = 0;
+  let moving = false;
   for (const entry of Object.values(drawers)) {
+    if (entry.drawer.getAnimations().length === 0) continue;
+    moving = true;
     const box = entry.drawer.getBoundingClientRect();
-    // A panel that is shut sits off screen (past the left or right edge, or below the bottom one) and does not hold the tabs out.
-    const onScreen = box.right > 0 && box.left < window.innerWidth && box.top < window.innerHeight && box.bottom > 0;
-    if (entry.drawer.dataset.open === "true" || onScreen) edge = Math.max(edge, box.right);
+    if (box.right > 0 && box.left < window.innerWidth && box.top < window.innerHeight && box.bottom > 0) edge = Math.max(edge, box.right);
   }
-  document.body.style.setProperty("--dock-w", `${Math.round(edge)}px`);
+  if (moving) document.body.style.setProperty("--dock-w", `${Math.round(edge)}px`);
+  else document.body.style.removeProperty("--dock-w");
 }
+let settleTimer = 0;
 function followDock() {
   const end = performance.now() + 450;
   const tick = () => { placeDock(); if (performance.now() < end) requestAnimationFrame(tick); };
   requestAnimationFrame(tick);
+  // However the slide ended (an event missed, a hidden tab), the measured value does not outlive it: the stylesheet's own rule takes over.
+  clearTimeout(settleTimer);
+  settleTimer = setTimeout(() => document.body.style.removeProperty("--dock-w"), 600);
 }
 window.addEventListener("resize", placeDock);
+// A slide ends (or is cut short) on its own events, so the measured value is dropped the moment the panel stops.
 
 function makeDrawer(side, titleKey, body, onOpen) {
   const drawer = document.createElement("aside");
@@ -70,6 +77,8 @@ function makeDrawer(side, titleKey, body, onOpen) {
     followDock();
   };
   tab.addEventListener("click", () => { app.drawerAuto[side] = false; entry.set(drawer.dataset.open !== "true"); });
+  drawer.addEventListener("transitionend", placeDock);
+  drawer.addEventListener("transitioncancel", placeDock);
   document.body.append(drawer, tab);
   drawers[side] = entry;
   order.push(side);
