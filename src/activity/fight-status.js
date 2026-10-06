@@ -53,7 +53,8 @@ export function turnOrderBar(snapshot) {
   if (order.length === 0) return null;
   const bar = document.createElement("ol");
   bar.className = "turn-order";
-  const portraitPreview = new URLSearchParams(window.location.search).has("battlefield-preview") && new URLSearchParams(window.location.search).has("design-preview");
+  // A fight with a battlefield shows its turn order as portraits with health, the same as its board; otherwise it stays a plain row of names.
+  const portraitPreview = snapshot?.map?.kind === "battlefield";
   if (portraitPreview) bar.classList.add("turn-order-portraits");
   const activeName = order.find((entry) => entry.active)?.name ?? null;
   const changed = previousPreviewTurn !== null && previousPreviewTurn !== activeName;
