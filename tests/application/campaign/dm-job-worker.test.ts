@@ -233,54 +233,30 @@ describe("DmJobWorker", () => {
     expect(stored?.state.round?.status).toBe("resolving");
   });
 
-  it("tries a failed plan again later, then holds the round for the organizer, applying nothing", async () => {
+  it("tries a failed plan again later, then plans the round without the model so play is never held", async () => {
     const planner = new ScriptedPlanner([offLadder, new Error("provider timeout"), offLadder, new Error("provider timeout")]);
     const { store, bus, worker } = await table(planner, new ScriptedNarrator([]));
     await closeRoundOne(bus);
-    // The first try fails and the job is queued again; the round is not held yet.
+    // The first try fails and the job is queued again; the round is not planned yet.
     expect(await worker.runOnce()).toMatchObject({ processed: 0, failed: [{ id: expect.any(String) as string, error: "The planner failed: The planner call failed: provider timeout" }] });
-    expect((await events(store)).some((event) => event.kind === "plannerFailed")).toBe(false);
+    expect((await events(store)).some((event) => event.kind === "roundPlanApplied")).toBe(false);
     expect(await worker.runOnce()).toEqual({ processed: 1, failed: [] });
 
+    // Only the last try falls back: a plain plan with no story effect, so the organizer is not asked to step in.
     const log = await events(store);
-    expect(log.at(-1)).toEqual({ kind: "plannerFailed", roundNumber: 1, problems: ["The planner call failed: provider timeout"] });
-    expect(log.some((event) => event.kind === "roundPlanApplied")).toBe(false);
-    const deliveries = await store.transaction((tx) => tx.pendingOutbox("deliver"));
-    expect(deliveries.map((item) => item.request)).toContainEqual({
-      kind: "deliver",
-      delivery: { kind: "organizerNotice", notice: "plannerFailed", roundNumber: 1 },
-    });
-
-    // The organizer's retry queues a fresh planner job.
-    planner.requests.length = 0;
-    const retry = new ScriptedPlanner([sneak]);
-    await bus.execute(key, { kind: "retryPlan" }, { commandId: "retry", actor: organizer });
-    const retried = new DmJobWorker({
-      unitOfWork: store,
-      bus,
-      planner: retry,
-      narrator: new ScriptedNarrator([]),
-      adventures: { find: (): AdventureBible => testBible },
-      glossaries: { en: enSrd51Glossary },
-    });
-    await retried.runOnce();
-    expect(retry.requests[0]?.previousProblems).toEqual(["The planner call failed: provider timeout"]);
-    expect((await store.transaction((tx) => tx.loadCampaign(key)))?.state.round?.status).toBe("resolving");
+    expect(log.some((event) => event.kind === "roundPlanApplied")).toBe(true);
+    expect(log.some((event) => event.kind === "plannerFailed")).toBe(false);
   });
 
-  it("carries validation feedback into an organizer retry so the round can reach its roll", async () => {
-    const planner = new ScriptedPlanner([offLadder, offLadder, offLadder, offLadder, sneak]);
+  it("plans the round without the model when it keeps proposing invalid plans", async () => {
+    const planner = new ScriptedPlanner([offLadder, offLadder, offLadder, offLadder]);
     const { store, bus, worker } = await table(planner, new ScriptedNarrator([]));
     await closeRoundOne(bus);
     await worker.runOnce();
     await worker.runOnce();
-    expect((await store.transaction((tx) => tx.loadCampaign(key)))?.state.round?.status).toBe("planning");
-    await bus.execute(key, { kind: "retryPlan" }, { commandId: "retry-validation", actor: organizer });
-    await worker.runOnce();
-    expect(planner.requests[4]?.previousProblems).toEqual(['c-mira: DC tier "tricky" is not on the ladder.']);
-    const state = (await store.transaction((tx) => tx.loadCampaign(key)))?.state;
-    expect(state?.round?.status).toBe("resolving");
-    expect(state?.checks["r1:c-mira"]?.status).toBe("pending");
+    const log = await events(store);
+    expect(log.some((event) => event.kind === "roundPlanApplied")).toBe(true);
+    expect(log.some((event) => event.kind === "plannerFailed")).toBe(false);
   });
 
   it("falls back to template narration when the Narrator keeps failing, so play continues", async () => {

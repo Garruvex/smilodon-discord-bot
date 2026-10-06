@@ -13,6 +13,7 @@ import { latestSummaryRound } from "../../../domain/campaign/engine/dm.js";
 import { sceneNoteCompactionThreshold } from "../../../domain/campaign/engine/dm.js";
 import { encounterRecords } from "../dm/combat-records.js";
 import { checkLabel, roundRecords } from "../dm/round-records.js";
+import { fallbackPlan } from "../dm/fallback-planner.js";
 import { plannerStory, resolveStoryEffects } from "../dm/story-effects.js";
 import type { RuntimeLogger } from "../campaign-runtime.js";
 import type { CampaignKey, CampaignUnitOfWork, OutboxItem, StoredCampaign } from "../ports/campaign-store.js";
@@ -28,6 +29,7 @@ import type {
   HazardNarratorRequest,
   NarratedOutcome,
   NarratorRequest,
+  PlannerRequest,
   TradeNarratorRequest,
   UtilityCastNarratorRequest,
 } from "../ports/dm-ports.js";
@@ -123,21 +125,22 @@ export class DmJobWorker {
     // feedback instead of asking the model to repeat the same invalid plan.
     const previousFailure = loaded.events.findLast((event) => event.kind === "plannerFailed" && event.roundNumber === roundNumber);
     let problems: readonly string[] = previousFailure?.kind === "plannerFailed" ? previousFailure.problems : [];
+    const requestFor = (previousProblems: readonly string[]): PlannerRequest => ({
+      context: this.context("planner", loaded),
+      roundNumber,
+      actions,
+      vocabulary: {
+        abilities,
+        skills,
+        dcTiers: Object.keys(dcLadder),
+        rollModeReasons: Object.keys(rollModeReasons),
+      },
+      story: plannerStory(loaded.bible, loaded.stored.state),
+      previousProblems,
+    });
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
-        const proposal = await this.options.planner.plan({
-          context: this.context("planner", loaded),
-          roundNumber,
-          actions,
-          vocabulary: {
-            abilities,
-            skills,
-            dcTiers: Object.keys(dcLadder),
-            rollModeReasons: Object.keys(rollModeReasons),
-          },
-          story: plannerStory(loaded.bible, loaded.stored.state),
-          previousProblems: problems,
-        });
+        const proposal = await this.options.planner.plan(requestFor(problems));
         const wallet = loaded.stored.ruleset.houseRules[lootGold.id] === "split" ? "hero" : "pool";
         const resolved = resolveStoryEffects(proposal, loaded.bible, loaded.stored.state, { wallet, ...(this.options.random === undefined ? {} : { random: this.options.random }) });
         if (resolved.kind === "invalid") {
@@ -161,6 +164,17 @@ export class DmJobWorker {
     }
     // A provider hiccup should not hold the round for the organizer: the job is tried again later, and only the last try holds it.
     if (item.attempts + 1 < this.maxAttempts) throw new Error(`The planner failed: ${problems.join(" ")}`);
+    // The round is not held for the organizer: it is planned without the model (plain, and only what the adventure already wrote), as a
+    // narrator outage already is. Only if even that plan is refused does the round wait for the organizer.
+    const wallet = loaded.stored.ruleset.houseRules[lootGold.id] === "split" ? "hero" : "pool";
+    const plain = resolveStoryEffects(fallbackPlan(requestFor([])), loaded.bible, loaded.stored.state, { wallet, ...(this.options.random === undefined ? {} : { random: this.options.random }) });
+    if (plain.kind === "resolved") {
+      const outcome = await this.options.bus.execute(item.key, { kind: "applyRoundPlan", proposal: plain.proposal }, { commandId: `${item.id}:${item.attempts}:plan:fallback`, actor: system });
+      if (outcome.kind !== "rejected" || outcome.rejection.code !== "invalidPlan") {
+        this.options.logger?.error({ campaignId: item.key.campaignId, roundNumber, problems }, "The planner failed on every try; the round was planned without it");
+        return;
+      }
+    }
     this.options.logger?.error({ campaignId: item.key.campaignId, roundNumber, problems }, "Round held: the planner failed on every try");
     await this.options.bus.execute(
       item.key,
