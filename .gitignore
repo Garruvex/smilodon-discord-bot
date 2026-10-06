@@ -19,3 +19,8 @@ drizzle-sqlite/*.sqlite-*
 
 # Community adventures converted for private play; never committed
 private/
+
+# Built by npm run build:activity from src/activity; the Docker build regenerates them
+assets/activity/activity.js
+assets/activity/styles.css
+assets/activity/i18n/
