@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { CampaignLobbyService, ServiceResult } from "../../application/campaign/campaign-lobby-service.js";
 import type { CampaignRecord } from "../../application/campaign/ports/campaign-record.js";
 import type { CampaignKey, CampaignUnitOfWork } from "../../application/campaign/ports/campaign-store.js";
@@ -86,7 +88,7 @@ export class ActivityTableService {
       if (record.organizerId !== userId) return { kind: "refused", reason: "notOrganizer" };
       if (record.lifecycle === "archived") return { kind: "refused", reason: "closed" };
       const campaign = await tx.loadCampaign(key);
-      const members = record.lobby.members.filter((member) => member.status !== "withdrawn");
+      const members = record.lobby.members.filter((member) => member.status !== "withdrawn" && (campaign === undefined || record.lifecycle === "lobby" || campaign.state.members[member.userId] !== undefined));
       return { kind: "ok", value: {
         campaignId: key.campaignId, name: record.name, lifecycle: record.lifecycle, maxPlayers: record.lobby.maxPlayers,
         playerCount: campaign === undefined ? members.length : Object.keys(campaign.state.members).length,
@@ -124,7 +126,18 @@ export class ActivityTableService {
   }
 
   public async remove(key: CampaignKey, actorId: string, userId: string): Promise<ServiceResult<CampaignRecord>> {
-    const result = await this.options.lobby.removeMember(key, actorId, userId);
+    const stored = await this.options.lobby.get(key);
+    if (stored === undefined) return { kind: "refused", reason: "notFound" };
+    // A waiting lobby just frees the seat; a running game also takes the hero off the table.
+    const result = stored.record.lifecycle === "lobby"
+      ? await this.options.lobby.removeMember(key, actorId, userId)
+      : await this.options.lobby.retireSeat(key, actorId, userId, `manage:${randomUUID()}`);
+    if (result.kind === "ok") this.options.refresh(key);
+    return result;
+  }
+
+  public async revoke(key: CampaignKey, actorId: string, userId: string): Promise<ServiceResult<CampaignRecord>> {
+    const result = await this.options.lobby.revokeJoin(key, actorId, userId);
     if (result.kind === "ok") this.options.refresh(key);
     return result;
   }

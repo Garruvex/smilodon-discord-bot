@@ -611,7 +611,36 @@ export class CampaignLobbyService {
   }
 
   public removeMember(key: CampaignKey, actorId: UserId, userId: UserId): Promise<ServiceResult<CampaignRecord>> {
-    return this.change(key, (lobby, record) => lobbyRules.remove(lobby, actorId, record.organizerId, userId));
+    return this.queue.run(queueKey(key), () => this.options.unitOfWork.transaction(async (tx) => {
+      const stored = await tx.loadRecord(key);
+      if (stored === undefined) return refused("notFound");
+      const { record } = stored;
+      if (record.organizerId !== actorId) return refused("notOrganizer");
+      if (record.lifecycle !== "lobby") return refused("notLobby");
+      if (userId === record.organizerId) return refused("organizerStays");
+      const result = lobbyRules.remove(record.lobby, actorId, record.organizerId, userId);
+      if (!result.ok) return refused(result.reason);
+      // The removed player's invite or approval goes with the seat, so it cannot be used to walk back in.
+      const { [userId]: _dropped, ...joinRequests } = record.joinRequests ?? {};
+      const next: CampaignRecord = { ...record, lobby: result.lobby, joinRequests };
+      await tx.saveRecord(next, stored.revision);
+      return ok(next);
+    }));
+  }
+
+  // The organizer withdraws an invite, an approval, a queued entry or a pending request, freeing the seat it held.
+  public revokeJoin(key: CampaignKey, actorId: UserId, userId: UserId): Promise<ServiceResult<CampaignRecord>> {
+    return this.queue.run(queueKey(key), () => this.options.unitOfWork.transaction(async (tx) => {
+      const stored = await tx.loadRecord(key);
+      if (stored === undefined) return refused("notFound");
+      const { record } = stored;
+      if (record.organizerId !== actorId) return refused("notOrganizer");
+      if (record.joinRequests?.[userId] === undefined) return refused("notMember");
+      const { [userId]: _dropped, ...joinRequests } = record.joinRequests;
+      const next: CampaignRecord = { ...record, joinRequests };
+      await tx.saveRecord(next, stored.revision);
+      return ok(next);
+    }));
   }
 
   public chooseHero(key: CampaignKey, userId: UserId, heroId: string): Promise<ServiceResult<CampaignRecord>> {

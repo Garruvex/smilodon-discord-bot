@@ -361,7 +361,7 @@ export function buildActivityTableView(
       conditions: hero.conditions,
       imageUrl: partySheet?.origin === undefined && !hasPicture(record.images?.[`hero:${hero.characterId}`]) ? null : `/api/activity/games/${encodeURIComponent(record.key.campaignId)}/images/characters/${encodeURIComponent(hero.characterId)}`,
       isYou: hero.ownerUserId === userId,
-      ...(record.organizerId === userId && hero.ownerUserId !== userId && state.members[hero.ownerUserId]?.availability === "away" && (state.encounter === null || state.encounter.status === "ended") ? { seatUserId: hero.ownerUserId } : {}),
+      ...(record.organizerId === userId && hero.ownerUserId !== userId && (state.encounter === null || state.encounter.status === "ended") ? { seatUserId: hero.ownerUserId } : {}),
       zone: panel.combat?.party.find((combatant) => combatant.name === hero.name)?.zone ?? null,
       playedBy: ((): string | null => {
         const owner = state.members[hero.ownerUserId];

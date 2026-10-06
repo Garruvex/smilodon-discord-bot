@@ -279,16 +279,24 @@ export async function openTableManagement() {
     const seats = select("maxPlayers", [1, 2, 3, 4, 5, 6].map((count) => [count, String(count)]), data.maxPlayers);
     const save = makeButton(text("saveSeats"), () => void write({ kind: "resize", maxPlayers: Number(seats.value) }, save));
     settings.append(field(text("maxPlayers"), seats), save);
-    if (data.lifecycle === "lobby") {
-      for (const member of data.members) {
-        const row = flowElement("div", "table-member-row");
-        row.append(flowElement("span", "", member.displayName ?? member.userId));
-        if (member.userId !== app.discordUserId) {
-          const remove = makeButton(text("remove"), () => void write({ kind: "remove", userId: member.userId }, remove));
-          row.append(remove);
-        }
-        settings.append(row);
+    // Seated players can be removed from a waiting lobby and from a running game (between fights); a running game asks for a second press.
+    for (const member of data.members) {
+      const row = flowElement("div", "table-member-row");
+      row.append(flowElement("span", "", member.displayName ?? member.userId));
+      if (member.userId !== app.discordUserId) {
+        const live = data.lifecycle !== "lobby";
+        const remove = makeButton(text("remove"), () => {
+          if (live && remove.dataset.armed !== "true") {
+            remove.dataset.armed = "true";
+            remove.textContent = t("activity.party.freeSeatSure");
+            setTimeout(() => { delete remove.dataset.armed; remove.textContent = text("remove"); }, 4000);
+            return;
+          }
+          void write({ kind: "remove", userId: member.userId }, remove);
+        });
+        row.append(remove);
       }
+      settings.append(row);
     }
     const requests = panel(text("requests"));
     const pending = data.requests.filter((request) => request.status === "requested");
@@ -311,7 +319,8 @@ export async function openTableManagement() {
     }
     for (const request of data.requests.filter((request) => request.status !== "requested")) {
       const row = flowElement("div", "table-request-status");
-      row.append(flowElement("strong", "", request.displayName ?? request.userId), flowElement("span", "table-flow-status", text(request.status)));
+      const revoke = makeButton(text("revoke"), () => void write({ kind: "revoke", userId: request.userId }, revoke));
+      row.append(flowElement("strong", "", request.displayName ?? request.userId), flowElement("span", "table-flow-status", text(request.status)), revoke);
       requests.append(row);
     }
     const invite = panel(text("invite"));
