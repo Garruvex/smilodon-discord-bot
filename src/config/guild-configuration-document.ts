@@ -1,4 +1,5 @@
 import type { Language } from "../application/i18n/language.js";
+import type { TrapAction, TrapDeleteWindow, TrapTimeoutDuration } from "../domain/security/trap-policy.js";
 import type { GuildConfiguration, LinkFixPlatform, ProgressBarSettings } from "./guild-configuration.js";
 import {
   guildConfigurationFileSchema,
@@ -93,6 +94,13 @@ export interface UpdateGuildConfigurationInput {
   autoQueueVoteEnabled?: boolean;
   autoQueueVoteBarStyle?: "squares" | "thin";
   autoQueueVoteOptionCount?: number;
+  trapEnabled?: boolean;
+  trapChannelId?: string | null;
+  trapAction?: TrapAction;
+  trapDeleteWindow?: TrapDeleteWindow;
+  trapTimeout?: TrapTimeoutDuration;
+  securityExemptRoleIds?: readonly string[];
+  securityLogChannelId?: string | null;
 }
 
 export interface CreateGuildConfigurationInput {
@@ -194,6 +202,7 @@ export function toGuildConfiguration(parsed: ParsedGuildConfigurationFile, sourc
       autoQueueVoteOptionCount: parsed.music.autoQueueVote.optionCount,
     },
     chat: parsed.chat,
+    security: parsed.security,
     sourceFile,
   };
 }
@@ -252,6 +261,7 @@ export function toGuildConfigurationDocument(configuration: GuildConfiguration):
       },
     },
     chat: configuration.chat,
+    security: configuration.security,
   });
 }
 
@@ -350,5 +360,12 @@ export function applyGuildConfigurationUpdate(
   if (input.autoQueueVoteEnabled !== undefined) next.music.autoQueueVote.enabled = input.autoQueueVoteEnabled;
   if (input.autoQueueVoteBarStyle !== undefined) next.music.autoQueueVote.barStyle = input.autoQueueVoteBarStyle;
   if (input.autoQueueVoteOptionCount !== undefined) next.music.autoQueueVote.optionCount = input.autoQueueVoteOptionCount;
+  if (input.trapEnabled !== undefined) next.security.trap.enabled = input.trapEnabled;
+  if (input.trapChannelId !== undefined) next.security.trap.channelId = input.trapChannelId;
+  if (input.trapAction !== undefined) next.security.trap.action = input.trapAction;
+  if (input.trapDeleteWindow !== undefined) next.security.trap.deleteWindow = input.trapDeleteWindow;
+  if (input.trapTimeout !== undefined) next.security.trap.timeout = input.trapTimeout;
+  if (input.securityExemptRoleIds !== undefined) next.security.exemptRoleIds = [...input.securityExemptRoleIds];
+  if (input.securityLogChannelId !== undefined) next.security.logChannelId = input.securityLogChannelId;
   return guildConfigurationFileSchema.parse(next);
 }

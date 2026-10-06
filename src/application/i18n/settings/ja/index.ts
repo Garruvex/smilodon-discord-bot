@@ -5,6 +5,7 @@ import { jaMemory } from "./memory.js";
 import { jaCommunity } from "./community.js";
 import { jaDnd } from "./dnd.js";
 import { jaMusic } from "./music.js";
+import { jaSecurity } from "./security.js";
 
 // Every registered setting's text, one spread per settings group.
 export const jaSettingsText: SettingsTextCatalog = {
@@ -14,4 +15,5 @@ export const jaSettingsText: SettingsTextCatalog = {
   ...jaMemory,
   ...jaDnd,
   ...jaCommunity,
+  ...jaSecurity,
 };

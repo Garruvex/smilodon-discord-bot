@@ -227,7 +227,7 @@ Every setting can be changed two ways, and both do exactly the same thing:
 - **The admin panel** — a channel showing every setting with its description,
   its current value and a control to change it.
 - **`/settings-<group>` commands** — `/settings-access`, `/settings-music`,
-  `/settings-chat`, `/settings-memory` and `/settings-community`.
+  `/settings-chat`, `/settings-memory`, `/settings-community` and `/settings-security`.
 
 Both need the **Bot Administrator** role. Changes write straight to the
 server's configuration, show up in the panel right away, and (if an audit log
@@ -351,6 +351,33 @@ full processing model and trust rules.
 | `/settings-community link-fix [enabled] [add-/remove-channels] [twitter] [threads] [tiktok] [instagram] [reddit] [bilibili]` | Rewrites Twitter/X, Threads, Instagram, Bilibili, TikTok, and Reddit links for better embeds in watched channels. Each service can be toggled independently of the overall `enabled` switch. |
 | `/settings-community nsfw <enabled>` | Allows NSFW image commands server-wide (still needs an age-restricted channel per use). |
 | `/settings-community member-data <retain>` | Whether a departing member's private memories, chat sessions/preferences, birthday, customization, and reminders are retained. Shared guild/channel memories remain community history. |
+
+### Security
+
+Off until you turn it on. The trap channel catches hacked accounts and spam
+bots: they post their scam in every channel they can reach, so a channel that
+no real member has a reason to use gives them away.
+
+| Command | What it does |
+| --- | --- |
+| `/settings-security create-channel` | Makes a channel with an ordinary name (like `general-2`), puts it last in the list, and posts a notice in English, 繁體中文 and 日本語 telling members not to post there. Needs Manage Channels. |
+| `/settings-security use-channel <channel>` | Uses a channel you already have instead, and posts the same notice (run it again to repost). |
+| `/settings-security trap [enabled] [channel] [action] [delete-history] [timeout-duration]` | Turns the trap on (it needs a channel), and sets what happens to whoever posts there: **time out** (default, 28 days), **kick** or **ban**. `delete-history` also removes their other messages from the last 10 minutes, 30 minutes or hour (default 1 hour), or only the one in the trap channel when off. |
+| `/settings-security exempt [add-/remove-roles]` | Roles that are never actioned. |
+| `/settings-security log [channel] [clear-channel]` | Where actions are reported, in the server's language. Unset uses the audit-log channel; with neither, nothing is reported. |
+| `/settings-security status` | Checks that it can work: the channel exists and everyone can post there, and the bot has the permission the action needs. |
+
+The trap channel has to stay visible to everyone. A hidden channel is hidden
+from a hacked account too, so it would catch nothing; the notice and its place
+at the bottom of the list keep real members out of it.
+
+Never actioned, whatever you configure: bots and webhooks, the server owner,
+Bot Administrators, your exempt roles, and anyone with Administrator, Manage
+Server, Kick, Ban, Moderate Members or Manage Messages. If a poster's top role
+is above the bot's, their message is still removed and the log says it
+couldn't act. The bot needs **Moderate Members**, **Kick Members** or **Ban
+Members** for the chosen action, and **Manage Messages** to remove their other
+messages (a ban uses Discord's own deletion instead).
 
 ## Troubleshooting
 

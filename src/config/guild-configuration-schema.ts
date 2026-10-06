@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { defaultLanguage, languages } from "../application/i18n/language.js";
+import { trapActions, trapDeleteWindows, trapTimeoutDurations } from "../domain/security/trap-policy.js";
 import { CHAT_LIMITS, MUSIC_LIMITS, PANEL_LIMITS } from "./guild-configuration-limits.js";
 
 const snowflake = z.string().regex(/^\d{17,20}$/);
@@ -19,6 +20,25 @@ export function isValidTimeZone(value: string): boolean {
 const timezoneSchema = z.string().trim().min(1).refine(isValidTimeZone, {
   message: "Must be a valid IANA time zone name (e.g. \"America/New_York\").",
 }).default("UTC");
+
+const defaultTrap = { enabled: false, channelId: null, action: "timeout" as const, deleteWindow: "1h" as const, timeout: "28d" as const };
+const defaultSecurity = { trap: defaultTrap, exemptRoleIds: [] as string[], logChannelId: null };
+
+const guildSecuritySchema = z
+  .object({
+    trap: z
+      .object({
+        enabled: z.boolean().default(false),
+        channelId: snowflake.nullable().default(null),
+        action: z.enum(trapActions).default("timeout"),
+        deleteWindow: z.enum(trapDeleteWindows).default("1h"),
+        timeout: z.enum(trapTimeoutDurations).default("28d"),
+      })
+      .default(defaultTrap),
+    exemptRoleIds: snowflakeList,
+    logChannelId: snowflake.nullable().default(null),
+  })
+  .default(defaultSecurity);
 
 const guildChatSchema = z.preprocess((value) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
@@ -220,6 +240,7 @@ export const guildConfigurationFileSchema = z
         reactionReplyWaitMaxMinutes: 5,
         reactionReplyMinReactors: 1,
       }),
+    security: guildSecuritySchema,
     music: z
       .object({
         volume: z
@@ -308,6 +329,14 @@ export const guildConfigurationFileSchema = z
         code: z.ZodIssueCode.custom,
         message: "Birthdays requires a birthdayAnnouncements channel.",
         path: ["channels", "birthdayAnnouncements"],
+      });
+    }
+
+    if (configuration.security.trap.enabled && !configuration.security.trap.channelId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "The trap channel needs a channel before it can be turned on.",
+        path: ["security", "trap", "channelId"],
       });
     }
 
