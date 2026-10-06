@@ -129,7 +129,7 @@ export interface ActivityTableView {
     readonly statuses: readonly string[];
     // The action they sent for this round, when they have sent one.
     readonly intent: string | null;
-    readonly tableStatus: "acting" | "submitted" | "passed" | "missed" | "away" | "waiting";
+    readonly tableStatus: "acting" | "done" | "submitted" | "passed" | "missed" | "away" | "waiting";
   }[];
   // When your hero has fallen: the heroes you may take instead. Null otherwise.
   readonly replacement: null | {
@@ -341,6 +341,11 @@ export function buildActivityTableView(
   const publicParty: ActivityTableView["party"] = buildPartyView(state, content).map((hero) => {
     const partySheet = state.characters[hero.characterId];
     const raceId = partySheet?.race;
+    const fight = state.encounter;
+    const combatIndex = fight?.status === "active" ? fight.order.findIndex((id) => {
+      const source = fight.combatants[id]?.source;
+      return source?.kind === "hero" && source.characterId === hero.characterId;
+    }) : -1;
     return {
       characterId: hero.characterId,
       name: hero.name,
@@ -376,8 +381,8 @@ export function buildActivityTableView(
       statuses: panel.combat?.party.find((combatant) => combatant.name === hero.name)?.statuses ?? [],
       // What they said they would do this round: the Adventure channel posts it for everyone when it is sent.
       intent: ((): string | null => { const sent = state.round?.submissions[hero.characterId]; return sent?.kind === "action" ? sent.text.slice(0, 240) : null; })(),
-      tableStatus: panel.combat?.party.some((combatant) => combatant.name === hero.name && combatant.active) === true
-        ? "acting"
+      tableStatus: combatIndex >= 0 && fight !== null
+        ? combatIndex === fight.turnIndex ? "acting" : combatIndex < fight.turnIndex ? "done" : "waiting"
         : state.round?.submissions[hero.characterId]?.kind === "action" ? "submitted"
           : state.round?.submissions[hero.characterId]?.kind === "pass" ? "passed"
             : state.round?.submissions[hero.characterId]?.kind === "missed" ? "missed"

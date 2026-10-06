@@ -28,8 +28,8 @@ If the tunnel process runs directly on the host instead, publish the selected bo
 ## Current scope
 
 - The lobby lists open games and games the player can access. Players can join an open lobby, choose an available starter hero, and start it when they are the organizer.
-- The game screen reads live campaign state: scene, party status and health, enemy health, and legal actions for the player's turn. It refreshes from the bot's campaign API every five seconds; this polling does not call Discord's API.
-- Activity actions use the same campaign controller and rules engine as the Discord controls. Their direct card refresh is suppressed, so each action does not also edit the Discord campaign card. The campaign's existing narration and background delivery still use Discord.
+- The game screen reads live campaign state: scene, party status and health, enemy health, and legal actions for the player's turn. It refreshes from the bot's campaign API every three seconds; this polling does not call Discord's API.
+- Activity actions use the same campaign controller and rules engine as the Discord controls. Accepted actions schedule a coalesced Discord card refresh, including quiet state changes; narration and background delivery still use Discord.
 - The lobby supports starter heroes, organizer start, join requests, invitations, and joining an approved active game with the player's latest saved character snapshot.
 - Exploration supports submitting an action, passing, rolling a pending check, casting available cantrips or rituals, healing and reviving party members, summoning companions, drinking carried potions, and proposing an available move.
 - Combat presents the engine's legal attacks, spells, features, potions, shield toggles, engagement, movement and teleport options, safe withdrawal, Dodge, Dash, Wild Shape, turn ending, reaction spells, Divine Smite, and opportunity attacks.
@@ -37,6 +37,8 @@ If the tunnel process runs directly on the host instead, publish the selected bo
 - OAuth identity and launch-server membership are verified through Discord on the bot server. The Activity receives an opaque, in-memory session token; a bot restart expires those sessions, so players should reopen the Activity after a restart.
 
 The game list is scoped to the server in which the Activity was launched. Private campaigns are only shown to their members, organizer, or a player with an active invitation. The Activity and Discord campaign controls act on the same saved campaign, so updates appear in both views; routine snapshot polling itself is backend-only.
+
+For a local, read-only API reference, run `npm run activity:api-docs` and open `http://127.0.0.1:3001/`. The page lists routes and game action fields, and `/openapi.json` provides the machine-readable definition. This separate development server always binds to loopback; it is not served through the Activity origin or Cloudflare tunnel. Set `ACTIVITY_DOCS_PORT` if port 3001 is occupied.
 
 ## Source layout and build
 

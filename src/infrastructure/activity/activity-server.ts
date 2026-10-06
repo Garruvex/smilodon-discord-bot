@@ -16,9 +16,10 @@ import { isLanguage, type Language } from "../../application/i18n/language.js";
 import { z } from "zod";
 import { abilities } from "../../domain/campaign/rules/effects.js";
 import { buildClasses, selectableBuildRaces, type BuildChoices } from "../../domain/campaign/character/character-build.js";
+import type { LibrarySnapshot } from "../../application/campaign/library/library-types.js";
+import type { Ability } from "../../domain/campaign/rules/effects.js";
 import { skills } from "../../domain/campaign/rules/skills.js";
 import type { ActivityTableService } from "./activity-table-service.js";
-
 import { isPortraitStyle, maxNoteLength, maxUploadBytes, type CharacterPortraits } from "../../application/campaign/library/character-portraits.js";
 
 const activityDirectory = resolve(process.cwd(), "assets", "activity");
@@ -38,11 +39,48 @@ export interface ActivityServer {
   stop(): Promise<void>;
 }
 
+export interface ActivityCharacterCatalog {
+  readonly races: readonly string[];
+  readonly skills: readonly string[];
+  readonly classes: readonly {
+    readonly id: string;
+    readonly skillChoices: readonly string[];
+    readonly skillCount: number;
+    readonly expertiseCount: number;
+    readonly kits: readonly string[];
+    readonly suggestedAbilities: Readonly<Record<Ability, number>>;
+  }[];
+}
+
+export interface ActivityCharacterListing {
+  readonly id: string;
+  readonly snapshotId: string;
+  readonly name: string;
+  readonly className: string;
+  readonly race: string | null;
+  readonly versionCount: number;
+}
+
+export interface ActivityCharacterDetail {
+  readonly id: string;
+  readonly name: string;
+  readonly versions: readonly {
+    readonly id: string;
+    readonly revision: number;
+    readonly branch: string;
+    readonly source: LibrarySnapshot["source"]["kind"];
+    readonly createdAt: LibrarySnapshot["createdAt"];
+    readonly build: LibrarySnapshot["build"];
+    readonly gear: LibrarySnapshot["gear"];
+    readonly progression: LibrarySnapshot["progression"] | null;
+  }[];
+}
+
 export interface ActivityCampaignApi {
   readonly tables: ActivityTableService;
-  characterCatalog(): unknown;
-  listCharacters(userId: UserId): Promise<unknown>;
-  getCharacter(userId: UserId, characterId: string): Promise<unknown | null>;
+  characterCatalog(): ActivityCharacterCatalog;
+  listCharacters(userId: UserId): Promise<readonly ActivityCharacterListing[]>;
+  getCharacter(userId: UserId, characterId: string): Promise<ActivityCharacterDetail | null>;
   characterPortrait(userId: UserId, characterId: string): Promise<{ readonly bytes: Buffer; readonly mediaType: "image/png" | "image/jpeg" | "image/webp" } | null>;
   readonly portraits: CharacterPortraits;
   createCharacter(userId: UserId, build: BuildChoices): Promise<{ readonly kind: "ok"; readonly characterId: string } | { readonly kind: "invalid"; readonly problems: readonly { readonly code: string }[] } | { readonly kind: "full" }>;
@@ -477,6 +515,15 @@ async function createSession(
   if (typeof tokenPayload.access_token !== "string") return writeJson(response, 401, { error: "discordAuthorizationFailed" }, headers);
   const accessToken = tokenPayload.access_token;
 
+  // The current-user endpoint returns the account's chosen Discord locale
+  // with the identify scope. The guild-member payload need not include it.
+  const currentUserResponse = await fetch(`${discordApiBase}/users/@me`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  }).catch(() => null);
+  const currentUser = currentUserResponse?.ok
+    ? await currentUserResponse.json().catch(() => null) as { id?: unknown; locale?: unknown } | null
+    : null;
+
   // This user-scoped endpoint requires `guilds.members.read`; the returned
   // member identity both proves guild access and avoids a second Discord API call.
   const memberResponse = await fetch(`${discordApiBase}/users/@me/guilds/${guildId}/member`, {
@@ -488,6 +535,7 @@ async function createSession(
   if (user === undefined || typeof user.id !== "string" || !/^\d{17,20}$/.test(user.id)) {
     return writeJson(response, 401, { error: "discordIdentityFailed" }, headers);
   }
+  const locale = currentUser?.id === user.id && typeof currentUser.locale === "string" ? currentUser.locale : null;
 
   const now = Date.now();
   for (const [token, session] of sessions) if (session.expiresAt <= now) sessions.delete(token);
@@ -512,6 +560,7 @@ async function createSession(
     access_token: accessToken,
     session_token: sessionToken,
     user: { id: user.id, username: typeof user.username === "string" ? user.username : displayName, displayName },
+    locale,
     launchCampaignId: launchGame?.campaignId ?? null,
   }, headers);
 }

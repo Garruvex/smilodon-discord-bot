@@ -300,6 +300,10 @@ export interface EncounterSpec {
   // A victory here raises the party to this level at a milestone table (the
   // adventure's own story beat). Ignored where XP levels the party.
   readonly milestoneLevel?: number;
+  // The party size this fight was tuned for; with more heroes every foe's hit points grow in proportion (heroes / partyBase). Absent: no scaling.
+  readonly partyBase?: number;
+  // Foes who join a bigger party instead of the usual growth: two from this list (in turn) for each hero beyond partyBase.
+  readonly reinforcements?: readonly EncounterMonster[];
   // Beats inside the fight: each fires once, the first time its condition holds. Absent: none.
   readonly triggers?: readonly EncounterTrigger[];
   // Story effects applied when the party wins (after the loot and experience). Absent: none.

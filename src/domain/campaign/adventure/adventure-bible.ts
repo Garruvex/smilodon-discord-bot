@@ -24,6 +24,8 @@ export interface AdventureBible {
   // The level the adventure is written for. Absent: level 1. The table's
   // starting-level rule can override it; everyone is brought up to the result.
   readonly startingLevel?: number;
+  // The party this adventure is written for. Fights are tuned for `min` heroes and grow tougher in proportion to every hero beyond that; `max` is the most the story is written for.
+  readonly suggestedParty?: { readonly min: number; readonly max: number };
   readonly dmOverview: string;
   readonly startScene: SceneId;
   // The story only moves forward on purpose (a train, a dream, a descent): one-way exits are not reported as mistakes.
@@ -184,6 +186,8 @@ export interface BibleEncounter {
   // Winning this fight is a story milestone: at a milestone table the party is
   // raised to this level. An experience table ignores it.
   readonly milestoneLevel?: number;
+  // Foes who join when the party is bigger than the adventure's suggested minimum: two from this list (in turn) for each extra hero.
+  readonly reinforcements?: readonly EncounterMonster[];
   // Beats inside the fight, each once: foes that arrive, a truce, story effects, a line for the table.
   readonly triggers?: readonly BibleTrigger[];
   // Story effects when the party wins (a fight never starts another fight).
@@ -288,7 +292,7 @@ function fightEffectsOf(effect: BibleFightEffect, rewardId: string, bible?: Adve
 }
 
 export function encounterSpec(encounter: BibleEncounter, bible?: AdventureBible): EncounterSpec {
-  const { id, zones, edges, partyZoneId, monsters, loot, gold, milestoneLevel, ambush, dread, surprised } = encounter;
+  const { id, zones, edges, partyZoneId, monsters, loot, gold, milestoneLevel, ambush, dread, surprised, reinforcements } = encounter;
   const triggers: EncounterTrigger[] = (encounter.triggers ?? []).map((trigger, index) => ({
     when: trigger.when,
     effects: trigger.effects.flatMap((effect, position) => fightEffectsOf(effect, `${id}:trigger${index}:${position}`, bible)),
@@ -303,6 +307,8 @@ export function encounterSpec(encounter: BibleEncounter, bible?: AdventureBible)
     loot,
     gold,
     ...(milestoneLevel === undefined ? {} : { milestoneLevel }),
+    ...(bible?.suggestedParty === undefined ? {} : { partyBase: bible.suggestedParty.min }),
+    ...(reinforcements === undefined ? {} : { reinforcements }),
     ...(triggers.length === 0 ? {} : { triggers }),
     ...(onVictory.length === 0 ? {} : { onVictory }),
     ...(surprised === undefined ? {} : { surprised }),

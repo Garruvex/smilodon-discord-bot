@@ -40,7 +40,7 @@ const maxSteps = 800;
 export function rehearseEncounter(document: AdventureDocument, encounter: BibleEncounter, content: SealedContent, seed: number): RehearsalResult {
   const rules: SealedRuleset = { content, houseRules: resolveHouseRules({}) };
   const seats = document.heroes.slice(0, 3).map((hero, index) => ({ userId: `rehearsal-${index + 1}`, heroId: hero.id }));
-  let state: CampaignState = buildStartingState({ campaignId: "rehearsal", organizerId: "rehearsal-1", adventure: document, seats, pacing: noTimers });
+  let state: CampaignState = buildStartingState({ campaignId: "rehearsal", organizerId: "rehearsal-1", adventure: document, seats, pacing: noTimers, ...(document.bible.startingLevel === undefined ? {} : { startingLevel: document.bible.startingLevel }) });
   const random = new SeededRandomSource(seed);
   const finish = (outcome: RehearsalOutcome, problem: string | null): RehearsalResult => {
     const fight = state.encounter;

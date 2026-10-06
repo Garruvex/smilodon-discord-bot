@@ -126,6 +126,7 @@ const documentSchema = z
     title: text,
     premise: text,
     startingLevel: z.number().int().min(1).max(10).optional(),
+    suggestedParty: z.object({ min: z.number().int().min(1).max(8), max: z.number().int().min(1).max(8) }).strict().refine((party) => party.min <= party.max).optional(),
     dmOverview: text,
     startScene: sceneId,
     linear: z.boolean().optional(),
@@ -178,6 +179,7 @@ const documentSchema = z
             monsters: z
               .array(monsterEntry)
               .min(1),
+            reinforcements: z.array(monsterEntry).max(6).optional(),
             triggers: z.array(triggerSchema).default([]),
             onVictory: z.array(victoryEffectSchema).default([]),
             loot: z.array(contentId("item")).default([]),
@@ -296,7 +298,7 @@ export function parseAdventureDocument(source: string): AdventureDocument {
   });
   if (problems.length > 0) throw new AdventureDocumentError(problems);
 
-  const { heroes: _heroes, startingLevel, linear, startTime, encounters, interactions, scenes, ...rest } = data;
+  const { heroes: _heroes, startingLevel, suggestedParty, linear, startTime, encounters, interactions, scenes, ...rest } = data;
   // zod's .optional() leaves the key present with value undefined, which
   // exactOptionalPropertyTypes treats as different from the key being
   // absent; strip it so an npc with no shop matches BibleNpc exactly.
@@ -321,6 +323,7 @@ export function parseAdventureDocument(source: string): AdventureDocument {
     encounters: bibleEncounters as unknown as AdventureBible["encounters"],
     ...(interactions.length === 0 ? {} : { interactions: clean(interactions) as unknown as readonly BibleInteraction[] }),
     ...(startingLevel === undefined ? {} : { startingLevel }),
+    ...(suggestedParty === undefined ? {} : { suggestedParty }),
     ...(linear === undefined ? {} : { linear }),
     ...(startTime === undefined ? {} : { startTime: clean(startTime) as unknown as NonNullable<AdventureBible["startTime"]> }),
   };
@@ -337,6 +340,7 @@ export function checkEditionsMatch(editions: readonly AdventureDocument[]): read
       version: document.bible.version,
       startScene: document.bible.startScene,
       startingLevel: document.bible.startingLevel ?? null,
+      suggestedParty: document.bible.suggestedParty ?? null,
       startTime: document.bible.startTime ?? null,
       scenes: document.bible.scenes.map((scene) => [scene.id, scene.npcIds, scene.exits?.map(({ hint: _hint, ...exit }) => exit) ?? null, withoutWords(scene.onEnter ?? null), withoutWords(scene.onLongRest ?? null)]),
       interactions: (document.bible.interactions ?? []).map(({ label: _label, dmNotes: _notes, ...mechanics }) => withoutWords(mechanics)),

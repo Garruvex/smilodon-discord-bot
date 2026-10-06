@@ -2,6 +2,8 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { ActivityTableService } from "../infrastructure/activity/activity-table-service.js";
+import { createActivityActionHandler } from "../infrastructure/activity/activity-action-handler.js";
+import type { ActivityCampaignApi, ActivityCharacterDetail } from "../infrastructure/activity/activity-server.js";
 import { dirname, resolve } from "node:path";
 
 import Database from "better-sqlite3";
@@ -16,23 +18,19 @@ import { UploadedAdventureLibrary } from "../application/campaign/adventures/upl
 import { CampaignCommandBus } from "../application/campaign/campaign-command-bus.js";
 import { CampaignIssues } from "../application/campaign/campaign-issues.js";
 import { CharacterLibrary } from "../application/campaign/library/character-library.js";
-import { buildClasses, classTemplates, selectableBuildRaces, suggestedAbilities, type BuildChoices } from "../domain/campaign/character/character-build.js";
+import { buildClasses, classTemplates, selectableBuildRaces, suggestedAbilities } from "../domain/campaign/character/character-build.js";
 import { skills } from "../domain/campaign/rules/skills.js";
-import { houseRulePresets } from "../domain/campaign/rules/house-rules.js";
-import { isTimeOfDay, isWeather, type TimeOfDay, type Weather } from "../domain/campaign/rules/world-rules.js";
 import { CampaignLobbyService, type ActivityCampaignListingItem, type ServiceResult } from "../application/campaign/campaign-lobby-service.js";
-import { CampaignPlayController, type PlayResult } from "../application/campaign/campaign-play-controller.js";
-import { buildActivityLobbyView, buildActivityTableView, canSeeActivityCampaign, type ActivityGameView } from "../application/campaign/activity-view.js";
+import { CampaignPlayController } from "../application/campaign/campaign-play-controller.js";
+import { buildActivityLobbyView, buildActivityTableView, canSeeActivityCampaign } from "../application/campaign/activity-view.js";
 import { libraryHeroRef } from "../application/campaign/library/library-types.js";
 import { CampaignRuntime } from "../application/campaign/campaign-runtime.js";
 import { LlmCampaignChronicler } from "../application/campaign/dm/llm-chronicler.js";
 import { LlmCampaignNarrator, LlmCampaignPlanner } from "../application/campaign/dm/llm-dm.js";
 import { LlmSceneNoteJudge } from "../application/campaign/dm/llm-scene-note-judge.js";
 import type { CampaignNarrator, CampaignPlanner } from "../application/campaign/ports/dm-ports.js";
-import type { CampaignKey, CampaignTransaction, CampaignUnitOfWork } from "../application/campaign/ports/campaign-store.js";
+import type { CampaignTransaction, CampaignUnitOfWork } from "../application/campaign/ports/campaign-store.js";
 import type { CampaignRecord } from "../application/campaign/ports/campaign-record.js";
-import type { CharacterId, UserId } from "../domain/campaign/core/ids.js";
-import type { ContentId } from "../domain/campaign/rules/content-id.js";
 import type { StructuredModelClient } from "../application/campaign/ports/structured-model-client.js";
 import { CryptoRandomSource } from "../application/campaign/random/crypto-random-source.js";
 import { RulesetCatalog } from "../application/campaign/rules/ruleset-catalog.js";
@@ -55,7 +53,6 @@ import { enSrd51Glossary } from "../application/i18n/campaign/glossary/en/srd-5.
 import { zhTwSrd51Glossary } from "../application/i18n/campaign/glossary/zh-TW/srd-5.1.js";
 import { buildSrd51 } from "../domain/campaign/content/srd-5.1/index.js";
 import { milestone0Capabilities } from "../domain/campaign/rules/capabilities.js";
-import { abilities, type Ability } from "../domain/campaign/rules/effects.js";
 import { GeminiStructuredClient } from "../infrastructure/campaign/llm/gemini-structured-client.js";
 import { OpenAiCompatibleStructuredClient } from "../infrastructure/campaign/llm/openai-compatible-structured-client.js";
 import { OpenAiResponsesStructuredClient } from "../infrastructure/campaign/llm/openai-responses-structured-client.js";
@@ -76,8 +73,6 @@ import { AdventureIntake } from "../infrastructure/discord/campaign/adventure-in
 import { AdventureComponentHandler } from "../infrastructure/discord/components/adventure-component-handler.js";
 import { CampaignHubComponentHandler } from "../infrastructure/discord/components/campaign-hub-component-handler.js";
 import { CharacterLibraryComponentHandler } from "../infrastructure/discord/components/character-library-component-handler.js";
-import { maxActionLength } from "../domain/campaign/engine/rounds.js";
-import { maxSpeechLength } from "../domain/campaign/engine/speech.js";
 import { createDatabaseConnection, resolveInstanceSchemaName, type DatabaseConnection } from "../infrastructure/database/database.js";
 import { PostgresCampaignStore } from "../infrastructure/persistence/campaign/postgres-campaign-store.js";
 import { SqliteCampaignStore } from "../infrastructure/persistence/campaign/sqlite-campaign-store.js";
@@ -95,25 +90,7 @@ export interface CampaignModule {
   readonly settings: CampaignSettingsAccess;
   // Whether one of these channels (a message's own and, in a thread, its parent) is a game's Party or Adventure post.
   isGameChannel(guildId: string, channelIds: readonly string[]): Promise<boolean>;
-  readonly activity: {
-    readonly portraits: CharacterPortraits;
-    readonly tables: ActivityTableService;
-    characterCatalog(): unknown;
-    listCharacters(userId: UserId): Promise<unknown>;
-    getCharacter(userId: UserId, characterId: string): Promise<unknown | null>;
-    characterPortrait(userId: UserId, characterId: string): Promise<{ readonly bytes: Buffer; readonly mediaType: "image/png" | "image/jpeg" | "image/webp" } | null>;
-    createCharacter(userId: UserId, build: BuildChoices): Promise<{ readonly kind: "ok"; readonly characterId: string } | { readonly kind: "invalid"; readonly problems: readonly { readonly code: string }[] } | { readonly kind: "full" }>;
-    editCharacter(userId: UserId, characterId: string, build: BuildChoices): Promise<{ readonly kind: "ok" } | { readonly kind: "invalid"; readonly problems: readonly { readonly code: string }[] } | { readonly kind: "notFound" }>;
-    deleteCharacter(userId: UserId, characterId: string): Promise<boolean>;
-    listGames(guildId: string, userId: UserId): Promise<readonly ActivityCampaignListingItem[]>;
-    gameForChannel(guildId: string, userId: UserId, channelId: string): Promise<ActivityCampaignListingItem | null>;
-    joinLobby(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
-    requestJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
-    withdrawJoin(key: CampaignKey, userId: UserId): Promise<ServiceResult<CampaignRecord>>;
-    snapshot(key: CampaignKey, userId: UserId, since?: string): Promise<{ readonly kind: "ok"; readonly value: ActivityGameView; readonly token: string } | { readonly kind: "unchanged"; readonly token: string } | { readonly kind: "refused"; readonly reason: "notFound" | "notActive" | "privateInviteOnly" }>;
-    act(key: CampaignKey, userId: UserId, input: unknown): Promise<{ readonly kind: "ok" } | { readonly kind: "refused"; readonly reason: string }>;
-    image(key: CampaignKey, userId: UserId, kind: "scene" | "character" | "encounter", id: string): Promise<{ readonly bytes: Buffer; readonly mediaType: "image/png" | "image/jpeg" | "image/webp" } | null>;
-  };
+  readonly activity: ActivityCampaignApi;
   // Discord events that can take a card or a place away: a message was
   // deleted (or many at once), or a channel was. Each puts things back.
   handleMessagesDeleted(guildId: string, channelId: string, messageIds: readonly string[]): void;
@@ -219,8 +196,8 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     },
   });
   const play = new CampaignPlayController({ unitOfWork, bus, refresher: cards, adventures });
-  // Activity writes use the same command bus and engine checks, but redraws
-  // the Activity itself instead of also editing Discord cards on every click.
+  // Activity writes use the same command bus and engine checks. The API
+  // refreshes cards once per accepted action, including quiet state changes.
   const activityPlay = new CampaignPlayController({ unitOfWork, bus, refresher: { refresh: (): void => {} }, adventures });
   const setup = new CampaignSetupService({ unitOfWork, resources, cards, logger, issues });
 
@@ -241,7 +218,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
         await issues.raise(key, "deliveryFailed", item.request.kind === "deliver" ? item.request.delivery.kind : item.request.kind);
       },
     }),
-    queuedJoins: { runOnce: () => lobby.processQueuedJoins() },
+    queuedJoins: { runOnce: (): ReturnType<CampaignLobbyService["processQueuedJoins"]> => lobby.processQueuedJoins() },
     ...(configuration.campaignImages === null || configuration.campaignImages === undefined
       ? {}
       : {
@@ -335,6 +312,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
       .catch((error: unknown) => logger.error({ err: error }, "Campaign card reconciliation failed"))
       .finally(() => { cardReconciliation = null; });
   };
+  const activityActions = createActivityActionHandler({ lobby, play: activityPlay, library, onAccepted: (key): void => cards.refresh(key) });
   const recoverChannel = (guildId: string, channelId: string): Promise<void> => recovery.channelDeleted(guildId, channelId);
   const logFailure = (what: string, guildId: string): ((error: unknown) => void) => (error): void => {
     logger.error({ err: error, guildId }, what);
@@ -352,18 +330,18 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
       tables,
       characterCatalog: () => ({ races: selectableBuildRaces, skills, classes: buildClasses.map((id) => ({ id, skillChoices: classTemplates[id].skillChoices, skillCount: classTemplates[id].skillCount, expertiseCount: classTemplates[id].expertiseCount, kits: classTemplates[id].kits.map((kit) => kit.id), suggestedAbilities: suggestedAbilities(id) })) }),
       listCharacters: async (userId) => (await library.list(userId)).flatMap((entry) => entry.snapshots.filter((snapshot) => snapshot.branch === "main").sort((a, b) => a.revision - b.revision).slice(-1).map((snapshot) => ({ id: entry.character.id, snapshotId: snapshot.id, name: entry.character.name, className: entry.character.className, race: snapshot.build.race ?? null, versionCount: entry.snapshots.filter((version) => version.branch === "main").length }))),
-      getCharacter: async (userId, characterId) => {
+      getCharacter: async (userId, characterId): Promise<ActivityCharacterDetail | null> => {
         const entry = await library.entry(userId, characterId);
         if (entry === undefined) return null;
         return { id: entry.character.id, name: entry.character.name, versions: [...entry.snapshots].sort((a, b) => a.revision - b.revision).map((snapshot) => ({ id: snapshot.id, revision: snapshot.revision, branch: snapshot.branch, source: snapshot.source.kind, createdAt: snapshot.createdAt, build: snapshot.build, gear: snapshot.gear, progression: snapshot.progression ?? null })) };
       },
       characterPortrait: async (userId, characterId) => (await portraits.current(userId, characterId)) ?? null,
       portraits,
-      createCharacter: async (userId, build) => {
+      createCharacter: async (userId, build): ReturnType<ActivityCampaignApi["createCharacter"]> => {
         const result = await library.create(userId, build);
         return result.kind === "ok" ? { kind: "ok" as const, characterId: result.character.id } : result;
       },
-      editCharacter: async (userId, characterId, build) => {
+      editCharacter: async (userId, characterId, build): ReturnType<ActivityCampaignApi["editCharacter"]> => {
         const result = await library.edit(userId, characterId, build);
         return result.kind === "ok" ? { kind: "ok" as const } : result;
       },
@@ -373,7 +351,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
       joinLobby: (key, userId): Promise<ServiceResult<CampaignRecord>> => lobby.joinFromActivity(key, userId),
       requestJoin: (key, userId): Promise<ServiceResult<CampaignRecord>> => lobby.requestOngoingJoin(key, userId),
       withdrawJoin: (key, userId): Promise<ServiceResult<CampaignRecord>> => lobby.withdrawOngoingJoin(key, userId),
-      snapshot: async (key, userId, since) => {
+      snapshot: async (key, userId, since): ReturnType<ActivityCampaignApi["snapshot"]> => {
         return unitOfWork.transaction(async (tx) => {
         const storedRecord = await tx.loadRecord(key);
         if (storedRecord === undefined) return { kind: "refused", reason: "notFound" } as const;
@@ -401,7 +379,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
         } as const;
         });
       },
-      image: async (key, userId, kind, id) => {
+      image: async (key, userId, kind, id): ReturnType<ActivityCampaignApi["image"]> => {
         const owner = await unitOfWork.transaction(async (tx) => {
           const storedRecord = await tx.loadRecord(key);
           const storedCampaign = await tx.loadCampaign(key);
@@ -419,328 +397,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
         const generated = await imageAssets.load(key, `hero:${owner.id}`);
         return generated ?? (owner.libraryCharacterId === undefined ? null : (await portraits.forGame(owner.libraryCharacterId)) ?? null);
       },
-      act: async (key, userId, input) => {
-        if (typeof input !== "object" || input === null || !("kind" in input) || typeof input.kind !== "string") {
-          return { kind: "refused", reason: "invalidAction" };
-        }
-        const action = input as Record<string, unknown>;
-        const id = randomUUID();
-        const textValue = (value: unknown, max = 128): string | null => typeof value === "string" && value.trim().length > 0 && value.length <= max ? value.trim() : null;
-        const integerValue = (value: unknown, min = 0, max = 9): number | null => typeof value === "number" && Number.isInteger(value) && value >= min && value <= max ? value : null;
-        const stringList = (value: unknown): string[] | null => Array.isArray(value) && value.length > 0 && value.length <= 6 && value.every((item) => typeof item === "string" && item.length <= 128) ? value : null;
-        switch (action.kind) {
-          case "chooseHero": {
-            const heroId = textValue(action.heroId);
-            if (heroId === null) return { kind: "refused", reason: "invalidAction" };
-            return lobby.chooseHero(key, userId, heroId).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
-          }
-          case "joinLobby": return lobby.joinFromActivity(key, userId).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
-          case "leaveLobby": return lobby.leave(key, userId).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
-          case "requestJoin": return lobby.requestOngoingJoin(key, userId).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
-          case "chooseSaved": {
-            const snapshotId = textValue(action.snapshotId);
-            if (snapshotId === null) return { kind: "refused", reason: "invalidAction" };
-            const result = await lobby.chooseSaved(key, userId, snapshotId);
-            return result.kind === "ok" ? { kind: "ok" } : { kind: "refused", reason: result.kind === "conflicts" ? "characterIncompatible" : result.reason };
-          }
-          case "startLobby": {
-            const result = await lobby.start(key, userId);
-            return result.kind === "ok" ? { kind: "ok" } : { kind: "refused", reason: result.reason };
-          }
-          case "acceptInvite": return lobby.acceptOngoingInvite(key, userId).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
-          case "joinHero": {
-            const heroRef = textValue(action.heroRef);
-            if (heroRef === null) return { kind: "refused", reason: "invalidAction" };
-            return lobby.joinOngoingHero(key, userId, heroRef, id).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
-          }
-          // A player whose hero has fallen takes a new one (the engine and the lobby record both learn of it).
-          case "replaceHero": {
-            const heroRef = textValue(action.heroRef);
-            if (heroRef === null) return { kind: "refused", reason: "invalidAction" };
-            const entrance = typeof action.entrance === "string" ? action.entrance.slice(0, 600) : undefined;
-            return lobby.replaceFallenHero(key, userId, heroRef, entrance, id).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
-          }
-          case "retireSeat": {
-            const target = textValue(action.userId, 64);
-            if (target === null) return { kind: "refused", reason: "invalidAction" };
-            return lobby.retireSeat(key, userId, target as UserId, id).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
-          }
-          case "withdrawJoin": return lobby.withdrawOngoingJoin(key, userId).then((result) => result.kind === "ok" ? { kind: "ok" as const } : { kind: "refused" as const, reason: result.reason });
-          case "submit": {
-            const text = textValue(action.text, maxActionLength);
-            if (text === null) return { kind: "refused", reason: "invalidAction" };
-            const roundNumber = typeof action.roundNumber === "number" && Number.isInteger(action.roundNumber) ? action.roundNumber : undefined;
-            const sceneId = textValue(action.sceneId, 200) ?? undefined;
-            return activityPlay.submitAction(key, userId, text, id, roundNumber, sceneId).then(mapPlayResult);
-          }
-          case "speak": {
-            const text = textValue(action.text, maxSpeechLength);
-            if (text === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.speak(key, userId, text, id).then(mapPlayResult);
-          }
-          case "pass": return activityPlay.pass(key, userId, id).then(mapPlayResult);
-          case "away": return activityPlay.away(key, userId, id).then(mapPlayResult);
-          case "back": return activityPlay.back(key, userId, id).then(mapPlayResult);
-          case "toggleMoveObjection": return activityPlay.toggleMoveObjection(key, userId, id).then(mapPlayResult);
-          case "moveVote": {
-            if (action.choice !== "go" && action.choice !== "stay") return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.voteOnMove(key, userId, action.choice, id).then(mapPlayResult);
-          }
-          case "roll": return activityPlay.roll(key, userId, id).then(mapPlayResult);
-          case "ready": return activityPlay.ready(key, userId, id).then(mapPlayResult);
-          case "begin": return activityPlay.begin(key, userId, id).then(mapPlayResult);
-          case "continue": return activityPlay.continue(key, userId, id).then(mapPlayResult);
-          case "attack": {
-            const targetId = textValue(action.targetId);
-            const weaponId = textValue(action.weaponId);
-            if (targetId === null || weaponId === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatAttack", combatantId: characterId, targetId, weapon: weaponId as ContentId<"item">, ...(action.offHand === true ? { offHand: true as const } : {}), ...(action.nonlethal === true ? { nonlethal: true as const } : {}) })).then(mapPlayResult);
-          }
-          case "move": {
-            const zoneId = textValue(action.zoneId);
-            if (zoneId === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatMove", combatantId: characterId, zoneId })).then(mapPlayResult);
-          }
-          case "engage": {
-            const targetId = textValue(action.targetId);
-            if (targetId === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatEngage", combatantId: characterId, targetId })).then(mapPlayResult);
-          }
-          case "withdraw": return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatWithdraw", combatantId: characterId })).then(mapPlayResult);
-          case "dash": return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatDash", combatantId: characterId })).then(mapPlayResult);
-          case "disengage": return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatDisengage", combatantId: characterId })).then(mapPlayResult);
-          case "feature": {
-            const featureId = textValue(action.featureId);
-            if (featureId === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatUseFeature", combatantId: characterId, featureId: featureId as ContentId<"feature"> })).then(mapPlayResult);
-          }
-          case "combatItem": {
-            const itemId = textValue(action.itemId);
-            if (itemId === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatUseItem", combatantId: characterId, itemId: itemId as ContentId<"item"> })).then(mapPlayResult);
-          }
-          case "shield": {
-            const itemId = textValue(action.itemId);
-            if (itemId === null || typeof action.on !== "boolean") return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatShield", combatantId: characterId, itemId: itemId as ContentId<"item">, on: action.on as boolean })).then(mapPlayResult);
-          }
-          case "wildShape": {
-            const monsterId = action.monsterId === null ? null : textValue(action.monsterId);
-            if (action.monsterId !== null && monsterId === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatWildShape", combatantId: characterId, ...(monsterId === null ? {} : { monsterId: monsterId as ContentId<"monster"> }) })).then(mapPlayResult);
-          }
-          case "moveScene": {
-            const sceneId = textValue(action.sceneId);
-            if (sceneId === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.proposeMove(key, userId, sceneId, id).then(mapPlayResult);
-          }
-          case "endTurn": return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "endTurn", combatantId: characterId })).then(mapPlayResult);
-          case "combatDodge": return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatDodge", combatantId: characterId })).then(mapPlayResult);
-          case "combatSpell": {
-            const spellId = textValue(action.spellId);
-            const slotLevel = integerValue(action.slotLevel);
-            const targetIds = stringList(action.targetIds);
-            if (spellId === null || slotLevel === null || targetIds === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatCast", combatantId: characterId, spellId: spellId as ContentId<"spell">, slotLevel, targetIds })).then(mapPlayResult);
-          }
-          case "teleport": {
-            const spellId = textValue(action.spellId);
-            const slotLevel = integerValue(action.slotLevel);
-            const zoneId = textValue(action.zoneId);
-            if (spellId === null || slotLevel === null || zoneId === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatCast", combatantId: characterId, spellId: spellId as ContentId<"spell">, slotLevel, targetIds: [characterId], zoneId })).then(mapPlayResult);
-          }
-          case "exploreSpell": {
-            const spellId = textValue(action.spellId);
-            if (spellId === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.castSpell(key, userId, spellId as ContentId<"spell">, id).then(mapPlayResult);
-          }
-          // Stopping play is for every player; pausing and resting are the organizer's (the engine refuses anyone else).
-          case "safetyStop": return activityPlay.safety(key, userId, id).then(mapPlayResult);
-          case "pause": return activityPlay.pause(key, userId, id).then(mapPlayResult);
-          case "queueRest": {
-            const rest = action.rest === "short" || action.rest === "long" ? action.rest : action.rest === "none" ? null : undefined;
-            if (rest === undefined) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.queueRest(key, userId, rest, id).then(mapPlayResult);
-          }
-          case "proposeRest": {
-            if (action.rest !== "short" && action.rest !== "long") return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.proposeRest(key, userId, action.rest, id).then(mapPlayResult);
-          }
-          case "answerRestVote": {
-            if (typeof action.agree !== "boolean") return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.answerRestVote(key, userId, action.agree, id).then(mapPlayResult);
-          }
-          case "dismissCompanion": {
-            const companionId = textValue(action.companionId);
-            if (companionId === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.dismissCompanion(key, userId, companionId, id).then(mapPlayResult);
-          }
-          case "setProxy": {
-            const proxyUserId = action.userId === null ? null : textValue(action.userId);
-            if (action.userId !== null && proxyUserId === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.proxy(key, userId, proxyUserId as UserId | null, id).then(mapPlayResult);
-          }
-          case "runGame": {
-            const verb = textValue(action.verb, 32);
-            if (verb === null || !["closeRound", "retry", "retryFight", "retell", "illustrate", "illustrateScene"].includes(verb)) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.manage(key, verb as "closeRound" | "retry" | "retryFight" | "retell" | "illustrate" | "illustrateScene", id, userId).then(mapPlayResult);
-          }
-          case "raiseLevel": {
-            const level = integerValue(action.level);
-            if (level === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.raiseLevel(key, userId, level, id).then(mapPlayResult);
-          }
-          case "setWorld": {
-            const day = action.day === undefined ? undefined : integerValue(action.day);
-            const time = action.time === undefined || action.time === "" ? undefined : textValue(action.time, 16);
-            const weather = action.weather === undefined || action.weather === "" ? undefined : textValue(action.weather, 16);
-            const note = action.note === undefined || action.note === "" ? undefined : textValue(action.note, 200);
-            if (day === null || (time !== undefined && (time === null || !isTimeOfDay(time))) || (weather !== undefined && (weather === null || (weather !== "none" && !isWeather(weather)))) || note === null) return { kind: "refused", reason: "invalidAction" };
-            if (day === undefined && time === undefined && weather === undefined) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.setWorld(key, userId, { ...(day === undefined ? {} : { day }), ...(time === undefined ? {} : { time: time as TimeOfDay }), ...(weather === undefined ? {} : { weather: weather === "none" ? null : (weather as Weather) }), ...(note === undefined ? {} : { note }) }, id).then(mapPlayResult);
-          }
-          case "saveProgress": {
-            const saved = await library.saveProgress(userId, key);
-            if (saved.kind === "refused") return { kind: "refused", reason: saved.reason };
-            return { kind: "ok" };
-          }
-          case "setHouseRule": {
-            const ruleId = textValue(action.ruleId, 64);
-            const value = textValue(action.value, 64);
-            if (ruleId === null || value === null) return { kind: "refused", reason: "invalidAction" };
-            return lobby.setHouseRules(key, userId, { [ruleId]: value }).then((result) => (result.kind === "refused" ? { kind: "refused" as const, reason: result.reason } : { kind: "ok" as const }));
-          }
-          case "applyRulePreset": {
-            const presetId = textValue(action.presetId, 32);
-            const preset = houseRulePresets.find((candidate) => candidate.id === presetId);
-            if (preset === undefined) return { kind: "refused", reason: "invalidAction" };
-            return lobby.setHouseRules(key, userId, preset.values).then((result) => (result.kind === "refused" ? { kind: "refused" as const, reason: result.reason } : { kind: "ok" as const }));
-          }
-          case "reopen": return lobby.reopen(key, userId).then((result) => (result.kind === "refused" ? { kind: "refused" as const, reason: result.reason } : { kind: "ok" as const }));
-          case "spendHitDice": {
-            const count = integerValue(action.count);
-            if (count === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.spendHitDice(key, userId, count, id).then(mapPlayResult);
-          }
-          // Level-up choices. The engine checks every one (an improvement owed, the cap of 20, a class the hero qualifies for).
-          case "chooseAsi": {
-            const first = textValue(action.plusTwo, 3);
-            const pair = Array.isArray(action.plusOne) ? action.plusOne.map((entry) => textValue(entry, 3)) : [];
-            const isAbility = (value: string | null): value is Ability => value !== null && (abilities as readonly string[]).includes(value);
-            if (isAbility(first)) return activityPlay.chooseAsi(key, userId, { plusTwo: first }, id).then(mapPlayResult);
-            const [one, two] = pair;
-            if (pair.length === 2 && isAbility(one ?? null) && isAbility(two ?? null)) return activityPlay.chooseAsi(key, userId, { plusOne: [one as Ability, two as Ability] }, id).then(mapPlayResult);
-            return { kind: "refused", reason: "invalidAction" };
-          }
-          case "chooseClassLevel": {
-            const buildClass = textValue(action.buildClass, 32);
-            if (buildClass === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.chooseClassLevel(key, userId, buildClass, textValue(action.skill, 32) ?? undefined, id).then(mapPlayResult);
-          }
-          case "chooseFightingStyle": {
-            const styleId = textValue(action.styleId);
-            if (styleId === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.chooseFightingStyle(key, userId, styleId, id).then(mapPlayResult);
-          }
-          case "chooseWarlockOptions": {
-            const invocations = Array.isArray(action.invocations) ? action.invocations.flatMap((entry) => textValue(entry) ?? []) : undefined;
-            const pactBoon = textValue(action.pactBoon) ?? undefined;
-            if (invocations === undefined && pactBoon === undefined) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.chooseWarlockOptions(key, userId, { ...(invocations === undefined ? {} : { invocations }), ...(pactBoon === undefined ? {} : { pactBoon }) }, id).then(mapPlayResult);
-          }
-          case "healSpell":
-          case "reviveSpell": {
-            const spellId = textValue(action.spellId);
-            const slotLevel = integerValue(action.slotLevel);
-            const targetId = textValue(action.targetId);
-            if (spellId === null || slotLevel === null || targetId === null) return { kind: "refused", reason: "invalidAction" };
-            const result = action.kind === "healSpell"
-              ? await activityPlay.healSpell(key, userId, spellId as ContentId<"spell">, slotLevel, targetId, id)
-              : await activityPlay.reviveSpell(key, userId, spellId as ContentId<"spell">, slotLevel, targetId, id);
-            return mapPlayResult(result);
-          }
-          case "summonCompanion": {
-            const spellId = textValue(action.spellId);
-            const slotLevel = integerValue(action.slotLevel);
-            if (spellId === null || slotLevel === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.summonCompanion(key, userId, spellId as ContentId<"spell">, slotLevel, id).then(mapPlayResult);
-          }
-          case "askNpc": {
-            const npcId = textValue(action.npcId);
-            const question = textValue(action.question, 500);
-            if (npcId === null || question === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.ask(key, userId, npcId, question, id).then(mapPlayResult);
-          }
-          case "pressNpc": {
-            const npcId = textValue(action.npcId);
-            const skill = textValue(action.skill, 32);
-            if (npcId === null || !["insight", "persuasion", "deception", "intimidation"].includes(skill ?? "")) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.press(key, userId, npcId, skill as "insight" | "persuasion" | "deception" | "intimidation", id).then(mapPlayResult);
-          }
-          case "shop": {
-            const npcId = textValue(action.npcId);
-            const itemId = textValue(action.itemId);
-            if (npcId === null || itemId === null || (action.direction !== "buy" && action.direction !== "sell")) return { kind: "refused", reason: "invalidAction" };
-            // A skill to haggle with; empty or absent pays the list price.
-            const haggle = textValue(action.haggle, 32);
-            if (haggle !== null && haggle !== "" && !["persuasion", "deception", "intimidation"].includes(haggle)) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.trade(key, userId, { npcId, itemId: itemId as ContentId<"item">, direction: action.direction, ...(haggle === null || haggle === "" ? {} : { haggle: haggle as "persuasion" | "deception" | "intimidation" }) }, id).then(mapPlayResult);
-          }
-          case "useItem": {
-            const itemId = textValue(action.itemId);
-            if (itemId === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.useItem(key, userId, itemId as ContentId<"item">, id).then(mapPlayResult);
-          }
-          case "stashItem":
-          case "takeFromStash": {
-            const itemId = textValue(action.itemId);
-            if (itemId === null) return { kind: "refused", reason: "invalidAction" };
-            const result = action.kind === "stashItem"
-              ? await activityPlay.stash(key, userId, itemId as ContentId<"item">, id)
-              : await activityPlay.takeFromStash(key, userId, itemId as ContentId<"item">, id);
-            return mapPlayResult(result);
-          }
-          case "giveItem": {
-            const itemId = textValue(action.itemId);
-            const toCharacterId = textValue(action.toCharacterId);
-            if (itemId === null || toCharacterId === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.give(key, userId, itemId as ContentId<"item">, toCharacterId as CharacterId, id).then(mapPlayResult);
-          }
-          case "offerResponse": {
-            const offerId = textValue(action.offerId);
-            const answer = action.answer;
-            if (offerId === null || (answer !== "accept" && answer !== "decline" && answer !== "cancel")) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.answerOffer(key, userId, offerId, answer, id).then(mapPlayResult);
-          }
-          case "wearItem":
-          case "removeItem": {
-            const itemId = textValue(action.itemId);
-            if (itemId === null) return { kind: "refused", reason: "invalidAction" };
-            const result = action.kind === "wearItem"
-              ? await activityPlay.wear(key, userId, itemId as ContentId<"item">, id)
-              : await activityPlay.remove(key, userId, itemId as ContentId<"item">, id);
-            return mapPlayResult(result);
-          }
-          case "reaction": {
-            const spellId = action.spellId === null ? null : textValue(action.spellId);
-            const slotLevel = action.slotLevel === null ? null : integerValue(action.slotLevel);
-            if (action.spellId !== null && (spellId === null || slotLevel === null)) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatReact", combatantId: characterId, spellId: spellId as ContentId<"spell"> | null })).then(mapPlayResult);
-          }
-          case "smite": {
-            const slotLevel = action.slotLevel === null ? null : integerValue(action.slotLevel);
-            if (action.slotLevel !== null && slotLevel === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatSmite", combatantId: characterId, slotLevel })).then(mapPlayResult);
-          }
-          case "opportunityAttack": {
-            const targetId = textValue(action.targetId);
-            if (action.accept === true && targetId === null) return { kind: "refused", reason: "invalidAction" };
-            return activityPlay.combat(key, userId, id, (characterId) => ({ kind: "combatOpportunityAttack", combatantId: characterId, take: action.accept === true })).then(mapPlayResult);
-          }
-          default: return { kind: "refused", reason: "invalidAction" };
-        }
-      },
+      act: activityActions,
     },
     handleMessagesDeleted: (guildId, channelId, messageIds): void => {
       void cards.handleMessagesDeleted(guildId, channelId, messageIds).catch(logFailure("Campaign card recovery after a deleted message failed", guildId));
@@ -777,10 +434,6 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
       await postgres?.close();
     },
   };
-}
-
-function mapPlayResult(result: PlayResult): { readonly kind: "ok" } | { readonly kind: "refused"; readonly reason: string } {
-  return result.kind === "ok" ? result : { kind: "refused", reason: result.reason };
 }
 
 function createModelClient(configuration: ApplicationConfiguration): StructuredModelClient | null {

@@ -1,5 +1,5 @@
 // Starting a fight: validating the encounter, placing everyone, rolling initiative.
-import type { EncounterSpec } from "../../commands/campaign-command.js";
+import type { EncounterMonster, EncounterSpec } from "../../commands/campaign-command.js";
 import type { RollId } from "../../core/ids.js";
 import { companionsOf } from "../../companions/companion-roster.js";
 import { isFallen } from "../../state/campaign-state.js";
@@ -53,18 +53,42 @@ export function beginEncounter(decision: Decision, spec: EncounterSpec): void {
       combatants[id] = { ...creature, side: "party", companionId: companion.id, summonedBy: sheet.id, hp: companion.hp ?? creature.hp };
     }
   }
+  // More heroes than the fight was tuned for: a group of identical foes gains members in proportion, every foe grows sturdier and hits harder (a lone foe most).
+  const heroCount = Object.values(combatants).filter((combatant) => combatant.source.kind === "hero").length;
+  const growth = spec.partyBase === undefined || spec.partyBase < 1 ? 1 : heroCount / spec.partyBase;
+  const foes = [...spec.monsters];
+  const spares = spec.reinforcements ?? [];
+  if (growth > 1 && spares.length > 0) {
+    const extra = heroCount - (spec.partyBase ?? heroCount);
+    for (let index = 0; index < extra * 2; index += 1) foes.push(spares[index % spares.length] as EncounterMonster);
+  } else if (growth > 1) {
+    const sizes = new Map<string, number>();
+    for (const entry of spec.monsters) sizes.set(entry.monsterId, (sizes.get(entry.monsterId) ?? 0) + 1);
+    for (const [monsterId, size] of sizes) {
+      if (size < 2) continue;
+      const template = spec.monsters.find((entry) => entry.monsterId === monsterId);
+      if (template === undefined) continue;
+      for (let extra = Math.round(size * (growth - 1)); extra > 0; extra -= 1) foes.push(template);
+    }
+  }
+  // A lone foe also hits harder: +1 damage per hero beyond the base, up to +5.
+  const extraHeroes = growth > 1 ? heroCount - (spec.partyBase ?? heroCount) : 0;
+  const bossBonus = Math.min(5, Math.ceil(extraHeroes * 1.5));
+  const minionBonus = Math.min(2, Math.ceil(extraHeroes / 2));
   const counts = new Map<string, number>();
-  for (const entry of spec.monsters) counts.set(entry.monsterId, (counts.get(entry.monsterId) ?? 0) + 1);
+  for (const entry of foes) counts.set(entry.monsterId, (counts.get(entry.monsterId) ?? 0) + 1);
   // One establishing shot of this fight, rather than isolated monster portraits.
-  decision.request({ kind: "encounterImage", encounterId: spec.id, monsters: spec.monsters.map(({ monsterId, npcId }) => ({ monsterId, npcId })), snapshot: decision.pictureSnapshot() });
+  decision.request({ kind: "encounterImage", encounterId: spec.id, monsters: foes.map(({ monsterId, npcId }) => ({ monsterId, npcId })), snapshot: decision.pictureSnapshot() });
   const seen = new Map<string, number>();
-  for (const entry of spec.monsters) {
+  const loneFoes = new Set<string>();
+  for (const entry of foes) {
     const monster = content.get(entry.monsterId);
     const index = seen.get(entry.monsterId) ?? 0;
     seen.set(entry.monsterId, index + 1);
     const letter = (counts.get(entry.monsterId) ?? 0) > 1 ? String.fromCharCode(65 + index) : null;
     const slug = entry.monsterId.slice("monster:".length);
     const id = letter === null ? slug : `${slug}-${letter.toLowerCase()}`;
+    if (letter === null) loneFoes.add(id);
     combatants[id] = monsterCombatant(monster, content, {
       id,
       letter,
@@ -72,8 +96,17 @@ export function beginEncounter(decision: Decision, spec: EncounterSpec): void {
       npcId: entry.npcId,
       fleeBelowHpFraction: entry.fleeBelowHpFraction,
       ...(entry.rank === undefined ? {} : { rank: entry.rank }),
-      ...(entry.stats === undefined ? {} : { stats: entry.stats }),
+      ...(entry.stats === undefined && extraHeroes === 0 ? {} : { stats: { ...entry.stats, ...(extraHeroes === 0 ? {} : { damage: (entry.stats?.damage ?? 0) + (letter === null ? bossBonus : minionBonus) }) } }),
     });
+  }
+
+  if (growth > 1) {
+    for (const [id, combatant] of Object.entries(combatants)) {
+      if (combatant.side === "party") continue;
+      // A lone foe grows with the party; each member of a group by half as much.
+      const hp = Math.ceil(combatant.maxHp * (loneFoes.has(id) ? 1 + (growth - 1) * 1.5 : 1 + (growth - 1) / 2));
+      combatants[id] = { ...combatant, maxHp: hp, hp };
+    }
   }
 
   // Everyone rolls initiative at once; turns begin when the last roll lands.
