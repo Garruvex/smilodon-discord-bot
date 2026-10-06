@@ -184,6 +184,11 @@ function paintPartyRail(game) {
   // On a phone the rail is hidden, so the Party button carries the mark: amber while another hero is still deciding.
   drawers.left.tab.dataset.turn = game.party.some((hero) => !hero.isYou && hero.presence !== "away" && !hero.down && !hero.fallen && (hero.tableStatus === "acting" || (hero.tableStatus === "waiting" && game.mode !== "combat"))) ? "thinking" : "";
   const measure = () => document.body.style.setProperty("--rail-h", `${Math.ceil(rail.getBoundingClientRect().height)}px`);
+  // The rail is hidden on a narrow screen (height 0) and comes back when the window widens, with no repaint to measure it again: it is watched, so Story and Map never sit on it.
+  if (rail.dataset.watched === undefined) {
+    rail.dataset.watched = "true";
+    new ResizeObserver(measure).observe(rail);
+  }
   rail.replaceChildren(...game.party.map((hero) => {
     const button = document.createElement("button");
     button.type = "button";
