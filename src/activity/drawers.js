@@ -119,7 +119,10 @@ export function mountDrawers() {
   partyIcon.setAttribute("aria-hidden", "true");
   drawers.left.tab.prepend(partyIcon);
   drawers.right.tab.prepend(iconImage("clue"));
-  drawers.bottom.tab.prepend(iconImage("move"));
+  // The map is a folded map with a route and a marked spot; the boots are for moving, so they are not used twice.
+  const mapIcon = Object.assign(document.createElement("img"), { alt: "", src: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M2 5.5L7.5 3.5V19L2 21zM8.5 3.7L15.5 6V21.5L8.5 19.2zM16.5 5.8L22 3.8V19.3L16.5 21.3zM12 9a2.2 2.2 0 1 0 0 4.4A2.2 2.2 0 0 0 12 9z"/></svg>')}` });
+  mapIcon.setAttribute("aria-hidden", "true");
+  drawers.bottom.tab.prepend(mapIcon);
   // Escape puts away the panel opened last.
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
