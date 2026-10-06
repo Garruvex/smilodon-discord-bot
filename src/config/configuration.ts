@@ -132,6 +132,8 @@ export interface ApplicationConfiguration {
   // The AI dungeon master for /dnd campaigns (CAMPAIGN_* env vars). Null:
   // campaigns cannot be started.
   campaign: CampaignModelConfiguration | null;
+  // Whether each narration is read against the adventure by a second model call (CAMPAIGN_NARRATION_AUDIT, on by default).
+  campaignNarrationAudit?: boolean;
   campaignImages?: CampaignImageConfiguration | null;
   portraitGenerationLimit?: { readonly maxPerWindow: number; readonly windowMinutes: number };
   // Independent of chat/utility generation: either vendor can provide

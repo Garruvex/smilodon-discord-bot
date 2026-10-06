@@ -212,7 +212,7 @@ export function createCampaignModule(input: CampaignModuleInput): CampaignModule
     bus,
     rolls: new RollWorker(unitOfWork, bus, new CryptoRandomSource(), clock),
     timers: new TimerWorker(unitOfWork, bus, clock),
-    dm: new DmJobWorker({ unitOfWork, bus, planner, narrator, ...(model === null ? {} : { chronicler: new LlmCampaignChronicler({ client: model, cacheKey }), noteJudge: new LlmSceneNoteJudge({ client: model, cacheKey }), auditor: new LlmNarrationAuditor({ client: model, cacheKey }) }), adventures, glossaries, rulesets, logger }),
+    dm: new DmJobWorker({ unitOfWork, bus, planner, narrator, ...(model === null ? {} : { chronicler: new LlmCampaignChronicler({ client: model, cacheKey }), noteJudge: new LlmSceneNoteJudge({ client: model, cacheKey }), ...(configuration.campaignNarrationAudit === false ? {} : { auditor: new LlmNarrationAuditor({ client: model, cacheKey }) }) }), adventures, glossaries, rulesets, logger }),
     delivery: new DeliveryWorker(unitOfWork, presenter, {
       clock,
       onAbandoned: async (key, item): Promise<void> => {
