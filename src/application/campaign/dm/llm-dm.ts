@@ -298,6 +298,11 @@ export const roundNarratorJsonSchema: Record<string, unknown> = {
   properties: { narration: { type: "string" }, note: { type: "string" } },
 };
 
+// A retry after the narration auditor found invented facts: name them so the next telling leaves them out.
+function avoidLine(avoid: readonly string[] | undefined): string {
+  return avoid === undefined || avoid.length === 0 ? "" : `\n\nYour last telling invented facts the adventure never established: ${avoid.map((entry) => `"${entry}"`).join(", ")}. Tell it again without them, and without replacing them with other invented facts.`;
+}
+
 export function buildNarratorPrompt(request: NarratorRequest): { system: string; user: string } {
   const zh = request.language === "zh-TW";
   if (request.opening !== undefined) return buildOpeningPrompt(request, request.opening.heroes);
@@ -353,7 +358,7 @@ function buildOpeningPrompt(
     "End by turning to the table: ask what the heroes do, in your own words, so the players know it is their turn.",
   ].join("\n");
   const party = heroes.map((hero) => (hero.className === null ? hero.name : `${hero.name} (${hero.className})`)).join(", ");
-  return splitPrompt(request.context, rules, `Open the adventure. The party: ${party}.`);
+  return splitPrompt(request.context, rules, `Open the adventure. The party: ${party}.${avoidLine(request.avoid)}`);
 }
 
 export function parseNarratorOutput(text: string): string {
@@ -493,7 +498,7 @@ export function buildTradeNarratorPrompt(request: TradeNarratorRequest): { syste
         ? ` They talked you into a better price with a ${request.haggle.skill} appeal.`
         : ` They tried a ${request.haggle.skill} appeal to talk the price, but it didn't move you.`;
   const result = request.completed ? " The deal goes through." : " They come up short and cannot complete it.";
-  return splitPrompt(request.context, rules, `${deal}${haggle}${result}`);
+  return splitPrompt(request.context, rules, `${deal}${haggle}${result}${avoidLine(request.avoid)}`);
 }
 
 // Whether the NPC gives anything up (a plain answer, or their secret on a
@@ -539,7 +544,7 @@ export function buildUtilityCastNarratorPrompt(request: UtilityCastNarratorReque
     "Describe what the spell reveals or does, drawing only on the scene and ledger context above. Never invent a new magic item, passage, or plot fact the text above doesn't already give; if there is nothing notable, say so plainly.",
     "Never mention dice, DCs, or checks; this spell needed none.",
   ].join("\n");
-  return splitPrompt(request.context, rules, `${request.heroName} casts ${request.spell.name}.`);
+  return splitPrompt(request.context, rules, `${request.heroName} casts ${request.spell.name}.${avoidLine(request.avoid)}`);
 }
 
 // Whether the save succeeded and whether it cost a level of Exhaustion are
@@ -555,7 +560,7 @@ export function buildHazardNarratorPrompt(request: HazardNarratorRequest): { sys
   const situation = request.success
     ? `${request.heroName} pushes through the hazard, unscathed.`
     : `${request.heroName} is worn down by the hazard, gaining a level of Exhaustion.`;
-  return splitPrompt(request.context, rules, situation);
+  return splitPrompt(request.context, rules, `${situation}${avoidLine(request.avoid)}`);
 }
 
 // ---------------------------------------------------------------- Combat
@@ -584,7 +589,7 @@ export function buildCombatNarratorPrompt(request: CombatNarratorRequest): { sys
   ].join("\n");
   const beats = request.beats.map((beat) => `- ${describeBeat(beat)}`).join("\n");
   const heading = request.final ? `The fight ended (${request.outcome ?? "over"}). Final beats:` : `Combat round ${request.round}:`;
-  return splitPrompt(request.context, rules, `${heading}\n${beats || "- Nothing decisive happened."}`);
+  return splitPrompt(request.context, rules, `${heading}\n${beats || "- Nothing decisive happened."}${avoidLine(request.avoid)}`);
 }
 
 export function describeBeat(beat: CombatBeat): string {

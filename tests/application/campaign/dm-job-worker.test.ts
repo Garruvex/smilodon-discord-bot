@@ -301,14 +301,14 @@ describe("DmJobWorker", () => {
       expect(await events(store)).toContainEqual({ kind: "narrationRecorded", roundNumber: 1, text: "Mira: I sneak past Garrick." });
     });
 
-    it("never lets a failing auditor stop play", async () => {
+    it("never lets a failing auditor stop play, and never shows a line it could not check", async () => {
       const narrator = new ScriptedNarrator([{ text: "Mira slips by the guard.", note: "" }]);
       const watch = auditor([new Error("503")]);
       const { store, bus, worker } = await table(automatic(), narrator, startState(), { auditor: watch.auditor });
       await closeRoundOne(bus);
       await worker.runOnce();
       expect(await worker.runOnce()).toEqual({ processed: 1, failed: [] });
-      expect(await events(store)).toContainEqual({ kind: "narrationRecorded", roundNumber: 1, text: "Mira slips by the guard." });
+      expect(await events(store)).toContainEqual({ kind: "narrationRecorded", roundNumber: 1, text: "Mira: I sneak past Garrick." });
     });
   });
 
@@ -513,6 +513,19 @@ describe("the opening", () => {
     await t.bus.execute(key, { kind: "ready" }, { commandId: "r1", actor: alex });
     await t.bus.execute(key, { kind: "ready" }, { commandId: "r2", actor: jamie });
     expect((await t.store.transaction((tx) => tx.loadCampaign(key)))?.state).toMatchObject({ opening: "done", round: { number: 1, status: "collecting" } });
+  });
+
+  it("reads the opening against the adventure too, and opens from the adventure's own text when it invents", async () => {
+    const narrator = new ScriptedNarrator([{ text: "The innkeeper hands you a silver key. What do you do?" }, { text: "The innkeeper hands you a gold key. What do you do?" }]);
+    const audited: string[] = [];
+    const auditor = { audit: (request: { kind: string; text: string }) => { audited.push(`${request.kind}: ${request.text}`); return Promise.resolve(["a key"]); } };
+    const t = await table(new ScriptedPlanner([]), narrator, startState(), { auditor });
+    await t.bus.execute(key, { kind: "beginAdventure" }, { commandId: "b1", actor: system });
+    await t.worker.runOnce();
+    expect(audited[0]).toMatch(/^opening: /);
+    expect(narrator.requests[1]?.avoid).toEqual(["a key"]);
+    const opening = (await events(t.store)).find((event) => event.kind === "openingRecorded");
+    expect(opening?.kind === "openingRecorded" ? opening.text : "").toContain(testBible.premise);
   });
 
   it("falls back to the adventure's own text when the Narrator keeps failing, so the table can start", async () => {
