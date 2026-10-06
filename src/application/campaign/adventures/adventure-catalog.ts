@@ -43,6 +43,8 @@ export type DecisionResult =
 
 export type RemovalResult =
   | { readonly kind: "ok"; readonly adventure: StoredAdventure }
+  // A game or lobby still uses this version, so it cannot be deleted for good.
+  | { readonly kind: "inUse" }
   | { readonly kind: "notFound" }
   | { readonly kind: "notAllowed" }
   // Only an approved adventure is removed (a draft is discarded) and only a removed one restored.
@@ -142,6 +144,30 @@ export class AdventureCatalog {
     });
     if (result.kind === "ok") this.options.library.retire(result.adventure.id, result.adventure.version, result.adventure.language);
     return result;
+  }
+
+  // Deletes a removed adventure for good: it leaves the list and cannot be restored. Refused while any game or lobby still uses this version,
+  // since those keep the stored text. The uploader or a DnD Admin may.
+  public async purge(key: string, userId: string, isAdmin: boolean): Promise<RemovalResult> {
+    return this.options.unitOfWork.transaction(async (tx): Promise<RemovalResult> => {
+      const found = await tx.loadAdventure(key);
+      if (found === undefined) return { kind: "notFound" };
+      if (found.uploaderUserId !== userId && !isAdmin) return { kind: "notAllowed" };
+      if (found.status !== "removed") return { kind: "wrongStatus" };
+      const records = await tx.listRecords(found.guildId, ["lobby", "active", "paused"]);
+      if (records.some(({ record }) => record.adventure.adventureId === found.id && record.adventure.version === found.version && record.language === found.language)) return { kind: "inUse" };
+      const next: StoredAdventure = { ...found, status: "discarded" };
+      await tx.saveAdventure(next);
+      return { kind: "ok", adventure: next };
+    });
+  }
+
+  // The stored text, for the uploader or a DnD Admin to fix and upload again.
+  public async exportText(key: string, userId: string, isAdmin: boolean): Promise<{ readonly kind: "ok"; readonly adventure: StoredAdventure } | { readonly kind: "notFound" } | { readonly kind: "notAllowed" }> {
+    const found = await this.get(key);
+    if (found === undefined || found.status === "discarded") return { kind: "notFound" };
+    if (found.uploaderUserId !== userId && !isAdmin) return { kind: "notAllowed" };
+    return { kind: "ok", adventure: found };
   }
 
   // Puts a removed adventure back, if the server has room for it.

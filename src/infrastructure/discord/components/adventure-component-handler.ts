@@ -5,7 +5,7 @@ import type { ComponentContext, ComponentHandler } from "../../../application/co
 import { texts } from "../../../application/i18n/texts.js";
 import { publicAccessPolicy } from "../../../domain/access/access-policy.js";
 import type { CampaignAuthority } from "../campaign/campaign-authority.js";
-import { adventureIdPrefix, parseAdventureId, renderRemoveAsk, renderReview } from "../campaign/adventure-preview.js";
+import { adventureIdPrefix, parseAdventureId, renderDeleteAsk, renderRemoveAsk, renderReview } from "../campaign/adventure-preview.js";
 import type { Glossary } from "../../../domain/campaign/rules/content-registry.js";
 import { languageOf } from "./character-library-component-handler.js";
 
@@ -47,6 +47,23 @@ export class AdventureComponentHandler implements ComponentHandler {
       const reviewed = await this.deps.catalog.review(parsed.key);
       if (reviewed === undefined || reviewed.adventure.status !== "pending") return void (await screen.edit({ content: t.notPending, components: [] }));
       return void (await interaction.editReply(renderReview({ report: reviewed.report, adventure: reviewed.adventure, text: texts[language], glossary: this.deps.glossaries?.[reviewed.adventure.language] })));
+    }
+    if (parsed.action === "export") {
+      const found = await this.deps.catalog.exportText(parsed.key, interaction.user.id, isAdmin);
+      if (found.kind === "notAllowed") return void (await interaction.followUp({ content: t.notAllowed, ephemeral: true }));
+      if (found.kind === "notFound") return void (await interaction.followUp({ content: t.gone, ephemeral: true }));
+      return void (await interaction.followUp({ content: t.exported, ephemeral: true, files: [{ attachment: Buffer.from(found.adventure.yaml, "utf8"), name: `${found.adventure.id}-${found.adventure.language}.yaml` }] }));
+    }
+    if (parsed.action === "delete" || parsed.action === "confirmdelete") {
+      if (draft.uploaderUserId !== interaction.user.id && !isAdmin) return void (await interaction.followUp({ content: t.notAllowed, ephemeral: true }));
+      if (parsed.revision !== revisionOf(draft)) return void (await screen.edit({ content: t.stale, components: [] }));
+      if (draft.status !== "removed") return void (await screen.edit({ content: t.wrongStatus, components: [] }));
+      if (parsed.action === "delete") return void (await interaction.editReply(renderDeleteAsk({ adventure: draft, text: texts[language] })));
+      const purged = await this.deps.catalog.purge(parsed.key, interaction.user.id, isAdmin);
+      if (purged.kind === "ok") return void (await screen.edit({ content: t.deleted({ title: purged.adventure.title }), components: [] }));
+      if (purged.kind === "inUse") return void (await screen.edit({ content: t.inUse, components: [] }));
+      if (purged.kind === "notAllowed") return void (await interaction.followUp({ content: t.notAllowed, ephemeral: true }));
+      return void (await screen.edit({ content: purged.kind === "wrongStatus" ? t.wrongStatus : t.gone, components: [] }));
     }
     if (parsed.action === "remove" || parsed.action === "confirmremove" || parsed.action === "keep" || parsed.action === "restore") {
       if (draft.uploaderUserId !== interaction.user.id && !isAdmin) return void (await interaction.followUp({ content: t.notAllowed, ephemeral: true }));

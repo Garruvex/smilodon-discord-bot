@@ -8,8 +8,8 @@ import type { Glossary } from "../../../domain/campaign/rules/content-registry.j
 export const adventureIdPrefix = "dndadv";
 
 // dndadv:<action>:<revision>:<key>. The revision names the text the review showed.
-export type AdventureAction = "approve" | "discard" | "review" | "remove" | "confirmremove" | "keep" | "restore" | "example";
-const actions: readonly string[] = ["approve", "discard", "review", "remove", "confirmremove", "keep", "restore", "example"];
+export type AdventureAction = "approve" | "discard" | "review" | "remove" | "confirmremove" | "keep" | "restore" | "delete" | "confirmdelete" | "export" | "example";
+const actions: readonly string[] = ["approve", "discard", "review", "remove", "confirmremove", "keep", "restore", "delete", "confirmdelete", "export", "example"];
 
 export function adventureCustomId(action: AdventureAction, key: string, revision: string): string {
   const id = `${adventureIdPrefix}:${action}:${revision}:${key}`;
@@ -80,7 +80,8 @@ export function renderReview(input: { report: AdventureReport; adventure: Stored
   return { content: `${content.slice(0, maxContent - 200)}…\n\n${t.previewTruncated}`, components: buttons, files: [{ attachment: Buffer.from(content, "utf8"), name: "review.txt" }] };
 }
 
-const shown = 20;
+// Two buttons an adventure, five to a row, and a row for the example.
+const shown = 10;
 
 // The server's adventures with what can be done to each: review a draft, remove an approved one, restore a removed one.
 export function renderLibrary(input: { adventures: readonly StoredAdventure[]; text: Texts }): ReviewScreen {
@@ -95,13 +96,12 @@ export function renderLibrary(input: { adventures: readonly StoredAdventure[]; t
     ...(input.adventures.length > shown ? [t.libraryMore({ count: input.adventures.length - shown })] : []),
   ];
   const label = (text: string): string => (text.length <= 80 ? text : `${text.slice(0, 79)}…`);
-  const buttons = list.map((adventure) => {
+  const buttons = list.flatMap((adventure) => {
     const id = (action: AdventureAction): string => adventureCustomId(action, adventure.key, revisionOf(adventure));
-    return adventure.status === "pending"
-      ? new ButtonBuilder().setCustomId(id("review")).setLabel(label(t.reviewButton({ title: adventure.title }))).setStyle(ButtonStyle.Primary)
-      : adventure.status === "approved"
-        ? new ButtonBuilder().setCustomId(id("remove")).setLabel(label(t.removeButton({ title: adventure.title }))).setStyle(ButtonStyle.Danger)
-        : new ButtonBuilder().setCustomId(id("restore")).setLabel(label(t.restoreButton({ title: adventure.title }))).setStyle(ButtonStyle.Secondary);
+    const exportButton = new ButtonBuilder().setCustomId(id("export")).setLabel(label(t.exportButton({ title: adventure.title }))).setStyle(ButtonStyle.Secondary);
+    if (adventure.status === "pending") return [new ButtonBuilder().setCustomId(id("review")).setLabel(label(t.reviewButton({ title: adventure.title }))).setStyle(ButtonStyle.Primary), exportButton];
+    if (adventure.status === "approved") return [new ButtonBuilder().setCustomId(id("remove")).setLabel(label(t.removeButton({ title: adventure.title }))).setStyle(ButtonStyle.Danger), exportButton];
+    return [new ButtonBuilder().setCustomId(id("restore")).setLabel(label(t.restoreButton({ title: adventure.title }))).setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId(id("delete")).setLabel(label(t.deleteButton({ title: adventure.title }))).setStyle(ButtonStyle.Danger)];
   });
   const rows: ActionRowBuilder<ButtonBuilder>[] = [];
   for (let index = 0; index < buttons.length; index += 5) rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(buttons.slice(index, index + 5)));
@@ -116,5 +116,16 @@ export function renderRemoveAsk(input: { adventure: StoredAdventure; usage: { re
   return {
     content: t.removeAsk({ title: adventure.title, language: adventure.language, version: adventure.version, lobbies: input.usage.lobbies, running: input.usage.running }),
     components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(id("confirmremove")).setLabel(t.removeConfirm).setStyle(ButtonStyle.Danger), new ButtonBuilder().setCustomId(id("keep")).setLabel(t.removeKeep).setStyle(ButtonStyle.Secondary))],
+  };
+}
+
+// Asks before deleting for good: it cannot be restored afterwards.
+export function renderDeleteAsk(input: { adventure: StoredAdventure; text: Texts }): ReviewScreen {
+  const t = input.text.campaign.adventure;
+  const { adventure } = input;
+  const id = (action: AdventureAction): string => adventureCustomId(action, adventure.key, revisionOf(adventure));
+  return {
+    content: t.deleteAsk({ title: adventure.title, language: adventure.language, version: adventure.version }),
+    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(id("confirmdelete")).setLabel(t.deleteConfirm).setStyle(ButtonStyle.Danger), new ButtonBuilder().setCustomId(id("keep")).setLabel(t.removeKeep).setStyle(ButtonStyle.Secondary))],
   };
 }

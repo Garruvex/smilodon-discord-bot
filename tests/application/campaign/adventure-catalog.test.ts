@@ -333,6 +333,21 @@ describe("removing an adventure from the library", () => {
     expect(await c.catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: yamlOf("en") })).toEqual({ kind: "exists" });
   });
 
+  it("deletes a removed adventure for good, only for its uploader or an admin, and exports the stored text", async () => {
+    const c = catalog();
+    const { key } = await approved(c);
+    expect(await c.catalog.purge(key, "u-up", false)).toEqual({ kind: "wrongStatus" });
+    await c.catalog.remove(key, "u-up", false);
+    expect(await c.catalog.purge(key, "u-other", false)).toEqual({ kind: "notAllowed" });
+    expect(await c.catalog.exportText(key, "u-other", false)).toEqual({ kind: "notAllowed" });
+    const exported = await c.catalog.exportText(key, "u-up", false);
+    expect(exported).toMatchObject({ kind: "ok", adventure: { yaml: expect.stringContaining("moonlit-ruins") } });
+    expect(await c.catalog.purge(key, "u-up", false)).toMatchObject({ kind: "ok", adventure: { status: "discarded" } });
+    expect((await c.catalog.list("g-1")).map((entry) => entry.key)).not.toContain(key);
+    expect(await c.catalog.restore(key, "u-up", false)).toEqual({ kind: "wrongStatus" });
+    expect(await c.catalog.exportText(key, "u-up", false)).toEqual({ kind: "notFound" });
+  });
+
   it("restores it when there is room, and not when the server is full", async () => {
     const c = catalog(undefined, 1);
     const { key, id } = await approved(c);
