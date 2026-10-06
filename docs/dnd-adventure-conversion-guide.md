@@ -30,6 +30,8 @@ forward, and write down the way forward *when things go badly*.
 | `rolled-gate` (warning) | One roll, one attempt, no failure branch decides something the story needs. | Add attempts, an `onFailure`, or another interaction that gives the same result. |
 | `no-ending` (warning) | No scene is marked `ending: true`, so finishing cannot be checked. | Mark the final scene(s). |
 
+A table where every hero falls is not a separate case: the engine waits, each player takes a new hero (a fresh preset, no loot) at the level the party had reached, and the first one to join takes the table up again. The scene, flags and clues are unchanged, so the checks above already cover it, and a lost fight's `onDefeat` still applies.
+
 ## How to convert, step by step
 
 1. **List the beats.** Write the story as a short chain: how it starts, the discoveries, the confrontations, how it can end. Note every

@@ -502,6 +502,14 @@ export function isFallen(state: CampaignState, characterId: CharacterId): boolea
   return state.heroStatus[characterId]?.dead === true;
 }
 
+// The level a new hero joins at: the party's strongest living hero. When every hero has fallen, the level the party had reached (a wiped party
+// takes new heroes at the level it was, not at level 1).
+export function levelForNewHero(state: CampaignState): number {
+  const heroes = Object.values(state.characters);
+  const living = heroes.filter((hero) => !isFallen(state, hero.id));
+  return Math.max(1, ...(living.length > 0 ? living : heroes).map((hero) => hero.level));
+}
+
 export function memberOwning(state: CampaignState, characterId: CharacterId): MemberState | undefined {
   const ownerId = state.characters[characterId]?.ownerUserId;
   return ownerId === undefined ? undefined : state.members[ownerId];

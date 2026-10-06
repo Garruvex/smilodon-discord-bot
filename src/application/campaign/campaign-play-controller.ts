@@ -10,7 +10,7 @@ import type { ContentId } from "../../domain/campaign/rules/content-id.js";
 import type { CampaignCommand, CombatCommand, EnvironmentalDamageSource, PartyEffect } from "../../domain/campaign/commands/campaign-command.js";
 import type { Ability } from "../../domain/campaign/rules/effects.js";
 import { actingHero } from "../../domain/campaign/engine/members.js";
-import { isFallen } from "../../domain/campaign/state/campaign-state.js";
+import { isFallen, levelForNewHero } from "../../domain/campaign/state/campaign-state.js";
 import type { AdventureLibrary } from "./ports/adventure-library.js";
 import type { CharacterId, UserId } from "../../domain/campaign/core/ids.js";
 import type { RejectionCode } from "../../domain/campaign/engine/rejection.js";
@@ -70,7 +70,7 @@ export class CampaignPlayController {
     const used = Object.values(loaded.stored.state.characters).filter((sheet) => baseHeroId(sheet.id) === presetId).length;
     const { class: className, ...sheet } = preset;
     const state = loaded.stored.state;
-    const partyLevel = Math.max(1, ...Object.values(state.characters).filter((other) => !isFallen(state, other.id)).map((other) => other.level));
+    const partyLevel = levelForNewHero(state);
     const joining = raiseToLevel({ ...sheet, className, id: `${presetId}-${used + 1}`, ownerUserId: userId, name: used === 0 ? preset.name : `${preset.name} ${roman(used + 1)}` }, partyLevel);
     const outcome = await this.options.bus.execute(
       key,
