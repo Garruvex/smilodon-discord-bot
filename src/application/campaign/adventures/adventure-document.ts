@@ -177,6 +177,7 @@ const documentSchema = z
             partyZoneId: zoneId,
             surprised: z.enum(["party", "foes"]).optional(),
             ambush: z.object({ dc: z.number().int().min(1).max(30) }).strict().optional(),
+            schedule: z.object({ requires: requirementSchema.optional(), time: z.enum(timesOfDay).optional(), afterRounds: z.number().int().min(0).max(50).optional() }).strict().optional(),
             dread: z.object({ ability: z.enum(abilities), dc: z.number().int().min(1).max(30) }).strict().optional(),
             monsters: z
               .array(monsterEntry)
@@ -430,6 +431,10 @@ function interactionProblems(data: z.infer<typeof documentSchema>): readonly str
   }
   for (const encounter of data.encounters) {
     const owner = encounter.id;
+    if (encounter.schedule !== undefined) {
+      checkRequirement(owner, (encounter.schedule.requires ?? {}) as BibleRequirement);
+      if (encounter.schedule.time !== undefined && data.startTime === undefined) problems.push(`${owner} is scheduled for a time of day, but the adventure has no startTime.`);
+    }
     const zoneIds = new Set(encounter.zones.map((zone) => zone.id));
     const npcIds = new Set(data.npcs.map((npc) => npc.id));
     encounter.triggers.forEach((trigger, index) => {

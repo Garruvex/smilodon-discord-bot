@@ -15,7 +15,7 @@ import { encounterRecords } from "../dm/combat-records.js";
 import { checkLabel, roundRecords } from "../dm/round-records.js";
 import { fallbackPlan } from "../dm/fallback-planner.js";
 import { tellsFor } from "../dm/npc-tells.js";
-import { defaultStall, directPlan, openLead, plainLabel, stalledRounds, stallLevel, type StallConfig } from "../dm/stall-director.js";
+import { defaultStall, directPlan, openLead, plainLabel, scheduledEffects, stalledRounds, stallLevel, type StallConfig } from "../dm/stall-director.js";
 import { plannerStory, resolveStoryEffects } from "../dm/story-effects.js";
 import type { RuntimeLogger } from "../campaign-runtime.js";
 import type { CampaignKey, CampaignUnitOfWork, OutboxItem, StoredCampaign } from "../ports/campaign-store.js";
@@ -602,6 +602,9 @@ export class DmJobWorker {
 
   // The stall director's step for this round (see dm/stall-director.ts), logged when it acts.
   private direct(loaded: Loaded, proposal: PlannerProposal): { readonly proposal: PlannerProposal; readonly bible: Loaded["bible"] } {
+    // What the adventure scheduled to happen on its own now (a fight at midnight), unless this round already starts one.
+    const due = proposal.effects.some((effect) => effect.kind === "startEncounter") ? [] : scheduledEffects(loaded.bible, loaded.stored.state, loaded.events);
+    if (due.length > 0) proposal = { ...proposal, effects: [...proposal.effects, ...due] };
     if (this.options.stall === false) return { proposal, bible: loaded.bible };
     const level = stallLevel(stalledRounds(loaded.events), this.options.stall ?? defaultStall);
     if (level >= 2) this.options.logger?.warn({ level, sceneId: loaded.stored.state.sceneId }, "The table has stalled; the stall director is helping");

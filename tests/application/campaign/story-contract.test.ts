@@ -86,3 +86,13 @@ describe("what NPCs tell", () => {
     expect(rules(told)).toEqual([]);
   });
 });
+
+describe("scheduled fights", () => {
+  it("count as a free way on: a fight that breaks out by itself and sets the flag a gate needs", () => {
+    const scenes = [scene("scene:a", { exits: [{ to: "scene:b" as never, requires: { flags: ["won"] } }] }), scene("scene:b", { ending: true, exits: [] })];
+    const base = story(scenes);
+    const fightOnly = (schedule?: object): AdventureBible => ({ ...base, interactions: [interaction("start", "scene:a", { check: { skill: "stealth", dc: 12 }, onSuccess: [{ kind: "encounter", encounter: "encounter:ambush" as never }] })], encounters: [{ id: "encounter:ambush", sceneId: "scene:a", publicDescription: "", dmNotes: "", zones: [], edges: [], partyZoneId: "", monsters: [], loot: [], gold: 0, onVictory: [{ kind: "set", flag: "won" }], ...(schedule === undefined ? {} : { schedule }) }] as never });
+    expect(rules(fightOnly())).toContain("ending-stranded");
+    expect(rules(fightOnly({ afterRounds: 1 }))).toEqual([]);
+  });
+});

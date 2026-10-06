@@ -202,6 +202,10 @@ export interface BibleEncounter {
   readonly onVictory?: readonly BiblePartyEffect[];
   // Which side is taken by surprise (the story says so outright). Absent: nobody, unless the ambush below catches the party.
   readonly surprised?: "party" | "foes";
+  // The fight breaks out by itself when all of this holds, on a round where the party acts: they are in this scene, the requirement is met,
+  // it is that time of day (needs a start time), and they have spent that many rounds here. Without it the fight starts only when an
+  // interaction or the Planner starts it. Use it for what happens on its own ("at midnight the scarecrow rises").
+  readonly schedule?: { readonly requires?: BibleRequirement; readonly time?: TimeOfDay; readonly afterRounds?: number };
   // The foes lie in wait: unless some hero's passive Perception reaches this, the party starts the fight surprised.
   readonly ambush?: { readonly dc: number };
   // Something dreadful as the fight breaks out: each hero saves (their own bonus), and one who fails is frightened until their first turn ends.

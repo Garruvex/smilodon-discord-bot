@@ -90,6 +90,7 @@ encounters:
     monsters:
       - { monsterId: monster:awakened-shrub, zoneId: centre, npcId: npc:scarecrow }   # an NPC gives a reskinned monster its name
       - { monsterId: monster:goblin, zoneId: centre, stats: { hp: 20, armorClass: 15, toHit: 2, damage: 1 } }   # tougher or weaker than the SRD block
+    schedule: { requires: { clues: [clue:strikes-at-midnight] }, time: night, afterRounds: 2 }   # breaks out by itself (all parts optional; time needs a startTime)
     ambush: { dc: 13 }                  # foes lie in wait: the party is surprised unless a hero's passive Perception reaches this
     surprised: foes                     # or say outright who is surprised
     dread: { ability: wis, dc: 11 }     # every hero saves; one who fails is frightened until their first turn ends

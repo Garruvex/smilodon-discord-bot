@@ -1,8 +1,8 @@
 import type { AdventureBible, BibleClue, BibleInteraction } from "../../../domain/campaign/adventure/adventure-bible.js";
 import type { CampaignEvent } from "../../../domain/campaign/events/campaign-event.js";
 import type { CampaignState } from "../../../domain/campaign/state/campaign-state.js";
-import type { PlannerProposal } from "../ports/dm-ports.js";
-import { availableInteractions } from "./interactions.js";
+import type { PlannerEffect, PlannerProposal } from "../ports/dm-ports.js";
+import { availableInteractions, requirementMet } from "./interactions.js";
 
 // The stall director: a table that stops making progress is helped along, step by step, so the story always has a way forward. It is plain
 // rules over the adventure's own data (no model, nothing invented):
@@ -94,4 +94,30 @@ export function directPlan(proposal: PlannerProposal, bible: AdventureBible, sta
     }
   }
   return { proposal: next, bible: story };
+}
+
+// Rounds the party has spent in the scene they are in: the finished rounds since they arrived (or since the story began).
+export function roundsInScene(events: readonly CampaignEvent[]): number {
+  let rounds = 0;
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.kind === "sceneTransitioned") return rounds;
+    if (event?.kind === "roundResolved") rounds += 1;
+  }
+  return rounds;
+}
+
+// A fight the adventure scheduled (see BibleEncounter.schedule) that is due now: the party is in its scene, its requirement holds, it is the right
+// time of day, and enough rounds have passed. At most one, and none while a fight is under way or queued.
+export function scheduledEffects(bible: AdventureBible, state: CampaignState, events: readonly CampaignEvent[]): readonly PlannerEffect[] {
+  if (state.pendingEncounter !== null || (state.encounter !== null && state.encounter.status !== "ended")) return [];
+  const rounds = roundsInScene(events);
+  const due = bible.encounters.find((encounter) =>
+    encounter.schedule !== undefined &&
+    encounter.sceneId === state.sceneId &&
+    !state.encounterHistory.includes(encounter.id) &&
+    requirementMet(encounter.schedule.requires, state) &&
+    (encounter.schedule.time === undefined || state.world?.time === encounter.schedule.time) &&
+    rounds >= (encounter.schedule.afterRounds ?? 0));
+  return due === undefined ? [] : [{ kind: "startEncounter", encounterId: due.id, when: { kind: "always" } }];
 }

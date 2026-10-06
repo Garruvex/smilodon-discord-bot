@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { directPlan, nextClue, openLead, plainLabel, stalledRounds, stallLevel } from "../../../src/application/campaign/dm/stall-director.js";
+import { directPlan, nextClue, openLead, plainLabel, roundsInScene, scheduledEffects, stalledRounds, stallLevel } from "../../../src/application/campaign/dm/stall-director.js";
 import type { PlannerProposal } from "../../../src/application/campaign/ports/dm-ports.js";
 import type { AdventureBible, BibleInteraction } from "../../../src/domain/campaign/adventure/adventure-bible.js";
 import type { CampaignEvent } from "../../../src/domain/campaign/events/campaign-event.js";
@@ -66,5 +66,29 @@ describe("what the director does", () => {
     expect(lead?.id).toBe("interaction:find-it");
     expect(plainLabel("Find the door（察覺）")).toBe("Find the door");
     expect(plainLabel("Pick the lock (Thievery)")).toBe("Pick the lock");
+  });
+});
+
+describe("fights the adventure scheduled", () => {
+  const withFight = (schedule: NonNullable<AdventureBible["encounters"][number]["schedule"]>): AdventureBible =>
+    ({ ...bible([]), encounters: [{ id: "encounter:midnight", sceneId: "scene:a", schedule }] } as unknown as AdventureBible);
+  const at = (extra: Record<string, unknown> = {}): CampaignState => ({ ...state(), encounterHistory: [], pendingEncounter: null, encounter: null, ...extra }) as unknown as CampaignState;
+  const sceneEvents = (rounds: number): CampaignEvent[] => [{ kind: "sceneTransitioned", roundNumber: 1, sceneId: "scene:a" } as unknown as CampaignEvent, ...Array.from({ length: rounds }, () => resolved)];
+
+  it("starts a fight once the party has waited long enough, the time is right and the requirement holds", () => {
+    const bible2 = withFight({ time: "night" as never, afterRounds: 2, requires: { clues: ["clue:midnight" as never] } });
+    const night = { world: { time: "night", day: 1 } };
+    expect(scheduledEffects(bible2, at({ ...night, clues: [{ id: "clue:midnight", text: "" }] }), sceneEvents(2))).toEqual([{ kind: "startEncounter", encounterId: "encounter:midnight", when: { kind: "always" } }]);
+    expect(scheduledEffects(bible2, at({ ...night, clues: [{ id: "clue:midnight", text: "" }] }), sceneEvents(1))).toEqual([]);
+    expect(scheduledEffects(bible2, at({ world: { time: "dusk", day: 1 }, clues: [{ id: "clue:midnight", text: "" }] }), sceneEvents(5))).toEqual([]);
+    expect(scheduledEffects(bible2, at(night), sceneEvents(5))).toEqual([]);
+  });
+
+  it("starts a fight with no conditions as soon as a round is planned in its scene, and never twice or during another fight", () => {
+    const plain = withFight({});
+    expect(scheduledEffects(plain, at(), [])).toHaveLength(1);
+    expect(scheduledEffects(plain, at({ encounterHistory: ["encounter:midnight"] }), [])).toEqual([]);
+    expect(scheduledEffects(plain, at({ pendingEncounter: { id: "encounter:other" } }), [])).toEqual([]);
+    expect(roundsInScene([resolved, { kind: "sceneTransitioned", roundNumber: 2, sceneId: "scene:b" } as unknown as CampaignEvent, resolved])).toBe(1);
   });
 });

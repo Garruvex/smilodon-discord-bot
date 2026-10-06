@@ -103,6 +103,13 @@ function play(bible: AdventureBible, mode: Mode): Progress {
         for (const npcId of scene.npcIds) for (const tell of bible.npcs.find((npc) => npc.id === npcId)?.tells ?? []) progress.clues.add(tell.clue);
         changed = true;
       }
+      // A scheduled fight breaks out on its own once the party is here and its requirement holds; time of day and rounds are met by waiting.
+      for (const encounter of bible.encounters) {
+        if (encounter.sceneId === scene.id && encounter.schedule !== undefined && met(encounter.schedule.requires, progress) && !progress.done.has(`fight:${encounter.id}`)) {
+          fight(bible, progress, encounter.id, mode, 0);
+          changed = true;
+        }
+      }
       // Exits: only those whose requirements hold; no exits listed means anywhere.
       const targets = scene.exits === undefined ? (routed ? [] : bible.scenes.map((other) => other.id as string)) : scene.exits.filter((exit) => met(exit.requires, progress)).map((exit) => exit.to as string);
       for (const target of targets) if (!progress.scenes.has(target)) { progress.scenes.add(target); changed = true; }
