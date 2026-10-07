@@ -57,6 +57,10 @@ if (values.routes) {
       const best = found.routes[ending];
       console.log(`  ${ending} (${found.states} states)`);
       console.log(best === undefined ? "    best case: cannot be reached" : ["    best case:", ...best.map((step, index) => `      ${index + 1}. ${step}`)].join("\n"));
+      // Every roll fails, every fight is won: does the ending still open?
+      const unlucky = searchStoryStates(bible, endings, maxStates * 10, 60_000, [ending], true);
+      const unluckyRoute = unlucky.kind === "complete" ? unlucky.routes[ending] : undefined;
+      console.log(unlucky.kind !== "complete" ? "    every roll fails, fights won: too many states to search" : unluckyRoute === undefined ? "    every roll fails, fights won: cannot be reached" : ["    every roll fails, fights won: reachable", ...unluckyRoute.map((step, index) => `      ${index + 1}. ${step}`)].join("\n"));
       console.log(found.worst.length === 0 ? "    worst case: not guaranteed, bad luck can keep the table from it (the other endings stay open)" : ["    worst case, forced:", ...found.worst.map((step, index) => `      ${index + 1}. ${step}`)].join("\n"));
     }
   }

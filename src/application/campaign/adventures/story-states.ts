@@ -77,7 +77,7 @@ class Story {
   // Flags something sets back to zero: only these can open again once set.
   private readonly cleared = new Set<string>();
 
-  public constructor(private readonly bible: AdventureBible, private readonly endings: ReadonlySet<string>) {
+  public constructor(private readonly bible: AdventureBible, private readonly endings: ReadonlySet<string>, private readonly badLuck = false) {
     // `sets`: the flag the reader itself sets. "Not if x" on an interaction whose only effect that could matter is setting x is how an author
     // says "once": once x is set, by it or by anything else, closing it loses nothing.
     const read = (requires: BibleRequirement | undefined, sets: ReadonlySet<string> = new Set()): void => {
@@ -247,7 +247,8 @@ class Story {
     const outcomes: { label: string; state: StoryState }[] = [];
     // A higher total adds each tier it reaches, lowest first.
     const tiers = [...interaction.tiers].sort((a, b) => a.dc - b.dc);
-    for (let reached = 0; reached <= (certain(interaction) ? 0 : tiers.length); reached += 1) {
+    // With bad luck every roll fails, so a rolled interaction has no success to take.
+    for (let reached = 0; reached <= (certain(interaction) ? 0 : tiers.length) && !(this.badLuck && !certain(interaction)); reached += 1) {
       const effects = [...interaction.onSuccess, ...tiers.slice(0, reached).flatMap((tier) => tier.effects)];
       for (const next of this.apply(succeeded, effects, 0)) outcomes.push({ label: reached === 0 ? "success" : `success, tier ${reached}`, state: next });
     }
@@ -323,7 +324,7 @@ class Story {
     const triggered = (encounter.triggers ?? []).flatMap((trigger) => trigger.effects.filter((effect) => effect.kind !== "add" && effect.kind !== "end" && effect.kind !== "announce")) as readonly BibleEffect[];
     return [
       ...this.apply(fought, [...triggered, ...((encounter.onVictory ?? []) as readonly BibleEffect[])], depth + 1).map((next) => ({ label: `${encounterId} won`, state: next })),
-      ...this.apply(fought, (encounter.onDefeat ?? []) as readonly BibleEffect[], depth + 1).map((next) => ({ label: `${encounterId} lost`, state: next })),
+      ...(this.badLuck ? [] : this.apply(fought, (encounter.onDefeat ?? []) as readonly BibleEffect[], depth + 1).map((next) => ({ label: `${encounterId} lost`, state: next }))),
     ];
   }
 }
@@ -335,9 +336,9 @@ function dedupe(states: readonly StoryState[]): StoryState[] {
 }
 
 // Every state the story can reach, and those from which the table cannot force an ending.
-export function searchStoryStates(bible: AdventureBible, endings: readonly string[], limit = maxStates, milliseconds = maxSearchMilliseconds, goals: readonly string[] = endings): StateSearch {
+export function searchStoryStates(bible: AdventureBible, endings: readonly string[], limit = maxStates, milliseconds = maxSearchMilliseconds, goals: readonly string[] = endings, badLuck = false): StateSearch {
   const deadline = Date.now() + milliseconds;
-  const story = new Story(bible, new Set(endings));
+  const story = new Story(bible, new Set(endings), badLuck);
   const states = new Map<string, StoryState>();
   const moves = new Map<string, readonly { readonly label: string; readonly targets: readonly string[]; readonly answers: readonly string[] }[]>();
   const parent = new Map<string, { readonly from: string | null; readonly step: string }>();
