@@ -44,6 +44,7 @@ export const hubActions = [
   "uploadOpen",
   "uploadSubmit",
   "authorOpen",
+  "adventuresOpen",
   "authorSubmit",
   // Manage: raise the party's level (a form for the number).
   "levelOpen",

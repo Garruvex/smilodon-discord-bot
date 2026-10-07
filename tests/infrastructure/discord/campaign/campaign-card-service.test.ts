@@ -272,8 +272,8 @@ describe("the card service", () => {
       const live = messages.live(hub);
       expect(live).toHaveLength(3);
       const [control, one, two] = live;
-      expect(flatten(control!.payload).buttons.map((button) => button.label)).toEqual(["Create game", "How it works", "My Characters", "New character", "Import character", "Upload adventure", "Write an adventure"]);
-      expect(flatten(control!.payload).buttons.map((button) => button.id)).toEqual(["dndhub:create", "dndhub:help", "dndhub:characters", "dndhub:newCharacter", "dndhub:importOpen", "dndhub:uploadOpen", "dndhub:authorOpen"]);
+      expect(flatten(control!.payload).buttons.map((button) => button.label)).toEqual(["Create game", "How it works", "My Characters", "New character", "Import character", "Upload adventure", "Write an adventure", "Manage adventures"]);
+      expect(flatten(control!.payload).buttons.map((button) => button.id)).toEqual(["dndhub:create", "dndhub:help", "dndhub:characters", "dndhub:newCharacter", "dndhub:importOpen", "dndhub:uploadOpen", "dndhub:authorOpen", "dndhub:adventuresOpen"]);
       expect(messages.pinned).toContain(control!.messageId);
       expect(flatten(one!.payload).text).toContain("Moonlit Ruins");
       expect(flatten(one!.payload).text).toContain("Lobby · 0 / 3 players");

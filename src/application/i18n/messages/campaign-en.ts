@@ -1391,6 +1391,7 @@ export const campaignEn = {
   "campaign.hub.importButton": "Import character",
   "campaign.hub.uploadButton": "Upload adventure",
   "campaign.hub.authorButton": "Write an adventure",
+  "campaign.hub.adventuresButton": "Manage adventures",
   "campaign.hub.help": "**How D&D works here**\n• **Create game** (DnD Admins) makes the game's Games and Parties posts. Join its lobby there, pick a hero, and the organizer starts it.\n• **My Characters** is your library, shared by every server: build a hero, give it a portrait, export it, delete it. **New character** jumps straight to the builder, and **Import character** adds one from an exported file.\n• **Upload adventure** adds an adventure file to this server; **Write an adventure** has the Author write one from your idea. Both end in a review, and nothing plays until an admin approves it.\n• Each live game below has a **Manage** button for its organizer. Everything here is also a /dnd command.",
   "campaign.hub.unavailable": "That is not available on this bot right now.",
   "campaign.hub.importTitle": "Import a character",
