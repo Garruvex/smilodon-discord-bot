@@ -1893,6 +1893,7 @@ export const campaignZhTW = {
   "campaign.adventure.unreadable.notDiscord": "只能讀取上傳到 Discord 的檔案",
   "campaign.adventure.unreadable.tooLarge": "這個檔案太大，不像是冒險",
   "campaign.adventure.unreadable.failed": "無法下載那個檔案，請再上傳一次",
+  "campaign.adventure.existsRemovedInUse": "這份冒險已移除，但還有大廳或團務在使用這個版本，暫時不能取代。請把新檔案換成新的版本，或先結束那些團務。",
   "campaign.adventure.exists": "這個伺服器已核准同名同版本的冒險。請替新檔案改一個新版本再加入",
   "campaign.adventure.full": "這個伺服器最多保留 {max} 個冒險，請先捨棄一個",
   "campaign.adventure.authorNoModel": "這個機器人沒有設定 AI 作者",

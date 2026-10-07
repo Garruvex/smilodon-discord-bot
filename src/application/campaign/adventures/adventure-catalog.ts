@@ -31,6 +31,8 @@ export type SubmitResult =
   | { readonly kind: "invalid"; readonly report: AdventureReport }
   // The server already approved this adventure and version; a change needs a new version.
   | { readonly kind: "exists" }
+  // A removed copy of this version is still used by a lobby or a game, so it cannot be replaced yet.
+  | { readonly kind: "removedInUse" }
   | { readonly kind: "full" };
 
 export type DecisionResult =
@@ -90,11 +92,20 @@ export class AdventureCatalog {
       warnings: report.warnings,
       createdAt: this.options.clock.now(),
     };
-    const stored = await this.options.unitOfWork.transaction(async (tx): Promise<{ kind: "kept"; adventure: StoredAdventure; replaced: StoredAdventure | null } | { kind: "exists" | "full" | "notAllowed" }> => {
+    const stored = await this.options.unitOfWork.transaction(async (tx): Promise<{ kind: "kept"; adventure: StoredAdventure; replaced: StoredAdventure | null } | { kind: "exists" | "removedInUse" | "full" | "notAllowed" }> => {
       const mine = await tx.listAdventures(input.guildId);
       const existing = mine.find((candidate) => candidate.key === adventure.key);
-      // The same adventure uploaded again replaces the draft; it never replaces an approved or removed one (games may still use its text).
-      if (existing?.status === "approved" || existing?.status === "removed") return { kind: "exists" };
+      // The same adventure uploaded again replaces the draft; it never replaces an approved one. A removed one is replaced unless a lobby or a game
+      // still uses that version (they keep its text).
+      if (existing?.status === "approved") return { kind: "exists" };
+      if (existing?.status === "removed") {
+        const users = await tx.listRecords(input.guildId, ["lobby", "active", "paused"]);
+        if (users.some(({ record }) => record.adventure.adventureId === existing.id && record.adventure.version === existing.version && record.language === existing.language)) return { kind: "removedInUse" };
+        if (existing.uploaderUserId !== input.uploaderUserId && input.isAdmin !== true) return { kind: "notAllowed" };
+        if (mine.filter((candidate) => candidate.status === "pending" || candidate.status === "approved").length >= (this.options.maxPerGuild ?? defaultMaxAdventuresPerGuild)) return { kind: "full" };
+        await tx.saveAdventure(adventure);
+        return { kind: "kept", adventure, replaced: null };
+      }
       const replacing = existing?.status === "pending" ? existing : null;
       if (replacing !== null && replacing.uploaderUserId !== input.uploaderUserId && input.isAdmin !== true) return { kind: "notAllowed" };
       if (existing === undefined && mine.filter((candidate) => candidate.status === "pending" || candidate.status === "approved").length >= (this.options.maxPerGuild ?? defaultMaxAdventuresPerGuild)) return { kind: "full" };
