@@ -335,11 +335,14 @@ describe("removing an adventure from the library", () => {
 
   it("lets a removed adventure be uploaded again as a new draft, but not an approved one", async () => {
     const c = catalog();
-    const { key } = await approved(c);
+    const { key, id } = await approved(c);
     expect(await c.catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: yamlOf("en") })).toEqual({ kind: "exists" });
     await c.catalog.remove(key, "u-up", false);
     expect(await c.catalog.submit({ guildId: "g-1", uploaderUserId: "u-other", source: "upload", text: yamlOf("en") })).toEqual({ kind: "notAllowed" });
     expect(await c.catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: yamlOf("en") })).toMatchObject({ kind: "pending", adventure: { key, status: "pending" } });
+    // Approving the new copy offers it to new games again; the earlier removal does not keep it hidden.
+    await c.catalog.approve(key, "u-up", false);
+    expect(c.library.listForGuild("g-1").map((entry) => entry.id)).toContain(id);
   });
 
   it("deletes a removed adventure for good, only for its uploader or an admin, and exports the stored text", async () => {
