@@ -75,6 +75,8 @@ it("grounds an NPC's performance in their voice and the established scene", () =
   expect(prompt.system).toContain("Do not reveal an unrevealed secret or invent new facts");
   // An NPC who withholds does it in character, never by talking about what the players have or have not established.
   expect(prompt.system).toContain("Stay inside the fiction");
+  // Every telling carries the item rule: a key item exists only when the adventure put it there.
+  expect(prompt.system).toContain("Items are the adventure");
   // The NPC does not invent terms: a coin the hag asks for must come from the adventure, never from the model.
   expect(prompt.system).toContain("never invents a demand, price, payment");
   // The NPC's manner comes from their own voice, not from echoing the hero's wording.
