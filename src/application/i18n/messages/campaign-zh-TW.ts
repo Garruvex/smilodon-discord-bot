@@ -1390,6 +1390,7 @@ export const campaignZhTW = {
   "campaign.hub.importButton": "匯入角色",
   "campaign.hub.uploadButton": "上傳冒險",
   "campaign.hub.authorButton": "撰寫冒險",
+  "campaign.hub.adventuresButton": "管理冒險",
   "campaign.hub.help": "**D&D 使用說明**\n• **建立團務**（DnD Admin）會建立團務的「團務」與「隊伍」貼文。到那裡加入大廳、選擇英雄，再由主辦人開始遊戲。\n• **我的角色**是你的角色庫，所有伺服器共用：建立英雄、加上頭像、匯出或刪除。**建立角色**直接進入建立流程，**匯入角色**可從匯出的檔案加入角色。\n• **上傳冒險**把冒險檔加入這個伺服器；**撰寫冒險**請作者依你的點子寫一個。兩者都會先經過審核，管理員批准後才能開始遊玩。\n• 下方每場進行中的團務都有給主辦人使用的**管理**按鈕。這裡的每項功能也都有對應的 /dnd 指令。",
   "campaign.hub.unavailable": "這個機器人目前無法使用該功能。",
   "campaign.hub.importTitle": "匯入角色",

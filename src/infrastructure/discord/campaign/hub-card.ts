@@ -33,7 +33,7 @@ export function renderHubControl(gameCount: number, text: Texts, activity = fals
       new ActionRowBuilder<ButtonBuilder>().addComponents(button("characters", t.charactersButton, ButtonStyle.Primary), button("newCharacter", t.newCharacterButton), button("importOpen", t.importButton)),
     )
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(t.sectionAdventures))
-    .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(button("uploadOpen", t.uploadButton), button("authorOpen", t.authorButton)));
+    .addActionRowComponents(new ActionRowBuilder<ButtonBuilder>().addComponents(button("uploadOpen", t.uploadButton), button("authorOpen", t.authorButton), button("adventuresOpen", t.adventuresButton)));
   return cardPayload(container);
 }
 

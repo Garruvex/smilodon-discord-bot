@@ -61,7 +61,7 @@ export interface CampaignHubDependencies {
   readonly icons?: CampaignIcons;
   // The launcher's character and adventure buttons; without them those buttons say they are unavailable.
   readonly libraryScreens?: Pick<CharacterLibraryComponentHandler, "homeScreen" | "builderScreen" | "importFromFile">;
-  readonly intake?: Pick<AdventureIntake, "uploadFile" | "authorFrom" | "canAuthor">;
+  readonly intake?: Pick<AdventureIntake, "uploadFile" | "authorFrom" | "browse" | "canAuthor">;
   // The adventures this server can start from; without it the wizard offers only the bundled one.
   readonly adventures?: { listForGuild(guildId: string): readonly { readonly id: string; readonly version?: string; readonly languages?: readonly ("en" | "zh-TW")[]; readonly titles: Readonly<Partial<Record<"en" | "zh-TW", string>>> }[] };
 }
@@ -188,6 +188,9 @@ export class CampaignHubComponentHandler implements ComponentHandler {
       case "authorOpen":
         if (interaction.isButton()) await this.openAdventureForm(interaction, parsed.action);
         return;
+      case "adventuresOpen":
+        if (interaction.isButton()) await this.openAdventures(interaction);
+        return;
       case "sizeOpen":
         if (interaction.isButton() && first !== undefined) await this.openSize(interaction, first);
         return;
@@ -278,6 +281,15 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     await interaction.editReply({ content: await this.deps.libraryScreens.importFromFile(interaction.user.id, language, file === undefined ? null : { url: file.url, size: file.size }) });
   }
 
+  // Manage adventures: the library, for DnD Admins, like /dnd adventures.
+  private async openAdventures(interaction: ButtonInteraction<"cached">): Promise<void> {
+    const text = texts[languageOf(interaction)];
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!(await this.deps.authority.isAdmin(interaction))) return void (await interaction.editReply({ content: text.campaign.cmd.adminOnly }));
+    if (this.deps.intake === undefined) return void (await interaction.editReply({ content: text.campaign.hub.unavailable }));
+    await this.deps.intake.browse(this.intakeContext(interaction));
+  }
+
   // Upload adventure and Write an adventure: for DnD Admins, like the slash commands.
   private async openAdventureForm(interaction: ButtonInteraction<"cached">, action: "uploadOpen" | "authorOpen"): Promise<void> {
     const language = languageOf(interaction);
@@ -330,7 +342,7 @@ export class CampaignHubComponentHandler implements ComponentHandler {
     );
   }
 
-  private intakeContext(interaction: ModalSubmitInteraction<"cached">): IntakeContext {
+  private intakeContext(interaction: ModalSubmitInteraction<"cached"> | ButtonInteraction<"cached">): IntakeContext {
     return {
       guildId: interaction.guildId,
       userId: interaction.user.id,
