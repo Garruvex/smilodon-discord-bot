@@ -267,6 +267,14 @@ function liveState(input: ContextInput): ContextSection {
     for (const clock of input.bible.clocks) lines.push(`Clock ${clock.id}: ${state.clocks[clock.id]?.filled ?? 0}/${clock.segments}.`);
   }
   if (state.gold > 0) lines.push(`Party gold: ${state.gold}.`);
+  // What the party really has, so a line never gives a hero something that is not here: each hero's gear, and the keepsakes the story awarded.
+  const carried = Object.values(state.members).flatMap((member) => {
+    const sheet = member.characterId === null ? undefined : state.characters[member.characterId];
+    return sheet === undefined || sheet.equipment.length === 0 ? [] : [`${sheet.name}: ${sheet.equipment.map((item) => input.glossary.names[item] ?? item).join(", ")}`];
+  });
+  if (carried.length > 0) lines.push(`Carried by the heroes: ${carried.join("; ")}.`);
+  const keepsakes = Object.values(state.keepsakes ?? {});
+  lines.push(keepsakes.length === 0 ? "Keepsakes the party holds: none." : `Keepsakes the party holds: ${keepsakes.map((keepsake) => keepsake.name).join(", ")}.`);
   if (state.stash.length > 0) lines.push(`Party stash: ${state.stash.map((item) => input.glossary.names[item] ?? item).join(", ")}.`);
   if (state.clues.length > 0) lines.push(`Revealed clues: ${state.clues.map((clue) => clue.text).join(" ")}`);
   const arrival = input.events.findLast((event) => event.kind === "heroJoined" && event.entrance !== undefined);

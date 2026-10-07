@@ -38,4 +38,10 @@ describe("the narration auditor", () => {
   it("asks for findings in the table's language", () => {
     expect(buildNarrationAuditPrompt({ ...request, language: "zh-TW" }).system).toContain("Traditional Chinese");
   });
+
+  it("is strict about items: one only counts when the adventure put it there", () => {
+    const { system } = buildNarrationAuditPrompt(request);
+    expect(system).toContain("Be strict about items");
+    expect(system).toContain("key item, quest object");
+  });
 });

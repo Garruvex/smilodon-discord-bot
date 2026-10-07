@@ -671,11 +671,15 @@ function renderSections(sections: DmContext["sections"]): string {
 // holds only what stays the same from round to round (instructions A, the
 // adventure B, and the output rules) and everything that changes (ledger,
 // story so far, scene, live state, this round) leads the user message.
+// Said in every telling: an object only exists for the story when the adventure put it there.
+const itemRule =
+  "Items are the adventure's, never yours. A key item, quest object, clue object, weapon, tool, coin or document may be named only if the scene, the NPC notes, the revealed clues, the party's gear or keepsakes, or the committed facts above already give it. Never make up one, never say a hero finds, picks up, takes, is handed, steals, wins, loots or now holds any item that is not listed as theirs or awarded in the committed facts, and never let an NPC give or promise one. Something the scene only describes can be looked at or pointed to, not taken; if a hero tries to pick it up and no committed fact says they do, say plainly that it stays where it is or cannot be carried. A reward is whatever the committed results say, nothing more.";
+
 function splitPrompt(context: DmContext, rules: string, round: string): { system: string; user: string } {
   const stable = context.sections.filter((section) => section.layer === "A" || section.layer === "B");
   const changing = context.sections.filter((section) => section.layer !== "A" && section.layer !== "B");
   return {
-    system: `${renderSections(stable)}\n\n${rules}`,
+    system: `${renderSections(stable)}\n\n${rules}\n${itemRule}`,
     user: changing.length === 0 ? round : `${renderSections(changing)}\n\n${round}`,
   };
 }
