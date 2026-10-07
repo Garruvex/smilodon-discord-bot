@@ -14,7 +14,7 @@ import { milestone0Capabilities } from "../domain/campaign/rules/capabilities.js
 // Checks adventure files against the format and the story contract (see docs/dnd-adventure-conversion-guide.md).
 //   npm run adventure:check -- private/adventures/farm-fright/zh-TW.yaml
 //   npm run adventure:check -- private/adventures            (every .yaml below it, with a summary)
-// --routes prints the shortest way to each ending, a step at a time (every roll lands in the table's favour, every fight is won unless it is the way).
+// --routes prints the best way to each ending (every roll lands in the table's favour) and the worst case (every roll against them).
 // Exit code 1 when any file has errors, so a converter can run it in a loop until it passes.
 const { values, positionals } = parseArgs({ allowPositionals: true, options: { json: { type: "boolean", default: false }, quiet: { type: "boolean", default: false }, routes: { type: "boolean", default: false } } });
 if (positionals.length === 0) {
@@ -48,11 +48,17 @@ const results: FileResult[] = yamlFiles(positionals[0] ?? "").filter((file) => f
 if (values.routes) {
   for (const file of yamlFiles(positionals[0] ?? "").filter((candidate) => candidate.endsWith(".yaml"))) {
     const bible = parseAdventureDocument(readFileSync(file, "utf8").replaceAll("\r\n", "\n")).bible;
-    const found = searchStoryStates(bible, bible.scenes.filter((scene) => scene.ending === true).map((scene) => scene.id), maxStates * 10, 60_000);
+    const endings = bible.scenes.filter((scene) => scene.ending === true).map((scene) => scene.id);
     console.log(["", file].join("\n"));
-    if (found.kind !== "complete") { console.log("  too many states to search"); continue; }
-    console.log(`  ${found.states} states, ${found.stranded.length} stranded`);
-    for (const [ending, steps] of Object.entries(found.routes)) console.log([`  ${ending} (${steps.length} steps)`, ...steps.map((step, index) => `    ${index + 1}. ${step}`)].join("\n"));
+    for (const ending of endings) {
+      // Each ending on its own: the best way there, and whether the table can force it at all when every roll and fight goes against them.
+      const found = searchStoryStates(bible, endings, maxStates * 10, 60_000, [ending]);
+      if (found.kind !== "complete") { console.log(`  ${ending}: too many states to search`); continue; }
+      const best = found.routes[ending];
+      console.log(`  ${ending} (${found.states} states)`);
+      console.log(best === undefined ? "    best case: cannot be reached" : ["    best case:", ...best.map((step, index) => `      ${index + 1}. ${step}`)].join("\n"));
+      console.log(found.worst.length === 0 ? "    worst case: not guaranteed, bad luck can keep the table from it (the other endings stay open)" : ["    worst case, forced:", ...found.worst.map((step, index) => `      ${index + 1}. ${step}`)].join("\n"));
+    }
   }
   process.exit(0);
 }
