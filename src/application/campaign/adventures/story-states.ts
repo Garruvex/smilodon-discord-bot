@@ -28,7 +28,7 @@ export interface StrandedState {
 }
 
 export type StateSearch =
-  | { readonly kind: "complete"; readonly states: number; readonly stranded: readonly StrandedState[]; readonly routes: Readonly<Record<string, readonly string[]>> }
+  | { readonly kind: "complete"; readonly states: number; readonly stranded: readonly StrandedState[]; readonly routes: Readonly<Record<string, readonly string[]>>; readonly worst: readonly string[] }
   // The adventure has more states than the search may visit; nothing is concluded from it.
   | { readonly kind: "tooLarge"; readonly states: number };
 
@@ -335,11 +335,11 @@ function dedupe(states: readonly StoryState[]): StoryState[] {
 }
 
 // Every state the story can reach, and those from which the table cannot force an ending.
-export function searchStoryStates(bible: AdventureBible, endings: readonly string[], limit = maxStates, milliseconds = maxSearchMilliseconds): StateSearch {
+export function searchStoryStates(bible: AdventureBible, endings: readonly string[], limit = maxStates, milliseconds = maxSearchMilliseconds, goals: readonly string[] = endings): StateSearch {
   const deadline = Date.now() + milliseconds;
   const story = new Story(bible, new Set(endings));
   const states = new Map<string, StoryState>();
-  const moves = new Map<string, readonly { readonly label: string; readonly targets: readonly string[] }[]>();
+  const moves = new Map<string, readonly { readonly label: string; readonly targets: readonly string[]; readonly answers: readonly string[] }[]>();
   const parent = new Map<string, { readonly from: string | null; readonly step: string }>();
   const queue: string[] = [];
   for (const { label, state: raw } of story.start()) {
@@ -358,6 +358,7 @@ export function searchStoryStates(bible: AdventureBible, endings: readonly strin
     if (story.isEnding(state)) { moves.set(key, []); continue; }
     const choices = story.moves(state).map((move) => ({
       label: move.label,
+      answers: move.outcomes.map((outcome) => outcome.label),
       targets: move.outcomes.map((outcome) => {
         const settled = story.settle(outcome.state);
         const target = stateKey(settled);
@@ -373,16 +374,17 @@ export function searchStoryStates(bible: AdventureBible, endings: readonly strin
   }
 
   // Safe states, from the endings back: a state is safe when some choice leads only to safe states, whatever chance answers.
-  const safe = new Set<string>([...states].filter(([, state]) => story.isEnding(state)).map(([key]) => key));
-  for (let changed = true; changed; ) {
+  // Each safe state is ranked by the turns the table needs to force an ending (an ending is 0): one more than its best choice's worst answer.
+  const rank = new Map<string, number>([...states].filter(([, state]) => goals.includes(state.scene)).map(([key]) => [key, 0]));
+  const safe = new Set<string>(rank.keys());
+  for (let layer = 1, changed = true; changed; layer += 1) {
     changed = false;
+    const reached: string[] = [];
     for (const key of states.keys()) {
       if (safe.has(key)) continue;
-      if ((moves.get(key) ?? []).some((move) => move.targets.length > 0 && move.targets.every((target) => safe.has(target)))) {
-        safe.add(key);
-        changed = true;
-      }
+      if ((moves.get(key) ?? []).some((move) => move.targets.length > 0 && move.targets.every((target) => safe.has(target)))) reached.push(key);
     }
+    for (const key of reached) { safe.add(key); rank.set(key, layer); changed = true; }
   }
 
   const pathTo = (key: string): string[] => {
@@ -403,5 +405,21 @@ export function searchStoryStates(bible: AdventureBible, endings: readonly strin
     const scene = (states.get(key) as StoryState).scene;
     if (story.isEnding(states.get(key) as StoryState) && routes[scene] === undefined) routes[scene] = pathTo(key);
   }
-  return { kind: "complete", states: states.size, stranded, routes };
+  // The worst the table can be held to: from the start, the table takes the choice with the quickest sure ending and chance answers with the slowest.
+  const worst: string[] = [];
+  let at = queue.filter((key) => parent.get(key)?.from === null).sort((a, b) => (rank.get(b) ?? -1) - (rank.get(a) ?? -1))[0];
+  if (at !== undefined && rank.has(at)) {
+    worst.push(parent.get(at)?.step ?? "");
+    for (let guard = 0; guard < 10_000 && (rank.get(at) ?? 0) > 0; guard += 1) {
+      const here: string = at;
+      const choices = (moves.get(here) ?? []).filter((move) => move.targets.length > 0 && move.targets.every((target) => safe.has(target)));
+      const best = choices.sort((a, b) => Math.max(...a.targets.map((t) => rank.get(t) ?? 0)) - Math.max(...b.targets.map((t) => rank.get(t) ?? 0)))[0];
+      if (best === undefined) break;
+      let slow = 0;
+      best.targets.forEach((target, index) => { if ((rank.get(target) ?? 0) > (rank.get(best.targets[slow] as string) ?? 0)) slow = index; });
+      worst.push(`${best.label}: ${best.answers[slow]}`);
+      at = best.targets[slow] as string;
+    }
+  }
+  return { kind: "complete", states: states.size, stranded, routes, worst };
 }
