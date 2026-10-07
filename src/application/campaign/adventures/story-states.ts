@@ -28,13 +28,13 @@ export interface StrandedState {
 }
 
 export type StateSearch =
-  | { readonly kind: "complete"; readonly states: number; readonly stranded: readonly StrandedState[] }
+  | { readonly kind: "complete"; readonly states: number; readonly stranded: readonly StrandedState[]; readonly routes: Readonly<Record<string, readonly string[]>> }
   // The adventure has more states than the search may visit; nothing is concluded from it.
   | { readonly kind: "tooLarge"; readonly states: number };
 
 export const maxStates = 100_000;
 // The search runs inside the bot, so it gives up after this long rather than hold everything else up (the coarse check stands in).
-export const maxSearchMilliseconds = 400;
+export const maxSearchMilliseconds = 1500;
 
 const flagOn = (state: StoryState, flag: string): boolean => (state.flags.get(flag) ?? 0) > 0;
 
@@ -397,5 +397,11 @@ export function searchStoryStates(bible: AdventureBible, endings: readonly strin
   };
   // Where trouble begins: an unsafe state entered from a safe one (or the start), in visiting order, so each path is the shortest way in.
   const stranded = queue.filter((key) => !safe.has(key) && (parent.get(key)?.from == null || safe.has(parent.get(key)?.from ?? ""))).map((key) => ({ state: states.get(key) as StoryState, path: pathTo(key) }));
-  return { kind: "complete", states: states.size, stranded };
+  // The shortest way the table can take to each ending the story can reach.
+  const routes: Record<string, readonly string[]> = {};
+  for (const key of queue) {
+    const scene = (states.get(key) as StoryState).scene;
+    if (story.isEnding(states.get(key) as StoryState) && routes[scene] === undefined) routes[scene] = pathTo(key);
+  }
+  return { kind: "complete", states: states.size, stranded, routes };
 }

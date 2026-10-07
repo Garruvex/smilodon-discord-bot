@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 
 import { parseAdventureDocument } from "../application/campaign/adventures/adventure-document.js";
 import { validateAdventure } from "../application/campaign/adventures/adventure-validator.js";
+import { searchStoryStates, maxStates } from "../application/campaign/adventures/story-states.js";
 import { analyzeStoryContract, type StoryFinding } from "../application/campaign/adventures/story-contract.js";
 import { enSrd51Glossary } from "../application/i18n/campaign/glossary/en/srd-5.1.js";
 import { zhTwSrd51Glossary } from "../application/i18n/campaign/glossary/zh-TW/srd-5.1.js";
@@ -13,10 +14,11 @@ import { milestone0Capabilities } from "../domain/campaign/rules/capabilities.js
 // Checks adventure files against the format and the story contract (see docs/dnd-adventure-conversion-guide.md).
 //   npm run adventure:check -- private/adventures/farm-fright/zh-TW.yaml
 //   npm run adventure:check -- private/adventures            (every .yaml below it, with a summary)
+// --routes prints the shortest way to each ending, a step at a time (every roll lands in the table's favour, every fight is won unless it is the way).
 // Exit code 1 when any file has errors, so a converter can run it in a loop until it passes.
-const { values, positionals } = parseArgs({ allowPositionals: true, options: { json: { type: "boolean", default: false }, quiet: { type: "boolean", default: false } } });
+const { values, positionals } = parseArgs({ allowPositionals: true, options: { json: { type: "boolean", default: false }, quiet: { type: "boolean", default: false }, routes: { type: "boolean", default: false } } });
 if (positionals.length === 0) {
-  console.error("Usage: npm run adventure:check -- <file.yaml | folder> [--quiet] [--json]");
+  console.error("Usage: npm run adventure:check -- <file.yaml | folder> [--quiet] [--json] [--routes]");
   process.exit(2);
 }
 
@@ -43,6 +45,17 @@ const results: FileResult[] = yamlFiles(positionals[0] ?? "").filter((file) => f
   return { file, errors: report.errors, warnings: report.warnings, story };
 });
 
+if (values.routes) {
+  for (const file of yamlFiles(positionals[0] ?? "").filter((candidate) => candidate.endsWith(".yaml"))) {
+    const bible = parseAdventureDocument(readFileSync(file, "utf8").replaceAll("\r\n", "\n")).bible;
+    const found = searchStoryStates(bible, bible.scenes.filter((scene) => scene.ending === true).map((scene) => scene.id), maxStates * 10, 60_000);
+    console.log(["", file].join("\n"));
+    if (found.kind !== "complete") { console.log("  too many states to search"); continue; }
+    console.log(`  ${found.states} states, ${found.stranded.length} stranded`);
+    for (const [ending, steps] of Object.entries(found.routes)) console.log([`  ${ending} (${steps.length} steps)`, ...steps.map((step, index) => `    ${index + 1}. ${step}`)].join("\n"));
+  }
+  process.exit(0);
+}
 if (values.json) {
   console.log(JSON.stringify(results, null, 2));
 } else {
