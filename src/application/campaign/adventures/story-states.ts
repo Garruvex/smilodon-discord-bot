@@ -103,20 +103,66 @@ class Story {
   // An interaction a set flag has closed for good does not need its own record of having been done or tried: forgetting it merges states
   // that differ only in that record.
   private canonical(state: StoryState): StoryState {
+    // The story ends there: whatever the party did on the way no longer matters, so every way of ending in a scene is one state.
+    if (this.endings.has(state.scene)) return { scene: state.scene, flags: new Map(), clues: new Set(), tries: new Map(), done: new Set(), clocks: new Map() };
     const shut = (id: string): boolean => {
       const interaction = (this.bible.interactions ?? []).find((candidate) => candidate.id === id);
       return interaction !== undefined && (interaction.requires.notFlags ?? []).some((flag) => flagOn(state, flag) && !this.cleared.has(flag));
     };
-    const done = [...state.done].filter((id) => !shut(id));
-    const tries = [...state.tries].filter(([id]) => !shut(id));
+    const inert = (id: string): boolean => {
+      const interaction = (this.bible.interactions ?? []).find((candidate) => candidate.id === id);
+      return interaction !== undefined && this.inert(interaction, state);
+    };
+    const done = [...state.done].filter((id) => !shut(id) && !inert(id));
+    const tries = [...state.tries].filter(([id]) => !shut(id) && !inert(id));
     return done.length === state.done.size && tries.length === state.tries.size ? state : { ...state, done: new Set(done), tries: new Map(tries) };
+  }
+
+  // A fight changes nothing the story reads when neither way it ends sets a flag or clue anything reads, moves the party or starts another
+  // fight that matters: it is then not a step worth searching, and no record of it is kept.
+  private fightMatters(encounterId: string, seen: Set<string>): boolean {
+    if (seen.has(encounterId)) return false;
+    seen.add(encounterId);
+    const encounter = this.bible.encounters.find((candidate) => candidate.id === encounterId);
+    if (encounter === undefined) return false;
+    const effects = [...(encounter.triggers ?? []).flatMap((trigger) => trigger.effects.filter((effect) => effect.kind !== "add" && effect.kind !== "end" && effect.kind !== "announce")), ...(encounter.onVictory ?? []), ...(encounter.onDefeat ?? [])] as readonly BibleEffect[];
+    for (const effect of flat(effects)) {
+      if (effect.kind === "set" && this.flags.has(effect.flag)) return true;
+      if (effect.kind === "reveal" && this.clues.has(effect.clue)) return true;
+      if (effect.kind === "goto") return true;
+      if (effect.kind === "encounter" && this.fightMatters(effect.encounter, seen)) return true;
+      if (effect.kind === "clock" && this.bible.clocks.some((clock) => clock.id === effect.clock && clock.onFull !== null)) return true;
+    }
+    return false;
+  }
+
+  // An interaction that can no longer change anything, whichever way it goes: what it would set is set (and nothing clears it), what it would
+  // reveal is held, the fights it would start are fought. Choosing it is a wasted turn, so it is not a move, and no record of it is kept.
+  private inert(interaction: BibleInteraction, state: StoryState): boolean {
+    const effects = [...interaction.onSuccess, ...interaction.onFailure, ...interaction.tiers.flatMap((tier) => tier.effects)];
+    for (const effect of flat(effects)) {
+      // Going where a plain exit of the same scene already goes is no more than that exit.
+      if (effect.kind === "goto" && !this.openExit(interaction.sceneId, effect.scene)) return false;
+      if (effect.kind === "set" && this.flags.has(effect.flag) && (this.cleared.has(effect.flag) || flagOn(state, effect.flag) !== ((effect.value ?? 1) > 0))) return false;
+      if (effect.kind === "reveal" && this.clues.has(effect.clue) && !state.clues.has(effect.clue)) return false;
+      if (effect.kind === "encounter" && !state.done.has(`fight:${effect.encounter}`) && this.fightMatters(effect.encounter, new Set())) return false;
+      if (effect.kind === "clock" && this.bible.clocks.some((clock) => clock.id === effect.clock && clock.onFull !== null)) return false;
+    }
+    return true;
+  }
+
+  private openExit(from: string, to: string): boolean {
+    const scene = this.bible.scenes.find((candidate) => candidate.id === from);
+    if (scene === undefined || from === to) return false;
+    return scene.exits === undefined || scene.exits.some((exit) => exit.to === to && exit.requires === undefined);
   }
 
   private matters(effects: readonly BibleEffect[]): boolean {
     for (const effect of flat(effects)) {
       if (effect.kind === "set" && this.flags.has(effect.flag)) return true;
       if (effect.kind === "reveal" && this.clues.has(effect.clue)) return true;
-      if (effect.kind === "goto" || effect.kind === "encounter") return true;
+      if (effect.kind === "goto") return true;
+      if (effect.kind === "encounter" && this.fightMatters(effect.encounter, new Set())) return true;
       if (effect.kind === "clock" && this.bible.clocks.some((clock) => clock.id === effect.clock && clock.onFull !== null)) return true;
     }
     return false;
@@ -187,7 +233,7 @@ class Story {
       if (this.clues.has(clue.id) && clue.free === true && clue.sceneId === scene.id && !state.clues.has(clue.id)) moves.push({ label: `the engine gives ${clue.id}`, outcomes: [{ label: "given", state: { ...state, clues: new Set([...state.clues, clue.id]) } }] });
     }
     for (const interaction of this.bible.interactions ?? []) {
-      if (interaction.sceneId !== scene.id || !this.relevant(interaction) || (certain(interaction) && this.harmless(interaction.onSuccess)) || state.done.has(interaction.id) || (state.tries.get(interaction.id) ?? 0) >= interaction.attempts || !met(interaction.requires, state)) continue;
+      if (interaction.sceneId !== scene.id || !this.relevant(interaction) || (certain(interaction) && this.harmless(interaction.onSuccess)) || state.done.has(interaction.id) || this.inert(interaction, state) || (state.tries.get(interaction.id) ?? 0) >= interaction.attempts || !met(interaction.requires, state)) continue;
       moves.push({ label: interaction.id, outcomes: this.attempt(state, interaction) });
     }
     return moves;
@@ -270,6 +316,7 @@ class Story {
   private fight(state: StoryState, encounterId: string, depth: number): Move["outcomes"] {
     const key = `fight:${encounterId}`;
     if (state.done.has(key)) return [{ label: "already fought", state }];
+    if (!this.fightMatters(encounterId, new Set())) return [{ label: "fought", state }];
     const encounter: BibleEncounter | undefined = this.bible.encounters.find((candidate) => candidate.id === encounterId);
     const fought: StoryState = { ...state, done: new Set([...state.done, key]) };
     if (encounter === undefined) return [{ label: "fought", state: fought }];
