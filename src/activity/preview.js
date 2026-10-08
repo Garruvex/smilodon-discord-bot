@@ -132,3 +132,18 @@ export function designPreviewSnapshot() {
   };
 }
 
+
+// ?design-preview&roll-kinds plays one of every kind of roll, so the toast can be seen for each.
+if (new URLSearchParams(window.location.search).has("roll-kinds")) {
+  const base = { dc: null, success: null, moment: null, natural: null };
+  setTimeout(() => {
+    showRolls([]);
+    showRolls([
+      { ...base, id: "k1", kind: "attack", using: "Fire Bolt", natural: 15, total: 19, success: true },
+      { ...base, id: "k2", kind: "damage", using: "Fire Bolt", total: 9 },
+      { ...base, id: "k3", kind: "deathSave", natural: 12, total: 12, dc: 10, success: true },
+      { ...base, id: "k4", kind: "hitDice", total: 11 },
+      { ...base, id: "k5", kind: "initiative", natural: 8, total: 10 },
+    ]);
+  }, 1500);
+}

@@ -42,17 +42,51 @@ function momentText(roll) {
     : roll.moment === "natural1" ? t(roll.success ? "activity.roll.natural1Success" : "activity.roll.natural1Failure") : "";
 }
 
+// Every kind of roll is shown the same way, by this one function: a tumbling die on a toast that lands on the number. Rolls that land together
+// (an attack and its damage) wait their turn, so each is seen; a pile-up keeps the latest few.
+const toastQueue = [];
+let toastRunning = false;
+const toastLimit = 6;
+
 export function showRolls(rolls) {
   const fresh = rolls.filter((roll) => !seenRolls.has(roll.id));
   for (const roll of rolls) seenRolls.add(roll.id);
   if (!app.rollsPrimed) { app.rollsPrimed = true; return; }
   const mine = awaiting === null ? undefined : fresh.find((roll) => roll.id === awaiting.checkId);
   if (mine !== undefined) awaiting.resolve(mine);
-  const roll = fresh.filter((candidate) => candidate !== mine).at(-1);
-  if (roll) showToast(roll);
+  toastQueue.push(...fresh.filter((candidate) => candidate !== mine));
+  if (toastQueue.length > toastLimit) toastQueue.splice(0, toastQueue.length - toastLimit);
+  void drainToasts();
+}
+
+async function drainToasts() {
+  if (toastRunning) return;
+  toastRunning = true;
+  try {
+    for (let roll = toastQueue.shift(); roll !== undefined; roll = toastQueue.shift()) await showToast(roll);
+  } finally { toastRunning = false; }
+}
+
+// What the roll is called: a test of an ability or skill by its name, anything else by its kind (and the weapon or spell it belongs to).
+export function rollTitle(roll) {
+  return roll.test ? rollLabel(roll.test) : t(`activity.rollKind.${roll.kind ?? "check"}`, { using: roll.using ?? "" });
+}
+
+// The line under the die: a check against its DC, an attack against the target, a pool of dice by its total.
+function rollDetail(roll) {
+  const outcome = (win, lose) => t(roll.success ? win : lose);
+  if (roll.natural === null || roll.natural === undefined) return t("activity.roll.poolResult", { total: roll.total });
+  const sum = signed(roll.total - roll.natural);
+  if (roll.dc !== null && roll.dc !== undefined) return t("activity.roll.result", { natural: roll.natural, sum, total: roll.total, dc: roll.dc, outcome: outcome("activity.roll.success", "activity.roll.failure") });
+  if (roll.success === null || roll.success === undefined) return t("activity.roll.plainResult", { natural: roll.natural, sum, total: roll.total });
+  return t("activity.roll.attackResult", { natural: roll.natural, sum, total: roll.total, outcome: outcome("activity.roll.hit", "activity.roll.miss") });
 }
 
 function showToast(roll) {
+  return new Promise((done) => showToastNow(roll, done));
+}
+
+function showToastNow(roll, done) {
   let toast = document.querySelector("#roll-toast");
   if (!toast) {
     toast = document.createElement("div");
@@ -60,10 +94,9 @@ function showToast(roll) {
     toast.setAttribute("role", "status");
     document.body.append(toast);
   }
-  const sum = signed(roll.total - roll.natural);
   const label = document.createElement("div");
   label.className = "roll-toast-label";
-  label.textContent = rollLabel(roll.test);
+  label.textContent = rollTitle(roll);
   const die = document.createElement("div");
   die.className = "roll-toast-die";
   const dieIcon = document.createElement("img");
@@ -81,17 +114,20 @@ function showToast(roll) {
   toast.replaceChildren(label, die, moment, detail);
   const extra = momentClasses(roll);
   toast.className = ["is-tumbling", ...extra].join(" ");
-  toast.setAttribute("aria-label", `${rollLabel(roll.test)}: ${roll.natural}, ${t(roll.success ? "activity.roll.success" : "activity.roll.failure")}`);
+  toast.setAttribute("aria-label", `${rollTitle(roll)}: ${roll.natural ?? roll.total}${roll.success === null || roll.success === undefined ? "" : `, ${t(roll.success ? "activity.roll.success" : "activity.roll.failure")}`}`);
   clearTimeout(app.rollToastTimer);
   let ticks = 0;
   const tumble = setInterval(() => {
     number.textContent = randomFace();
     if (++ticks < 11) return;
     clearInterval(tumble);
-    number.textContent = String(roll.natural);
-    detail.textContent = t("activity.roll.result", { natural: roll.natural, sum, total: roll.total, dc: roll.dc, outcome: t(roll.success ? "activity.roll.success" : "activity.roll.failure") });
-    toast.className = [roll.success ? "is-success" : "is-failure", ...extra].join(" ");
-    app.rollToastTimer = setTimeout(() => { toast.className = ""; }, 5000);
+    number.textContent = String(roll.natural ?? roll.total);
+    detail.textContent = rollDetail(roll);
+    toast.className = [roll.success === false ? "is-failure" : roll.success === true ? "is-success" : "is-neutral", ...extra].join(" ");
+    // The next waiting roll takes over after a short hold; the last one stays a little longer.
+    const hold = toastQueue.length > 0 ? 1400 : 5000;
+    app.rollToastTimer = setTimeout(() => { if (toastQueue.length === 0) toast.className = ""; }, hold);
+    setTimeout(done, toastQueue.length > 0 ? 1400 : 0);
   }, 80);
 }
 

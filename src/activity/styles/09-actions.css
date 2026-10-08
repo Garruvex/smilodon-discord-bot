@@ -12,7 +12,7 @@
 .lobby-card-request-status { margin: 4px 0 0; color: #725533; font-size: 11px; line-height: 1.35; }
 @keyframes pending-spin { to { transform: rotate(360deg); } }
 #roll-toast { position: fixed; left: 50%; bottom: 96px; z-index: 60; min-width: 220px; max-width: calc(100% - 32px); padding: 14px 20px; border: 1px solid #796546; border-radius: 16px; background: #211e1bf2; color: #eee7d9; text-align: center; box-shadow: 0 14px 50px #000b; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s, box-shadow .3s; }
-#roll-toast.is-tumbling, #roll-toast.is-success, #roll-toast.is-failure { opacity: 1; transform: translate(-50%, 0); }
+#roll-toast.is-tumbling, #roll-toast.is-success, #roll-toast.is-failure, #roll-toast.is-neutral { opacity: 1; transform: translate(-50%, 0); }
 .roll-toast-label { font-size: 13px; opacity: .8; }
 .roll-toast-die { position: relative; display: grid; width: 78px; height: 78px; place-items: center; margin: 7px auto 4px; filter: drop-shadow(0 5px 7px #0007); }
 .roll-toast-die img { position: absolute; width: 100%; height: 100%; object-fit: contain; clip-path: polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%); filter: invert(79%) sepia(18%) saturate(470%) hue-rotate(5deg) drop-shadow(0 0 7px #d4ad5c70); }
