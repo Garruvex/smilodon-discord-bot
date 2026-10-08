@@ -7,6 +7,7 @@ import { isFallen, presentMembers, type CampaignState } from "../../domain/campa
 import { hitDicePool } from "../../domain/campaign/character/character-build.js";
 import type { SealedContent, Glossary } from "../../domain/campaign/rules/content-registry.js";
 import type { CheckTest } from "../../domain/campaign/character/character-sheet.js";
+import { buildActivityRolls, type ActivityRoll } from "./views/activity-rolls.js";
 import { findScene } from "../../domain/campaign/adventure/adventure-bible.js";
 import { availableInteractions } from "./dm/interactions.js";
 import { levelingMode, resolveHouseRules } from "../../domain/campaign/rules/house-rules.js";
@@ -188,7 +189,8 @@ export interface ActivityTableView {
   // The viewer's newest settled rolls (a check, a press); the client shows each one once.
   // The story so far, newest last: what the table has read in the Adventure channel and what the fight did.
   readonly story: readonly StoryEntry[];
-  readonly rolls: readonly { readonly id: string; readonly test: CheckTest; readonly natural: number; readonly total: number; readonly dc: number; readonly success: boolean; readonly moment: "natural20" | "natural1" | null }[];
+  // Every roll the viewer's hero made, in one shape (views/activity-rolls.ts).
+  readonly rolls: readonly ActivityRoll[];
   // What the party could try here, in the adventure's own words: the authored interactions open right now. A mystery cannot ask players to guess its triggers.
   readonly leads: readonly { readonly id: string; readonly label: string }[];
   readonly submittedCount: number;
@@ -596,7 +598,7 @@ export function buildActivityTableView(
       })(),
     pendingRollCount: panel.pendingRolls.length,
     story: buildActivityStory(state, events, bible, glossary, ownCharacterId),
-    rolls: ownCharacterId === null ? [] : recentRolls(state, ownCharacterId),
+    rolls: ownCharacterId === null ? [] : buildActivityRolls(state, events, ownCharacterId, glossary),
     leads: availableInteractions(bible, state).map((interaction) => ({ id: interaction.id, label: interaction.label })),
     submittedCount: state.round == null ? 0 : Object.values(state.round.submissions).filter((submission) => submission.kind === "action" || submission.kind === "pass").length,
     participantCount: state.round?.participants.length ?? 0,
@@ -651,10 +653,3 @@ function nameTurn(turn: TurnView, glossary: Glossary): ActivityTurnView {
   };
 }
 
-function recentRolls(state: CampaignState, characterId: string): ActivityTableView["rolls"] {
-  const rollOf = (check: CampaignState["checks"][string]): ActivityTableView["rolls"][number] => ({ id: check.id, test: check.test, natural: check.result!.roll.d20.natural, total: check.result!.roll.total, dc: check.dc, success: check.result!.success, moment: check.result!.moments.headline?.kind === "natural20" || check.result!.moments.headline?.kind === "natural1" ? check.result!.moments.headline.kind : null });
-  const checks = Object.values(state.checks).filter((check) => check.characterId === characterId && check.result !== null).sort((a, b) => a.roundNumber - b.roundNumber).slice(-3).map(rollOf);
-  const presses = Object.values(state.dialogues).filter((dialogue) => dialogue.characterId === characterId && dialogue.check?.natural !== undefined).slice(-1)
-    .map((dialogue) => ({ id: dialogue.id, test: dialogue.check!.test, natural: dialogue.check!.natural!, total: dialogue.check!.total, dc: dialogue.check!.dc, success: dialogue.check!.success, moment: dialogue.check!.moments.headline?.kind === "natural20" || dialogue.check!.moments.headline?.kind === "natural1" ? dialogue.check!.moments.headline.kind : null }));
-  return [...checks, ...presses];
-}
