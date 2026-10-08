@@ -1,5 +1,6 @@
 import { t } from "./i18n.js";
 import { rollLabel } from "./dice.js";
+import { playCombatEntry } from "./encounter-preview.js";
 
 // The story the table has read, kept in a drawer, and its newest line shown as a strip under the scene.
 // game.story is the server's list of entries (newest last); the ids stay the same between snapshots, so only what is new is added.
@@ -246,6 +247,8 @@ export function renderStory(game) {
       if (feed.ready) node.classList.add("is-new");
       feed.nodes.set(entry.id, node);
       added.push(entry);
+      // A blow struck since the last look is played on the board; what was already there when the page opened is not.
+      if (feed.ready && entry.kind === "combat") playCombatEntry(entry);
       if (previous === null) feed.element.insertBefore(node, feed.element.querySelector(".story-empty").nextSibling);
       else previous.after(node);
     } else {

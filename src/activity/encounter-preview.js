@@ -214,11 +214,12 @@ export function animateBattlefieldMovement(board, previous) {
 }
 
 let attackPlaying = false;
-export async function previewMelee(board) {
+const tokenNamed = (board, name) => [...board.querySelectorAll(".encounter-token")].find((token) => token.dataset.creature === name);
+export async function previewMelee(board, attackerName, targetName) {
   if (attackPlaying) return;
-  const target = board.querySelector(".encounter-token.side-foes");
+  const target = targetName === undefined ? board.querySelector(".encounter-token.side-foes") : tokenNamed(board, targetName);
   const area = target?.closest(".encounter-area");
-  const attacker = area?.querySelector(".encounter-token.side-party");
+  const attacker = attackerName === undefined ? area?.querySelector(".encounter-token.side-party") : tokenNamed(board, attackerName);
   if (!attacker || !target) return;
   attackPlaying = true;
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -267,10 +268,10 @@ function burst(effect) {
     ], { duration: 700 + (index % 3) * 120, delay: 60 + (index % 5) * 30, easing: "ease-out", fill: "both" });
   }
 }
-export async function previewMagic(board, areaSpell = false) {
+export async function previewMagic(board, areaSpell = false, casterName, targetName) {
   if (attackPlaying) return;
-  const caster = board.querySelector('.encounter-token.side-party');
-  const target = board.querySelector('.encounter-token.side-foes');
+  const caster = casterName === undefined ? board.querySelector('.encounter-token.side-party') : tokenNamed(board, casterName);
+  const target = targetName === undefined ? board.querySelector('.encounter-token.side-foes') : tokenNamed(board, targetName);
   if (!caster || !target) return;
   attackPlaying = true;
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -342,4 +343,37 @@ export async function previewAttack(board, attackerName, targetName, hit) {
       { transform: "translate(-50%,-38px) scale(1)", opacity: 0 },
     ], { duration: 1100, easing: "ease-out", fill: "forwards" }).finished;
   } finally { effect.remove(); attackPlaying = false; }
+}
+
+// A real attack from the story feed, played on the board: a sword swing when the two stand in one room, a flying spark when they do not, a bolt or a burst for a spell.
+// Entries wait their turn, so a round of blows plays one after another; a pile-up (a tab left in the background) keeps only the latest few.
+const playQueue = [];
+let playing = false;
+const playLimit = 4;
+export function playCombatEntry(entry) {
+  if (entry?.kind !== "combat" || document.hidden) return;
+  playQueue.push(entry);
+  if (playQueue.length > playLimit) playQueue.splice(0, playQueue.length - playLimit);
+  void drain();
+}
+async function drain() {
+  if (playing) return;
+  playing = true;
+  try {
+    for (let entry = playQueue.shift(); entry !== undefined; entry = playQueue.shift()) await playOne(entry);
+  } finally { playing = false; }
+}
+async function playOne(entry) {
+  const board = document.querySelector("#live-enemies .encounter-board") ?? document.querySelector(".encounter-board:not(.battle-move-ghost)");
+  const target = entry.targets?.[0];
+  if (!board || !target || tokenNamed(board, entry.who) === undefined || tokenNamed(board, target.name) === undefined) return;
+  // Healing and the like have nothing to strike.
+  if (entry.targets.every((each) => each.damage === 0 && each.check === null)) return;
+  const hit = entry.targets.some((each) => each.check !== "miss" && each.check !== "saved");
+  const sameRoom = tokenNamed(board, entry.who).dataset.area === tokenNamed(board, target.name).dataset.area;
+  while (attackPlaying) await new Promise((resolve) => setTimeout(resolve, 60));
+  if (entry.source === "area" || (entry.source === "spell" && entry.targets.length > 1)) await previewMagic(board, true, entry.who, target.name);
+  else if (entry.source === "spell") await previewMagic(board, false, entry.who, target.name);
+  else if (sameRoom && hit) await previewMelee(board, entry.who, target.name);
+  else await previewAttack(board, entry.who, target.name, hit);
 }
