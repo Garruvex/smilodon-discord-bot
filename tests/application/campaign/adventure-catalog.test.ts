@@ -329,8 +329,20 @@ describe("removing an adventure from the library", () => {
     // The place is free again: another adventure fits under the limit of one.
     const other = yamlOf("en").replace("id: moonlit-ruins", "id: another-ruin");
     expect((await c.catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: other })).kind).toBe("pending");
-    // The removed text is not overwritten by uploading the same version again.
+    // Uploading the removed version again needs a place in the allowance too.
+    expect(await c.catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: yamlOf("en") })).toEqual({ kind: "full" });
+  });
+
+  it("lets a removed adventure be uploaded again as a new draft, but not an approved one", async () => {
+    const c = catalog();
+    const { key, id } = await approved(c);
     expect(await c.catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: yamlOf("en") })).toEqual({ kind: "exists" });
+    await c.catalog.remove(key, "u-up", false);
+    expect(await c.catalog.submit({ guildId: "g-1", uploaderUserId: "u-other", source: "upload", text: yamlOf("en") })).toEqual({ kind: "notAllowed" });
+    expect(await c.catalog.submit({ guildId: "g-1", uploaderUserId: "u-up", source: "upload", text: yamlOf("en") })).toMatchObject({ kind: "pending", adventure: { key, status: "pending" } });
+    // Approving the new copy offers it to new games again; the earlier removal does not keep it hidden.
+    await c.catalog.approve(key, "u-up", false);
+    expect(c.library.listForGuild("g-1").map((entry) => entry.id)).toContain(id);
   });
 
   it("deletes a removed adventure for good, only for its uploader or an admin, and exports the stored text", async () => {

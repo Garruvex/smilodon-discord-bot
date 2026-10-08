@@ -1895,6 +1895,7 @@ export const campaignEn = {
   "campaign.adventure.unreadable.notDiscord": "Only a file uploaded to Discord can be read.",
   "campaign.adventure.unreadable.tooLarge": "That file is too large to be an adventure.",
   "campaign.adventure.unreadable.failed": "That file could not be downloaded. Try uploading it again.",
+  "campaign.adventure.existsRemovedInUse": "You removed that adventure, but a lobby or game still uses this version, so it cannot be replaced yet. Give the new file a new version, or finish those games first.",
   "campaign.adventure.exists": "This server already approved that adventure and version. Give the new file a new version to add it.",
   "campaign.adventure.full": "This server keeps at most {max} adventures. Discard one first.",
   "campaign.adventure.authorNoModel": "No AI author is set up on this bot.",

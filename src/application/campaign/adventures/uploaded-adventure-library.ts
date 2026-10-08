@@ -29,6 +29,8 @@ export class UploadedAdventureLibrary implements AdventureLibrary {
     editions.set(language, { guildId, document });
     versions.set(version, editions);
     this.uploads.set(id, versions);
+    // Adding an edition offers it: an earlier removal of the same version no longer hides it.
+    this.retired.delete(retiredKey(id, version, language));
   }
 
   public retire(adventureId: string, version: string, language: CampaignLanguage): void {

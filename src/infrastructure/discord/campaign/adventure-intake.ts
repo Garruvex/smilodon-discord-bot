@@ -126,6 +126,8 @@ export class AdventureIntake {
     switch (result.kind) {
       case "exists":
         return void (await ctx.editReply({ content: t.exists }));
+      case "removedInUse":
+        return void (await ctx.editReply({ content: t.existsRemovedInUse }));
       case "notAllowed":
         return void (await ctx.editReply({ content: t.replaceNotAllowed }));
       case "full":
