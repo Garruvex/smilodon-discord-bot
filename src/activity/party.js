@@ -5,7 +5,7 @@ import { renderCharacterWorkspace } from "./hero.js";
 import { performAction } from "./actions.js";
 import { classText, t } from "./i18n.js";
 import { fightTags, turnOrderBar } from "./fight-status.js";
-import { encounterPreview, captureBattlefieldPositions, animateBattlefieldMovement, previewAttack, previewMagic, previewMelee } from "./encounter-preview.js";
+import { encounterPreview, captureBattlefieldPositions, animateBattlefieldMovement, previewAttack, previewMagic, previewMelee, playCombatEntry } from "./encounter-preview.js";
 
 export function enemyRankIcon(rank) { return rank === "boss" ? "crowned-skull" : rank === "elite" ? "evil-minion" : rank === "minion" ? "minions" : "attack"; }
 
@@ -128,6 +128,9 @@ export function renderEnemies(enemies, allies = app.currentSnapshot?.allies ?? [
         } else void previewMelee(board);
       }],
       ["Area spell", () => void previewMagic(board, true)],
+      // The same path a real blow takes from the story feed: a sword (or spark) and a spell, between named creatures.
+      ["Live blow", () => playCombatEntry({ ["kind"]: "combat", who: game.party.find((hero) => hero.isYou)?.name, source: "weapon", targets: [{ name: game.foes[0]?.name, check: "hit", damage: 5, heal: 0 }] })],
+      ["Live spell", () => playCombatEntry({ ["kind"]: "combat", who: game.party.find((hero) => hero.isYou)?.name, source: "spell", targets: [{ name: game.foes[0]?.name, check: "failed", damage: 6, heal: 0 }] })],
     ]) {
       const button = document.createElement("button");
       button.type = "button";
