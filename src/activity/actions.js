@@ -9,6 +9,7 @@ import { openReplacement } from "./replacement.js";
 import { turnStrip } from "./fight-status.js";
 import { renderTurnBar } from "./turn-bar.js";
 import { renderGame } from "./render.js";
+import { openRestChooser } from "./table-controls.js";
 
 // Where each kind of action is shown: urgent decisions on top, the round composer, a category list, or the closing button.
 // The buttons by kind of action from the latest build, which the hotbar takes its own copy of.
@@ -475,6 +476,12 @@ export function buildTableActions(game, liveActions, log) {
   for (const panel of panels) liveActions.append(panel);
   if (composer.length) liveActions.append(row("action-composer", composer));
   if (note) liveActions.append(note);
+  // Between fights a rest is one tap away, not buried in the table menu: the organizer queues it, anyone else proposes it.
+  const controls = game.controls;
+  if (game.mode !== "combat" && controls != null && ((controls.rest != null && controls.rest.resting === null) || controls.canPropose)) {
+    log.push("restOpen");
+    groups.get("other").push(makeButton(t("activity.rest.open"), () => openRestChooser(), false, "notice"));
+  }
   const choiceCount = (category) => groups.get(category).filter((node) => node instanceof HTMLButtonElement).length;
   const categories = actionCategoryOrder.filter((category) => choiceCount(category) > 0);
   if (categories.length) {
