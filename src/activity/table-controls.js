@@ -72,6 +72,49 @@ function restCard(kind, controls, box) {
   return card;
 }
 
+// The rest chooser, opened from the Actions panel: short or long, one way in. The organizer's tap queues the rest (taken now when nothing is going,
+// otherwise after the round or fight); any other player's tap proposes it and the table votes. The engine decides; this only says which it will be.
+export function openRestChooser() {
+  const controls = current;
+  const box = dialog();
+  const organizer = controls?.rest != null;
+  const parts = [Object.assign(document.createElement("h2"), { id: "table-controls-title", textContent: t("activity.rest.title") })];
+  if (controls == null || (!organizer && !controls.canPropose)) parts.push(Object.assign(document.createElement("p"), { className: "level-up-status", textContent: t("activity.rest.none") }));
+  else if (organizer && controls.rest.resting !== null) parts.push(Object.assign(document.createElement("p"), { className: "level-up-status", textContent: t("activity.status.resting") }));
+  else {
+    parts.push(Object.assign(document.createElement("p"), { className: "sheet-note", textContent: t(organizer ? "activity.rest.organizerNote" : "activity.controls.proposeWhat") }));
+    for (const kind of ["short", "long"]) {
+      const card = document.createElement("section");
+      card.className = "level-up-section";
+      card.append(Object.assign(document.createElement("h3"), { textContent: t(`activity.controls.${kind}Rest`) }), Object.assign(document.createElement("p"), { className: "sheet-note", textContent: t(`activity.controls.${kind}RestWhat`) }));
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ui-control primary";
+      if (organizer && controls.rest.askedFor === kind) {
+        card.append(Object.assign(document.createElement("p"), { className: "sheet-note", textContent: t("activity.controls.asked", { rest: t(`activity.rest.${kind}`) }) }));
+        button.textContent = t("activity.controls.cancelRest");
+        button.addEventListener("click", () => void send({ kind: "queueRest", rest: "none" }, box));
+      } else if (organizer) {
+        button.textContent = t(controls.rest.now ? `activity.controls.${kind}Rest` : `activity.controls.${kind}RestLater`);
+        button.addEventListener("click", () => void send({ kind: "queueRest", rest: kind }, box));
+      } else {
+        button.textContent = t(kind === "short" ? "activity.controls.proposeShort" : "activity.controls.proposeLong");
+        button.addEventListener("click", () => void send({ kind: "proposeRest", rest: kind }, box));
+      }
+      card.append(button);
+      parts.push(card);
+    }
+  }
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "ui-control";
+  close.textContent = t("activity.rest.close");
+  close.addEventListener("click", () => box.close());
+  parts.push(close);
+  box.replaceChildren(...parts);
+  if (!box.open) box.showModal();
+}
+
 // A button that asks twice before it sends, for what cannot be taken back.
 function confirmButton(label, action, box, twice) {
   const button = document.createElement("button");
