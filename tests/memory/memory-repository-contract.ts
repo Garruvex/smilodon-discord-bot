@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import type { MemoryRepository, RelationCreateInput, RepositoryIngestInput } from "../../src/application/memory/memory.js";
 import { canRecall } from "../../src/application/memory/memory.js";
+import { CharacterCallbacks } from "../../src/application/chat/character-callbacks.js";
 
 function ingestInput(overrides: Partial<RepositoryIngestInput> = {}): RepositoryIngestInput {
   return {
@@ -35,6 +36,104 @@ export function memoryRepositoryContract(
   createRepository: () => Promise<MemoryRepository>,
 ): void {
   describe(`MemoryRepository contract (${label})`, () => {
+    it("conditionally updates metadata and preserves persistent callback quotas across instances", async () => {
+      const repository = await createRepository();
+      const fact = await repository.ingest(ingestInput());
+      const operation = { guildId: "guild", memoryId: fact.id, updatedAt: fact.updatedAt, expected: fact.structuredValue, value: { check: true } };
+      expect(await repository.compareAndSetStructuredValue!(operation)).toBe(true);
+      expect(await repository.compareAndSetStructuredValue!(operation)).toBe(false);
+      const callbacks = new CharacterCallbacks(repository);
+      const fresh = (await repository.findById("guild", fact.id))!;
+      const pending = (await callbacks.plan(fresh, 1500, "general"))!;
+      const second = (await callbacks.plan(await repository.ingest(ingestInput({ slot: "second" })), 1500, "general"))!;
+      const claims = await Promise.all([callbacks.claim(pending, 2000), new CharacterCallbacks(repository).claim(second, 2000)]);
+      expect(claims.filter(Boolean)).toHaveLength(1);
+      const claimed = claims.find((claim) => claim !== null)!;
+      expect(await callbacks.send(claimed, 2000, () => Promise.resolve(true), () => Promise.resolve("sent-message"))).toBe(true);
+      expect(await new CharacterCallbacks(repository).claim(claimed.id === pending.id ? second : pending, 3000)).toBeNull();
+    });
+    it("expires or clears module data without deleting ordinary facts", async () => {
+      const repository = await createRepository();
+      const ordinary = await repository.ingest(ingestInput());
+      const expired = await repository.ingest(ingestInput({ moduleId: "mood", expiresAt: 1500 }));
+      const retained = await repository.ingest(ingestInput({ moduleId: "canon" }));
+      await repository.deleteExpiredModuleData!("guild", 2000, 90);
+      expect(await repository.findById("guild", expired.id)).toBeNull();
+      expect(await repository.findById("guild", ordinary.id)).not.toBeNull();
+      expect(await repository.findById("guild", retained.id)).not.toBeNull();
+      expect(await repository.clearModuleData!("guild", "canon")).toBe(1);
+      expect(await repository.findById("guild", retained.id)).toBeNull();
+      expect(await repository.findById("guild", ordinary.id)).not.toBeNull();
+    });
+    it("keeps module ownership separate from ordinary and other module identities", async () => {
+      const repository = await createRepository();
+      const ordinary = await repository.ingest(ingestInput());
+      const relationship = await repository.ingest(ingestInput({ moduleId: "relationships", statement: "enjoys fruit jokes" }));
+      const canon = await repository.ingest(ingestInput({ moduleId: "canon", statement: "likes pears" }));
+      expect(new Set([ordinary.id, relationship.id, canon.id]).size).toBe(3);
+      expect(await repository.findById("guild", relationship.id)).toMatchObject({ moduleId: "relationships", status: "active" });
+      const revised = await repository.ingest(ingestInput({ moduleId: "relationships", statement: "enjoys apple jokes", now: 2_000 }));
+      expect(await repository.findById("guild", relationship.id)).toMatchObject({ status: "superseded", supersededById: revised.id });
+      expect(await repository.findById("guild", ordinary.id)).toMatchObject({ status: "active", moduleId: null });
+      expect(await repository.findById("guild", canon.id)).toMatchObject({ status: "active" });
+    });
+
+    it("excludes module records, aliases, and source quotes from generic recall", async () => {
+      const repository = await createRepository();
+      const ordinary = await repository.ingest(ingestInput({ sourceMessageId: "human-message" }));
+      const module = await repository.ingest(ingestInput({
+        moduleId: "relationships", slot: "relationship.tone", sourceMessageId: "reflection",
+        structuredValue: { observedSubjectNames: [{ value: "SecretAlias", observedAt: 1_000 }] },
+      }));
+      const query = { guildId: "guild", channelId: "general", userId: "alice", now: 2_000 };
+      expect((await repository.findRecallCandidates(query)).memories.map((memory) => memory.id)).toEqual([ordinary.id]);
+      expect(await repository.findObservedAliases({ ...query, message: "SecretAlias" })).toEqual([]);
+      expect((await repository.findPromptSources!([ordinary.id, module.id])).map((source) => source.memoryId)).toEqual([ordinary.id]);
+      // Management still includes module records and their provenance.
+      expect((await repository.listBySubject("guild", "alice")).map((memory) => memory.id)).toContain(module.id);
+      expect((await repository.findSources(module.id))[0]).toMatchObject({ sourceMessageId: "reflection" });
+      expect(await repository.forget({ guildId: "guild", memoryId: module.id })).toBe(1);
+      expect(await repository.findById("guild", module.id)).toBeNull();
+    });
+
+    it("does not use module records for ordinary conflict or candidate corroboration", async () => {
+      const repository = await createRepository();
+      await repository.ingest(ingestInput({ moduleId: "relationships" }));
+      const ordinary = await repository.ingest(ingestInput());
+      const query = {
+        guildId: "guild", subjectType: "member" as const, subjectId: "alice",
+        audience: "private" as const, ownerUserId: "alice", channelId: null, isolationChannelId: null,
+      };
+      expect((await repository.findActiveBySubject(query)).map((memory) => memory.id)).toEqual([ordinary.id]);
+      const moduleCandidate = await repository.ingest(ingestInput({ moduleId: "canon", status: "candidate", slot: "food.pear" }));
+      const identity = { ...query, topic: "preference", slot: "food.pear", excludeMemoryId: ordinary.id, now: 2_000 };
+      expect(await repository.findCandidatesByIdentity(identity)).toEqual([]);
+      expect((await repository.findCandidatesByIdentity({ ...identity, moduleId: "canon" }))
+        .map((candidate) => candidate.memory.id)).toEqual([moduleCandidate.id]);
+    });
+
+    it("does not traverse or emit relations supported by module-owned memory", async () => {
+      const repository = await createRepository();
+      const module = await repository.ingest(ingestInput({ moduleId: "relationships" }));
+      expect(await repository.createRelations([
+        relationInput({ supportingMemoryId: module.id, kind: "consequence" }),
+        relationInput({ fromSubjectId: "bob", toSubjectId: "carol" }),
+        relationInput({ toSubjectId: "dave" }),
+      ])).toBe(2);
+      const related = await repository.findRelatedSubjects({ guildId: "guild", channelId: "general", subjectIds: ["alice"], maxHops: 2 });
+      expect(related.map((subject) => subject.subjectId)).toEqual(["dave"]);
+      await repository.forget({ guildId: "guild", memoryId: module.id });
+      expect((await repository.findRelatedSubjects({ guildId: "guild", channelId: "general", subjectIds: ["alice"], maxHops: 2 }))
+        .map((subject) => subject.subjectId)).toEqual(["dave"]);
+    });
+
+    it("rejects empty or malformed module ownership rather than sharing the ordinary identity", async () => {
+      const repository = await createRepository();
+      for (const moduleId of ["", " canon", "CANON", "canon/other"]) {
+        await expect(async () => repository.ingest(ingestInput({ moduleId }))).rejects.toThrow("Invalid memory module ID");
+      }
+    });
+
     it("ingest + findById round-trips a memory", async () => {
       const repository = await createRepository();
       const memory = await repository.ingest(ingestInput());

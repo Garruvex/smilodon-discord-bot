@@ -415,6 +415,11 @@ export class GeminiChatProvider implements ChatProvider {
     return { ok: true, markdown };
   }
 
+  public async generateCharacterData(prompt: string, schema: Record<string, unknown>): Promise<unknown> {
+    const response = await this.summaryModelChain.run((model) => this.generateStructured(model, prompt, schema));
+    return JSON.parse((response.text ?? "").trim()) as unknown;
+  }
+
   public async summarizeDroppedExchanges(
     exchanges: readonly { user: string; assistant: string }[],
     speaker: { id: string; displayName: string },

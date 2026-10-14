@@ -1,6 +1,9 @@
 import type { SettingsTextCatalog } from "../catalog.js";
 
 export const enChat: SettingsTextCatalog = {
+  "participation.continuation-limits": { label: "Continuation exchange limits", description: "Active exchanges have no text cooldown; cap replies per exchange and per ten minutes." },
+  "participation.continuation-limits.exchange": { label: "Replies per exchange", description: "Maximum replies before two minutes of inactivity ends the exchange." },
+  "participation.continuation-limits.window": { label: "Replies per ten minutes", description: "Channel-wide continuation reply budget." },
   "participation.resources": { label: "Guild resources", description: "Per-guild concurrency and optional turn admission." },
   "participation.resources.concurrency": { label: "Concurrent turns per guild", description: "Maximum concurrent conversational turns in this guild." },
   "participation.resources.optional-turns": { label: "Optional turns per 10 minutes", description: "Admission budget per guild; accepted tool workflows finish normally." },

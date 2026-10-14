@@ -3,6 +3,7 @@ import type { Logger } from "pino";
 import { SocialOutputSuppressed, type MessageOriginStore } from "../../../application/chat/message-origin-store.js";
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
 import { resolveParticipation } from "../../../application/chat/participation-policy.js";
+import { characterSettings } from "../../../application/chat/character-settings.js";
 import { resolveChannelMemoryMode } from "../../../application/memory/memory-channel-policy.js";
 
 import { ChatAccessService } from "../../../application/access/chat-access-service.js";
@@ -101,13 +102,13 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     return true;
   }
 
-  public async execute(message: Message, trigger: "ambient" | "continuation" | "spontaneous" = "ambient"): Promise<BehaviorResult> {
+  public async execute(message: Message, trigger: "ambient" | "continuation" | "spontaneous" = "ambient", burst: readonly Message[] = []): Promise<BehaviorResult> {
     if (!message.inGuild() || !this.conversation) return BehaviorResult.Continue;
     const profile = this.profiles.find(message.guildId);
     if (!profile) return BehaviorResult.Continue;
     if (!await this.turnSupport.isEligible(message, trigger)) return BehaviorResult.Continue;
     const participation = resolveParticipation(profile.chat.participation, message.channelId);
-    this.cooldownUntilByChannel.set(
+    if (trigger === "ambient") this.cooldownUntilByChannel.set(
       message.channelId,
       Date.now() + profile.chat.ambientCooldownSeconds * 1_000,
     );
@@ -136,8 +137,9 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory
       ? this.turnSupport.toChannelHistoryMessages(await this.turnSupport.resolveChannelHistory(
           message,
-          profile.chat.channelHistoryLimit,
+          characterSettings(profile).context.enabled ? characterSettings(profile).context.maxMessages : profile.chat.channelHistoryLimit,
           new Set(replyChainMessages.map((hop) => hop.id)),
+          undefined, characterSettings(profile).context.enabled ? characterSettings(profile).context.budget : chatMemoryLimits.maxChannelHistoryChars,
         ))
       : [];
     const { selected: imageAttachments, droppedUnsupported, droppedOverLimit } = profile.chat.imageInputEnabled
@@ -177,11 +179,14 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         refreshContextMessage: (event) => this.turnSupport.refreshHistoryEvent(message, event),
         shouldDeliver: () => !resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).shadowMode,
         afterDecision: async (result) => {
+          if (result.characterIsCurrent && !result.characterIsCurrent() || result.characterCanDeliver && !await result.characterCanDeliver()) return;
+          const reactionTarget = result.replyTargetMessageId && result.replyTargetMessageId !== message.id
+            ? await message.channel.messages.fetch(result.replyTargetMessageId).catch(() => null) : message;
           const reserve = (): ((success: boolean) => void) | null => this.conversation!.reserveReaction(message.guildId, message.channelId,
             resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits);
-          if (result.reactionEmoji && await this.turnSupport.isEligible(message, "history_reaction")) {
+          if (result.reactionEmoji && reactionTarget && await this.turnSupport.isEligible(reactionTarget, "history_reaction")) {
             const release = reserve();
-            if (release) { try { await message.react(result.reactionEmoji); release(true); } catch { release(false); } }
+            if (release) { try { await reactionTarget.react(result.reactionEmoji); release(true); } catch { release(false); } }
           }
           await this.turnSupport.applyHistoryReactions(message.channel, result.historyReactions,
             { guildId: message.guildId, sourceMessageId: message.id }, reserve);
@@ -202,6 +207,8 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
             .slice(0, 10) ?? [],
         },
         mentionedUsers,
+        currentBurst: this.turnSupport.toChannelHistoryMessages((await Promise.all(burst.map(async (item) =>
+          await this.turnSupport.isEligible(item, trigger) ? item : null))).filter((item): item is Message => item !== null)).map((event) => ({ ...event, content: event.content.slice(0, 500) })),
         message: message.content,
         replyChain,
         replyChainOverflow,
@@ -223,13 +230,16 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         musicControllerRoleIds: musicActor?.musicControllerRoleIds,
         musicBotAdministratorRoleIds: musicActor?.botAdministratorRoleIds,
       }, async (deliveredResponse) => {
+        const target = deliveredResponse.replyTargetMessageId && deliveredResponse.replyTargetMessageId !== message.id
+          ? await message.channel.messages.fetch(deliveredResponse.replyTargetMessageId).catch(() => null) : message;
+        if (!target || !await this.turnSupport.isEligible(target, trigger)) throw new SocialOutputSuppressed();
         const emptyFallbackContent = deliveredResponse.generatedImages.length > 0
           ? "Here you go!"
           : "I ran out of words. Very premium of me.";
         const { deliveredText, firstMessageId } = await this.turnSupport.deliverChatResponse({
-          sourceMessage: message, trigger, origin: deliveredResponse.outputOrigin ?? "chat",
+          sourceMessage: target, trigger, origin: deliveredResponse.outputOrigin ?? "chat",
           sender: {
-            first: (payload) => message.reply({
+            first: (payload) => trigger !== "ambient" && target.id === message.id ? message.channel.send({ content: payload.content, files: [...payload.files], allowedMentions: { parse: [] } }) : target.reply({
               content: payload.content,
               files: [...payload.files],
               allowedMentions: { repliedUser: false, parse: [] },
@@ -241,6 +251,9 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
             }),
           },
           text: deliveredResponse.text,
+          characterMessages: deliveredResponse.characterMessages, characterDelayMs: deliveredResponse.characterDelayMs, characterIsCurrent: deliveredResponse.characterIsCurrent,
+          characterCanDeliver: deliveredResponse.characterCanDeliver,
+          recordDelivery: (sent) => { deliveredResponse.characterDeliveryProof = [...(deliveredResponse.characterDeliveryProof ?? []), { messageId: sent.id, content: sent.content }]; },
           sources: deliveredResponse.sources,
           images: deliveredResponse.generatedImages,
           emptyFallbackContent,
@@ -251,7 +264,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           this.conversation!.observe(message.guildId, message.channelId, {
             messageId: firstMessageId, timestampMs: Date.now(), authorId: botId, authorDisplayName: profile.displayName,
             content: deliveredText, imageCount: deliveredResponse.generatedImages.length,
-            replyToMessageId: message.id, replyToAuthorId: message.author.id,
+            replyToMessageId: target.id, replyToAuthorId: target.author.id,
           });
         if (deliveredResponse.outputOrigin !== "tool" && this.profiles.find(message.guildId)?.features.reactionReplies &&
             this.messageReactionWatchStore && await this.turnSupport.isEligible(message, trigger)) {

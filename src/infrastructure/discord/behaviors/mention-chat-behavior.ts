@@ -1,6 +1,7 @@
 import type { Message, User } from "discord.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from "discord.js";
 import type { Logger } from "pino";
+import { characterSettings } from "../../../application/chat/character-settings.js";
 import { SocialOutputSuppressed, type MessageOriginStore } from "../../../application/chat/message-origin-store.js";
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
 import { resolveParticipation, isLowSubstancePing } from "../../../application/chat/participation-policy.js";
@@ -125,8 +126,9 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory
       ? this.turnSupport.toChannelHistoryMessages(await this.turnSupport.resolveChannelHistory(
           message,
-          profile.chat.channelHistoryLimit,
+          characterSettings(profile).context.enabled ? characterSettings(profile).context.maxMessages : profile.chat.channelHistoryLimit,
           new Set(replyChainMessages.map((hop) => hop.id)),
+          undefined, characterSettings(profile).context.enabled ? characterSettings(profile).context.budget : chatMemoryLimits.maxChannelHistoryChars,
         ))
       : [];
     const { selected: imageAttachments, droppedUnsupported, droppedOverLimit } = profile.chat.imageInputEnabled
@@ -288,6 +290,9 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
             }),
           },
           text: deliveredResponse.text,
+          characterMessages: deliveredResponse.characterMessages, characterDelayMs: deliveredResponse.characterDelayMs, characterIsCurrent: deliveredResponse.characterIsCurrent,
+          characterCanDeliver: deliveredResponse.characterCanDeliver,
+          recordDelivery: (sent) => { deliveredResponse.characterDeliveryProof = [...(deliveredResponse.characterDeliveryProof ?? []), { messageId: sent.id, content: sent.content }]; },
           sources: deliveredResponse.sources,
           images: deliveredResponse.generatedImages,
           emptyFallbackContent,

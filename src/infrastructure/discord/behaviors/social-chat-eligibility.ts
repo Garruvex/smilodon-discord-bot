@@ -1,4 +1,5 @@
 import type { Message } from "discord.js";
+import { characterSettings } from "../../../application/chat/character-settings.js";
 import type { MessageOriginRecord, MessageOriginStore } from "../../../application/chat/message-origin-store.js";
 import { ChatAccessService } from "../../../application/access/chat-access-service.js";
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
@@ -46,6 +47,8 @@ export class SocialChatEligibility {
     if (!message.inGuild()) return reject("not_guild");
     const profile = this.profiles.find(message.guildId);
     if (!profile?.features.chatbot) return reject("chat_disabled");
+    if ((trigger === "continuation" || trigger === "spontaneous") && (!profile.features.channelHistory || characterSettings(profile).channelOverrides[message.channelId]?.contextEnabled === false ||
+        profile.chat.channelMemoryModes[message.channelId] === "disabled")) return reject("needs_conversation_context");
     if (await isInGameChannel(message, this.isGameChannel)) return reject("game_channel");
     const participation = resolveParticipation(profile.chat.participation, message.channelId);
     if (trigger === "continuation" && !participation.continuationEnabled) return reject("continuation_disabled");

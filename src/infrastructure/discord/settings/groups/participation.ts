@@ -3,6 +3,12 @@ import { chatSetting } from "./chat.js";
 import { defaultParticipation, resolveParticipation } from "../../../../application/chat/participation-policy.js";
 
 export const participation = group("participation", [
+    chatSetting("continuation-limits", {
+      exchange: integer({ min: 0, max: 30, read: (p) => p.chat.participation?.advanced.continuationPerExchange ?? 10,
+        write: (v, p) => v === (p.chat.participation?.advanced.continuationPerExchange ?? 10) ? {} : ({ chatParticipation: { advanced: { continuationPerExchange: v } } }) }),
+      window: integer({ min: 0, max: 100, read: (p) => p.chat.participation?.advanced.continuationPer10Minutes ?? 30,
+        write: (v, p) => v === (p.chat.participation?.advanced.continuationPer10Minutes ?? 30) ? {} : ({ chatParticipation: { advanced: { continuationPer10Minutes: v } } }) }),
+    }),
     chatSetting("controls", {
       continuation: toggle({ read: (p) => p.chat.participation?.continuationEnabled ?? false, write: (v) => ({ chatParticipation: { continuationEnabled: v } }) }),
       spontaneous: toggle({ read: (p) => p.chat.participation?.spontaneousEnabled ?? false, write: (v) => ({ chatParticipation: { spontaneousEnabled: v } }) }),

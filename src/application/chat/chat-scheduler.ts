@@ -8,6 +8,10 @@ export interface ChatActivityLimits {
   reactionsPerWindow: number;
   concurrency?: number;
   optionalTurnsPerWindow?: number;
+  optionalCallCost?: number;
+  continuation?: boolean;
+  continuationPerExchange?: number;
+  continuationPerWindow?: number;
 }
 
 export const balancedChatLimits: ChatActivityLimits = {
@@ -42,6 +46,7 @@ export class ChatScheduler {
   private queued = 0;
   private closed = false;
   private readonly evaluations = new Map<string, number[]>();
+  private readonly exchanges = new Map<string, { lastRelevantAt: number; replies: number; reserved: boolean; window: number[] }>();
 
   public constructor(
     private readonly now: () => number = Date.now,
@@ -67,13 +72,15 @@ export class ChatScheduler {
       queue.push({ optional, expiresAt, limits, resolve: resolve as (value: unknown) => void, reject,
         run: async () => {
           const activity = this.state(key);
-          if (optional && this.now() - activity.lastEvaluation < limits.evaluationCooldownMs) return null;
+          if (optional && !limits.continuation && this.now() - activity.lastEvaluation < limits.evaluationCooldownMs) return null;
           const guild = key.split(":")[0]!;
           const evaluations = this.evaluations.get(guild) ?? [];
           this.prune(evaluations);
-          if (optional && evaluations.length >= (limits.optionalTurnsPerWindow ?? 100)) return null;
+          const cost = Math.max(1, Math.ceil(limits.optionalCallCost ?? 1));
+          if (optional && evaluations.length + cost > (limits.optionalTurnsPerWindow ?? 100)) return null;
           if (optional) {
-            activity.lastEvaluation = this.now(); evaluations.push(this.now());
+            if (!limits.continuation) activity.lastEvaluation = this.now();
+            for (let index = 0; index < cost; index++) evaluations.push(this.now());
             this.evaluations.set(guild, evaluations);
           }
           return operation();
@@ -91,6 +98,20 @@ export class ChatScheduler {
 
   public reserveOutput(key: string, kind: "text" | "reaction", limits: ChatActivityLimits, optional: boolean): ((success: boolean) => void) | null {
     if (!optional) return () => undefined;
+    if (kind === "text" && limits.continuation) {
+      if (this.exchanges.size >= 512 && !this.exchanges.has(key)) {
+        const idle = [...this.exchanges].find(([, exchange]) => !exchange.reserved);
+        if (idle) this.exchanges.delete(idle[0]);
+      }
+      const exchange = this.exchanges.get(key) ?? { lastRelevantAt: -Infinity, replies: 0, reserved: false, window: [] };
+      if (this.now() - exchange.lastRelevantAt > 120_000) exchange.replies = 0;
+      exchange.lastRelevantAt = this.now(); this.prune(exchange.window); this.exchanges.set(key, exchange);
+      if (exchange.reserved || exchange.replies >= (limits.continuationPerExchange ?? 10) || exchange.window.length >= (limits.continuationPerWindow ?? 30)) return null;
+      exchange.reserved = true;
+      let finished = false;
+      return (success) => { if (finished) return; finished = true; exchange.reserved = false;
+        if (success) { exchange.replies++; exchange.window.push(this.now()); } };
+    }
     const state = this.state(key);
     const values = state[kind];
     this.prune(values);

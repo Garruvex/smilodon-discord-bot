@@ -4,12 +4,14 @@ import { hashContent } from "../assets/content-hash.js";
 import type { ExampleExchange } from "./example-exchange.js";
 import type { EmbeddingsClient } from "./embeddings-client.js";
 import { embedTextsBestEffort } from "./embedding-batch.js";
+import { deriveStyleProfile } from "./character-voice.js";
 
 // Sidecar JSON written next to an uploaded examples.md
 // (guild-assets/{guildId}/examples.bundle.json), self-contained (not
 // index-matched against the .md) so a `sourceHash` mismatch is the only
 // staleness check needed — same convention as personality.bundle.json.
 export const exampleExchangeBundleSchema = z.object({
+  styleProfile: z.object({ maxChars: z.number(), typicalChars: z.number(), emojiRate: z.number(), openers: z.array(z.string()) }).optional(),
   sourceHash: z.string(),
   exchanges: z.array(z.object({
     tags: z.string(),
@@ -94,6 +96,7 @@ export async function buildExampleExchangeBundle(
   return {
     sourceHash: hashContent(content),
     exchanges: embedded,
+    styleProfile: deriveStyleProfile(exchanges),
     embeddingModel: embeddingsClient.modelId,
     embeddingTextVersion: exampleExchangeEmbeddingTextVersion,
   };

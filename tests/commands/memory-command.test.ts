@@ -71,7 +71,7 @@ function makeContext(options: {
       },
     },
     logger: {} as never,
-    responses: { reply } as never,
+    responses: { reply, edit: reply, defer: vi.fn().mockResolvedValue(undefined) } as never,
   } as unknown as CommandContext;
   return { context, reply };
 }

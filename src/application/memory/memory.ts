@@ -5,20 +5,23 @@
 
 import type { ChannelMemoryMode } from "./memory-channel-policy.js";
 
-export type MemoryKind = "fact" | "preference" | "episode";
+export type MemoryKind = "fact" | "preference" | "episode" | "impression" | "state";
 export type MemoryAudience = "private" | "channel" | "guild";
 // npc/faction/location: campaign-lore entities (D&D bot use case) — they
 // have no self-report path (see resolveInitialStatus in memory-engine.ts),
 // so a live-chat-sourced fact about one stays "candidate" the same way
 // team/project facts already do; only consolidation-sourced facts about
 // them auto-activate.
-export type MemorySubjectType = "member" | "guild" | "team" | "project" | "npc" | "faction" | "location";
+export type MemorySubjectType = "member" | "guild" | "team" | "project" | "npc" | "faction" | "location" | "persona";
 export type MemoryStatus = "candidate" | "active" | "superseded" | "expired";
 export type MemorySourceKind = "live" | "explicit" | "administrator" | "consolidation";
 
 export interface Memory {
   id: string;
   guildId: string;
+  // Null/omitted means an ordinary fact. Module-owned records are retained
+  // for management but must never enter generic conversational recall.
+  moduleId?: string | null;
   kind: MemoryKind;
   audience: MemoryAudience;
   ownerUserId: string | null;
@@ -172,9 +175,15 @@ export function canRecall(memory: Pick<Memory, "guildId" | "isolationChannelId" 
   }
 }
 
+export function canRecallOrdinaryMemory(memory: Memory, context: RecallContext, now: number): boolean {
+  return memory.moduleId == null && canRecall(memory, context, now);
+}
+
 // --- Repository contract -----------------------------------------------
 
 export interface RepositoryIngestInput {
+  // Set only by a dedicated application module, never by model proposals.
+  moduleId?: string | null;
   sourceTimestampMs?: number | null;
   sourceQuote?: string | null;
   sourceChannelMode?: ChannelMemoryMode | null;
@@ -265,6 +274,7 @@ export interface ForgetQuery {
 // The natural identity a memory row is keyed by — the same tuple the
 // memories_identity unique index covers (see schema.ts).
 export interface MemoryIdentity {
+  moduleId?: string | null;
   guildId: string;
   ownerUserId: string | null;
   channelId: string | null;
@@ -298,6 +308,7 @@ export interface PromoteCandidateCommand {
 }
 
 export interface ActiveSubjectQuery {
+  moduleId?: string | null;
   guildId: string;
   subjectType: MemorySubjectType;
   subjectId: string;
@@ -325,6 +336,12 @@ export interface SupersedeCommand {
 }
 
 export interface MemoryRepository {
+  deleteExpiredModuleData?(guildId: string, now: number, historyDays: number): Promise<number>;
+  clearModuleData?(guildId: string, moduleId: string): Promise<number>;
+  findDueCallbackCandidates?(input: CandidateQuery): Promise<RecallCandidates>;
+  claimCallbackMemory?(input: { guildId: string; memoryId: string; updatedAt: number; expected: unknown; value: unknown; maxPerDay: number; dayStart: number; now: number }): Promise<boolean>;
+  findModuleCandidates?(input: CandidateQuery & { moduleId: string }): Promise<RecallCandidates>;
+  compareAndSetStructuredValue?(input: { guildId: string; memoryId: string; updatedAt: number; expected: unknown; value: unknown }): Promise<boolean>;
   findObservedAliases(input: CandidateQuery & { message: string }): Promise<{ alias: string; subjectId: string }[]>;
   reclassifyPublicMemory(input: { guildId: string; memoryId: string; sourceMessageId: string; sourceChannelId: string;
     assertedByUserId: string; sourceQuote: string; mode: "shared" | "isolated"; sourceTimestampMs?: number; now: number }): Promise<boolean>;
@@ -598,6 +615,6 @@ export interface MemoryEngine {
   // Provenance for one memory — see MemoryRepository.findSources. Exposed at
   // the engine level so callers (e.g. /memory list) don't need direct
   // repository access just to render a "view source" link.
-  listSources(memoryId: string): Promise<readonly MemorySource[]>;
+  listSources(memoryId: string, memory?: Memory): Promise<readonly MemorySource[]>;
   listPromptSources?(memoryIds: readonly string[]): Promise<readonly MemorySource[]>;
 }

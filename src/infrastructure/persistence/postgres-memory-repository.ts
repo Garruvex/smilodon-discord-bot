@@ -30,7 +30,7 @@ import type {
 } from "../../application/memory/memory.js";
 import * as schema from "../database/schema.js";
 import {
-  assertersOf, collectRelatedSubjects, maxCandidatesPerIdentity, maxSupersedeChainDepth,
+  assertersOf, collectRelatedSubjects, maxCandidatesPerIdentity, maxSupersedeChainDepth, retainCallbackMetadata,
 } from "./memory-repository-shared.js";
 
 // Verified against a real pgvector-enabled Postgres 16 instance (isolation,
@@ -60,6 +60,7 @@ const maxEligibleCandidates = 2_000;
 function identityLockKey(identity: MemoryIdentity): string {
   return [
     identity.guildId, identity.ownerUserId ?? "", identity.channelId ?? "", identity.isolationChannelId ?? "",
+    identity.moduleId ?? "",
     identity.subjectType, identity.subjectId, identity.topic, identity.slot,
   ].join("\u0001");
 }
@@ -68,6 +69,7 @@ function toMemory(row: typeof schema.memories.$inferSelect): Memory {
   return {
     id: row.id,
     guildId: row.guildId,
+    moduleId: row.moduleId,
     kind: row.kind as MemoryKind,
     audience: row.audience as MemoryAudience,
     ownerUserId: row.ownerUserId,
@@ -97,6 +99,7 @@ function toMemory(row: typeof schema.memories.$inferSelect): Memory {
 function identityCondition(identity: MemoryIdentity): ReturnType<typeof and> {
   return and(
     eq(schema.memories.guildId, identity.guildId),
+    identity.moduleId == null ? isNull(schema.memories.moduleId) : eq(schema.memories.moduleId, identity.moduleId),
     identity.ownerUserId === null ? isNull(schema.memories.ownerUserId) : eq(schema.memories.ownerUserId, identity.ownerUserId),
     identity.channelId === null ? isNull(schema.memories.channelId) : eq(schema.memories.channelId, identity.channelId),
     identity.isolationChannelId === null
@@ -118,6 +121,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
       FROM memory_observed_aliases a JOIN memories m ON m.id = a.memory_id
       WHERE a.guild_id = ${input.guildId} AND a.alias IN (${sql.join(tokens.map((token) => sql`${token}`), sql`, `)})
         AND m.guild_id = ${input.guildId} AND m.subject_type = 'member' AND m.status = 'active'
+        AND m.module_id IS NULL
         AND (m.expires_at IS NULL OR m.expires_at > ${new Date(input.now)})
         AND (m.isolation_channel_id IS NULL OR m.isolation_channel_id = ${input.channelId})
         AND (m.audience = 'guild' OR (m.audience = 'channel' AND m.channel_id = ${input.channelId})
@@ -131,6 +135,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
     return this.database.transaction(async (transaction) => {
       const [memory] = await transaction.select().from(schema.memories).where(and(
         eq(schema.memories.guildId, input.guildId), eq(schema.memories.id, input.memoryId),
+        isNull(schema.memories.moduleId),
         eq(schema.memories.audience, "private"), eq(schema.memories.subjectType, "member"),
         eq(schema.memories.subjectId, input.assertedByUserId), eq(schema.memories.ownerUserId, input.assertedByUserId),
       )).limit(1).for("update");
@@ -172,6 +177,9 @@ export class PostgresMemoryRepository implements MemoryRepository {
   public constructor(private readonly database: PostgresJsDatabase<typeof schema>) {}
 
   public async ingest(input: RepositoryIngestInput): Promise<Memory> {
+    if (input.moduleId != null && !/^[a-z][a-z0-9.-]{0,63}$/.test(input.moduleId)) {
+      throw new Error("Invalid memory module ID");
+    }
     return this.database.transaction(async (transaction) => {
       // Serializes concurrent ingests for this exact identity — see
       // identityLockKey. Released automatically at transaction end.
@@ -208,7 +216,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
       if (existing && !isRevision) {
         const updated = await transaction.update(schema.memories).set({
           statement: input.statement,
-          structuredValue: input.structuredValue ?? null,
+          structuredValue: retainCallbackMetadata(existing.structuredValue, input.structuredValue ?? null, false, input.now),
           // See SqliteMemoryRepository.ingest — a restatement never lowers
           // importance.
           importance: Math.max(existing.importance, input.importance),
@@ -231,6 +239,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
         const inserted = await transaction.insert(schema.memories).values({
           id: newId,
           guildId: input.guildId,
+          moduleId: input.moduleId ?? null,
           kind: input.kind,
           audience: input.audience,
           ownerUserId: input.ownerUserId,
@@ -241,7 +250,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
           topic: input.topic,
           slot: input.slot,
           statement: input.statement,
-          structuredValue: input.structuredValue ?? null,
+          structuredValue: retainCallbackMetadata(existing?.structuredValue, input.structuredValue ?? null, isRevision, input.now),
           status: input.status,
           source: input.source,
           importance: input.importance,
@@ -288,6 +297,49 @@ export class PostgresMemoryRepository implements MemoryRepository {
   }
 
   public async findRecallCandidates(query: CandidateQuery): Promise<RecallCandidates> {
+    return this.selectCandidates(query, null);
+  }
+  public findModuleCandidates(query: CandidateQuery & { moduleId: string }): Promise<RecallCandidates> {
+    return this.selectCandidates(query, query.moduleId);
+  }
+  public async deleteExpiredModuleData(guildId: string, now: number, historyDays: number): Promise<number> {
+    const rows = await this.database.delete(schema.memories).where(and(eq(schema.memories.guildId, guildId), isNotNull(schema.memories.moduleId),
+      or(and(isNotNull(schema.memories.expiresAt), lte(schema.memories.expiresAt, new Date(now))),
+        and(ne(schema.memories.status, "active"), lte(schema.memories.updatedAt, new Date(now - historyDays * 86_400_000)))))).returning({ id: schema.memories.id });
+    return rows.length;
+  }
+  public async clearModuleData(guildId: string, moduleId: string): Promise<number> {
+    const rows = await this.database.delete(schema.memories).where(and(eq(schema.memories.guildId, guildId), eq(schema.memories.moduleId, moduleId))).returning({ id: schema.memories.id });
+    return rows.length;
+  }
+  public async compareAndSetStructuredValue(input: { guildId: string; memoryId: string; updatedAt: number; expected: unknown; value: unknown }): Promise<boolean> {
+    const rows = await this.database.update(schema.memories).set({ structuredValue: input.value }).where(and(
+      eq(schema.memories.guildId, input.guildId), eq(schema.memories.id, input.memoryId), eq(schema.memories.status, "active"),
+      eq(schema.memories.updatedAt, new Date(input.updatedAt)),
+      input.expected == null ? isNull(schema.memories.structuredValue) : eq(schema.memories.structuredValue, input.expected),
+    )).returning({ id: schema.memories.id });
+    return rows.length === 1;
+  }
+  public claimCallbackMemory(input: { guildId: string; memoryId: string; updatedAt: number; expected: unknown; value: unknown; maxPerDay: number; dayStart: number; now: number }): Promise<boolean> {
+    return this.database.transaction(async (transaction) => {
+      await transaction.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`callback:${input.guildId}`}, 0))`);
+      const [row] = await transaction.select({ count: sql<number>`cast(count(distinct ${schema.memories.structuredValue}->'callback'->>'attemptId') as integer)` }).from(schema.memories).where(and(
+        eq(schema.memories.guildId, input.guildId), ne(schema.memories.id, input.memoryId),
+        sql`(${schema.memories.structuredValue}->'callback'->>'quotaDayStart')::numeric >= ${input.dayStart}`,
+        sql`((${schema.memories.structuredValue}->'callback'->>'status') in ('sending', 'delivered', 'uncertain') or
+          ((${schema.memories.structuredValue}->'callback'->>'status') = 'claimed' and (${schema.memories.structuredValue}->'callback'->>'leaseUntil')::numeric > ${input.now}))`,
+      ));
+      if ((row?.count ?? 0) >= input.maxPerDay) return false;
+      const changed = await transaction.update(schema.memories).set({ structuredValue: input.value }).where(and(
+        eq(schema.memories.guildId, input.guildId), eq(schema.memories.id, input.memoryId), eq(schema.memories.status, "active"),
+        eq(schema.memories.updatedAt, new Date(input.updatedAt)),
+        input.expected == null ? isNull(schema.memories.structuredValue) : eq(schema.memories.structuredValue, input.expected),
+      )).returning({ id: schema.memories.id });
+      return changed.length === 1;
+    });
+  }
+  public findDueCallbackCandidates(query: CandidateQuery): Promise<RecallCandidates> { return this.selectCandidates(query, null, true); }
+  private async selectCandidates(query: CandidateQuery, moduleId: string | null, dueCallbacks = false): Promise<RecallCandidates> {
     // subjectIds, when given, is applied in SQL alongside the other filters
     // — not as a post-fetch JS filter — so it narrows what the LIMIT below
     // bounds rather than being applied after it. Filtering after a LIMIT
@@ -317,6 +369,11 @@ export class PostgresMemoryRepository implements MemoryRepository {
       : [desc(schema.memories.updatedAt)];
     const rows = await this.database.select().from(schema.memories).where(and(
       eq(schema.memories.guildId, query.guildId),
+      moduleId === null ? isNull(schema.memories.moduleId) : eq(schema.memories.moduleId, moduleId),
+      dueCallbacks ? sql`(${schema.memories.structuredValue}->'callback'->>'dueAt')::numeric <= ${query.now}
+        and (${schema.memories.structuredValue}->'callback'->>'nextAttemptAt')::numeric <= ${query.now}
+        and (${schema.memories.structuredValue}->'callback'->>'expiresAt')::numeric > ${query.now}
+        and (${schema.memories.structuredValue}->'callback'->>'status') in ('pending', 'claimed', 'sending')` : undefined,
       eq(schema.memories.status, "active"),
       or(isNull(schema.memories.expiresAt), gt(schema.memories.expiresAt, new Date(query.now))),
       or(isNull(schema.memories.isolationChannelId), eq(schema.memories.isolationChannelId, query.channelId)),
@@ -365,7 +422,11 @@ export class PostgresMemoryRepository implements MemoryRepository {
   }
   public async findPromptSources(memoryIds: readonly string[]): Promise<readonly MemorySource[]> {
     if (!memoryIds.length) return [];
-    const rows = await this.database.select().from(schema.memorySources).where(inArray(schema.memorySources.memoryId, [...memoryIds]))
+    const rows = await this.database.select().from(schema.memorySources).where(and(
+      inArray(schema.memorySources.memoryId, [...memoryIds]),
+      inArray(schema.memorySources.memoryId, this.database.select({ id: schema.memories.id }).from(schema.memories)
+        .where(isNull(schema.memories.moduleId))),
+    ))
       .orderBy(desc(schema.memorySources.createdAt)).limit(memoryIds.length * 2);
     return rows.map((row) => ({ ...row, sourceTimestampMs: row.sourceTimestamp?.getTime() ?? null,
       sourceChannelMode: row.sourceChannelMode as ChannelMemoryMode | null, source: row.source as MemorySourceKind, createdAt: row.createdAt.getTime() }));
@@ -521,6 +582,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
   // scanning an unbounded set rather than reflecting an expected scale.
   public async findActiveBySubject(query: ActiveSubjectQuery): Promise<readonly Memory[]> {
     const rows = await this.database.select().from(schema.memories).where(and(
+      query.moduleId == null ? isNull(schema.memories.moduleId) : eq(schema.memories.moduleId, query.moduleId),
       eq(schema.memories.guildId, query.guildId),
       eq(schema.memories.subjectType, query.subjectType),
       eq(schema.memories.subjectId, query.subjectId),
@@ -551,6 +613,15 @@ export class PostgresMemoryRepository implements MemoryRepository {
   }
 
   public async createRelations(inputs: readonly RelationCreateInput[]): Promise<number> {
+    if (inputs.length === 0) return 0;
+    // Module context cannot create ordinary graph edges. In particular,
+    // deleting its supporting memory would otherwise SET NULL the FK and
+    // make a previously hidden edge visible to generic recall.
+    const supportingIds = inputs.flatMap((input) => input.supportingMemoryId ? [input.supportingMemoryId] : []);
+    const moduleSources = supportingIds.length ? await this.database.select({ id: schema.memories.id })
+      .from(schema.memories).where(and(inArray(schema.memories.id, supportingIds), isNotNull(schema.memories.moduleId))) : [];
+    const blocked = new Set(moduleSources.map((memory) => memory.id));
+    inputs = inputs.filter((input) => input.supportingMemoryId === null || !blocked.has(input.supportingMemoryId));
     if (inputs.length === 0) return 0;
     // ON CONFLICT DO NOTHING against memory_relations_identity — re-extracting
     // a known edge is a no-op, not a duplicate row.
@@ -585,6 +656,10 @@ export class PostgresMemoryRepository implements MemoryRepository {
     for (let hop = 1; hop <= query.maxHops && frontier.length > 0; hop++) {
       const rows = await this.database.select().from(schema.memoryRelations).where(and(
         eq(schema.memoryRelations.guildId, query.guildId),
+        notExists(this.database.select({ id: schema.memories.id }).from(schema.memories).where(and(
+          eq(schema.memories.id, schema.memoryRelations.supportingMemoryId),
+          isNotNull(schema.memories.moduleId),
+        ))),
         or(inArray(schema.memoryRelations.fromSubjectId, frontier), inArray(schema.memoryRelations.toSubjectId, frontier)),
         or(isNull(schema.memoryRelations.isolationChannelId), eq(schema.memoryRelations.isolationChannelId, query.channelId)),
       )).orderBy(asc(schema.memoryRelations.createdAt), asc(schema.memoryRelations.id));

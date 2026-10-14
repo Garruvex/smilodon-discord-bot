@@ -190,6 +190,20 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
     return { ok: true, markdown };
   }
 
+  public generateCharacterData(prompt: string, schema: Record<string, unknown>): Promise<unknown> {
+    return this.summaryModelChain.run(async (model) => {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: "POST", headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model, messages: [{ role: "system", content: prompt }],
+          response_format: { type: "json_schema", json_schema: { name: "character_data", strict: true, schema } } }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) throw new ChatProviderError(`Character utility call returned HTTP ${response.status}.`, response.status, null);
+      const body = responseSchema.parse(await response.json());
+      return JSON.parse(body.choices[0]!.message.content) as unknown;
+    });
+  }
+
   // See ChatProvider.extractPersonalMemories — chat_completions is the
   // default provider mode (CHATBOT_MODE/UTILITY_MODE both default to it,
   // see environment.ts), so this must exist here too or dedicated

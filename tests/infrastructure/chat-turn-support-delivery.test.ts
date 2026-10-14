@@ -20,6 +20,16 @@ function image(bytes: number, filename = "image.png"): GeneratedChatImage {
 const oneMiB = 1024 * 1024;
 
 describe("ChatTurnSupport.deliverChatResponse", () => {
+  it("falls back to safe Discord chunks when character-shaped paragraphs exceed the message limit", async () => {
+    const support = new ChatTurnSupport(logger()); const payloads: ChatDeliveryPayload[] = [];
+    const send = (payload: ChatDeliveryPayload): Promise<Message> => { payloads.push(payload); return Promise.resolve(fakeMessage(String(payloads.length))); };
+    const paragraphs = ["word ".repeat(500).trim(), "another paragraph"];
+    await support.deliverChatResponse({ sender: { first: send, rest: send }, text: paragraphs.join("\n\n"), characterMessages: paragraphs,
+      sources: [], images: [], emptyFallbackContent: "empty", maxImageAggregateBytes: 10 * oneMiB });
+    expect(payloads.length).toBeGreaterThan(1);
+    expect(payloads.every((payload) => payload.content.length <= 2000)).toBe(true);
+    expect(payloads.map((payload) => payload.content).join(" ")).toContain("another paragraph");
+  });
   it("sends a short reply as a single message via the first-sender", async () => {
     const support = new ChatTurnSupport(logger());
     const first = vi.fn(() => Promise.resolve(fakeMessage("1")));

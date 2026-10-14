@@ -85,6 +85,7 @@ export class MemoryCommand implements BotCommand {
       await this.notes(context, guildId, userId);
       return;
     }
+    await context.responses.defer();
     await this.forget(context, guildId, userId);
   }
 
@@ -125,7 +126,7 @@ export class MemoryCommand implements BotCommand {
   private buildMemoryField(memory: Memory, sourceLine: string): { name: string; value: string } {
     const scopeLabel = memory.audience === "private" ? "private" : memory.audience === "channel" ? "channel-shared" : "guild-shared";
     return {
-      name: `${memory.topic}.${memory.slot}`,
+      name: memory.kind === "impression" ? "Relationship impression" : `${memory.topic}.${memory.slot}`,
       value: `${memory.statement}\n*${memory.status} · ${scopeLabel} · id \`${memory.id.slice(0, 8)}\`*\n${sourceLine}`.slice(0, 1_024),
     };
   }
@@ -151,7 +152,7 @@ export class MemoryCommand implements BotCommand {
     const shown = profile.memories.slice(0, maxMemoriesRendered);
     const omittedCount = profile.memories.length - shown.length;
     const sourcesByMemoryId = new Map(await Promise.all(
-      shown.map(async (memory) => [memory.id, await this.memoryEngine.listSources(memory.id)] as const),
+      shown.map(async (memory) => [memory.id, await this.memoryEngine.listSources(memory.id, memory.moduleId ? memory : undefined)] as const),
     ));
     const fields = shown.map((memory) =>
       this.buildMemoryField(memory, this.buildSourceLine(guildId, sourcesByMemoryId.get(memory.id) ?? [])));
@@ -206,7 +207,7 @@ export class MemoryCommand implements BotCommand {
       if (this.forgetConversation) await this.forgetConversation(guildId, userId);
       else if (this.chatStateStore.clearRecentHistory) await this.chatStateStore.clearRecentHistory(guildId, userId);
       else await this.chatStateStore.purgeUser(guildId, userId);
-      await context.responses.reply(
+      await context.responses.edit(
         (count > 0 ? `Forgot ${count} ${count === 1 ? "memory" : "memories"}.` : "There was nothing to forget.") +
           " This clears private/shared facts about you, source-linked summaries, queued learning, and your stored recent conversation context. Discord messages, birthday and customization are managed separately.",
       );
@@ -214,7 +215,7 @@ export class MemoryCommand implements BotCommand {
     }
 
     if (!id) {
-      await context.responses.reply("Provide `id:<id>` (from `/memory list`) or `all:true`.");
+      await context.responses.edit("Provide `id:<id>` (from `/memory list`) or `all:true`.");
       return;
     }
 
@@ -223,11 +224,11 @@ export class MemoryCommand implements BotCommand {
       : await this.memoryEngine.listUserMemories(guildId, userId);
     const match = memories.find((memory) => memory.id === id || memory.id.startsWith(id));
     if (memories.filter((memory) => memory.id === id || memory.id.startsWith(id)).length > 1) {
-      await context.responses.reply("That ID matches several memories. Use the full ID to select one.");
+      await context.responses.edit("That ID matches several memories. Use the full ID to select one.");
       return;
     }
     if (!match) {
-      await context.responses.reply("I couldn't find a memory with that ID. Check `/memory list`.");
+      await context.responses.edit("I couldn't find a memory with that ID. Check `/memory list`.");
       return;
     }
 
@@ -242,7 +243,8 @@ export class MemoryCommand implements BotCommand {
     const forgotten = this.personalMemoryExtractionQueueStore
       ? await this.personalMemoryExtractionQueueStore.runForSubject(guildId, userId, forgetOne)
       : await forgetOne();
-    await context.responses.reply(
+    if (forgotten > 0) await this.forgetConversation?.(guildId, userId);
+    await context.responses.edit(
       forgotten > 0 ? `Forgot: ${match.topic}.${match.slot}.` : "I couldn't find a memory with that ID.",
     );
   }

@@ -10,6 +10,7 @@ export const memoryObservedAliases = pgTable("memory_observed_aliases", {
 }, (table) => [primaryKey({ columns: [table.memoryId, table.alias] }), index("memory_observed_aliases_lookup").on(table.guildId, table.alias)]);
 
 export const conversationEpisodes = pgTable("conversation_episodes", {
+  retentionMs: integer("retention_ms").notNull().default(900_000),
   guildId: text("guild_id").notNull(), channelId: text("channel_id").notNull(),
   events: jsonb("events").$type<ChannelHistoryMessage[]>().notNull().default([]),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
@@ -239,6 +240,7 @@ export const roleMenus = pgTable("role_menus", {
 export const memories = pgTable("memories", {
   id: uuid("id").primaryKey(),
   guildId: text("guild_id").notNull(),
+  moduleId: text("module_id"),
   // Content shape only ("fact" | "preference" | "episode") — independent of
   // who can see it. Never encodes audience (no "guild_fact"/"channel_episode").
   kind: text("kind").notNull(),
@@ -286,6 +288,7 @@ export const memories = pgTable("memories", {
   uniqueIndex("memories_identity").on(
     table.guildId, sql`coalesce(${table.ownerUserId}, '')`, sql`coalesce(${table.channelId}, '')`,
     sql`coalesce(${table.isolationChannelId}, '')`,
+    sql`coalesce(${table.moduleId}, '')`,
     table.subjectType, table.subjectId, table.topic, table.slot,
   ).where(sql`${table.status} = 'active'`),
   index("memories_embedding_hnsw").using("hnsw", table.embedding.op("vector_cosine_ops")),

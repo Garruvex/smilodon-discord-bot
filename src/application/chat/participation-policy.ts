@@ -22,6 +22,8 @@ export interface ParticipationSettings {
     reactionCooldownSeconds?: number | undefined;
     textPer10Minutes?: number | undefined;
     reactionsPer10Minutes?: number | undefined;
+    continuationPerExchange?: number | undefined;
+    continuationPer10Minutes?: number | undefined;
   };
 }
 
@@ -60,6 +62,8 @@ export function resolveParticipation(settings: ParticipationSettings | undefined
       reactionCooldownMs: advanced.reactionCooldownSeconds === undefined ? base.reactionCooldownMs : advanced.reactionCooldownSeconds * 1_000,
       textPerWindow: advanced.textPer10Minutes ?? base.textPerWindow,
       reactionsPerWindow: advanced.reactionsPer10Minutes ?? base.reactionsPerWindow,
+      continuationPerExchange: advanced.continuationPerExchange ?? 10,
+      continuationPerWindow: advanced.continuationPer10Minutes ?? 30,
     },
   };
 }

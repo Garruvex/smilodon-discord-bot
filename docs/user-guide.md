@@ -173,6 +173,12 @@ other bot features mid-conversation instead of guessing: it can actually roll
 dice, consult the 8-ball, search e621/e926, and look up your saved memories
 or birthday, so "roll me a d20" gets a real random result.
 
+Optional `/settings-character` modules add character continuity, impressions,
+voice checks and timing. They default off; recent context must be enabled and
+disclosed before plain-message continuation or spontaneous participation.
+See the [character pilot guide](chat-believability-operations.md) for module
+dependencies, memory management and human review commands.
+
 If you don't have chatbot access, mentioning the bot returns a configurable
 "no access" message instead of a reply — ask a server admin about the
 Chatbot role group.

@@ -8,6 +8,9 @@ const memoryModes = {
 };
 
 export const jaMemory: SettingsTextCatalog = {
+  "memory.character-retention": { label: "キャラクター記憶の保持", description: "印象と旧バージョンの保持日数。現在のキャラクター設定は消去するまで残ります。" },
+  "memory.character-retention.relationships": { label: "印象の保持日数", description: "人間関係の印象が期限切れになるまでの日数。" },
+  "memory.character-retention.history": { label: "旧バージョンの保持日数", description: "置換済みのモジュール記録の保持日数。気分と日常は個別の期限に従います。" },
   "memory.sharing": { label: "個人情報の共有メモリ", description: "チャンネルのメモリ設定を確認してから有効にします。既存の非公開情報は変更しません。" },
   "memory.sharing.enabled": { label: "個人情報の共有メモリ", description: "新しい個人情報を設定された範囲内で共有します。" },
   "memory": { title: "記憶", description: "ボットが読み返し、覚えておくこと" },

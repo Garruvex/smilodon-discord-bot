@@ -17,6 +17,19 @@ export const maxSupersedeChainDepth = 100;
 // claims coexist as separate rows, but not realistically more than a few.
 export const maxCandidatesPerIdentity = 20;
 
+// Ordinary reinforcements must not reset callback delivery state. A changed
+// event discards pending work; completed/uncertain delivery follows the
+// canonical event to prevent a date correction from sending twice.
+export function retainCallbackMetadata(previous: unknown, incoming: unknown, revised: boolean, updatedAt: number): unknown {
+  if (!previous || typeof previous !== "object" || !("callback" in previous)) return incoming;
+  const callback = previous.callback;
+  if (!callback || typeof callback !== "object" || !("status" in callback)) return incoming;
+  const value: Record<string, unknown> = { ...(incoming && typeof incoming === "object" ? incoming : {}) };
+  delete value.callback;
+  if (revised && callback.status !== "delivered" && callback.status !== "uncertain" && callback.status !== "sending") return Object.keys(value).length ? value : null;
+  return { ...value, callback: { ...callback, ...(!revised ? { revision: updatedAt } : callback.status === "sending" ? { status: "uncertain" } : {}) } };
+}
+
 export function assertersOf(
   memoryId: string,
   sources: readonly { memoryId: string; assertedByUserId: string | null }[],

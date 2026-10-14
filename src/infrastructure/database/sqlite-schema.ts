@@ -10,6 +10,7 @@ export const memoryObservedAliases = sqliteTable("memory_observed_aliases", {
 }, (table) => [primaryKey({ columns: [table.memoryId, table.alias] }), index("memory_observed_aliases_lookup").on(table.guildId, table.alias)]);
 
 export const conversationEpisodes = sqliteTable("conversation_episodes", {
+  retentionMs: integer("retention_ms").notNull().default(900_000),
   guildId: text("guild_id").notNull(), channelId: text("channel_id").notNull(),
   events: text("events", { mode: "json" }).$type<ChannelHistoryMessage[]>().notNull().default([]),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
@@ -79,6 +80,7 @@ export const chatMemories = sqliteTable("chat_memories", {
 export const memories = sqliteTable("memories", {
   id: text("id").primaryKey(),
   guildId: text("guild_id").notNull(),
+  moduleId: text("module_id"),
   kind: text("kind").notNull(),
   audience: text("audience").notNull(),
   ownerUserId: text("owner_user_id"),
@@ -108,6 +110,7 @@ export const memories = sqliteTable("memories", {
   uniqueIndex("memories_identity").on(
     table.guildId, sql`coalesce(${table.ownerUserId}, '')`, sql`coalesce(${table.channelId}, '')`,
     sql`coalesce(${table.isolationChannelId}, '')`,
+    sql`coalesce(${table.moduleId}, '')`,
     table.subjectType, table.subjectId, table.topic, table.slot,
   ).where(sql`${table.status} = 'active'`),
 ]);

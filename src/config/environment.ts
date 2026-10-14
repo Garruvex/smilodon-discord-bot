@@ -122,6 +122,9 @@ const environmentSchema = z.object({
   // to the primary CHATBOT_MODEL chain — three-tier, no required config
   // change for anyone not using this.
   UTILITY_MODEL: optionalNonEmptyString,
+  DECISION_MODEL: optionalNonEmptyString,
+  DECISION_API_KEY: optionalNonEmptyString,
+  DECISION_BASE_URL: z.string().url().optional(),
   UTILITY_FALLBACK_MODELS: fallbackModelsList,
   UTILITY_PROVIDER: z.enum(["openai", "gemini"]).default("openai"),
   UTILITY_MODE: z.enum(["chat_completions", "responses"]).optional(),
@@ -287,6 +290,9 @@ export function loadConfiguration(
     },
     chat: buildChatConfiguration(parsed.data),
     utilityChat: buildUtilityChatConfiguration(parsed.data),
+    decision: parsed.data.DECISION_MODEL ? { model: parsed.data.DECISION_MODEL,
+      apiKey: parsed.data.DECISION_API_KEY ?? parsed.data.OPENAI_API_KEY ?? "",
+      baseUrl: parsed.data.DECISION_BASE_URL ?? parsed.data.OPENAI_BASE_URL } : null,
     campaign: buildCampaignConfiguration(parsed.data),
     campaignNarrationAudit: parsed.data.CAMPAIGN_NARRATION_AUDIT === "on",
     campaignImages: buildCampaignImages(parsed.data),

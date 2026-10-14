@@ -8,6 +8,9 @@ const memoryModes = {
 };
 
 export const enMemory: SettingsTextCatalog = {
+  "memory.character-retention": { label: "Character memory retention", description: "Days to retain impressions and old module revisions. Active canon stays until cleared." },
+  "memory.character-retention.relationships": { label: "Impression days", description: "Days before a relationship impression expires." },
+  "memory.character-retention.history": { label: "Revision history days", description: "Days to retain superseded module data. Mood and daily sketches use their own expiry." },
   "memory.sharing": { label: "Shared personal memory", description: "Activate after reviewing channel modes. Existing private facts stay private." },
   "memory.sharing.enabled": { label: "Shared personal memory", description: "Allow new eligible personal facts to be shared within the configured audience." },
   "memory": { title: "Memory", description: "What the bot reads back and remembers." },

@@ -1,6 +1,6 @@
 {
-  "id": "b55e2016-6ed8-4924-8193-31d8355093eb",
-  "prevId": "df4490c4-fc15-4cca-a3b1-53d7c2278e98",
+  "id": "741b461c-96d5-454a-b8ff-e5fee5e66c6b",
+  "prevId": "b55e2016-6ed8-4924-8193-31d8355093eb",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1341,6 +1341,13 @@
       "name": "conversation_episodes",
       "schema": "",
       "columns": {
+        "retention_ms": {
+          "name": "retention_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 900000
+        },
         "guild_id": {
           "name": "guild_id",
           "type": "text",
@@ -1841,6 +1848,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "module_id": {
+          "name": "module_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "kind": {
           "name": "kind",
           "type": "text",
@@ -2001,6 +2014,12 @@
             },
             {
               "expression": "coalesce(\"isolation_channel_id\", '')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "coalesce(\"module_id\", '')",
               "asc": true,
               "isExpression": true,
               "nulls": "last"

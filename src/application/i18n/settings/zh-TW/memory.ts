@@ -8,6 +8,9 @@ const memoryModes = {
 };
 
 export const zhTWMemory: SettingsTextCatalog = {
+  "memory.character-retention": { label: "角色記憶保留", description: "設定印象及舊模組版本的保留天數；有效角色紀錄保留至手動清除。" },
+  "memory.character-retention.relationships": { label: "印象保留天數", description: "人際印象到期前的保留天數。" },
+  "memory.character-retention.history": { label: "舊版本保留天數", description: "保留已取代的模組資料；心情與日常依各自到期時間清除。" },
   "memory.sharing": { label: "共享個人記憶", description: "確認頻道記憶模式後再啟用；既有私人記憶不會改變。" },
   "memory.sharing.enabled": { label: "共享個人記憶", description: "允許新的個人事實在已設定的範圍內共享。" },
   "memory": { title: "記憶", description: "機器人會回顧和記住的內容" },

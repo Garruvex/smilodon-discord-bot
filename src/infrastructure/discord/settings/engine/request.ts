@@ -3,6 +3,7 @@ import type { ChatInputCommandInteraction, Guild } from "discord.js";
 import type { GuildAssetStore } from "../../../../application/assets/guild-asset-store.js";
 import type { AuditLogService } from "../../../../application/audit/audit-log-service.js";
 import type { PersonaDriftStore } from "../../../../application/chat/persona-drift-store.js";
+import type { CharacterRuntime } from "../../../../application/chat/character-runtime.js";
 import type { ChatToolRegistry } from "../../../../application/chat/tools/chat-tool-registry.js";
 import type { ChannelSummaryCheckpointStore } from "../../../../application/context/channel-summary-checkpoint-store.js";
 import type { Language } from "../../../../application/i18n/language.js";
@@ -36,6 +37,7 @@ export interface SettingRequest {
 
 // Services settings reach beyond the guild config.
 export interface SettingDeps {
+  characterRuntime?: CharacterRuntime;
   assets: GuildAssetStore;
   applicationEmojiCatalog: ApplicationEmojiCatalog;
   auditLogService?: AuditLogService;

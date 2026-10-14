@@ -227,6 +227,7 @@ export class ChatTurnSupport {
     limit: number,
     excludeIds: ReadonlySet<string>,
     before: string | null = message.id,
+    maxChars: number = chatMemoryLimits.maxChannelHistoryChars,
   ): Promise<Message[]> {
     // Oversample the raw fetch (Discord's own per-request cap is 100, so
     // this never costs an extra round trip) — a flat "last `limit` from
@@ -251,7 +252,7 @@ export class ChatTurnSupport {
     const selfBudget = Math.max(1, Math.ceil(limit / 2));
     let humanKept = 0;
     let selfKept = 0;
-    let remainingChars = chatMemoryLimits.maxChannelHistoryChars;
+    let remainingChars = maxChars;
     const kept: Message[] = [];
     // Discord returns newest-first; walk nearest-to-current first so
     // recency wins once a budget is hit, then reverse for oldest-first
@@ -468,11 +469,17 @@ export class ChatTurnSupport {
     sourceMessage?: Message;
     trigger?: SocialTrigger;
     origin?: MessageOrigin;
+    characterMessages?: readonly string[] | undefined;
+    characterDelayMs?: number | undefined;
+    characterIsCurrent?: (() => boolean) | undefined;
+    characterCanDeliver?: (() => Promise<boolean>) | undefined;
+    recordDelivery?: ((message: Message) => void) | undefined;
   }): Promise<{ deliveredText: string; firstMessageId: string }> {
     const plan = planChatDelivery(params.text, params.sources);
     const imagePlan = planImageDelivery(params.images, params.maxImageAggregateBytes);
 
-    const sends: { content: string; files: { attachment: Buffer; name: string }[] }[] = plan.mode === "attachment"
+    const sends: { content: string; files: { attachment: Buffer; name: string }[] }[] = params.characterMessages?.length && params.characterMessages.every((content) => content.length <= 2000) && params.sources.length === 0 && params.images.length === 0
+      ? params.characterMessages.map((content) => ({ content, files: [] })) : plan.mode === "attachment"
       ? [{
           content: plan.note,
           files: [{ attachment: Buffer.from(plan.attachmentText, "utf8"), name: plan.attachmentFilename }],
@@ -515,8 +522,11 @@ export class ChatTurnSupport {
     }
 
     const sendAndRecord = async (send: () => Promise<Message>): Promise<Message> => {
+      if (params.characterIsCurrent && !params.characterIsCurrent()) throw new SocialOutputSuppressed();
+      if (params.characterCanDeliver && !await params.characterCanDeliver()) throw new SocialOutputSuppressed();
       if (params.sourceMessage) await this.assertEligible(params.sourceMessage, params.trigger ?? "direct");
       const sent = await send();
+      params.recordDelivery?.(sent);
       if (this.origins && params.sourceMessage?.guildId) {
         await this.origins.record({
           guildId: params.sourceMessage.guildId, channelId: params.sourceMessage.channelId, messageId: sent.id,
@@ -529,6 +539,7 @@ export class ChatTurnSupport {
     const firstMessage = await sendWithRetry(() => sendAndRecord(() => params.sender.first(firstSend!)));
     for (const send of restSends) {
       try {
+        if (params.characterDelayMs) await new Promise((resolve) => setTimeout(resolve, params.characterDelayMs! / Math.max(1, restSends.length)));
         await sendWithRetry(() => sendAndRecord(() => params.sender.rest(send)));
       } catch (error) {
         if (error instanceof SocialOutputSuppressed) break;

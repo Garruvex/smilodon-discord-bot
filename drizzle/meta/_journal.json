@@ -155,6 +155,13 @@
       "when": 1791981831666,
       "tag": "0021_old_moon_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791990896249,
+      "tag": "0022_burly_pet_avengers",
+      "breakpoints": true
     }
   ]
 }

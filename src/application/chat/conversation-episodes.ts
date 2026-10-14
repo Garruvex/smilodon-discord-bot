@@ -6,10 +6,10 @@ import { forgetEpisodeUser } from "./conversation-episode-store.js";
 export class ConversationEpisodes {
   private readonly channels = new Map<string, ChannelHistoryMessage[]>();
   private readonly versions = new Map<string, number>();
-  public observe(key: string, event: ChannelHistoryMessage, now = Date.now()): void {
+  public observe(key: string, event: ChannelHistoryMessage, now = Date.now(), retentionMs = 900_000): void {
     const previous = this.channels.get(key)?.find((item) => item.messageId === event.messageId);
     if (!previous || previous.content !== event.content) this.versions.set(key, (this.versions.get(key) ?? 0) + 1);
-    const events = (this.channels.get(key) ?? []).filter((item) => item.messageId !== event.messageId && item.timestampMs >= now - 900_000);
+    const events = (this.channels.get(key) ?? []).filter((item) => item.messageId !== event.messageId && item.timestampMs >= now - retentionMs);
     events.push(event);
     if (this.channels.size >= 256 && !this.channels.has(key)) {
       const oldest = this.channels.keys().next().value!;
@@ -18,6 +18,9 @@ export class ConversationEpisodes {
     this.channels.set(key, events.slice(-48));
   }
   public version(key: string): number { return this.versions.get(key) ?? 0; }
+  public windowSnapshot(key: string, minutes: number, now = Date.now()): ChannelHistoryMessage[] {
+    return (this.channels.get(key) ?? []).filter((event) => event.timestampMs >= now - minutes * 60_000).slice(-48);
+  }
   public snapshot(key: string, authorId: string, targetId: string | null, now = Date.now()): ChannelHistoryMessage[] {
     const events = (this.channels.get(key) ?? []).filter((item) => item.timestampMs >= now - 900_000);
     const branch = new Set<string>(targetId ? [targetId] : []);

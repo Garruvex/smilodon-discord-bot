@@ -1,5 +1,6 @@
 import type { Client, GuildTextBasedChannel, Message } from "discord.js";
 import type { Logger } from "pino";
+import { characterSettings } from "../../../application/chat/character-settings.js";
 
 import { ChatAccessService } from "../../../application/access/chat-access-service.js";
 import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
@@ -366,7 +367,8 @@ export class ReactionReplyScheduler {
     // (see ChatTurnSupport.resolveChannelHistory's own doc comment).
     const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory
       ? this.turnSupport.toChannelHistoryMessages(await this.turnSupport.resolveChannelHistory(
-          message, profile.chat.channelHistoryLimit, new Set([message.id]), null,
+          message, characterSettings(profile).context.enabled ? characterSettings(profile).context.maxMessages : profile.chat.channelHistoryLimit, new Set([message.id]), null,
+          characterSettings(profile).context.enabled ? characterSettings(profile).context.budget : chatMemoryLimits.maxChannelHistoryChars,
         ))
       : [];
     const currentUser = {
@@ -433,10 +435,12 @@ export class ReactionReplyScheduler {
         channelMemoryModes: profile.chat.channelMemoryModes,
         channelIsNsfw: "nsfw" in channel ? Boolean(channel.nsfw) : false,
       }, async (deliveredResponse) => {
+        const selectedTarget = deliveredResponse.replyTargetMessageId ? await channel.messages.fetch(deliveredResponse.replyTargetMessageId).catch(() => null) : message;
+        if (!selectedTarget || !await this.turnSupport.isEligible(selectedTarget, "reaction")) throw new SocialOutputSuppressed();
         const { deliveredText } = await this.turnSupport.deliverChatResponse({
-          sourceMessage: message, trigger: "reaction",
+          sourceMessage: selectedTarget, trigger: "reaction",
           sender: {
-            first: async (payload) => { await ensureDelivery(); return message.reply({
+            first: async (payload) => { await ensureDelivery(); return selectedTarget.reply({
               content: payload.content, files: [...payload.files],
               allowedMentions: reactorMentions,
             }); },
@@ -446,6 +450,9 @@ export class ReactionReplyScheduler {
             }); },
           },
           text: deliveredResponse.text,
+          characterMessages: deliveredResponse.characterMessages, characterDelayMs: deliveredResponse.characterDelayMs, characterIsCurrent: deliveredResponse.characterIsCurrent,
+          characterCanDeliver: deliveredResponse.characterCanDeliver,
+          recordDelivery: (sent) => { deliveredResponse.characterDeliveryProof = [...(deliveredResponse.characterDeliveryProof ?? []), { messageId: sent.id, content: sent.content }]; },
           sources: deliveredResponse.sources,
           images: deliveredResponse.generatedImages,
           emptyFallbackContent: "I ran out of words. Very premium of me.",

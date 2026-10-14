@@ -215,4 +215,15 @@ export const jaCommandDescriptions = {
   "dnd/size": "ゲームの参加人数を変更します（主催者）", // Changes how many players the game takes (organizer).
   "dnd/size:players": "席数（1〜6）。すでに参加しているプレイヤー数より少なくはできません", // Seats in the game, 1 to 6. Never fewer than the players already in it.
   "dnd/reopen": "終了したゲームを、止まった場所で一時停止したまま再開できる状態にします（主催者）", // Opens a finished game again, paused where it stopped (organizer).
+  "character-eval": "キャラクターの一貫性と会話の問題を確認します",
+  "character-eval/flag": "ボットの会話メッセージに確認用のタグを付けます",
+  "character-eval/flag:message": "このチャンネルのメッセージ ID",
+  "character-eval/flag:category": "会話が不自然に感じられた理由",
+  "character-eval/probes": "投稿や記憶の変更をせずにインタビューを実行します",
+  "character-eval/pair": "比較用の回答を A と B に匿名で割り当てます",
+  "character-eval/pair:question": "インタビューの質問",
+  "character-eval/label": "比較した回答への人間の評価を保存します",
+  "character-eval/label:pair": "比較の ID",
+  "character-eval/label:preference": "よりキャラクターらしかった回答",
+  "character-eval/export": "確認用の情報とインタビュー結果を書き出します",
 } as const satisfies CommandDescriptionCatalog;

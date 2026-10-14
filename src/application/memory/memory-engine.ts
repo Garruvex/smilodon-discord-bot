@@ -20,7 +20,7 @@ import type {
   ProposedMemory,
   RelationCreateInput,
 } from "./memory.js";
-import { canRecall } from "./memory.js";
+import { canRecall, canRecallOrdinaryMemory } from "./memory.js";
 import { observedSubjectNames, groupObservedAliasRows } from "./observed-subject-names.js";
 import { memoryValidationLimits, validateProposal, type MemoryValidationLimits } from "./memory-validation.js";
 import {
@@ -156,7 +156,14 @@ function toScorable(memory: Memory): ScorableRecord {
 // Never sends the embedding vector itself to the model — same exclusion as
 // the legacy selectors' prompt projections.
 function memoryPromptProjection(memory: Memory): unknown {
-  const { embedding: _embedding, ...rest } = memory;
+  const { embedding: _embedding, moduleId: _moduleId, ...rest } = memory;
+  if (rest.structuredValue && typeof rest.structuredValue === "object" && ("callback" in rest.structuredValue || "callbackDateUnresolved" in rest.structuredValue || "callbackDatePlanning" in rest.structuredValue)) {
+    const metadata: Record<string, unknown> = { ...rest.structuredValue };
+    delete metadata.callback;
+    delete metadata.callbackDateUnresolved;
+    delete metadata.callbackDatePlanning;
+    return { ...rest, structuredValue: Object.keys(metadata).length ? metadata : null };
+  }
   return rest;
 }
 
@@ -213,6 +220,8 @@ export class DefaultMemoryEngine implements MemoryEngine {
     private readonly relevanceTraceCollector: Pick<MemoryRelevanceTraceCollector, "record" | "includePrivate"> | null = null,
     private readonly isBotAsserter: ((userId: string) => Promise<boolean>) | null = null,
     private readonly sharedMemoryEnabled: (guildId: string) => boolean = () => false,
+    private readonly fadingHalfLifeDays: (guildId: string, channelId: string) => number | null = () => null,
+    private readonly now: () => number = () => Date.now(),
   ) {}
 
   public async recall(input: MemoryRecallInput): Promise<MemoryContext> {
@@ -235,11 +244,11 @@ export class DefaultMemoryEngine implements MemoryEngine {
     // findRecallCandidates), so those are re-applied here in JS.
     const candidates = input.onlySelfSubjectMemories
       ? { memories: (await this.repository.listBySubject(input.guildId, input.userId)).filter((memory) =>
-          canRecall(memory, { guildId: input.guildId, channelId: input.channelId, userId: input.userId }, input.now)) }
+          canRecallOrdinaryMemory(memory, { guildId: input.guildId, channelId: input.channelId, userId: input.userId }, input.now)) }
       : input.onlySelfPrivateMemories
       ? {
           memories: (await this.repository.listByUser(input.guildId, input.userId)).filter((memory) =>
-            memory.audience === "private" && memory.subjectId === input.userId && memory.status === "active" &&
+            memory.moduleId == null && memory.audience === "private" && memory.subjectId === input.userId && memory.status === "active" &&
             (memory.isolationChannelId === null || memory.isolationChannelId === input.channelId) &&
             (memory.expiresAt === null || memory.expiresAt > input.now)),
         }
@@ -256,7 +265,13 @@ export class DefaultMemoryEngine implements MemoryEngine {
     const { boostBySubjectId, causalChains } = await this.expandRelatedSubjects({ ...input, subjectIds: [...input.subjectIds, ...resolvedAliasIds] });
     const subjectIds = new Set(input.subjectIds);
     const context = buildRelevanceContext({ message: input.message, recentHistory: input.recentHistory, subjectIds, now: input.now });
-    const scorableByMemory = new Map(candidates.memories.map((memory) => [memory, toScorable(memory)] as const));
+    const halfLife = this.fadingHalfLifeDays(input.guildId, input.channelId);
+    const scorableByMemory = new Map(candidates.memories.map((memory) => {
+      const scorable = toScorable(memory);
+      if (halfLife && memory.kind === "episode" && memory.importance <= 1 && memory.source !== "explicit")
+        scorable.importance = (scorable.importance ?? 1) * 2 ** (-Math.max(0, input.now - memory.updatedAt) / (halfLife * 86_400_000));
+      return [memory, scorable] as const;
+    }));
     const corpus = buildBm25Corpus([...scorableByMemory.values()]);
     const bm25ScoreByMemory = new Map(candidates.memories.map(
       (memory) => [memory, bm25Score(corpus, context, scorableByMemory.get(memory)!)] as const,
@@ -426,6 +441,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
     let rejected = 0;
     let failed = 0;
     for (const proposal of input.proposals) {
+      if (proposal.subjectType === "persona") { rejected += 1; continue; }
       if (proposal.action === "upsert" && !allowsDurableWrites(input.channelMode)) continue;
       const effectiveAsserter = proposal.action === "upsert"
         ? proposal.assertedByUserId !== undefined ? proposal.assertedByUserId : input.assertedByUserId : null;
@@ -799,8 +815,13 @@ export class DefaultMemoryEngine implements MemoryEngine {
       (memory.audience !== "channel" || memory.channelId === channelId));
   }
 
-  public listSources(memoryId: string): Promise<readonly MemorySource[]> {
-    return this.repository.findSources(memoryId);
+  public async listSources(memoryId: string, memory?: Memory): Promise<readonly MemorySource[]> {
+    const direct = await this.repository.findSources(memoryId);
+    const metadata = memory?.structuredValue;
+    if (!memory?.moduleId || !metadata || typeof metadata !== "object" || !("dependencies" in metadata) || !Array.isArray(metadata.dependencies)) return direct;
+    const ids = metadata.dependencies.flatMap((dependency: unknown) => dependency && typeof dependency === "object" && "id" in dependency && typeof dependency.id === "string" ? [dependency.id] : []);
+    const sources = (await Promise.all(ids.map((id) => this.repository.findSources(id)))).flat();
+    return [...new Map([...direct, ...sources].map((source) => [source.id, source])).values()];
   }
   public listPromptSources(memoryIds: readonly string[]): Promise<readonly MemorySource[]> {
     return this.repository.findPromptSources?.(memoryIds) ?? Promise.resolve([]);
@@ -815,14 +836,14 @@ export class DefaultMemoryEngine implements MemoryEngine {
       const supportingSourceIds = sources.flatMap((source) => source.sourceMessageId ? [source.sourceMessageId] : []);
       for (const messageId of supportingSourceIds) await this.repository.recordForgetCutoff({
         guildId: input.guildId, subjectId: input.ownerUserId, topic: "*", slot: `source:${messageId}`,
-        scopeKey: "*", cutoff: Date.now(),
+        scopeKey: "*", cutoff: this.now(),
       });
       await this.repository.recordForgetCutoff({ guildId: input.guildId, subjectId: input.ownerUserId,
-        topic: memory.topic, slot: memory.slot, scopeKey: memory.isolationChannelId ?? memory.channelId ?? "*", cutoff: Date.now() });
+        topic: memory.topic, slot: memory.slot, scopeKey: memory.isolationChannelId ?? memory.channelId ?? "*", cutoff: this.now() });
       return this.repository.forget({ guildId: input.guildId, memoryId: memory.id, supportingSourceIds });
     }
     await this.repository.recordForgetCutoff({ guildId: input.guildId, subjectId: input.ownerUserId,
-      topic: "*", slot: "*", scopeKey: "*", cutoff: Date.now() });
+      topic: "*", slot: "*", scopeKey: "*", cutoff: this.now() });
     return this.repository.forget({
       guildId: input.guildId, ownerUserId: input.ownerUserId,
       ...(input.subjectId !== undefined ? { subjectId: input.subjectId } : {}),

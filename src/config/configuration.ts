@@ -98,6 +98,7 @@ export interface MemoryConfiguration {
 }
 
 export interface ApplicationConfiguration {
+  decision?: { model: string; apiKey: string; baseUrl: string } | null;
   instanceName?: string | null;
   environment: "development" | "test" | "production";
   logLevel: "trace" | "debug" | "info" | "warn" | "error" | "fatal";

@@ -604,6 +604,11 @@ character personality file — and an optional example-exchanges file to teach
 its actual voice — that reads like a real chat participant instead of an
 assistant.
 
+Optional character modules add canon, impressions, natural recall, voice checks,
+timing and human review tools. They default off. See the
+[character pilot guide](docs/chat-believability-operations.md) for settings,
+decision-provider configuration, privacy boundaries and offline replay.
+
 Every provider call emits content-free usage logs. The start record includes
 the model, API mode, generation settings, Discord identifiers, image count, and
 web-search mode. The completion record adds latency, whether search was actually

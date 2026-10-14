@@ -1,4 +1,5 @@
 import type { SettingsTextCatalog } from "../catalog.js";
+import { characterSettingsText } from "../character.js";
 import { zhTWAccess } from "./access.js";
 import { zhTWChat } from "./chat.js";
 import { zhTWMemory } from "./memory.js";
@@ -9,6 +10,7 @@ import { zhTWSecurity } from "./security.js";
 
 // Every registered setting's text, one spread per settings group.
 export const zhTWSettingsText: SettingsTextCatalog = {
+  ...characterSettingsText("zh-TW"),
   ...zhTWAccess,
   ...zhTWMusic,
   ...zhTWChat,

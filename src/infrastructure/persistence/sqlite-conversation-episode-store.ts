@@ -1,4 +1,4 @@
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { KeyedSerialQueue } from "../../application/concurrency/keyed-serial-queue.js";
 import { boundEpisodeEvents, episodeRetentionMs, excludeEpisodeInteraction, forgetEpisodeUser, type ConversationEpisodeStore } from "../../application/chat/conversation-episode-store.js";
@@ -9,11 +9,11 @@ export class SqliteConversationEpisodeStore implements ConversationEpisodeStore 
   private readonly queue = new KeyedSerialQueue();
   public constructor(private readonly database: BetterSQLite3Database<typeof schema>) {}
   public load(guildId: string, channelId: string, now: number): Promise<readonly ChannelHistoryMessage[]> {
-    return this.queue.run(`${guildId}:${channelId}`, () => Promise.resolve(boundEpisodeEvents(this.read(guildId, channelId), now)));
+    return this.queue.run(`${guildId}:${channelId}`, () => Promise.resolve(boundEpisodeEvents(this.read(guildId, channelId), now, this.retention(guildId, channelId))));
   }
-  public observe(guildId: string, channelId: string, event: ChannelHistoryMessage, now: number): Promise<void> {
+  public observe(guildId: string, channelId: string, event: ChannelHistoryMessage, now: number, retentionMs = episodeRetentionMs): Promise<void> {
     return this.queue.run(`${guildId}:${channelId}`, () => {
-      this.database.transaction(() => this.write(guildId, channelId, boundEpisodeEvents([...this.read(guildId, channelId), event], now), now));
+      this.database.transaction(() => this.write(guildId, channelId, boundEpisodeEvents([...this.read(guildId, channelId), event], now, retentionMs), now, retentionMs));
       return Promise.resolve();
     });
   }
@@ -24,7 +24,7 @@ export class SqliteConversationEpisodeStore implements ConversationEpisodeStore 
     });
   }
   public deleteExpired(now: number): Promise<void> {
-    this.database.delete(schema.conversationEpisodes).where(lt(schema.conversationEpisodes.updatedAt, new Date(now - episodeRetentionMs))).run();
+    this.database.delete(schema.conversationEpisodes).where(sql`${schema.conversationEpisodes.updatedAt} < ${now} - ${schema.conversationEpisodes.retentionMs}`).run();
     return Promise.resolve();
   }
   public async forgetUser(guildId: string, userId: string): Promise<void> {
@@ -39,8 +39,12 @@ export class SqliteConversationEpisodeStore implements ConversationEpisodeStore 
     return this.database.select().from(schema.conversationEpisodes).where(and(eq(schema.conversationEpisodes.guildId, guildId),
       eq(schema.conversationEpisodes.channelId, channelId))).get()?.events ?? [];
   }
-  private write(guildId: string, channelId: string, events: ChannelHistoryMessage[], now: number): void {
-    this.database.insert(schema.conversationEpisodes).values({ guildId, channelId, events, updatedAt: new Date(now) })
-      .onConflictDoUpdate({ target: [schema.conversationEpisodes.guildId, schema.conversationEpisodes.channelId], set: { events, updatedAt: new Date(now) } }).run();
+  private retention(guildId: string, channelId: string): number {
+    return this.database.select({ retentionMs: schema.conversationEpisodes.retentionMs }).from(schema.conversationEpisodes).where(and(
+      eq(schema.conversationEpisodes.guildId, guildId), eq(schema.conversationEpisodes.channelId, channelId))).get()?.retentionMs ?? episodeRetentionMs;
+  }
+  private write(guildId: string, channelId: string, events: ChannelHistoryMessage[], now: number, retentionMs = this.retention(guildId, channelId)): void {
+    this.database.insert(schema.conversationEpisodes).values({ guildId, channelId, events, retentionMs, updatedAt: new Date(now) })
+      .onConflictDoUpdate({ target: [schema.conversationEpisodes.guildId, schema.conversationEpisodes.channelId], set: { events, retentionMs, updatedAt: new Date(now) } }).run();
   }
 }

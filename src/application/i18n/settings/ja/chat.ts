@@ -1,6 +1,9 @@
 import type { SettingsTextCatalog } from "../catalog.js";
 
 export const jaChat: SettingsTextCatalog = {
+  "participation.continuation-limits": { label: "継続会話の上限", description: "会話中の逐次クールダウンをなくし、一会話と十分間の返信数で制限します。" },
+  "participation.continuation-limits.exchange": { label: "一会話の返信数", description: "二分間の無活動で会話が終了します。" },
+  "participation.continuation-limits.window": { label: "十分間の返信数", description: "チャンネル内の継続会話の返信数の上限。" },
   "participation.resources": { label: "サーバーのリソース", description: "サーバーごとの同時処理数と任意会話の受付上限です。" },
   "participation.resources.concurrency": { label: "サーバー内の同時会話数", description: "このサーバーで同時に処理する会話の上限です。" },
   "participation.resources.optional-turns": { label: "10分間の任意会話数", description: "サーバーごとの受付上限です。受付済みのツール処理は完了します。" },

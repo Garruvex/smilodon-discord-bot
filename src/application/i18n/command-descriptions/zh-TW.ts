@@ -217,4 +217,15 @@ export const zhTWCommandDescriptions = {
   "dnd/size": "更改團務可容納的玩家人數（主辦人）", // Changes how many players the game takes (organizer).
   "dnd/size:players": "座位數，1 到 6，不能少於已加入的玩家", // Seats in the game, 1 to 6. Never fewer than the players already in it.
   "dnd/reopen": "重新開啟已結束的團務，並暫停在結束的地方（主辦人）", // Opens a finished game again, paused where it stopped (organizer).
+  "character-eval": "檢查角色一致性及對話問題",
+  "character-eval/flag": "標記機器人的聊天訊息以供檢查",
+  "character-eval/flag:message": "此頻道中的訊息 ID",
+  "character-eval/flag:category": "對話不自然的原因",
+  "character-eval/probes": "執行角色訪談，不發送訊息或修改記憶",
+  "character-eval/pair": "產生匿名分配至 A 與 B 的比較回答",
+  "character-eval/pair:question": "訪談問題",
+  "character-eval/label": "儲存人類對比較回答的評價",
+  "character-eval/label:pair": "比較 ID",
+  "character-eval/label:preference": "哪個回答更像角色",
+  "character-eval/export": "匯出檢查資料及角色訪談結果",
 } as const satisfies CommandDescriptionCatalog<keyof typeof jaCommandDescriptions>;

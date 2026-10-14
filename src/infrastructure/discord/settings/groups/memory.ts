@@ -2,6 +2,7 @@ import { CHAT_LIMITS } from "../../../../config/guild-configuration-limits.js";
 import { action, channelList, group, integer, report, toggle } from "../registry/builders.js";
 import type { NodeContext } from "../registry/types.js";
 import { chatSetting, pausedSuffix } from "./chat.js";
+import { characterSettings } from "../../../../application/chat/character-settings.js";
 import { renderContextStatus } from "./chat-context-status.js";
 
 // The chatbot's memory: what it reads back and what it keeps. Its own
@@ -12,6 +13,12 @@ const summarizationUnavailable = ({ deps, text, path }: NodeContext): string | n
   deps.channelSummaryProviderAvailable ? null : text.message(path, "unavailable");
 
 export const memory = group("memory", [
+  chatSetting("character-retention", {
+    relationships: integer({ min: 1, max: 365, read: (p) => characterSettings(p).modules.relationships.retentionDays,
+      write: (v) => ({ character: { modules: { relationships: { retentionDays: v } } } }) }),
+    history: integer({ min: 1, max: 365, read: (p) => characterSettings(p).modules.canon.retentionDays,
+      write: (v) => ({ character: { modules: { canon: { retentionDays: v } } } }) }),
+  }),
   chatSetting("sharing", {
     enabled: toggle({ read: (p) => p.chat.sharedMemoryEnabled ?? false, write: (v) => ({ chatbotSharedMemoryEnabled: v }) }),
   }),

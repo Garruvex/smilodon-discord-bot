@@ -20,6 +20,7 @@
     "deploy:commands": "tsx src/scripts/deploy-commands.ts",
     "i18n:coverage": "tsx src/scripts/i18n-coverage.ts",
     "eval:memory-relevance": "tsx src/scripts/calibrate-memory-relevance.ts",
+    "eval:character-replay": "tsx src/scripts/replay-character-conversations.ts",
     "dev": "tsx watch src/bootstrap/start.ts",
     "dev:once": "tsx src/bootstrap/start.ts",
     "db:backfill-memories": "tsx src/scripts/migrate-memories-to-central-schema.ts",

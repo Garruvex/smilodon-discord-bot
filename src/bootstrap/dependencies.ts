@@ -93,17 +93,24 @@ import { LinkGuardService } from "../infrastructure/discord/security/link-guard-
 import { RaidService } from "../infrastructure/discord/security/raid-service.js";
 import { SpamService } from "../infrastructure/discord/security/spam-service.js";
 import { TrapService } from "../infrastructure/discord/security/trap-service.js";
-import type { ChatProvider } from "../application/chat/chat-provider.js";
+import type { ChatProvider, ChatRequest } from "../application/chat/chat-provider.js";
 import { OpenAiCompatibleChatProvider } from "../infrastructure/chat/openai-compatible-chat-provider.js";
 import { OpenAiResponsesChatProvider } from "../infrastructure/chat/openai-responses-chat-provider.js";
 import { GeminiChatProvider } from "../infrastructure/chat/gemini-chat-provider.js";
-import type { Client } from "discord.js";
+import type { Client, Message } from "discord.js";
 import { GuildAssetStore } from "../application/assets/guild-asset-store.js";
 import { ComponentRegistry } from "../application/components/component-registry.js";
 import { ComponentDispatcher } from "../application/components/component-dispatcher.js";
 import { PollComponentHandler } from "../infrastructure/discord/components/poll-component-handler.js";
 import type { ChatStateStore } from "../application/chat/chat-state-store.js";
 import { ChatConversationService } from "../application/chat/chat-conversation-service.js";
+import { CharacterRuntime } from "../application/chat/character-runtime.js";
+import { CharacterEvaluationStore } from "../application/chat/character-evaluation.js";
+import { CharacterEvalCommand, FeltLikeBotCommand } from "../infrastructure/discord/commands/diagnostics/character-eval-command.js";
+import { resolveParticipation } from "../application/chat/participation-policy.js";
+import { SocialOutputSuppressed } from "../application/chat/message-origin-store.js";
+import { HttpDecisionProvider } from "../infrastructure/chat/http-decision-provider.js";
+import { characterSettings, characterInactiveReason } from "../application/chat/character-settings.js";
 import { ChatToolRegistry } from "../application/chat/tools/chat-tool-registry.js";
 import { DiceRollTool } from "../application/chat/tools/dice-tool.js";
 import { EightBallTool } from "../application/chat/tools/eightball-tool.js";
@@ -177,7 +184,7 @@ type ProviderConfig =
 // same 3-way branch, just parameterized on which config block it's building
 // from. summaryModels defaults to the provider's own `models` when omitted
 // (utilityChat never sets it — it IS the summary/utility model already).
-function createChatProviderFromConfig(config: ProviderConfig, logger: Logger): ChatProvider {
+export function createChatProviderFromConfig(config: ProviderConfig, logger: Logger): ChatProvider {
   const summaryModels = config.summaryModels ?? config.models;
   if (config.provider === "openai-responses") {
     return new OpenAiResponsesChatProvider(
@@ -463,6 +470,13 @@ export function registerCommands(
       return user.bot;
     },
     (guildId) => guildConfigurationProvider.find(guildId)?.chat.sharedMemoryEnabled === true,
+    (guildId, channelId) => {
+      const profile = guildConfigurationProvider.find(guildId); if (!profile) return null;
+      const settings = characterSettings(profile);
+      return !characterInactiveReason(settings, "fading", channelId, { context: profile.features.channelHistory, decision: false,
+        memorySharing: profile.chat.sharedMemoryEnabled === true, continuation: false, spontaneous: false,
+        excluded: !profile.features.chatbot || profile.chat.channelMemoryModes[channelId] === "disabled" }) ? settings.modules.fading.halfLifeDays : null;
+    },
   );
   const memberProfileService = new MemberProfileService(memoryEngine, birthdayStore, userCustomizationStore);
   commandRegistry.register(new MemoryCommand(chatStateStore, memberProfileService, memoryEngine, personalMemoryExtractionQueueStore));
@@ -655,6 +669,12 @@ export function createDependencies(
     ...commandToolBindings,
   ]);
   settingsEngine.bindChatToolRegistry(chatToolRegistry);
+  const characterRuntime = chatProvider ? new CharacterRuntime(guildConfigurationProvider, memoryRepository,
+    utilityProvider?.generateCharacterData ? { generateCharacterData: utilityProvider.generateCharacterData.bind(utilityProvider) } : null,
+    chatProvider, configuration.decision ? new HttpDecisionProvider(configuration.decision)
+      : utilityProvider?.generateCharacterData ? { generateCharacterData: utilityProvider.generateCharacterData.bind(utilityProvider) } : null, personalMemoryExtractionQueueStore, undefined, logger.child({ component: "character" })) : null;
+  if (characterRuntime) settingsEngine.bindCharacterRuntime(characterRuntime);
+  characterRuntime?.bindTargetPreferences(async (guildId, userId) => ({ customization: await userCustomizationStore.load(guildId, userId) }));
   const chatConversationService = chatProvider
     ? new ChatConversationService(
         chatProvider,
@@ -671,6 +691,7 @@ export function createDependencies(
         personaDriftStore,
         personalMemoryExtractionQueueStore,
         conversationEpisodeStore,
+        characterRuntime,
       )
     : null;
   const personaSource = new FilePersonaSource(
@@ -679,8 +700,61 @@ export function createDependencies(
     personaDriftStore,
     embeddingsClient,
   );
+  if (characterRuntime) {
+    characterRuntime.bindPersonaVersion(async (guildId) => (await personaSource.resolve(guildConfigurationProvider.require(guildId))).personalitySourceHash);
+    const evaluationStore = new CharacterEvaluationStore(configuration.runtimeDataDirectory);
+    characterRuntime.bindEvaluationStore(evaluationStore);
+    commandRegistry.register(new FeltLikeBotCommand(guildConfigurationProvider, messageOriginStore, evaluationStore));
+    const evaluationRequest = async (guildId: string, channelId: string, userId: string, question: string): Promise<ChatRequest> => {
+        const profile = guildConfigurationProvider.require(guildId); const persona = await personaSource.resolve(profile);
+        const memories = await memoryEngine.recall({ guildId, channelId, userId, message: question, recentHistory: [], subjectIds: [userId],
+          onlySelfSubjectMemories: true, now: Date.now(), channelMode: profile.chat.channelMemoryModes[channelId] ?? "shared" });
+        return { guildId, channelId, personality: persona.personality, characterPersonaHash: persona.personalitySourceHash, characterStyleExamples: persona.examplePool,
+          personaLore: persona.loreChunks.map((chunk) => ({ heading: chunk.heading, text: chunk.text })),
+          personaDrift: persona.personaDrift, exampleExchanges: persona.examplePool.slice(0, 4), userCustomization: null,
+          currentUser: { id: userId, displayName: "Reviewer", roleNames: [] }, mentionedUsers: [], recentHistory: [],
+          memories: memories.memories.filter((memory) => memory.subjectType === "member" && memory.audience !== "private").map((memory) => ({ id: memory.id,
+            assertedByUserId: memory.ownerUserId ?? "unknown", subjectUserId: memory.subjectId, topic: memory.topic, slot: memory.slot,
+            statement: memory.statement, updatedAt: memory.updatedAt, embedding: null })), guildKnowledge: [], causalChains: [],
+          message: question, replyChain: [], replyChainSummary: null, channelHistory: [], birthday: null, images: [],
+          webSearchMode: "off", imageGenerationEnabled: false, includeSources: false, triggerMode: "direct", botUserId: discordClient.user?.id ?? null };
+      };
+    characterRuntime.bindProbeSchedule((guildId, channelId, question) => evaluationRequest(guildId, channelId, "character-evaluation", question));
+    channelSummaryScheduler?.bindCharacterConsolidation((guildId, channelId, subjectIds) => characterRuntime.afterMemoryConsolidation(guildId, channelId, subjectIds,
+      (userId) => evaluationRequest(guildId, channelId, userId, "")));
+    commandRegistry.register(new CharacterEvalCommand(guildConfigurationProvider, messageOriginStore, evaluationStore, characterRuntime, evaluationRequest));
+  }
   if (chatConversationService) for (const command of commandRegistry.getAll()) {
     if (command instanceof MemoryCommand) command.bindConversationForget((guildId, userId) => chatConversationService.forgetConversation(guildId, userId));
+  }
+  if (characterRuntime && chatConversationService) {
+    characterRuntime.bindEvaluationAdmission({ run: (guildId, channelId, operation, cost) => chatConversationService.runCharacterEvaluation(guildId, channelId,
+      resolveParticipation(guildConfigurationProvider.find(guildId)?.chat.participation, channelId).limits, operation, cost) });
+    const resolveCallbackSource = async (guildId: string, channelId: string, sourceMessageId: string): Promise<Message<true> | null> => {
+      const channel = await discordClient.channels.fetch(channelId).catch(() => null);
+      if (!channel?.isTextBased() || channel.isDMBased() || channel.guildId !== guildId) return null;
+      const message = await channel.messages.fetch(sourceMessageId).catch(() => null);
+      return message && (await socialEligibility.check(message, "continuation")).eligible ? message : null;
+    };
+    characterRuntime.bindCallbackDelivery({
+      run: (guildId, channelId, operation) => chatConversationService.runCallback(guildId, channelId,
+        resolveParticipation(guildConfigurationProvider.find(guildId)?.chat.participation, channelId).limits, operation),
+      check: async (guildId, channelId, sourceMessageId) => !!await resolveCallbackSource(guildId, channelId, sourceMessageId),
+      send: async (guildId, channelId, sourceMessageId, text, replyToMessageId) => {
+        const source = await resolveCallbackSource(guildId, channelId, sourceMessageId);
+        if (!source) throw new SocialOutputSuppressed();
+        const eventSource = replyToMessageId ? await resolveCallbackSource(guildId, channelId, replyToMessageId) : null;
+        const replyTarget = eventSource?.author.id === source.author.id ? eventSource : null;
+        const payload = { content: text, allowedMentions: { parse: [], repliedUser: false } };
+        const sent = replyTarget ? await replyTarget.reply(payload) : await source.channel.send(payload);
+        await messageOriginStore.record({ guildId, channelId, messageId: sent.id, origin: "chat", sourceMessageId, createdAt: Date.now() });
+        chatConversationService.observe(guildId, channelId, { messageId: sent.id, timestampMs: Date.now(), authorId: discordClient.user!.id,
+          authorDisplayName: guildConfigurationProvider.require(guildId).displayName, content: text, imageCount: 0,
+          ...(replyTarget ? { replyToMessageId: replyTarget.id, replyToAuthorId: replyTarget.author.id } : {}),
+          author: { id: discordClient.user!.id, displayName: guildConfigurationProvider.require(guildId).displayName, roleNames: [], kind: "bot" } });
+        return sent.id;
+      },
+    });
   }
   const reactionReplyScheduler = chatConversationService
     ? new ReactionReplyScheduler(

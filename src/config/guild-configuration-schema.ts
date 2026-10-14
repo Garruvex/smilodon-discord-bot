@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { characterSettingsSchema } from "../application/chat/character-settings.js";
 
 import { defaultLanguage, languages } from "../application/i18n/language.js";
 import {
@@ -119,6 +120,8 @@ const guildChatSchema = z.preprocess((value) => {
       reactionCooldownSeconds: z.number().int().min(20).max(600).optional(),
       textPer10Minutes: z.number().int().min(0).max(3).optional(),
       reactionsPer10Minutes: z.number().int().min(0).max(5).optional(),
+      continuationPerExchange: z.number().int().min(0).max(30).optional(),
+      continuationPer10Minutes: z.number().int().min(0).max(100).optional(),
     }).default({}),
   }).default({}),
   personalityFile: z.string().trim().min(1).nullable().default(null),
@@ -191,6 +194,7 @@ export const guildConfigurationFileSchema = z
   .object({
     birthdayMessageTemplate: z.string().trim().min(1).max(1000).nullable().default(null),
     schemaVersion: z.literal(1),
+    character: characterSettingsSchema,
     guild: z.object({
       id: snowflake,
       name: z.string().trim().min(1),

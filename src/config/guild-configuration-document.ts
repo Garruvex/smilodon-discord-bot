@@ -1,4 +1,5 @@
 import type { Language } from "../application/i18n/language.js";
+import type { CharacterSettingsPatch } from "../application/chat/character-settings.js";
 import type { ParticipationSettings } from "../application/chat/participation-policy.js";
 import type { LinkAction, RaidAction, SecurityWindow, SpamAction } from "../domain/security/detection-policy.js";
 import type { TrapAction, TrapDeleteWindow, TrapTimeoutDuration } from "../domain/security/trap-policy.js";
@@ -9,6 +10,7 @@ import {
 } from "./guild-configuration-schema.js";
 
 export interface UpdateGuildConfigurationInput {
+  character?: CharacterSettingsPatch;
   chatParticipation?: Partial<ParticipationSettings>;
   chatParticipationResetAdvanced?: boolean;
   idleImageUrl?: string | null;
@@ -227,6 +229,7 @@ export function toGuildConfiguration(parsed: ParsedGuildConfigurationFile, sourc
       autoQueueVoteOptionCount: parsed.music.autoQueueVote.optionCount,
     },
     chat: parsed.chat,
+    character: parsed.character,
     security: parsed.security,
     sourceFile,
   };
@@ -286,6 +289,7 @@ export function toGuildConfigurationDocument(configuration: GuildConfiguration):
       },
     },
     chat: configuration.chat,
+    character: configuration.character,
     security: configuration.security,
   });
 }
@@ -295,6 +299,12 @@ export function applyGuildConfigurationUpdate(
   input: UpdateGuildConfigurationInput,
 ): ParsedGuildConfigurationFile {
   const next = structuredClone(document);
+  if (input.character) {
+    const { modules, channelOverrides, ...controls } = input.character;
+    Object.assign(next.character, controls);
+    if (channelOverrides) Object.assign(next.character.channelOverrides, channelOverrides);
+    if (modules) for (const [id, values] of Object.entries(modules)) Object.assign(next.character.modules[id as keyof typeof next.character.modules], values);
+  }
   if (input.idleImageUrl !== undefined) next.branding.idleImageUrl = input.idleImageUrl;
   if (input.idleImageAsset !== undefined) next.branding.idleImageAsset = input.idleImageAsset;
   if (input.controlPanelChannelId !== undefined) next.channels.controlPanel = input.controlPanelChannelId;

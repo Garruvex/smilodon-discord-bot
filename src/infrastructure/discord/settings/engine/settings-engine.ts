@@ -1,4 +1,5 @@
 import type { AttachmentBuilder } from "discord.js";
+import type { CharacterRuntime } from "../../../../application/chat/character-runtime.js";
 
 import type { ChatToolRegistry } from "../../../../application/chat/tools/chat-tool-registry.js";
 import { settingsText, type SettingsText } from "../../../../application/i18n/settings/index.js";
@@ -78,6 +79,7 @@ export class SettingsEngine {
   public bindAdminPanel(adminPanel: AdminPanelRepair): void {
     this.deps.adminPanel = adminPanel;
   }
+  public bindCharacterRuntime(runtime: CharacterRuntime): void { this.deps.characterRuntime = runtime; }
 
   public async run(registered: RegisteredNode, request: SettingRequest, source: SettingSource): Promise<SettingRunResult> {
     const profile = this.options.profiles.require(request.guildId);

@@ -1,4 +1,5 @@
 import type { Logger } from "pino";
+import type { CharacterRuntime, CharacterPreparedTurn } from "./character-runtime.js";
 
 import { hashContent } from "../assets/content-hash.js";
 import { stripUntrustedMarkers } from "./attribution-verification.js";
@@ -229,7 +230,7 @@ export class ChatStateCommitError extends Error {
 }
 
 export class ChatConversationService {
-  private readonly scheduler = new ChatScheduler();
+  private readonly scheduler: ChatScheduler;
   private readonly episodes = new ConversationEpisodes();
   private readonly recentPings = new Map<string, { at: number; messageId: string }>();
   private readonly forgottenBefore = new Map<string, number>();
@@ -268,9 +269,12 @@ export class ChatConversationService {
     private readonly memoryMutationCoordinator: (Pick<PersonalMemoryExtractionQueueStore, "runForSubject"> &
       Partial<Pick<PersonalMemoryExtractionQueueStore, "deleteForSubject">>) | null = null,
     private readonly episodeStore: ConversationEpisodeStore | null = null,
+    private readonly characterRuntime: CharacterRuntime | null = null,
+    private readonly now: () => number = () => Date.now(),
   ) {
+    this.scheduler = new ChatScheduler(this.now);
     this.episodeCleanupTimer = episodeStore ? setInterval(() => {
-      this.trackBackground(episodeStore.deleteExpired(Date.now()).catch((error: unknown) =>
+      this.trackBackground(episodeStore.deleteExpired(this.now()).catch((error: unknown) =>
         this.logger?.warn({ error }, "Short-lived conversation episode cleanup failed")));
     }, 60_000) : null;
     this.episodeCleanupTimer?.unref?.();
@@ -317,7 +321,7 @@ export class ChatConversationService {
                 : original ? [original.authorDisplayName, original.author?.username, original.author?.globalName,
                   original.author?.guildNickname].filter((name): name is string => Boolean(name)) : [],
               sourceMessageId: current ? context.sourceMessageId ?? null : original?.messageId ?? null,
-              sourceTimestampMs: current && context.currentEvent?.type === "message" ? context.currentEvent.timestampMs : original?.timestampMs ?? Date.now(),
+              sourceTimestampMs: current && context.currentEvent?.type === "message" ? context.currentEvent.timestampMs : original?.timestampMs ?? this.now(),
             };
           })() : {}),
           // exactOptionalPropertyTypes: a conditional spread, not
@@ -349,7 +353,7 @@ export class ChatConversationService {
             normalizeForGroundingCheck(message.content).includes(quote));
           return { sourceQuote: candidate.sourceQuote as string, assertedByUserId: current ? currentUserId : original?.authorId ?? null,
             sourceMessageId: current ? context.sourceMessageId ?? null : original?.messageId ?? null,
-            sourceTimestampMs: current && context.currentEvent?.type === "message" ? context.currentEvent.timestampMs : original?.timestampMs ?? Date.now() };
+            sourceTimestampMs: current && context.currentEvent?.type === "message" ? context.currentEvent.timestampMs : original?.timestampMs ?? this.now() };
         })() : {}),
       });
     }
@@ -406,7 +410,7 @@ export class ChatConversationService {
               const mode = source.user.channelMemoryMode === "isolated" ? "isolated" : channelMode;
               await this.runMemoryMutation(guildId, speaker.id, () => this.memoryEngine.ingest({
                 guildId, channelId, channelMode: mode, assertedByUserId: speaker.id, sourceMessageId,
-                source: "consolidation", now: Date.now(), sourceTimestampMs: source.user.createdAt,
+                source: "consolidation", now: this.now(), sourceTimestampMs: source.user.createdAt,
                 proposals: this.toProposals([], [candidate], speaker.id).map((proposal) => proposal.action === "upsert" ? {
                   ...proposal, sourceQuote, supportingSources: [{ subjectId: speaker.id,
                     messageId: sourceMessageId, timestampMs: source.user.createdAt }],
@@ -535,15 +539,17 @@ export class ChatConversationService {
     speaker: { id: string; displayName: string },
     guildId: string,
     channelId: string,
+    character: { prepared: CharacterPreparedTurn; reply: ChatResponse } | null = null,
   ): Promise<readonly ProposedMemoryAction[]> {
     // Prefer utilityProvider only if it actually implements this capability
     // — falling back to it regardless (as resolveReplyChainSummary does)
     // would silently lose extraction if a configured utility provider lacks
     // the capability but the main provider has it.
     const extractor = this.utilityProvider?.extractPersonalMemories ? this.utilityProvider : this.provider;
-    if (!extractor.extractPersonalMemories) return [];
     try {
-      const actions = await extractor.extractPersonalMemories(userMessage, assistantReply, speaker);
+      const folded = character ? await this.characterRuntime!.extractConversationMemories(userMessage, character.reply, character.prepared) : null;
+      if (folded === null && !extractor.extractPersonalMemories) return [];
+      const actions = folded ?? await extractor.extractPersonalMemories!(userMessage, assistantReply, speaker);
       const normalizedMessage = normalizeForGroundingCheck(userMessage);
       const proposedActions = actions
         // Dropped, never force-relabeled: aboutSpeaker is the model's own
@@ -589,10 +595,12 @@ export class ChatConversationService {
     deliveredAssistantMessage: string,
     channelMode: ChannelMemoryMode,
     now: number,
+    character: { prepared: CharacterPreparedTurn; reply: ChatResponse } | null = null,
   ): Promise<void> {
     if (!allowsDurableWrites(input.resolveMemoryMode?.() ?? channelMode) || (input.canExecute && !await input.canExecute())) return;
     const extractedActions = await this.extractPersonalMemories(
       input.message, deliveredAssistantMessage, input.currentUser, input.guildId, input.channelId,
+      character,
     );
     if (extractedActions.length === 0) return;
     const proposals = this.toProposals(extractedActions, [], input.currentUser.id, input);
@@ -600,7 +608,7 @@ export class ChatConversationService {
       const result = await this.runMemoryMutation(input.guildId, input.currentUser.id, () => this.memoryEngine.ingest({
         guildId: input.guildId, channelId: input.channelId, channelMode: input.resolveMemoryMode?.() ?? channelMode,
         assertedByUserId: input.currentUser.id, sourceMessageId: input.sourceMessageId ?? null,
-        source: "live", now, proposals,
+        source: /^(?:please\s+)?(?:remember\b|記住|記得|幫我記|覚えて)/iu.test(input.message.trim()) ? "explicit" : "live", now, proposals,
         ...(input.currentEvent?.type === "message" ? { sourceTimestampMs: input.currentEvent.timestampMs } : {}),
       }));
       this.logMemoryIngestIssues(result, input.guildId, input.channelId, input.currentUser.id);
@@ -670,6 +678,9 @@ export class ChatConversationService {
   // multi-model fallback chain (each retry gets its own 30s), just the
   // common single-attempt case.
   public async drain(timeoutMs = 40_000): Promise<void> {
+    const startedAt = Date.now();
+    await this.characterRuntime?.drain(timeoutMs);
+    timeoutMs = Math.max(0, timeoutMs - (Date.now() - startedAt));
     if (this.pendingBackgroundWork.size === 0) return;
     const pendingCount = this.pendingBackgroundWork.size;
     const deadline = Date.now() + timeoutMs;
@@ -718,8 +729,8 @@ export class ChatConversationService {
     const lowSubstance = isLowSubstancePing(input.message, input.replyChain.length > 0 ||
       (input.currentEvent?.type === "message" && input.currentEvent.replyToMessageId !== null), input.images.length > 0);
     const optional = input.triggerMode !== "direct" || (input.allowSilentDirect === true && lowSubstance);
-    const expiresAt = optional ? Date.now() + 30_000 : null;
-    const limits = input.resolveActivityLimits?.() ?? input.activityLimits ?? balancedChatLimits;
+    const expiresAt = optional ? this.now() + 30_000 : null;
+    const limits = { ...(input.resolveActivityLimits?.() ?? input.activityLimits ?? balancedChatLimits), continuation: input.triggerMode === "continuation" };
     const silent: ChatResponse = {
       text: "", ambientAction: "ignore", reactionEmoji: null, historyReactions: [], userMemoryActions: [],
       guildKnowledgeCandidates: [], sources: [], usage: null, webSearchUsed: false, generatedImages: [],
@@ -727,43 +738,46 @@ export class ChatConversationService {
     if (input.triggerMode === "direct" && lowSubstance && input.sourceMessageId) {
       const pingKey = `${key}:${input.currentUser.id}`;
       const previous = this.recentPings.get(pingKey);
-      if (previous && previous.messageId !== input.sourceMessageId && Date.now() - previous.at < 10_000) return Promise.resolve(silent);
+      if (previous && previous.messageId !== input.sourceMessageId && this.now() - previous.at < 10_000) return Promise.resolve(silent);
       if (this.recentPings.size >= 1024) this.recentPings.delete(this.recentPings.keys().next().value!);
-      this.recentPings.set(pingKey, { at: Date.now(), messageId: input.sourceMessageId });
+      this.recentPings.set(pingKey, { at: this.now(), messageId: input.sourceMessageId });
     }
     return this.scheduler.run(key, optional, limits, async () => {
       if (input.canExecute && !await input.canExecute()) throw new SocialOutputSuppressed();
       if (input.channelHistoryEnabled && this.episodeStore && (input.resolveMemoryMode?.() ?? resolveChannelMemoryMode(input.channelMemoryModes ?? {}, input.channelId)) !== "disabled") {
-        const persisted = await this.episodeStore.load(input.guildId, input.channelId, Date.now());
-        persisted.forEach((event) => this.episodes.observe(key, event));
+        const persisted = await this.episodeStore.load(input.guildId, input.channelId, this.now());
+        persisted.forEach((event) => this.episodes.observe(key, event, this.now(), (this.characterRuntime?.contextWindow(input.guildId, input.channelId) ?? 15) * 60_000));
       }
       const contextVersion = this.episodes.version(key);
       const privacyVersion = this.privacyVersions.get(input.guildId) ?? 0;
-      let snapshot = input.channelHistoryEnabled ? this.episodes.snapshot(key, input.currentUser.id,
-        input.currentEvent?.type === "message" ? input.currentEvent.replyToMessageId : null) : [];
+      const windowMinutes = this.characterRuntime?.contextWindow(input.guildId, input.channelId);
+      let snapshot = input.channelHistoryEnabled ? windowMinutes ? this.episodes.windowSnapshot(key, windowMinutes, this.now())
+        : this.episodes.snapshot(key, input.currentUser.id,
+        input.currentEvent?.type === "message" ? input.currentEvent.replyToMessageId : null, this.now()) : [];
       if (input.refreshContextMessage) snapshot = (await Promise.all(snapshot.map((event) => input.refreshContextMessage!(event))))
         .filter((event): event is ChannelHistoryMessage => event !== null);
       const ids = new Set(input.replyChain.map((message) => message.messageId));
-      const history = [...new Map([...input.channelHistory, ...snapshot].filter((message) =>
+      let history = [...new Map([...input.channelHistory, ...snapshot, ...(input.currentBurst ?? [])].filter((message) =>
         !ids.has(message.messageId) && message.messageId !== input.sourceMessageId &&
         message.timestampMs > (this.forgottenBefore.get(`${input.guildId}:${message.authorId}`) ?? -Infinity)).map((message) => [message.messageId, message])).values()]
-        .sort((a, b) => a.timestampMs - b.timestampMs).slice(-24);
+        .sort((a, b) => a.timestampMs - b.timestampMs).slice(windowMinutes ? -48 : -24);
+      if (this.characterRuntime) history = this.characterRuntime.selectContext(input.guildId, input.channelId, history);
       const response = await this.runTurn({ ...input, channelHistory: history,
         canExecute: async () => (this.privacyVersions.get(input.guildId) ?? 0) === privacyVersion && (!input.canExecute || await input.canExecute()),
         onModelAttempt: () => this.scheduler.recordModelAttempt() }, async (result) => {
         if ((this.privacyVersions.get(input.guildId) ?? 0) !== privacyVersion) throw new SocialOutputSuppressed();
         if (input.shadowMode) return "";
-        if (result.outputOrigin !== "tool" && optional && (Date.now() >= expiresAt! ||
+        if (result.outputOrigin !== "tool" && optional && (this.now() >= expiresAt! ||
           ((input.triggerMode === "continuation" || input.triggerMode === "spontaneous") && this.episodes.version(key) !== contextVersion)))
           throw new SocialOutputSuppressed();
         if (input.shouldDeliver && !input.shouldDeliver()) throw new SocialOutputSuppressed();
-        const release = this.scheduler.reserveOutput(key, "text", input.resolveActivityLimits?.() ?? limits, optional);
+        const release = this.scheduler.reserveOutput(key, "text", { ...(input.resolveActivityLimits?.() ?? limits), continuation: input.triggerMode === "continuation" }, optional);
         if (!release) throw new SocialOutputSuppressed();
         try { const text = await deliver(result); release(true); return text; }
         catch (error) { release(false); throw error; }
       }, observer);
       response.participationDecision = participationDecision(response, input.sourceMessageId ?? null, expiresAt);
-      if (!input.shadowMode && (!optional || Date.now() < expiresAt!) &&
+      if (!input.shadowMode && (!optional || this.now() < expiresAt!) &&
           (response.ambientAction === "reply" || (input.triggerMode !== "continuation" && input.triggerMode !== "spontaneous") || this.episodes.version(key) === contextVersion) &&
           (!input.shouldDeliver || input.shouldDeliver()) && (!input.canExecute || await input.canExecute())) await input.afterDecision?.(response);
       return response;
@@ -771,15 +785,19 @@ export class ChatConversationService {
   }
 
   public observe(guildId: string, channelId: string, event: ChannelHistoryMessage): void {
+    if (this.characterRuntime && !this.characterRuntime.contextAllowed(guildId, channelId)) return;
     if (event.timestampMs <= (this.forgottenBefore.get(`${guildId}:${event.authorId}`) ?? -Infinity)) return;
-    this.episodes.observe(`${guildId}:${channelId}`, event);
-    if (this.episodeStore) this.trackBackground(this.episodeStore.observe(guildId, channelId, event, Date.now()).catch((error: unknown) =>
+    const retentionMs = (this.characterRuntime?.contextWindow(guildId, channelId) ?? 15) * 60_000;
+    this.episodes.observe(`${guildId}:${channelId}`, event, this.now(), retentionMs);
+    this.characterRuntime?.observe(guildId, channelId, event);
+    if (this.episodeStore) this.trackBackground(this.episodeStore.observe(guildId, channelId, event, this.now(), retentionMs).catch((error: unknown) =>
       this.logger?.warn({ error, guildId, channelId }, "Failed to persist short-lived conversation episode")));
   }
 
   public async forgetConversation(guildId: string, userId: string): Promise<void> {
+    this.characterRuntime?.forget(guildId, userId);
     if (this.forgottenBefore.size >= 1000) this.forgottenBefore.delete(this.forgottenBefore.keys().next().value!);
-    this.forgottenBefore.set(`${guildId}:${userId}`, Date.now());
+    this.forgottenBefore.set(`${guildId}:${userId}`, this.now());
     this.privacyVersions.set(guildId, (this.privacyVersions.get(guildId) ?? 0) + 1);
     this.episodes.forget(guildId, userId);
     await this.drain();
@@ -795,7 +813,10 @@ export class ChatConversationService {
   }
 
   public hasRecentConversation(guildId: string, channelId: string, authorId: string, botId: string): boolean {
-    return this.episodes.hasRecentConversation(`${guildId}:${channelId}`, authorId, botId);
+    return this.episodes.hasRecentConversation(`${guildId}:${channelId}`, authorId, botId, this.now());
+  }
+  public isImplicitlyAddressed(guildId: string, channelId: string, event: ChannelHistoryMessage, botId: string): boolean {
+    return this.characterRuntime?.couldBeAddressed(guildId, channelId, event, this.episodes.windowSnapshot(`${guildId}:${channelId}`, 2, this.now()), botId) ?? false;
   }
 
   public bufferOpportunity(guildId: string, channelId: string, job: () => void): void {
@@ -805,8 +826,21 @@ export class ChatConversationService {
   public reserveReaction(guildId: string, channelId: string, limits = balancedChatLimits): ((success: boolean) => void) | null {
     return this.scheduler.reserveOutput(`${guildId}:${channelId}`, "reaction", limits, true);
   }
+  public runCallback(guildId: string, channelId: string, limits: ChatActivityLimits, operation: () => Promise<boolean>): Promise<boolean> {
+    return this.scheduler.run(`${guildId}:${channelId}`, true, { ...limits, continuation: false }, async () => {
+      const release = this.scheduler.reserveOutput(`${guildId}:${channelId}`, "text", { ...limits, continuation: false }, true);
+      if (!release) return false;
+      try { const sent = await operation(); release(sent); return sent; } catch (error) { release(false); throw error; }
+    }, this.now() + 30_000).then((result) => result ?? false);
+  }
+  public runCharacterEvaluation<T>(guildId: string, channelId: string, limits: ChatActivityLimits, operation: () => Promise<T>, cost = 1): Promise<T | null> {
+    // Synthetic probes share guild admission/concurrency but never reserve a
+    // public output or use a channel's spontaneous text cooldown.
+    return this.scheduler.run(`${guildId}:evaluation-${channelId}`, true, { ...limits, continuation: false, optionalCallCost: cost }, operation);
+  }
 
   public stopScheduling(): void {
+    this.characterRuntime?.stop();
     this.scheduler.stop();
     if (this.episodeCleanupTimer) clearInterval(this.episodeCleanupTimer);
   }
@@ -818,12 +852,15 @@ export class ChatConversationService {
   ): Promise<ChatResponse> {
     const key = `${input.guildId}:${input.currentUser.id}`;
     const channelMode = input.resolveMemoryMode?.() ?? resolveChannelMemoryMode(input.channelMemoryModes ?? {}, input.channelId);
+    let characterPrepared: CharacterPreparedTurn | null = null;
+    let functionalToolExecuted = false;
+    const functionalResults: string[] = [];
     const canContinue = async (): Promise<boolean> => (!input.resolveMemoryMode || input.resolveMemoryMode() === channelMode) &&
+      (functionalToolExecuted || !characterPrepared || await this.characterRuntime!.validatePrepared(characterPrepared)) &&
       (!input.canExecute || await input.canExecute());
     return this.queue.run(key, async () => {
       if (!await canContinue()) throw new SocialOutputSuppressed();
-      let functionalToolExecuted = false;
-      const now = Date.now();
+      const now = this.now();
       // Reserved here, at the very top — before any await in this turn,
       // including deliver() — rather than only once deliveredAssistantMessage
       // is known near the end. This turn's own queue.run call (the one
@@ -848,15 +885,15 @@ export class ChatConversationService {
       // return, any thrown error) via the finally block, or the real
       // message on the success path, so the reservation can never hang
       // forever and leave this key permanently marked busy.
-      let resolveExtractionInput!: (value: { assistantMessage: string } | null) => void;
-      const extractionInput = new Promise<{ assistantMessage: string } | null>((resolve) => {
+      let resolveExtractionInput!: (value: { assistantMessage: string; character: { prepared: CharacterPreparedTurn; reply: ChatResponse } | null } | null) => void;
+      const extractionInput = new Promise<{ assistantMessage: string; character: { prepared: CharacterPreparedTurn; reply: ChatResponse } | null } | null>((resolve) => {
         resolveExtractionInput = resolve;
       });
       if (allowsDurableWrites(channelMode) && input.triggerMode !== "reaction") {
         this.trackBackground(this.queue.run(key, async () => {
           const ready = await extractionInput;
           if (!ready) return;
-          await this.extractAndIngestPersonalMemories(input, ready.assistantMessage, channelMode, now);
+          await this.extractAndIngestPersonalMemories(input, ready.assistantMessage, channelMode, now, ready.character);
         }).catch((error: unknown) => {
           this.logger?.warn(
             { error, guildId: input.guildId, channelId: input.channelId },
@@ -952,7 +989,10 @@ export class ChatConversationService {
       void loreChunks;
       void replyChainOverflow;
       void personalitySourceHash;
-      const request: ChatRequest = {
+      let request: ChatRequest = {
+        characterShadow: input.shadowMode ?? false,
+        characterStyleExamples: input.examplePool,
+        characterPersonaHash: input.personalitySourceHash ?? hashContent(input.personality),
         ...requestInput,
         webSearchMode: input.shadowMode ? "off" : input.webSearchMode,
         imageGenerationEnabled: !input.shadowMode && input.imageGenerationEnabled && !(input.triggerMode === "direct" &&
@@ -979,18 +1019,35 @@ export class ChatConversationService {
               execute: async (args, context): ReturnType<ChatTool["execute"]> => {
                 if (!await canContinue()) throw new SocialOutputSuppressed();
                 if (tool.outputKind !== "context") { functionalToolExecuted = true; request.functionalToolExecuted = true; }
-                return tool.execute(args, { ...context, knownSubjectIds: [input.currentUser.id,
+                const result = await tool.execute(args, { ...context, knownSubjectIds: [input.currentUser.id,
                   ...input.mentionedUsers.map((user) => user.id), ...input.replyChain.map((message) => message.authorId),
                   ...(memoryContext.aliasCandidates?.filter((alias) => alias.subjectIds.length === 1).flatMap((alias) => alias.subjectIds) ?? [])] });
+                if (tool.outputKind !== "context") functionalResults.push(result.content);
+                return result;
               },
             }))
           : [],
       };
+      if (this.characterRuntime) {
+        characterPrepared = await this.characterRuntime.prepare(request);
+        if (characterPrepared) {
+          request = characterPrepared.request;
+          if (!characterPrepared.allowed) return { text: "", ambientAction: "ignore", reactionEmoji: null, historyReactions: [],
+            userMemoryActions: [], guildKnowledgeCandidates: [], sources: [], usage: null, webSearchUsed: false, generatedImages: [] };
+        }
+      }
       if (!await canContinue()) throw new SocialOutputSuppressed();
+      if (characterPrepared?.participation?.action === "ignore" && !input.shadowMode) return {
+        text: "", ambientAction: "ignore", reactionEmoji: characterPrepared.participation.reaction, historyReactions: [], userMemoryActions: [],
+        guildKnowledgeCandidates: [], sources: [], usage: null, webSearchUsed: false, generatedImages: [],
+        ...(characterPrepared.targetMessageId ? { replyTargetMessageId: characterPrepared.targetMessageId } : {}),
+        characterIsCurrent: () => this.characterRuntime!.stillEligible(characterPrepared!),
+        characterCanDeliver: () => this.characterRuntime!.validatePrepared(characterPrepared!),
+      };
       const needsParticipationFirst = input.triggerMode !== "direct" && !input.shadowMode &&
         (Boolean(request.enabledTools?.length) || request.imageGenerationEnabled || request.webSearchMode === "auto");
       let response: ChatResponse;
-      if (needsParticipationFirst) {
+      if (needsParticipationFirst && !characterPrepared?.participation) {
         response = await this.provider.reply({ ...request, participationOnly: true,
           capabilityToolNames: request.enabledTools?.map((tool) => tool.name) ?? [],
           enabledTools: [], imageGenerationEnabled: false, webSearchMode: "off" });
@@ -1015,6 +1072,7 @@ export class ChatConversationService {
         input.currentUser.id,
         ...input.mentionedUsers.map((user) => user.id),
         ...input.replyChain.map((hop) => hop.authorId),
+        ...(input.currentBurst ?? []).map((event) => event.authorId),
       ]);
       const validatedResponse = {
         ...response,
@@ -1078,6 +1136,7 @@ export class ChatConversationService {
         validatedResponse.guildKnowledgeCandidates = [];
       }
       if (functionalToolExecuted) {
+        if (characterPrepared && !await this.characterRuntime!.validatePrepared(characterPrepared) && functionalResults.length) validatedResponse.text = functionalResults.join("\n");
         validatedResponse.ambientAction = "reply";
         validatedResponse.reactionEmoji = null;
         validatedResponse.historyReactions = [];
@@ -1108,7 +1167,7 @@ export class ChatConversationService {
             const result = await this.runMemoryMutation(input.guildId, input.currentUser.id, () => this.memoryEngine.ingest({
               guildId: input.guildId, channelId: input.channelId, channelMode,
               assertedByUserId: input.currentUser.id, sourceMessageId: input.sourceMessageId ?? null,
-              source: "live", now, proposals,
+              source: /^(?:please\s+)?(?:remember\b|記住|記得|幫我記|覚えて)/iu.test(input.message.trim()) ? "explicit" : "live", now, proposals,
             }));
             this.logMemoryIngestIssues(result, input.guildId, input.channelId, input.currentUser.id);
           } catch (error) {
@@ -1127,13 +1186,24 @@ export class ChatConversationService {
       validatedResponse.text = await this.verifyAttribution(
         validatedResponse.text, request,
       );
+      if (characterPrepared && !input.shadowMode) {
+        const previousText = validatedResponse.text;
+        Object.assign(validatedResponse, await this.characterRuntime!.process(validatedResponse, characterPrepared));
+        if (validatedResponse.text !== previousText) {
+          const corrected = await this.verifyAttribution(validatedResponse.text, request);
+          if (corrected !== validatedResponse.text) { delete validatedResponse.characterMessages; delete validatedResponse.characterDelayMs; }
+          validatedResponse.text = corrected;
+        }
+      }
+      if (!await canContinue()) throw new SocialOutputSuppressed();
       const deliveredAssistantMessage = await deliver(validatedResponse);
       if (input.shadowMode) return validatedResponse;
       if (input.triggerMode === "reaction") return validatedResponse;
       // Signals the extraction sub-task (reserved at the very top of this
       // callback) that it can proceed — see that reservation's own comment
       // for why the slot is claimed before this point rather than here.
-      resolveExtractionInput(allowsDurableWrites(channelMode) ? { assistantMessage: deliveredAssistantMessage } : null);
+      resolveExtractionInput(allowsDurableWrites(channelMode) ? { assistantMessage: deliveredAssistantMessage,
+        character: characterPrepared ? { prepared: characterPrepared, reply: validatedResponse } : null } : null);
       let droppedExchanges: readonly ChatSessionExchange[] = [];
       try {
         // actions always empty here — private-memory writes now go through
@@ -1164,7 +1234,7 @@ export class ChatConversationService {
           const result = await this.runMemoryMutation(input.guildId, input.currentUser.id, () => this.memoryEngine.ingest({
             guildId: input.guildId, channelId: input.channelId, channelMode,
             assertedByUserId: input.currentUser.id, sourceMessageId: input.sourceMessageId ?? null,
-            source: "live", now, proposals,
+            source: /^(?:please\s+)?(?:remember\b|記住|記得|幫我記|覚えて)/iu.test(input.message.trim()) ? "explicit" : "live", now, proposals,
           }));
           this.logMemoryIngestIssues(result, input.guildId, input.channelId, input.currentUser.id);
         } catch (error) {
@@ -1188,6 +1258,8 @@ export class ChatConversationService {
       ).catch((error: unknown) => {
         this.logger?.warn({ error, guildId: input.guildId, channelId: input.channelId }, "Dropped-exchange consolidation failed unexpectedly");
       }));
+      if (characterPrepared && !input.shadowMode) this.trackBackground(this.characterRuntime!.consolidate(validatedResponse, characterPrepared).catch((error: unknown) =>
+        this.logger?.warn({ error, guildId: input.guildId }, "Character consolidation failed")));
       return validatedResponse;
       } finally {
         // No-op if the success path above already resolved this (a

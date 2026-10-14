@@ -1,4 +1,5 @@
 import type { Language } from "../application/i18n/language.js";
+import type { CharacterSettings } from "../application/chat/character-settings.js";
 import type { ParticipationSettings } from "../application/chat/participation-policy.js";
 import type { LinkConfiguration, RaidConfiguration, SpamConfiguration } from "../domain/security/detection-policy.js";
 import type { TrapConfiguration } from "../domain/security/trap-policy.js";
@@ -229,6 +230,7 @@ export interface GuildSecurityConfiguration {
 }
 
 export interface GuildConfiguration {
+  character?: CharacterSettings;
   schemaVersion: 1;
   guildId: string;
   guildName: string;

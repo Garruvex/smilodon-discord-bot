@@ -1,6 +1,9 @@
 import type { SettingsTextCatalog } from "../catalog.js";
 
 export const zhTWChat: SettingsTextCatalog = {
+  "participation.continuation-limits": { label: "延續對話上限", description: "連續對話沒有逐句冷卻，依每段對話及每十分鐘限制回覆數。" },
+  "participation.continuation-limits.exchange": { label: "每段對話回覆上限", description: "兩分鐘未互動後結束這段對話。" },
+  "participation.continuation-limits.window": { label: "每十分鐘回覆上限", description: "頻道內延續對話的回覆數限制。" },
   "participation.resources": { label: "伺服器資源", description: "每個伺服器的同時處理數及主動對話受理上限。" },
   "participation.resources.concurrency": { label: "每個伺服器的同時對話數", description: "此伺服器可同時處理的對話上限。" },
   "participation.resources.optional-turns": { label: "每十分鐘的主動對話數", description: "每個伺服器的受理上限；已受理的工具流程會正常完成。" },
