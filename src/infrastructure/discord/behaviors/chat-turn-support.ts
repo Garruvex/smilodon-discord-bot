@@ -1,5 +1,8 @@
-import type { Attachment, Message } from "discord.js";
+import type { Attachment, Message, User, GuildMember } from "discord.js";
+import type { ChatUser, ConversationEvent } from "../../../application/chat/chat-provider.js";
 import type { Logger } from "pino";
+import type { SocialChatEligibility, SocialTrigger } from "./social-chat-eligibility.js";
+import { SocialOutputSuppressed, type MessageOriginStore, type MessageOrigin } from "../../../application/chat/message-origin-store.js";
 
 import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
 import type { ChannelHistoryMessage, ChatImage, ChatSource, GeneratedChatImage } from "../../../application/chat/chat-provider.js";
@@ -43,6 +46,7 @@ async function sendWithRetry<T>(send: () => Promise<T>): Promise<T> {
     try {
       return await send();
     } catch (error) {
+      if (error instanceof SocialOutputSuppressed) throw error;
       lastError = error;
       if (attempt < deliveryRetryAttempts) {
         await new Promise((resolve) => setTimeout(resolve, deliveryRetryDelayMs * attempt));
@@ -57,7 +61,45 @@ async function sendWithRetry<T>(send: () => Promise<T>): Promise<T> {
 // extracted from MentionChatBehavior so the two triggers share the exact
 // same tuned logic instead of forking it.
 export class ChatTurnSupport {
-  public constructor(private readonly logger: Logger) {}
+  public constructor(
+    private readonly logger: Logger,
+    private readonly eligibility: SocialChatEligibility | null = null,
+    private readonly origins: MessageOriginStore | null = null,
+    private readonly onUtilitySource: ((message: Message) => void) | null = null,
+  ) {}
+
+  public toChatUser(user: User, member: GuildMember | null = null): ChatUser {
+    return {
+      id: user.id, username: user.username, globalName: user.globalName ?? null,
+      guildNickname: member?.nickname ?? null, kind: user.bot ? "bot" : "human",
+      displayName: member?.displayName ?? user.displayName ?? user.username,
+      roleNames: [...(member?.roles?.cache.values() ?? [])].filter((role) => role.id !== member?.guild?.id)
+        .map((role) => role.name.slice(0, 50)).slice(0, 10),
+    };
+  }
+
+  public toMessageEvent(message: Message): ConversationEvent {
+    return {
+      type: "message", messageId: message.id, channelId: message.channelId,
+      timestampMs: message.createdTimestamp, authorId: message.author.id,
+      replyToMessageId: message.reference?.messageId ?? null,
+      mentionedUserIds: [...message.mentions.users.keys()].filter((id) => id !== message.client.user?.id),
+    };
+  }
+
+  public async refreshHistoryEvent(source: Message, event: ChannelHistoryMessage): Promise<ChannelHistoryMessage | null> {
+    if (event.channelId && event.channelId !== source.channelId) return null;
+    const message = await source.channel.messages.fetch(event.messageId).catch(() => null);
+    return message && await this.isEligible(message, "observation") ? this.toChannelHistoryMessages([message])[0]! : null;
+  }
+
+  public async isEligible(message: Message, trigger: SocialTrigger = "direct"): Promise<boolean> {
+    return !this.eligibility || (await this.eligibility.check(message, trigger)).eligible;
+  }
+
+  public async assertEligible(message: Message, trigger: SocialTrigger = "direct"): Promise<void> {
+    if (!await this.isEligible(message, trigger)) throw new SocialOutputSuppressed();
+  }
 
   // Null unless the guild has music enabled and the message has a
   // resolvable GuildMember — those two facts can't change mid-turn, so
@@ -130,6 +172,7 @@ export class ChatTurnSupport {
       if (!referenceId) break;
       const parent = await current.channel.messages.fetch(referenceId).catch(() => null);
       if (!parent) break;
+      if (!await this.isEligible(parent, "direct")) break;
       const contentLength = Math.min(parent.content.length, chatMemoryLimits.maxUserMessageChars);
       // Always keep at least the immediate parent even if it alone exceeds
       // the budget; only stop *extending further* once the next hop won't fit.
@@ -153,6 +196,7 @@ export class ChatTurnSupport {
       if (!referenceId) break;
       const parent = await current.channel.messages.fetch(referenceId).catch(() => null);
       if (!parent) break;
+      if (!await this.isEligible(parent, "direct")) break;
       const contentLength = Math.min(parent.content.length, chatMemoryLimits.maxUserMessageChars);
       if (overflow.length > 0 && contentLength > overflowChars) break;
       overflowChars -= contentLength;
@@ -214,6 +258,7 @@ export class ChatTurnSupport {
     // display (matching resolveReplyChain's convention).
     for (const candidate of fetched.values()) {
       if (excludeIds.has(candidate.id)) continue;
+      if (!await this.isEligible(candidate, "observation")) continue;
       if (candidate.author.bot && candidate.author.id !== selfId) continue;
       const isSelf = candidate.author.id === selfId;
       if (isSelf ? selfKept >= selfBudget : humanKept >= humanBudget) continue;
@@ -241,6 +286,8 @@ export class ChatTurnSupport {
         ? selectedById.get(referenceId) ?? message.channel.messages.cache.get(referenceId)
         : undefined;
       return {
+        author: this.toChatUser(message.author, message.member),
+        channelId: message.channelId,
         messageId: message.id,
         timestampMs: message.createdTimestamp,
         authorId: message.author.id,
@@ -254,7 +301,7 @@ export class ChatTurnSupport {
         replyToAuthorDisplayName: target
           ? target.member?.displayName ?? target.author.displayName
           : null,
-        replyToMessageId: target?.id ?? null,
+        replyToMessageId: referenceId ?? null,
       };
     });
   }
@@ -418,6 +465,9 @@ export class ChatTurnSupport {
     images: readonly GeneratedChatImage[];
     emptyFallbackContent: string;
     maxImageAggregateBytes: number;
+    sourceMessage?: Message;
+    trigger?: SocialTrigger;
+    origin?: MessageOrigin;
   }): Promise<{ deliveredText: string; firstMessageId: string }> {
     const plan = planChatDelivery(params.text, params.sources);
     const imagePlan = planImageDelivery(params.images, params.maxImageAggregateBytes);
@@ -464,12 +514,24 @@ export class ChatTurnSupport {
       sends[0]!.content = params.emptyFallbackContent;
     }
 
+    const sendAndRecord = async (send: () => Promise<Message>): Promise<Message> => {
+      if (params.sourceMessage) await this.assertEligible(params.sourceMessage, params.trigger ?? "direct");
+      const sent = await send();
+      if (this.origins && params.sourceMessage?.guildId) {
+        await this.origins.record({
+          guildId: params.sourceMessage.guildId, channelId: params.sourceMessage.channelId, messageId: sent.id,
+          origin: params.origin ?? "chat", sourceMessageId: params.sourceMessage.id, createdAt: Date.now(),
+        }).catch((error: unknown) => this.logger.warn({ error, messageId: sent.id }, "Failed to record output origin; unknown output stays excluded"));
+      }
+      return sent;
+    };
     const [firstSend, ...restSends] = sends;
-    const firstMessage = await sendWithRetry(() => params.sender.first(firstSend!));
+    const firstMessage = await sendWithRetry(() => sendAndRecord(() => params.sender.first(firstSend!)));
     for (const send of restSends) {
       try {
-        await sendWithRetry(() => params.sender.rest(send));
+        await sendWithRetry(() => sendAndRecord(() => params.sender.rest(send)));
       } catch (error) {
+        if (error instanceof SocialOutputSuppressed) break;
         this.logger.warn({ error }, "Chat reply delivery failed partway through a multi-message response");
         await params.sender.rest({
           content: "(The rest of that reply couldn't be delivered — please try again.)",
@@ -477,6 +539,13 @@ export class ChatTurnSupport {
         }).catch(() => undefined);
         break;
       }
+    }
+    if (params.origin && params.origin !== "chat" && params.sourceMessage && !params.sourceMessage.author.bot) {
+      this.eligibility?.markUtilitySource(params.sourceMessage);
+      this.onUtilitySource?.(params.sourceMessage);
+      await this.origins?.record({ guildId: params.sourceMessage.guildId!, channelId: params.sourceMessage.channelId,
+        messageId: params.sourceMessage.id, origin: params.origin, sourceMessageId: null, createdAt: Date.now(),
+      }).catch((error: unknown) => this.logger.warn({ error }, "Failed to persist functional interaction origin"));
     }
     return { deliveredText: params.text, firstMessageId: firstMessage.id };
   }
@@ -492,12 +561,18 @@ export class ChatTurnSupport {
     channel: { messages: { fetch(id: string): Promise<Message> } },
     reactions: readonly { messageId: string; emoji: string }[],
     logContext: Record<string, unknown>,
+    reserve?: () => ((success: boolean) => void) | null,
   ): Promise<void> {
     for (const { messageId, emoji } of reactions) {
       try {
         const target = await channel.messages.fetch(messageId);
+        if (!await this.isEligible(target, "history_reaction")) continue;
+        if (target.author.bot) continue;
         if (target.reactions.cache.some((reaction) => reaction.me)) continue;
-        await target.react(emoji);
+        const release = reserve?.();
+        if (reserve && !release) continue;
+        try { await target.react(emoji); release?.(true); }
+        catch (error) { release?.(false); throw error; }
       } catch (error) {
         this.logger.warn({ ...logContext, messageId, emoji, error }, "Failed to apply a history reaction");
       }

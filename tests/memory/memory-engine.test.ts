@@ -20,6 +20,7 @@ function engineWithRepository(
   const memoryEngine = new DefaultMemoryEngine(
     repository, embeddingsClient ?? null, null,
     limits ? { ...defaultMemoryEngineLimits, ...limits } : undefined,
+    null, null, null, () => true,
   );
   return { memoryEngine, repository };
 }
@@ -29,6 +30,26 @@ function engine(limits?: Partial<MemoryEngineLimits>, embeddingsClient?: Embeddi
 }
 
 describe("DefaultMemoryEngine.ingest — channel-mode enforcement", () => {
+  it.each(["live", "consolidation"] as const)("rejects effective bot asserters including per-fact overrides (%s)", async (source) => {
+    const { repository } = engineWithRepository();
+    const memoryEngine = new DefaultMemoryEngine(repository, null, null, defaultMemoryEngineLimits, null, null,
+      (id) => Promise.resolve(id === "bot"));
+    const proposal: ProposedMemory = {
+      action: "upsert", audience: "private", kind: "preference", ownerUserId: "bot",
+      subjectType: "member", subjectId: "bot", topic: "preference", slot: "food.fruit",
+      statement: "likes apples", channelScoped: false,
+    };
+    for (const input of [
+      { assertedByUserId: "bot", proposals: [proposal] },
+      { assertedByUserId: "human", proposals: [{ ...proposal, assertedByUserId: "bot" }] },
+    ]) {
+      const result = await memoryEngine.ingest({
+        guildId: "guild", channelId: "channel", channelMode: "shared", sourceMessageId: "message", source, now: 100, ...input,
+      });
+      expect(result).toMatchObject({ rejected: 1, failed: 0, ingested: [] });
+    }
+    expect(await repository.listByUser("guild", "bot")).toEqual([]);
+  });
   it("disabled channel: no durable writes", async () => {
     const memoryEngine = engine();
     const result = await memoryEngine.ingest({
@@ -172,7 +193,7 @@ describe("DefaultMemoryEngine — recall respects isolation and audience", () =>
     expect(matching.memories).toHaveLength(1);
   });
 
-  it("onlySelfPrivateMemories narrows the candidate set before budgeting, so higher-ranked ineligible memories can't crowd out the caller's own", async () => {
+  it("onlySelfSubjectMemories narrows before budgeting so unrelated guild facts cannot crowd out the caller's own", async () => {
     const memoryEngine = engine({ maxSelectedChars: 900 });
     // Ingested older, so it loses the recency tie-breaker against the
     // guild memories below — deliberately handing them the ranking
@@ -189,30 +210,30 @@ describe("DefaultMemoryEngine — recall respects isolation and audience", () =>
     });
     await memoryEngine.ingest({
       guildId: "guild", channelId: "general", channelMode: "shared",
-      assertedByUserId: "bob", sourceMessageId: null, source: "live", now: 150,
+      assertedByUserId: null, sourceMessageId: null, source: "consolidation", now: 150,
       proposals: Array.from({ length: 5 }, (_unused, i) => ({
         action: "upsert" as const, audience: "guild" as const, kind: "fact" as const, ownerUserId: null,
-        subjectType: "member" as const, subjectId: "bob", topic: "activity", slot: `raid.${i}`,
+        subjectType: "guild" as const, subjectId: "guild", topic: "activity", slot: `raid.${i}`,
         statement: `bob organized raid number ${i} with a fairly long description to eat budget`, channelScoped: false,
       })),
     });
     const narrowed = await memoryEngine.recall({
       guildId: "guild", channelId: "general", userId: "bob", message: "",
-      recentHistory: [], subjectIds: ["bob"], now: 200, onlySelfPrivateMemories: true,
+      recentHistory: [], subjectIds: ["bob"], now: 200, onlySelfSubjectMemories: true,
     });
-    expect(narrowed.memories).toMatchObject([{ audience: "private", statement: "likes green apples" }]);
+    expect(narrowed.memories).toMatchObject([{ audience: "guild", statement: "likes green apples" }]);
     // Without the narrowing, the same small budget goes entirely to the
     // more-recent guild memories instead — proving the crowding-out this
     // option exists to prevent is real, not hypothetical.
     const unnarrowed = await memoryEngine.recall({
-      guildId: "guild", channelId: "general", userId: "bob", message: "",
-      recentHistory: [], subjectIds: ["bob"], now: 200,
+      guildId: "guild", channelId: "general", userId: "bob", message: "raid organized description",
+      recentHistory: [], subjectIds: [], now: 200,
     });
     expect(unnarrowed.memories.length).toBeGreaterThan(0);
-    expect(unnarrowed.memories.some((memory) => memory.audience === "private")).toBe(false);
+    expect(unnarrowed.memories.some((memory) => memory.subjectId === "bob")).toBe(false);
   });
 
-  it("onlySelfPrivateMemories still finds the caller's own memory when the guild has enough other memories to fill findRecallCandidates' own row cap", async () => {
+  it("onlySelfSubjectMemories finds the caller's shared fact despite the common candidate cap", async () => {
     // findRecallCandidates (see the repository) bounds its SQL query at
     // maxEligibleCandidates (2,000) with no ORDER BY guaranteeing the
     // caller's own rows survive the cutoff — a guild busy enough to hit
@@ -250,9 +271,9 @@ describe("DefaultMemoryEngine — recall respects isolation and audience", () =>
 
     const narrowed = await memoryEngine.recall({
       guildId: "guild", channelId: "general", userId: "bob", message: "",
-      recentHistory: [], subjectIds: ["bob"], now: 200, onlySelfPrivateMemories: true,
+      recentHistory: [], subjectIds: ["bob"], now: 200, onlySelfSubjectMemories: true,
     });
-    expect(narrowed.memories).toMatchObject([{ audience: "private", statement: "likes green apples" }]);
+    expect(narrowed.memories).toMatchObject([{ audience: "guild", statement: "likes green apples" }]);
   }, 20_000);
 });
 

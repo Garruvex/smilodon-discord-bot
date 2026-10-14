@@ -63,8 +63,8 @@ For example, set the shared announcement with `/birthday template message:Happy 
 
 | Command | What it does |
 | --- | --- |
-| `/memory list` | Shows what the chatbot has remembered about you from conversations. |
-| `/memory forget [id] [all]` | Forgets one remembered fact (by ID prefix from `list`) or everything (`all:true`). |
+| `/memory list` | Lists stored facts about you, their private/channel-shared/guild-shared visibility, and available source links. Shared facts can be recalled by other authorized members. |
+| `/memory forget [id] [all]` | Removes your fact and source-linked derived summaries. `all:true` also removes facts about you, queued learning, and your stored recent chat context; birthday/customization and Discord messages are managed separately. |
 | `/memory notes [dm]` | Toggles whether the bot DMs you extra notes about your chat requests (dropped images, truncated replies). |
 | `/customize set <file>` | Uploads a `.md` file describing how *you* want the chatbot to talk to you. Reviewed and sanitized before saving; it can't override the bot's identity or rules. |
 | `/customize view` | Shows your saved customization. |
@@ -323,14 +323,41 @@ it's turned on.
 
 What the chatbot reads back and remembers.
 
+Shared personal memory is **off by default**, including after upgrades. Before
+activating it, review private/restricted channel and thread IDs with
+`memory-mode`; unlisted IDs use shared mode and Discord permissions do not
+automatically classify memory visibility. Then enable `/settings-memory
+sharing enabled:true`. This affects new personal facts only; existing private
+facts stay private unless separately reviewed and migrated. Turning sharing
+off prevents new personal facts becoming public; it does not privatize facts
+already shared.
+
+Channel history is a separate **default-off** opt-in. When enabled, eligible
+bystanders' messages may be retained for up to 15 minutes as bounded channel
+episodes and sent to the AI provider as context. With it off, passive messages
+are neither observed nor loaded into chat prompts. Explicit reply targets and
+your own addressed exchanges can still supply context. Background scans and
+daily learning retain their own separately configured channel lists.
+
 | Command | What it does |
 | --- | --- |
+| `/settings-memory sharing [enabled]` | Activates shared personal facts after channel-policy review. Off by default; old private facts are unchanged. |
 | `/settings-memory channel-history [enabled] [limit]` | Includes recent messages from anyone as extra context. |
 | `/settings-memory memory-mode <channel> <mode>` | Sets a channel's memory isolation: shared, isolated, session only, or disabled. |
 | `/settings-memory context-daily [add] [remove]` | Channels summarized into memory once a day, checked hourly. |
 | `/settings-memory context-scan <channel> [seed-days] [restart]` | Queues a one-time history scan (default 7-day lookback) folded into memory. `restart:true` re-reads a completed scan. |
 | `/settings-memory context-remove <channel>` | Takes a channel off both the scan and daily lists (existing memories are kept; re-adding resumes rather than re-reading history). |
 | `/settings-memory context-status [channel]` | Shows provider availability, whether the chatbot is paused, and per-channel scan/daily progress and errors. |
+
+Participation controls are under `/settings-participation`: `controls` enables
+continuation or spontaneous participation (both default off), chooses activity
+and bare-ping behavior, and enables shadow evaluation. `spontaneous-channels`
+sets the required allow-list. `resources` configures concurrent turns (1–16,
+default 4) and optional-turn admission per ten minutes (0–1,000, default 100)
+**per guild**. Accepted tool workflows finish without a mid-turn application
+call-budget exception. `activity-limits` separately controls optional output
+spacing/counts; `activity-reset` restores defaults. Provider rate limits still
+apply. Other guilds have separate execution capacity.
 
 Like chat settings, these say so when changed while the chatbot is off. The
 history-scan and daily-summary settings need a chat provider with channel

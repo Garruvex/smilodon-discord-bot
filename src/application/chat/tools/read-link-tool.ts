@@ -7,6 +7,7 @@ interface ReadLinkToolArgs {
 }
 
 export class ReadLinkTool implements ChatTool<ReadLinkToolArgs> {
+  public readonly outputKind = "context" as const;
   public readonly name = "read_link";
   public readonly description =
     "Fetches a web page (or X/Twitter post) the user shared or referenced and returns its readable text, " +

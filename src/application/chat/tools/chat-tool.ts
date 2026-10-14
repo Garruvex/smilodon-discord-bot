@@ -10,6 +10,7 @@ import type { ChannelMemoryMode } from "../../memory/memory-channel-policy.js";
 export type ChatToolParameterSchema = Record<string, unknown>;
 
 export interface ChatToolContext {
+  knownSubjectIds?: readonly string[];
   guildId: string;
   channelId: string;
   currentUser: ChatUser;
@@ -81,6 +82,7 @@ export interface ChatToolResult {
 }
 
 export interface ChatTool<TArgs = unknown> {
+  outputKind?: "context" | "functional";
   // Sent to the model as the function's name — must match Responses API
   // function-name constraints (letters, digits, underscores).
   name: string;

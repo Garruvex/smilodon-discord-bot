@@ -1,5 +1,34 @@
 import { sql } from "drizzle-orm";
 import { bigint, boolean, index, integer, json, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, vector } from "drizzle-orm/pg-core";
+import type { MessageOrigin } from "../../application/chat/message-origin-store.js";
+import type { ChannelHistoryMessage } from "../../application/chat/chat-provider.js";
+
+export const memoryObservedAliases = pgTable("memory_observed_aliases", {
+  guildId: text("guild_id").notNull(),
+  alias: text("alias").notNull(),
+  memoryId: text("memory_id").notNull().references(() => memories.id, { onDelete: "cascade" }),
+}, (table) => [primaryKey({ columns: [table.memoryId, table.alias] }), index("memory_observed_aliases_lookup").on(table.guildId, table.alias)]);
+
+export const conversationEpisodes = pgTable("conversation_episodes", {
+  guildId: text("guild_id").notNull(), channelId: text("channel_id").notNull(),
+  events: jsonb("events").$type<ChannelHistoryMessage[]>().notNull().default([]),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+}, (table) => [primaryKey({ columns: [table.guildId, table.channelId] })]);
+
+export const messageOrigins = pgTable("message_origins", {
+  messageId: text("message_id").primaryKey(),
+  guildId: text("guild_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  origin: text("origin").$type<MessageOrigin>().notNull(),
+  sourceMessageId: text("source_message_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+}, (table) => [index("message_origins_scope_idx").on(table.guildId, table.channelId)]);
+
+export const memoryForgetCutoffs = pgTable("memory_forget_cutoffs", {
+  guildId: text("guild_id").notNull(), subjectId: text("subject_id").notNull(),
+  topic: text("topic").notNull(), slot: text("slot").notNull(), scopeKey: text("scope_key").notNull(),
+  cutoff: timestamp("cutoff", { withTimezone: true }).notNull(),
+}, (table) => [primaryKey({ columns: [table.guildId, table.subjectId, table.topic, table.slot, table.scopeKey] })]);
 
 // Fixed at schema-definition time — pgvector columns can't have a variable
 // dimension. Matches OpenAI's text-embedding-3-small, the default/most
@@ -264,6 +293,9 @@ export const memories = pgTable("memories", {
 ]);
 
 export const memorySources = pgTable("memory_sources", {
+  sourceTimestamp: timestamp("source_timestamp", { withTimezone: true }),
+  sourceQuote: text("source_quote"),
+  sourceChannelMode: text("source_channel_mode"),
   id: uuid("id").primaryKey(),
   memoryId: uuid("memory_id").notNull().references(() => memories.id, { onDelete: "cascade" }),
   sourceMessageId: text("source_message_id"),
@@ -367,6 +399,7 @@ export const channelSummaryCheckpoints = pgTable("channel_summary_checkpoints", 
 // retry with real backoff independently of the channel's own scan/daily
 // cursor — which no longer needs to be held back waiting on it.
 export const personalMemoryExtractionJobs = pgTable("personal_memory_extraction_jobs", {
+  sourceMessages: jsonb("source_messages").$type<readonly { messageId: string; content: string; timestampMs: number }[]>().notNull().default([]),
   guildId: text("guild_id").notNull(),
   channelId: text("channel_id").notNull(),
   batchId: text("batch_id").notNull(),

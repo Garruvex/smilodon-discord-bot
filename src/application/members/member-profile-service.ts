@@ -22,9 +22,9 @@ export class MemberProfileService {
     private readonly userCustomizationStore: UserCustomizationStore | null,
   ) {}
 
-  public async load(guildId: string, userId: string): Promise<MemberProfile> {
+  public async load(guildId: string, userId: string, channelId?: string): Promise<MemberProfile> {
     const [memories, birthday, customization] = await Promise.all([
-      this.memoryEngine.listUserMemories(guildId, userId),
+      channelId ? this.memoryEngine.listUserMemories(guildId, userId, channelId) : this.memoryEngine.listUserMemories(guildId, userId),
       this.birthdayStore?.getBirthday(guildId, userId) ?? Promise.resolve(null),
       this.userCustomizationStore?.load(guildId, userId) ?? Promise.resolve(null),
     ]);

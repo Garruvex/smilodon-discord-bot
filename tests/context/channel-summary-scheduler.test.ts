@@ -178,7 +178,7 @@ function testEngine(): {
   const directory = mkdtempSync(join(tmpdir(), "channel-summary-scheduler-"));
   const connection = createSqliteDatabaseConnection(directory);
   return {
-    engine: new DefaultMemoryEngine(new SqliteMemoryRepository(connection.database)),
+    engine: new DefaultMemoryEngine(new SqliteMemoryRepository(connection.database), null, null, undefined, null, null, null, () => true),
     checkpointStore: new SqliteChannelSummaryCheckpointStore(connection.database),
     extractionQueue: new SqlitePersonalMemoryExtractionQueueStore(connection.database),
   };
@@ -435,14 +435,14 @@ describe("ChannelSummaryScheduler — promoting self-reports to portable private
     await scheduler.checkNow(new Date(now));
 
     const stored = await engine.listUserMemories("guild", "alice");
-    expect(stored).toMatchObject([{ audience: "private", topic: "preference", statement: "likes green apples" }]);
+    expect(stored).toMatchObject([{ audience: "guild", topic: "preference", statement: "likes green apples" }]);
     // Recalled from an entirely different channel — proof it's not
     // channel-scoped guild knowledge but genuinely portable private memory.
     const recalledElsewhere = await engine.recall({
       guildId: "guild", channelId: "some-other-channel", userId: "alice", message: "fruit",
       recentHistory: [], subjectIds: ["alice"], now,
     });
-    expect(recalledElsewhere.memories.some((memory) => memory.statement === "likes green apples" && memory.audience === "private")).toBe(true);
+    expect(recalledElsewhere.memories.some((memory) => memory.statement === "likes green apples" && memory.audience === "guild")).toBe(true);
   });
 
   it("promotion is skipped entirely when the configured provider has no extraction capability", async () => {
@@ -490,7 +490,7 @@ describe("ChannelSummaryScheduler — promoting self-reports to portable private
     await scheduler.checkNow(new Date(now));
 
     const stored = await engine.listUserMemories("guild", "alice");
-    expect(stored).toMatchObject([{ audience: "private", statement: "likes green apples" }]);
+    expect(stored).toMatchObject([{ audience: "guild", statement: "likes green apples" }]);
   });
 
   it("promotes a self-report from a member the summarizer's 5-fact cap left out entirely", async () => {
@@ -523,7 +523,7 @@ describe("ChannelSummaryScheduler — promoting self-reports to portable private
     await scheduler.checkNow(new Date(now));
 
     const stored = await engine.listUserMemories("guild", "bob");
-    expect(stored).toMatchObject([{ audience: "private", statement: "loves pizza" }]);
+    expect(stored).toMatchObject([{ audience: "guild", statement: "loves pizza" }]);
   });
 
   it("a third-party claim never promotes to the person it's about — alice has no messages in the batch, so she's never even checked", async () => {
@@ -674,7 +674,7 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
     await scheduler.checkNow(new Date(now + 61_000));
     expect(calls).toBe(2);
     const stored = await engine.listUserMemories("guild", "alice");
-    expect(stored).toMatchObject([{ audience: "private", statement: "likes green apples" }]);
+    expect(stored).toMatchObject([{ audience: "guild", statement: "likes green apples" }]);
   });
 
   it("dead-letters a job after repeated cross-tick failures, without ever blocking the channel's own checkpoint", async () => {
@@ -753,7 +753,7 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
     await scheduler.checkNow(new Date(now + 60_000));
 
     const bobStored = await engine.listUserMemories("guild", "bob");
-    expect(bobStored).toMatchObject([{ audience: "private", statement: "loves pizza" }]);
+    expect(bobStored).toMatchObject([{ audience: "guild", statement: "loves pizza" }]);
     const aliceCallsFinal = extractPersonalMemories.mock.calls.filter((call) => call[2].id === "alice").length;
     expect(aliceCallsFinal).toBe(1);
   });
@@ -966,7 +966,7 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
     await started;
     const cancellation = extractionQueue.runForSubject("guild", "alice", async () => {
       await extractionQueue.deleteForSubject("guild", "alice");
-      await engine.forget({ guildId: "guild", ownerUserId: "alice" });
+      await engine.forget({ guildId: "guild", ownerUserId: "alice", subjectId: "alice", assertedByUserId: "alice" });
     });
     releaseExtraction();
     await Promise.all([tick, cancellation]);
@@ -1008,7 +1008,7 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
     await started;
     const cancellation = extractionQueue.runForSubject("guild", "alice", async () => {
       await extractionQueue.deleteForSubject("guild", "alice");
-      await engine.forget({ guildId: "guild", ownerUserId: "alice" });
+      await engine.forget({ guildId: "guild", ownerUserId: "alice", subjectId: "alice", assertedByUserId: "alice" });
     });
     releaseIngest();
     await Promise.all([tick, cancellation]);

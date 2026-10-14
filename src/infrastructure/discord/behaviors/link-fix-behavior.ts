@@ -1,5 +1,8 @@
 import type { Message } from "discord.js";
 import type { Logger } from "pino";
+import type { MessageOriginStore } from "../../../application/chat/message-origin-store.js";
+import type { SocialChatEligibility } from "./social-chat-eligibility.js";
+import type { ChatConversationService } from "../../../application/chat/chat-conversation-service.js";
 
 import { BehaviorEvent, BehaviorResult, type BotBehavior } from "../../../application/behaviors/behavior.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
@@ -43,6 +46,9 @@ export class LinkFixBehavior implements BotBehavior<BehaviorEvent.MessageCreated
     private readonly logger: Logger,
     // The narrator owns a D&D game's channels; link fixes stay out of them.
     private readonly isGameChannel: IsGameChannel | null = null,
+    private readonly origins: MessageOriginStore | null = null,
+    private readonly eligibility: SocialChatEligibility | null = null,
+    private readonly conversation: Pick<ChatConversationService, "excludeInteraction"> | null = null,
   ) {}
 
   public async matches(message: Message): Promise<boolean> {
@@ -65,7 +71,13 @@ export class LinkFixBehavior implements BotBehavior<BehaviorEvent.MessageCreated
     if (!content) return BehaviorResult.Continue;
 
     try {
-      await message.reply({ content, allowedMentions: { repliedUser: false } });
+      const sent = await message.reply({ content, allowedMentions: { repliedUser: false } });
+      this.eligibility?.markUtilitySource(message);
+      this.conversation?.excludeInteraction(message.guildId, message.channelId, message.id);
+      await this.origins?.record({ messageId: sent.id, guildId: message.guildId, channelId: message.channelId,
+        origin: "link_fix", sourceMessageId: message.id, createdAt: Date.now() });
+      await this.origins?.record({ messageId: message.id, guildId: message.guildId, channelId: message.channelId,
+        origin: "link_fix", sourceMessageId: null, createdAt: Date.now() });
     } catch (error: unknown) {
       this.logger.warn(
         { error, guildId: message.guildId, channelId: message.channelId, messageId: message.id },

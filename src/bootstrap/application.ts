@@ -83,6 +83,7 @@ export class Application {
     this.birthdayAnnouncer.stop();
     this.dependencies.channelSummaryScheduler?.stop();
     this.dependencies.reactionReplyScheduler?.stop();
+    this.dependencies.chatConversationService?.stopScheduling();
     this.dependencies.channelEditScheduler.stop();
     this.dependencies.reminderScheduler.stop();
     this.dependencies.pollService.stop();

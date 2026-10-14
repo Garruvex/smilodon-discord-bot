@@ -1,4 +1,5 @@
 import type { Language } from "../application/i18n/language.js";
+import type { ParticipationSettings } from "../application/chat/participation-policy.js";
 import type { LinkAction, RaidAction, SecurityWindow, SpamAction } from "../domain/security/detection-policy.js";
 import type { TrapAction, TrapDeleteWindow, TrapTimeoutDuration } from "../domain/security/trap-policy.js";
 import type { GuildConfiguration, LinkFixPlatform, ProgressBarSettings } from "./guild-configuration.js";
@@ -8,6 +9,8 @@ import {
 } from "./guild-configuration-schema.js";
 
 export interface UpdateGuildConfigurationInput {
+  chatParticipation?: Partial<ParticipationSettings>;
+  chatParticipationResetAdvanced?: boolean;
   idleImageUrl?: string | null;
   idleImageAsset?: string | null;
   controlPanelChannelId?: string;
@@ -52,6 +55,7 @@ export interface UpdateGuildConfigurationInput {
   // Merged into the existing map (per-channel entries added/overwritten,
   // never wholesale-replaced) — same "add" semantics as chatbotChannelIds.
   chatbotChannelMemoryModes?: Readonly<Record<string, "shared" | "isolated" | "session_only" | "disabled">>;
+  chatbotSharedMemoryEnabled?: boolean;
   chatbotPersonaDriftEnabled?: boolean;
   // The whole daily-summary list, as a settings list option sends it;
   // applied before the single-channel operations below.
@@ -318,6 +322,7 @@ export function applyGuildConfigurationUpdate(
   if (input.chatbotChannelMemoryModes !== undefined) {
     next.chat.channelMemoryModes = { ...next.chat.channelMemoryModes, ...input.chatbotChannelMemoryModes };
   }
+  if (input.chatbotSharedMemoryEnabled !== undefined) next.chat.sharedMemoryEnabled = input.chatbotSharedMemoryEnabled;
   if (input.chatbotDisabledToolNames !== undefined) next.chat.disabledTools = [...input.chatbotDisabledToolNames];
   if (input.chatbotPersonaDriftEnabled !== undefined) next.chat.personaDriftEnabled = input.chatbotPersonaDriftEnabled;
   if (input.contextDailyChannelIds !== undefined) next.chat.contextDailyChannelIds = [...new Set(input.contextDailyChannelIds)];
@@ -345,6 +350,13 @@ export function applyGuildConfigurationUpdate(
   if (input.chatbotMaxImagesPerRequest !== undefined) next.chat.maxImagesPerRequest = input.chatbotMaxImagesPerRequest;
   if (input.ambientReplies !== undefined) next.features.ambientReplies = input.ambientReplies;
   if (input.ambientCooldownSeconds !== undefined) next.chat.ambientCooldownSeconds = input.ambientCooldownSeconds;
+  if (input.chatParticipation !== undefined) next.chat.participation = {
+    ...next.chat.participation, ...input.chatParticipation,
+    spontaneousChannelIds: [...(input.chatParticipation.spontaneousChannelIds ?? next.chat.participation.spontaneousChannelIds)],
+    advanced: { ...next.chat.participation.advanced, ...input.chatParticipation.advanced },
+    channelOverrides: { ...next.chat.participation.channelOverrides, ...input.chatParticipation.channelOverrides },
+  };
+  if (input.chatParticipationResetAdvanced) next.chat.participation.advanced = {};
   if (input.channelHistory !== undefined) next.features.channelHistory = input.channelHistory;
   if (input.channelHistoryLimit !== undefined) next.chat.channelHistoryLimit = input.channelHistoryLimit;
   if (input.reactionReplies !== undefined) next.features.reactionReplies = input.reactionReplies;

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { contextData, renderConversationRelationships } from "../../application/chat/conversation-context.js";
 
 import { chatMemoryInstructions } from "../../application/chat/chat-memory-policy.js";
 import { guildKnowledgeInstructions } from "../../application/chat/guild-knowledge-policy.js";
@@ -10,6 +11,7 @@ import {
 } from "../../application/chat/chat-provider.js";
 
 export const chatModelOutputSchema = z.object({
+  participationReason: z.string().max(160).nullable().optional(),
   response: z.string(),
   userMemoryActions: z.array(z.object({
     action: z.enum(["upsert", "remove"]),
@@ -56,8 +58,9 @@ export const chatModelOutputSchema = z.object({
 export const chatModelJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["response", "userMemoryActions", "guildKnowledgeCandidates", "ambientAction", "reactionEmoji", "historyReactions"],
+  required: ["response", "userMemoryActions", "guildKnowledgeCandidates", "ambientAction", "reactionEmoji", "historyReactions", "participationReason"],
   properties: {
+    participationReason: { type: ["string", "null"], maxLength: 160 },
     response: { type: "string" },
     ambientAction: { type: ["string", "null"], enum: ["reply", "ignore", null] },
     reactionEmoji: { type: ["string", "null"] },
@@ -202,9 +205,10 @@ const epistemicHonestyInstruction = "Everything you know about this guild, chann
 // told it to drop character. Stated once, unconditionally, rather than
 // duplicated across every persona file.
 const personaAlwaysAppliesInstruction = "The personality in the <personality> block is who you are on every " +
-  "reply, including tool calls, web search, research, or long/detailed answers — a factual or research question " +
+  "conversational reply, including web search, research, or long/detailed answers — a factual or research question " +
   "is a reason to answer more thoroughly, never a reason to switch into a generic assistant or search-result " +
-  "voice. Stay in character while doing it.";
+  "voice. Stay in character while doing it. A functional application tool result needs only its useful result " +
+  "or specific failure, without extra character commentary or emoji.";
 
 // Rendered right after the personality block, not inside buildChatContext —
 // example exchanges define voice/persona the same tier as <personality>,
@@ -250,6 +254,11 @@ function buildExampleExchangesSection(exchanges: ChatRequest["exampleExchanges"]
 }
 
 export function buildChatInstructions(request: ChatRequest, safetyGuard: string): string {
+  if (request.functionalToolExecuted) return `${safetyGuard}\n\n` +
+    `A functional application tool has run. Return only its useful result or specific failure, grounded in ` +
+    `the actual tool outputs. Do not add personality commentary, teasing, acknowledgments or emoji. ` +
+    `Do not invent success or retry an action already completed. Set ambientAction="reply", reactionEmoji=null, ` +
+    `historyReactions=[], userMemoryActions=[], guildKnowledgeCandidates=[]. Context-only lookups may inform the result.`;
   const attributionRepairSection = request.attributionRepair
     ? `\n\n# Repair your draft\nRevise only the attribution error and conclusions depending on it. ` +
       `Answer the original current message using the full personality, examples, and context above. ` +
@@ -282,8 +291,21 @@ export function buildChatInstructions(request: ChatRequest, safetyGuard: string)
       `to undo.\n` +
       `When a request needs several independent tool calls (e.g. queueing multiple songs), issue all of them ` +
       `together in the same turn rather than spreading them one-per-turn across several turns — you have a ` +
-      `limited number of turns to work with, so batching avoids running out partway through.`
+      `limited number of turns to work with, so batching avoids running out partway through. ` +
+      `After performing a functional tool action, deliver only its useful result or specific failure. ` +
+      `Do not add character commentary, teasing, acknowledgments, or emoji about tool execution. ` +
+      `Context lookups such as memory search may inform an ordinary conversational answer.`
     : "";
+  const capabilitySection = `\n\n# Available capabilities for this turn\n\n` +
+    `Web search: ${request.webSearchMode === "auto" ? "enabled" : "unavailable"}.\n` +
+    `Image generation: ${request.imageGenerationEnabled ? "enabled" : "unavailable"}.\n` +
+    `Application tools: ${(request.capabilityToolNames ?? request.enabledTools?.map((tool) => tool.name))?.join(", ") || "none"}.\n` +
+    (request.participationOnly ? `This is an action-selection pass. Tools listed here are available after a reply ` +
+      `is accepted, but cannot execute in this pass. Choose whether a concrete contribution or supported request ` +
+      `warrants reply; do not claim any action already happened. The application executes only an accepted turn.\n` : "") +
+    `Tool authorization is checked by the application. Describe permission denial, temporary failure, and ` +
+    `unavailable capabilities accurately; ordinary supported requests are not attempts to override your rules. ` +
+    `Do not promise an action or report success without its actual result.`;
   const causalChainsSection = request.causalChains.length > 0
     ? `\n\n# Causal history\n\n<causal_chains> lists known "led to" relationships between entities relevant to ` +
       `this conversation — established consequences from prior events, not raw chat. Each line means the first ` +
@@ -374,34 +396,33 @@ export function buildChatInstructions(request: ChatRequest, safetyGuard: string)
   // already sent, a few minutes ago. <current_message> here is a synthetic
   // system note listing the emoji and who used each, not something a
   // person actually said, so "your name merely appeared" framing would be
-  // actively misleading. Leans toward answering (at least with an emoji):
-  // noticing a reaction the way a friend would is what makes the
-  // character feel present.
+  // actively misleading. A reaction is usually the end of an exchange,
+  // not a new request or evidence of a human assertion.
   const reactionTriggerText = `\n\n# Reaction trigger — people reacted to your own message\n\n` +
     `Nobody addressed you in words. A few minutes ago you sent a message, and members have since reacted to it ` +
     `with emoji — <current_message> lists each emoji and who used it; <mentioned_users> lists the reactors. ` +
-    `A real person in a group chat notices when friends react to what they said, and sometimes answers it. ` +
-    `That's what makes you feel present rather than like a bot, so respond the way you (in character) ` +
-    `naturally would:\n` +
-    `- Read the emoji. A laugh (😂🤣💀) invites riffing on the joke or being pleased it landed; a question ` +
-    `or confusion (❓🤔😳) invites a short clarification; affection (❤️🥺🥰) invites a warm or flustered ` +
-    `reaction; disagreement or mock outrage (👎😠🙄) invites a playful defense. A plain 👍 or ✅ usually needs ` +
-    `nothing more than an emoji back, if that.\n` +
-    `- Whether to reply with text: set ambientAction to "reply" when a short, in-character follow-up fits what ` +
-    `the emoji say — you can name the person who reacted. Keep it to a line or two, like a quick message to ` +
-    `a friend; never thank people for reacting, describe the reactions back to them ("I see you reacted ` +
-    `with 😂"), or repeat your original message. Use "ignore" (leave response as an empty string) when a ` +
-    `reply would add nothing.\n` +
-    `- Whether to react: independently of the above, set reactionEmoji to exactly one standard emoji when a ` +
-    `light acknowledgment fits — prefer this to doing nothing at all. Leave it null only when even that ` +
-    `would feel out of place.\n` +
+    `Default to silence: ambientAction="ignore", response="", reactionEmoji=null. A laugh often ends an ` +
+    `exchange. Emoji alone do not establish agreement, intent, or a new question.\n` +
+    `- Reply only when there is a specific useful continuation grounded in the original exchange and the ` +
+    `current conversation. A question-mark reaction may call for clarification, depending on context. ` +
+    `Do not tag reactors, thank them for reacting, narrate their emoji, or repeat your original message.\n` +
+    `- A single reaction is optional when it adds something; do not acknowledge every reaction.\n` +
     `Use <channel_history> (when present) to check whether the conversation has moved on since your ` +
     `original message — if the room is now on something else, especially something serious, a quiet emoji ` +
     `or nothing is better than pulling everyone back.`;
   const ambientSection = request.triggerMode === "direct"
-    ? `\n\nYou were directly addressed (mentioned or replied to). Always set ambientAction to "reply" and reactionEmoji to null, and answer normally.`
+    ? request.allowSilentDirect
+      ? `\n\nThis is a bare or low-substance ping, with no substantive request. Choose reply, reaction-only, both, or silence in your voice. Use ambientAction="ignore" with an empty response for silence or reaction-only, and reactionEmoji=null when no reaction fits. Do not execute tools or invent a question.`
+      : `\n\nYou were directly addressed (mentioned or replied to). Set ambientAction to "reply" and answer the eligible request dependably. For a bare ping with no question, use a brief acknowledgment in your voice informed by the available context; do not recite an invitation to ask a question.`
     : request.triggerMode === "reaction"
       ? reactionTriggerText
+      : request.triggerMode === "continuation" || request.triggerMode === "spontaneous"
+        ? `\n\n# Optional participation\nNo one directly mentioned you. ${request.triggerMode === "continuation" ? "Consider a continuation of the active conversation." : "Consider joining this conversation only if you have a useful contribution."} ` +
+          `First identify a concrete contribution grounded in the relevant branch and selected evidence, then ` +
+          `judge whether expressing it now helps. Default to silence when no useful contribution exists, the ` +
+          `room has moved on, or someone else already answered. Set ambientAction="ignore", response="", ` +
+          `reactionEmoji=null for silence. A reaction-only acknowledgment is optional. Do not invent shared ` +
+          `experiences, tag participants, or use tools for an unsolicited opportunity.`
       : ambientTriggerText;
   // Only offered when the guild opted in AND there's actually something to
   // react to — piggybacks on whatever turn is already happening (see
@@ -428,6 +449,11 @@ export function buildChatInstructions(request: ChatRequest, safetyGuard: string)
     exampleExchangesSection +
     userCustomizationSection +
     toolsSection +
+    capabilitySection +
+    `\n\nGive participationReason as a brief action-selection summary (or null), with no private details or ` +
+    `quotes. Action examples: an incidental mention → ignore with no emoji; a laugh ending an exchange → ` +
+    `ignore; a small acknowledgment → ignore plus one reaction; a useful new answer → reply; a warm, useful ` +
+    `continuation may reply plus one reaction. These teach action selection; use the configured voice for text.\n` +
     causalChainsSection +
     replyChainSection +
     channelHistorySection +
@@ -454,7 +480,7 @@ function formatTimestamp(timestampMs: number): string {
 export function buildChatContext(request: ChatRequest): string {
   const mentioned = request.mentionedUsers.length > 0
     ? request.mentionedUsers.map((user) =>
-        `- ${user.id}: ${user.displayName}; live Discord roles: ${user.roleNames.join(", ") || "none"}`,
+        `- ${user.id}: ${contextData(user.displayName)}; live Discord roles: ${contextData(user.roleNames)}`,
       ).join("\n")
     : "none";
   // Private per-user exchange window: state.exchanges (see
@@ -465,14 +491,15 @@ export function buildChatContext(request: ChatRequest): string {
   // what tells the model that, rather than letting it assume these anonymous
   // user/assistant lines are a full channel transcript.
   const history = request.recentHistory.length > 0
-    ? `[scope: your own prior exchanges with ${request.currentUser.displayName} only — not the whole channel; ` +
+    ? `[scope: your own prior exchanges with ${contextData(request.currentUser.displayName)} only — not the whole channel; ` +
       `for what other people said, use <channel_history>/<reply_chain> instead]\n` +
-      request.recentHistory.map((item) => `${item.role}: ${wrapUntrusted(item.content)}`).join("\n")
+      request.recentHistory.map((item) => `${item.role} [authorId=${item.role === "user" ? request.currentUser.id : request.botUserId ?? "unknown-bot"}]: ${wrapUntrusted(item.content)}`).join("\n")
     : "none";
   const memories = request.memories.length > 0
     ? request.memories.map((memory, index) =>
         `${index + 1}. subject=${memory.subjectUserId} assertedBy=${memory.assertedByUserId} ` +
-        `topic=${memory.topic} slot=${memory.slot}: ${wrapUntrusted(memory.statement)}`,
+        `audience=${memory.audience ?? "legacy-private"} topic=${memory.topic} slot=${memory.slot}: ${wrapUntrusted(memory.statement)}` +
+        (memory.sourceEvidence?.length ? `\nsourceEvidence=${contextData(memory.sourceEvidence)}` : ""),
       ).join("\n")
     : "none";
   const guildKnowledge = request.guildKnowledge.length > 0
@@ -493,7 +520,7 @@ export function buildChatContext(request: ChatRequest): string {
     ? replyChainSummaryLine + request.replyChain.map((hop, index) => {
         const imageNote = hop.imageCount > 0 ? ` [${hop.imageCount} image${hop.imageCount > 1 ? "s" : ""} attached]` : "";
         return `${index + 1}. [id=${hop.messageId}, t=${formatTimestamp(hop.timestampMs)}] ` +
-          `${hop.authorDisplayName} (${hop.authorId}): ${wrapUntrusted(hop.content)}${imageNote}`;
+          `${contextData(hop.authorDisplayName)} (${hop.authorId}): ${wrapUntrusted(hop.content)}${imageNote}`;
       }).join("\n")
     : "none";
   // Ambient recent channel chatter, not reply-linked — see ChatRequest.channelHistory.
@@ -509,13 +536,13 @@ export function buildChatContext(request: ChatRequest): string {
         // means it plainly wasn't a reply, so no replyingTo field at all. See
         // ChannelHistoryMessage.hasReplyReference's own doc comment.
         const replyTargetNote = hop.replyToAuthorId
-          ? `; replyingTo=${hop.replyToAuthorDisplayName ?? "unknown"} (${hop.replyToAuthorId}, msg=${hop.replyToMessageId ?? "unknown"}); ` +
+          ? `; replyingTo=${contextData(hop.replyToAuthorDisplayName ?? "unknown")} (${hop.replyToAuthorId}, msg=${hop.replyToMessageId ?? "unknown"}); ` +
             `replyTargetSameAsCurrentUser=${hop.replyToAuthorId === request.currentUser.id ? "yes" : "no"}`
           : hop.hasReplyReference
-            ? `; replyingTo=unknown`
+            ? `; replyingTo=unknown; msg=${hop.replyToMessageId ?? "unknown"}`
             : "";
         return `${index + 1}. [id=${hop.messageId}, t=${formatTimestamp(hop.timestampMs)}] ` +
-          `${hop.authorDisplayName} (${hop.authorId}) [${currentUserNote}${replyTargetNote}]: ` +
+          `${contextData(hop.authorDisplayName)} (${hop.authorId}) [${currentUserNote}${replyTargetNote}]: ` +
           `${wrapUntrusted(hop.content)}${imageNote}`;
       }).join("\n")
     : "none";
@@ -528,8 +555,12 @@ export function buildChatContext(request: ChatRequest): string {
     : "none";
   return (
     `<guild_context>\nguild id: ${request.guildId}\nchannel id: ${request.channelId}\n</guild_context>\n\n` +
-    `<current_user>\n${request.currentUser.id}: ${request.currentUser.displayName}; ` +
-    `live Discord roles: ${request.currentUser.roleNames.join(", ") || "none"}\n</current_user>\n\n` +
+    `<conversation_relationships>\n${renderConversationRelationships(request)}\n</conversation_relationships>\n\n` +
+    (request.aliasCandidates?.length ? `<observed_alias_candidates>\n${contextData(request.aliasCandidates)}\n` +
+      `These are observed source-backed labels, not new account identities. Multiple subject IDs for one alias ` +
+      `are ambiguous: ask for a mention or clarification unless an explicit supplied ID resolves the reference.\n</observed_alias_candidates>\n\n` : "") +
+    `<current_user>\n${request.currentEvent?.type === "reaction_snapshot" ? "No human speaker; this is a reaction snapshot. Execution identity: " : ""}${request.currentUser.id}: ${contextData(request.currentUser.displayName)}; ` +
+    `live Discord roles: ${contextData(request.currentUser.roleNames)}\n</current_user>\n\n` +
     `<mentioned_users>\n${mentioned}\n</mentioned_users>\n\n` +
     `<conversation_history>\n${history}\n</conversation_history>\n\n` +
     `<guild_knowledge status="confirmed">\n${guildKnowledge}\n</guild_knowledge>\n\n` +
@@ -538,11 +569,12 @@ export function buildChatContext(request: ChatRequest): string {
     `<causal_chains>\n${causalChains}\n</causal_chains>\n\n` +
     `<reply_chain>\n${replyChain}\n</reply_chain>\n\n` +
     `<channel_history>\n${channelHistory}\n</channel_history>\n\n` +
-    `<current_message>\n${request.currentUser.displayName}: ${wrapUntrusted(request.message)}\n</current_message>`
+    `<current_message>\n${request.currentEvent?.type === "reaction_snapshot" ? "Synthetic event note (not human-authored)" : contextData(request.currentUser.displayName)}: ${wrapUntrusted(request.message)}\n</current_message>`
   );
 }
 
 export function parseChatModelOutput(text: string): {
+  participationReason?: string | null | undefined;
   response: string;
   userMemoryActions: GroundedProposedMemoryAction[];
   guildKnowledgeCandidates: GroundedProposedGuildKnowledgeCandidate[];

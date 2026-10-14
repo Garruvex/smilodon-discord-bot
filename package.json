@@ -23,6 +23,8 @@
     "dev": "tsx watch src/bootstrap/start.ts",
     "dev:once": "tsx src/bootstrap/start.ts",
     "db:backfill-memories": "tsx src/scripts/migrate-memories-to-central-schema.ts",
+    "db:backfill-public-memories": "tsx src/scripts/backfill-public-memories.ts",
+    "instance:backfill-public-memories": "tsx src/scripts/backfill-instance-public-memories.ts",
     "db:generate": "drizzle-kit generate && tsx src/scripts/normalize-postgres-migrations.ts && tsx src/scripts/prune-migration-snapshots.ts drizzle",
     "db:generate:sqlite": "drizzle-kit generate --config drizzle-sqlite.config.ts && tsx src/scripts/prune-migration-snapshots.ts drizzle-sqlite",
     "db:import-campaigns": "tsx src/scripts/import-campaign-sqlite.ts",

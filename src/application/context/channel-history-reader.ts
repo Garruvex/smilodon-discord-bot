@@ -41,5 +41,6 @@ export interface ChannelHistoryReadRequest {
 
 /** Discord-independent input port for reading a bounded channel-history batch. */
 export interface ChannelHistoryReader {
+  canLearn?(guildId: string, channelId: string, sourceMessageId: string): Promise<boolean>;
   readBatch(request: ChannelHistoryReadRequest): Promise<ChannelHistoryReadResult>;
 }

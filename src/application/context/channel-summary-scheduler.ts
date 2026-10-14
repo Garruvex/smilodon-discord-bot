@@ -116,6 +116,7 @@ function buildPromotionProposals(job: PersonalMemoryExtractionJob, actions: read
     .map((action) => ({
       action: action.action, topic: action.topic, slot: action.slot, statement: action.statement,
       subjectUserId: job.subjectId, importance: importanceRatingToLevel(action.importance),
+      sourceQuote: action.sourceQuote,
     }));
   const proposals: ProposedMemory[] = [];
   for (const action of validateMemoryActions(proposedActions, new Set([job.subjectId]))) {
@@ -125,6 +126,12 @@ function buildPromotionProposals(job: PersonalMemoryExtractionJob, actions: read
       ownerUserId: job.subjectId, subjectType: "member", subjectId: job.subjectId,
       topic: action.topic, slot: action.slot, statement: action.statement!, channelScoped: false,
       assertedByUserId: job.subjectId,
+      observedSubjectNames: [job.displayName],
+      sourceMessageId: job.sourceMessages?.find((message) =>
+        "sourceQuote" in action && normalizeForGroundingCheck(message.content).includes(normalizeForGroundingCheck(action.sourceQuote as string)))?.messageId ?? job.batchId,
+      sourceTimestampMs: job.sourceMessages?.find((message) =>
+        "sourceQuote" in action && normalizeForGroundingCheck(message.content).includes(normalizeForGroundingCheck(action.sourceQuote as string)))?.timestampMs ?? 0,
+      ...("sourceQuote" in action ? { sourceQuote: action.sourceQuote as string } : {}),
       // See ChatConversationService.toProposals's identical conditional
       // spread for why: exactOptionalPropertyTypes treats an explicit
       // `undefined` value differently from omitting the key.
@@ -451,6 +458,7 @@ export class ChannelSummaryScheduler {
     }));
 
     if (proposals.length > 0) {
+      if (this.historyReader.canLearn && !(await this.historyReader.canLearn(profile.guildId, channelId, messages[0]!.id))) return true;
       let result;
       try {
         result = await this.memoryEngine.ingest({
@@ -462,6 +470,7 @@ export class ChannelSummaryScheduler {
           // message id, but sourceMessageId has no other use for a
           // consolidation batch spanning many messages.
           assertedByUserId: null, sourceMessageId: batchId, source: "consolidation", now, proposals,
+          sourceTimestampMs: Math.max(...messages.map((message) => message.createdAt)),
         });
       } catch (error) {
         await this.checkpointStore.recordError(
@@ -514,6 +523,8 @@ export class ChannelSummaryScheduler {
           guildId: profile.guildId, channelId, batchId, subjectId,
           displayName: displayNameByAuthorId.get(subjectId) ?? subjectId,
           content: ownMessages.join("\n"),
+          sourceMessages: messages.filter((message) => message.authorId === subjectId)
+            .map((message) => ({ messageId: message.id, content: message.content, timestampMs: message.createdAt })),
         }));
       if (jobs.length > 0) {
         try {
@@ -640,6 +651,12 @@ export class ChannelSummaryScheduler {
         if (!(await stillExists())) return;
 
         const proposals = buildPromotionProposals(job, actions);
+        if (this.historyReader.canLearn && (!job.sourceMessages?.length ||
+            !(await this.historyReader.canLearn(job.guildId, job.channelId, job.sourceMessages[0]!.messageId)))) {
+          await this.extractionQueue.markDeadLettered(job.guildId, job.channelId, job.batchId, job.subjectId,
+            "Original human source or current social eligibility could not be verified.");
+          return;
+        }
         if (proposals.length > 0) {
           // A guild whose configuration no longer exists (e.g. the bot was
           // removed) has nothing meaningful to check a channel mode against

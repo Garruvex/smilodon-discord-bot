@@ -62,7 +62,11 @@ export class MemoryCommand implements BotCommand {
     // persistence-factory.ts — but keeping this optional avoids a hard
     // coupling for any future backend/test double that omits it).
     private readonly personalMemoryExtractionQueueStore?: PersonalMemoryExtractionQueueStore,
+    private forgetConversation?: (guildId: string, userId: string) => Promise<void>,
   ) {}
+  public bindConversationForget(callback: (guildId: string, userId: string) => Promise<void>): void {
+    this.forgetConversation = callback;
+  }
 
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.guildId) {
@@ -127,7 +131,9 @@ export class MemoryCommand implements BotCommand {
   }
 
   private async list(context: CommandContext, guildId: string, userId: string): Promise<void> {
-    const profile = await this.memberProfileService.load(guildId, userId);
+    const channelId = context.interaction.channelId ?? undefined;
+    const profile = channelId ? await this.memberProfileService.load(guildId, userId, channelId)
+      : await this.memberProfileService.load(guildId, userId);
     if (profile.memories.length === 0 && !profile.birthday && !profile.customization) {
       await context.responses.reply("I don't have anything remembered about you in this server yet.");
       return;
@@ -154,13 +160,13 @@ export class MemoryCommand implements BotCommand {
     for (let index = 0; index < fields.length; index += maxFieldsPerEmbed) {
       const embed = new EmbedBuilder().addFields(fields.slice(index, index + maxFieldsPerEmbed));
       if (index === 0) {
-        embed.setTitle("What I remember about you in this server")
-          .setDescription(profileLines.length > 0 ? profileLines.join("\n") : null);
+        embed.setTitle("Stored facts about you and their visibility")
+          .setDescription(["Facts marked guild-shared or channel-shared can be recalled by other authorized members. Private facts remain private.", ...profileLines].join("\n"));
       }
       embeds.push(embed);
     }
     if (embeds.length === 0) {
-      embeds.push(new EmbedBuilder().setTitle("What I remember about you in this server")
+      embeds.push(new EmbedBuilder().setTitle("Stored facts about you and their visibility")
         .setDescription(profileLines.join("\n") || null));
     }
     const footerText = [
@@ -197,9 +203,12 @@ export class MemoryCommand implements BotCommand {
       const count = this.personalMemoryExtractionQueueStore
         ? await this.personalMemoryExtractionQueueStore.runForSubject(guildId, userId, forgetAll)
         : await forgetAll();
+      if (this.forgetConversation) await this.forgetConversation(guildId, userId);
+      else if (this.chatStateStore.clearRecentHistory) await this.chatStateStore.clearRecentHistory(guildId, userId);
+      else await this.chatStateStore.purgeUser(guildId, userId);
       await context.responses.reply(
         (count > 0 ? `Forgot ${count} ${count === 1 ? "memory" : "memories"}.` : "There was nothing to forget.") +
-          " This clears what I remember about you, including what others have said about you — it does not clear our recent conversation history.",
+          " This clears private/shared facts about you, source-linked summaries, queued learning, and your stored recent conversation context. Discord messages, birthday and customization are managed separately.",
       );
       return;
     }
@@ -209,8 +218,14 @@ export class MemoryCommand implements BotCommand {
       return;
     }
 
-    const memories = await this.memoryEngine.listUserMemories(guildId, userId);
+    const channelId = context.interaction.channelId ?? undefined;
+    const memories = channelId ? await this.memoryEngine.listUserMemories(guildId, userId, channelId)
+      : await this.memoryEngine.listUserMemories(guildId, userId);
     const match = memories.find((memory) => memory.id === id || memory.id.startsWith(id));
+    if (memories.filter((memory) => memory.id === id || memory.id.startsWith(id)).length > 1) {
+      await context.responses.reply("That ID matches several memories. Use the full ID to select one.");
+      return;
+    }
     if (!match) {
       await context.responses.reply("I couldn't find a memory with that ID. Check `/memory list`.");
       return;
@@ -221,7 +236,8 @@ export class MemoryCommand implements BotCommand {
       // slot. Cancel this subject's not-yet-processed historical jobs; new
       // messages after the command remain eligible for normal extraction.
       await this.personalMemoryExtractionQueueStore?.deleteForSubject(guildId, userId);
-      return this.memoryEngine.forget({ guildId, ownerUserId: userId, memoryId: match.id });
+      return this.memoryEngine.forget({ guildId, ownerUserId: userId, memoryId: match.id,
+        ...(channelId ? { channelId } : {}) });
     };
     const forgotten = this.personalMemoryExtractionQueueStore
       ? await this.personalMemoryExtractionQueueStore.runForSubject(guildId, userId, forgetOne)

@@ -99,6 +99,9 @@ function wrapUntrusted(text: string): string {
 // assistant asked is fine; the assistant inventing or assuming a fact is
 // not).
 const personalMemoryExtractionPreamble =
+  `Subject and audience are independent: extract supported facts about the human speaker. The application ` +
+  `assigns visibility from the source channel's configured memory policy. Do not infer private visibility ` +
+  `from personal subject matter. Reaction events and bot-authored assertions are never human evidence.\n` +
   `You are a dedicated memory-extraction pass, run after a conversational reply to this message has already been ` +
   `sent. You are not writing a reply and nothing you say here is shown to the user — your only job is deciding ` +
   `what from this one exchange belongs in long-term memory about the speaker (never anyone else — see below). A ` +

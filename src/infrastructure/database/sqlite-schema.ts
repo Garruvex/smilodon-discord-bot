@@ -1,5 +1,34 @@
 import { sql } from "drizzle-orm";
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import type { MessageOrigin } from "../../application/chat/message-origin-store.js";
+import type { ChannelHistoryMessage } from "../../application/chat/chat-provider.js";
+
+export const memoryObservedAliases = sqliteTable("memory_observed_aliases", {
+  guildId: text("guild_id").notNull(),
+  alias: text("alias").notNull(),
+  memoryId: text("memory_id").notNull().references(() => memories.id, { onDelete: "cascade" }),
+}, (table) => [primaryKey({ columns: [table.memoryId, table.alias] }), index("memory_observed_aliases_lookup").on(table.guildId, table.alias)]);
+
+export const conversationEpisodes = sqliteTable("conversation_episodes", {
+  guildId: text("guild_id").notNull(), channelId: text("channel_id").notNull(),
+  events: text("events", { mode: "json" }).$type<ChannelHistoryMessage[]>().notNull().default([]),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [primaryKey({ columns: [table.guildId, table.channelId] })]);
+
+export const messageOrigins = sqliteTable("message_origins", {
+  messageId: text("message_id").primaryKey(),
+  guildId: text("guild_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  origin: text("origin").$type<MessageOrigin>().notNull(),
+  sourceMessageId: text("source_message_id"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [index("message_origins_scope_idx").on(table.guildId, table.channelId)]);
+
+export const memoryForgetCutoffs = sqliteTable("memory_forget_cutoffs", {
+  guildId: text("guild_id").notNull(), subjectId: text("subject_id").notNull(),
+  topic: text("topic").notNull(), slot: text("slot").notNull(), scopeKey: text("scope_key").notNull(),
+  cutoff: integer("cutoff", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [primaryKey({ columns: [table.guildId, table.subjectId, table.topic, table.slot, table.scopeKey] })]);
 
 // Local (dev-only) backend equivalent of schema.ts's Postgres tables, for
 // exactly the two chat/knowledge stores that need it (SqliteChatStateStore/
@@ -84,6 +113,9 @@ export const memories = sqliteTable("memories", {
 ]);
 
 export const memorySources = sqliteTable("memory_sources", {
+  sourceTimestamp: integer("source_timestamp", { mode: "timestamp_ms" }),
+  sourceQuote: text("source_quote"),
+  sourceChannelMode: text("source_channel_mode"),
   id: text("id").primaryKey(),
   memoryId: text("memory_id").notNull().references(() => memories.id, { onDelete: "cascade" }),
   sourceMessageId: text("source_message_id"),
@@ -150,6 +182,7 @@ export const channelSummaryCheckpoints = sqliteTable("channel_summary_checkpoint
 // independently of the channel's own scan/daily cursor — which no longer
 // needs to be held back waiting on it.
 export const personalMemoryExtractionJobs = sqliteTable("personal_memory_extraction_jobs", {
+  sourceMessages: text("source_messages", { mode: "json" }).$type<readonly { messageId: string; content: string; timestampMs: number }[]>().notNull().default([]),
   guildId: text("guild_id").notNull(),
   channelId: text("channel_id").notNull(),
   batchId: text("batch_id").notNull(),

@@ -283,6 +283,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     stream: boolean,
     observer?: ChatResponseObserver,
   ): Promise<unknown> {
+    request.onModelAttempt?.();
     const response = await fetch(`${this.baseUrl}/responses`, {
       method: "POST",
       headers: {
@@ -722,6 +723,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
       webSearchUsed: parsed.output.some((item) => item.type === "web_search_call"),
       generatedImages,
       ambientAction: modelOutput.ambientAction,
+      ...(modelOutput.participationReason !== undefined ? { participationReason: modelOutput.participationReason } : {}),
       reactionEmoji: modelOutput.reactionEmoji,
       historyReactions: modelOutput.historyReactions,
     };

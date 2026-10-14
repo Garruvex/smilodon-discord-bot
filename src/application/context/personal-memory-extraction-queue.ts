@@ -11,6 +11,7 @@
 // progress, and what lets a transient failure survive a process restart
 // instead of only surviving within one scheduler instance's lifetime.
 export interface PersonalMemoryExtractionJob {
+  sourceMessages?: readonly { messageId: string; content: string; timestampMs: number }[];
   guildId: string;
   channelId: string;
   batchId: string;
@@ -24,6 +25,7 @@ export interface PersonalMemoryExtractionJob {
 }
 
 export interface PersonalMemoryExtractionJobInput {
+  sourceMessages?: readonly { messageId: string; content: string; timestampMs: number }[];
   guildId: string;
   channelId: string;
   batchId: string;

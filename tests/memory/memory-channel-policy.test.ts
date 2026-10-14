@@ -21,9 +21,9 @@ describe("resolveMemoryScope", () => {
       .toEqual({ audience: "channel", channelId: "general", isolationChannelId: null });
   });
 
-  it("shared mode leaves private proposals cross-channel", () => {
-    expect(resolveMemoryScope("shared", "general", { audience: "private", channelScoped: false }))
-      .toEqual({ audience: "private", channelId: null, isolationChannelId: null });
+  it("shared mode resolves public person facts to guild audience", () => {
+    expect(resolveMemoryScope("shared", "general", { audience: "private", channelScoped: false }, true))
+      .toEqual({ audience: "guild", channelId: null, isolationChannelId: null });
   });
 
   it("isolated mode force-scopes a guild-audience proposal to the channel regardless of the model's flag", () => {
@@ -33,8 +33,8 @@ describe("resolveMemoryScope", () => {
       .toEqual({ audience: "channel", channelId: "dnd", isolationChannelId: "dnd" });
   });
 
-  it("isolated mode still keeps a private proposal private, but boundary-locked", () => {
-    expect(resolveMemoryScope("isolated", "dnd", { audience: "private", channelScoped: false }))
-      .toEqual({ audience: "private", channelId: null, isolationChannelId: "dnd" });
+  it("isolated mode shares person facts within the source channel only", () => {
+    expect(resolveMemoryScope("isolated", "dnd", { audience: "private", channelScoped: false }, true))
+      .toEqual({ audience: "channel", channelId: "dnd", isolationChannelId: "dnd" });
   });
 });

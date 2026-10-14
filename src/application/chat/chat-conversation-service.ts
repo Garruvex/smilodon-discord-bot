@@ -7,6 +7,13 @@ import { chatSafetyGuard, type ChannelHistoryMessage, type ChatProvider, type Ch
 import type { ChatSessionExchange, ChatStateStore } from "./chat-state-store.js";
 import type { UserCustomizationStore } from "./user-customization-store.js";
 import { KeyedSerialQueue } from "../concurrency/keyed-serial-queue.js";
+import { SocialOutputSuppressed } from "./message-origin-store.js";
+import { ChatScheduler, balancedChatLimits, type ChatActivityLimits } from "./chat-scheduler.js";
+import { ConversationEpisodes } from "./conversation-episodes.js";
+import { isLowSubstancePing } from "./participation-policy.js";
+import { observedSubjectNames } from "../memory/observed-subject-names.js";
+import type { ConversationEpisodeStore } from "./conversation-episode-store.js";
+import { participationDecision } from "./participation-decision.js";
 import { guildKnowledgeInstructions, validateGuildKnowledgeCandidates, type ValidatedGuildKnowledgeCandidate } from "./guild-knowledge-policy.js";
 import type { ProposedMemoryAction } from "./chat-provider.js";
 import { RecentPromptHistorySelector, type PromptHistorySelector } from "./prompt-history-selector.js";
@@ -17,6 +24,7 @@ import type { ExampleExchange } from "./example-exchange.js";
 import type { PersonaLoreChunk } from "./persona-source.js";
 import type { BirthdayStore } from "../birthdays/birthday-store.js";
 import type { ChatToolRegistry } from "./tools/chat-tool-registry.js";
+import type { ChatTool } from "./tools/chat-tool.js";
 import { allowsDurableWrites, resolveChannelMemoryMode, type ChannelMemoryMode } from "../memory/memory-channel-policy.js";
 import type { ChatMemoryRecord, GuildKnowledgeRecord } from "./chat-provider.js";
 import type { Memory, MemoryEngine, MemoryIngestResult, ProposedMemory } from "../memory/memory.js";
@@ -159,6 +167,15 @@ export interface ChatConversationInput
   // produced it. Omitted/null for turns with no single originating message
   // (e.g. dropped-exchange consolidation, which spans several).
   sourceMessageId?: string | null;
+  channelHistoryEnabled?: boolean;
+  canExecute?: () => Promise<boolean>;
+  activityLimits?: ChatActivityLimits;
+  resolveActivityLimits?: () => ChatActivityLimits;
+  resolveMemoryMode?: () => ChannelMemoryMode;
+  shouldDeliver?: () => boolean;
+  refreshContextMessage?: (event: ChannelHistoryMessage) => Promise<ChannelHistoryMessage | null>;
+  afterDecision?: (response: ChatResponse) => Promise<void>;
+  shadowMode?: boolean;
   // Per-guild opt-in (profile.chat.toolCallingEnabled) — whether the
   // registered tools are offered to the model for this turn at all.
   toolsEnabled?: boolean;
@@ -212,6 +229,12 @@ export class ChatStateCommitError extends Error {
 }
 
 export class ChatConversationService {
+  private readonly scheduler = new ChatScheduler();
+  private readonly episodes = new ConversationEpisodes();
+  private readonly recentPings = new Map<string, { at: number; messageId: string }>();
+  private readonly forgottenBefore = new Map<string, number>();
+  private readonly privacyVersions = new Map<string, number>();
+  private readonly episodeCleanupTimer: ReturnType<typeof setInterval> | null;
   private readonly queue = new KeyedSerialQueue();
   // Every fire-and-forget background write this service starts (dedicated
   // personal-memory extraction, dropped-exchange consolidation) registers
@@ -242,8 +265,16 @@ export class ChatConversationService {
     // Shared with ChannelSummaryScheduler and /memory. Besides persistence,
     // it supplies the per-subject mutation boundary that prevents a live or
     // background write from racing an explicit forget/member purge.
-    private readonly memoryMutationCoordinator: Pick<PersonalMemoryExtractionQueueStore, "runForSubject"> | null = null,
-  ) {}
+    private readonly memoryMutationCoordinator: (Pick<PersonalMemoryExtractionQueueStore, "runForSubject"> &
+      Partial<Pick<PersonalMemoryExtractionQueueStore, "deleteForSubject">>) | null = null,
+    private readonly episodeStore: ConversationEpisodeStore | null = null,
+  ) {
+    this.episodeCleanupTimer = episodeStore ? setInterval(() => {
+      this.trackBackground(episodeStore.deleteExpired(Date.now()).catch((error: unknown) =>
+        this.logger?.warn({ error }, "Short-lived conversation episode cleanup failed")));
+    }, 60_000) : null;
+    this.episodeCleanupTimer?.unref?.();
+  }
 
   private runMemoryMutation<T>(guildId: string, ownerUserId: string, operation: () => Promise<T>): Promise<T> {
     return this.memoryMutationCoordinator
@@ -264,6 +295,7 @@ export class ChatConversationService {
     userMemoryActions: readonly ProposedMemoryAction[],
     guildKnowledgeCandidates: readonly ValidatedGuildKnowledgeCandidate[],
     currentUserId: string,
+    context?: ChatConversationInput,
   ): ProposedMemory[] {
     const proposals: ProposedMemory[] = [];
     for (const action of userMemoryActions) {
@@ -272,6 +304,22 @@ export class ChatConversationService {
           action: "upsert", audience: "private", kind: memoryKindForTopic(action.topic),
           ownerUserId: currentUserId, subjectType: "member", subjectId: action.subjectUserId,
           topic: action.topic, slot: action.slot, statement: action.statement!, channelScoped: false,
+          ...("sourceQuote" in action ? { sourceQuote: action.sourceQuote as string | null } : {}),
+          ...(context && "sourceQuote" in action && action.sourceQuote ? ((): Partial<Extract<ProposedMemory, { action: "upsert" }>> => {
+            const quote = normalizeForGroundingCheck(action.sourceQuote as string);
+            const current = action.subjectUserId === context.currentUser.id && normalizeForGroundingCheck(context.message).includes(quote);
+            const original = [...context.replyChain, ...context.channelHistory].find((message) =>
+              message.authorId === action.subjectUserId && normalizeForGroundingCheck(message.content).includes(quote));
+            return {
+              assertedByUserId: action.subjectUserId,
+              observedSubjectNames: current ? [context.currentUser.displayName, context.currentUser.username,
+                context.currentUser.globalName, context.currentUser.guildNickname].filter((name): name is string => Boolean(name))
+                : original ? [original.authorDisplayName, original.author?.username, original.author?.globalName,
+                  original.author?.guildNickname].filter((name): name is string => Boolean(name)) : [],
+              sourceMessageId: current ? context.sourceMessageId ?? null : original?.messageId ?? null,
+              sourceTimestampMs: current && context.currentEvent?.type === "message" ? context.currentEvent.timestampMs : original?.timestampMs ?? Date.now(),
+            };
+          })() : {}),
           // exactOptionalPropertyTypes: a conditional spread, not
           // `importance: action.importance` — that would explicitly set
           // the key to `undefined` when action.importance is unset (the
@@ -294,6 +342,15 @@ export class ChatConversationService {
         ownerUserId: null, subjectType: candidate.subjectType, subjectId: candidate.subjectId,
         topic: candidate.topic, slot: candidate.slot, statement: candidate.statement,
         channelScoped: candidate.channelScoped,
+        ...(context && "sourceQuote" in candidate ? ((): Partial<Extract<ProposedMemory, { action: "upsert" }>> => {
+          const quote = normalizeForGroundingCheck(candidate.sourceQuote as string);
+          const current = normalizeForGroundingCheck(context.message).includes(quote);
+          const original = [...context.replyChain, ...context.channelHistory].find((message) =>
+            normalizeForGroundingCheck(message.content).includes(quote));
+          return { sourceQuote: candidate.sourceQuote as string, assertedByUserId: current ? currentUserId : original?.authorId ?? null,
+            sourceMessageId: current ? context.sourceMessageId ?? null : original?.messageId ?? null,
+            sourceTimestampMs: current && context.currentEvent?.type === "message" ? context.currentEvent.timestampMs : original?.timestampMs ?? Date.now() };
+        })() : {}),
       });
     }
     return proposals;
@@ -314,6 +371,7 @@ export class ChatConversationService {
     personaDriftEnabled: boolean,
     personalitySourceHash: string,
     speaker: { id: string; displayName: string },
+    canExecute?: () => Promise<boolean>,
   ): Promise<void> {
     if (droppedExchanges.length === 0) return;
     const summarizer = this.utilityProvider ?? this.provider;
@@ -323,22 +381,38 @@ export class ChatConversationService {
         const facts = await summarizer.summarizeDroppedExchanges(exchangePairs, speaker);
         if (facts.length > 0) {
           const candidates = validateGuildKnowledgeCandidates(
-            facts.map((fact) => ({
+            facts.filter((fact) => fact.sourceQuote && normalizeForGroundingCheck(fact.sourceQuote).length > 0 && droppedExchanges.some((exchange) =>
+              exchange.user.sourceMessageId && exchange.user.channelMemoryMode && allowsDurableWrites(exchange.user.channelMemoryMode) &&
+              normalizeForGroundingCheck(exchange.user.content).includes(normalizeForGroundingCheck(fact.sourceQuote!)))).map((fact) => ({
               subjectType: fact.subjectType,
               subjectId: fact.subjectType === "member" ? speaker.id : guildId,
               topic: "scene_summary",
               slot: fact.slot,
               statement: fact.statement,
               channelScoped: true,
+              sourceQuote: fact.sourceQuote!,
             })),
             { guildId, currentChannelId: channelId, currentUserId: speaker.id, allowedMemberIds: new Set([speaker.id]) },
           );
           if (candidates.length > 0) {
-            await this.runMemoryMutation(guildId, speaker.id, () => this.memoryEngine.ingest({
-              guildId, channelId, channelMode, assertedByUserId: speaker.id, sourceMessageId: null,
-              source: "consolidation", now: Date.now(),
-              proposals: this.toProposals([], candidates, speaker.id),
-            }));
+            for (const candidate of candidates) {
+              const fact = facts.find((item) => item.slot === candidate.slot && item.statement === candidate.statement);
+              const source = droppedExchanges.find((exchange) => exchange.user.sourceMessageId && exchange.user.channelMemoryMode &&
+                allowsDurableWrites(exchange.user.channelMemoryMode) && fact?.sourceQuote &&
+                normalizeForGroundingCheck(exchange.user.content).includes(normalizeForGroundingCheck(fact.sourceQuote)));
+              if (!source?.user.sourceMessageId || !source.user.channelMemoryMode || (canExecute && !await canExecute())) continue;
+              const sourceMessageId = source.user.sourceMessageId;
+              const sourceQuote = fact?.sourceQuote ?? "";
+              const mode = source.user.channelMemoryMode === "isolated" ? "isolated" : channelMode;
+              await this.runMemoryMutation(guildId, speaker.id, () => this.memoryEngine.ingest({
+                guildId, channelId, channelMode: mode, assertedByUserId: speaker.id, sourceMessageId,
+                source: "consolidation", now: Date.now(), sourceTimestampMs: source.user.createdAt,
+                proposals: this.toProposals([], [candidate], speaker.id).map((proposal) => proposal.action === "upsert" ? {
+                  ...proposal, sourceQuote, supportingSources: [{ subjectId: speaker.id,
+                    messageId: sourceMessageId, timestampMs: source.user.createdAt }],
+                } : proposal),
+              }));
+            }
           }
         }
       } catch (error) {
@@ -357,7 +431,9 @@ export class ChatConversationService {
         await this.personaDriftStore.evolveFrom(
           guildId,
           personalitySourceHash,
-          (currentText) => evolvePersonaDrift(currentText, exchangePairs),
+          (currentText) => evolvePersonaDrift(currentText, droppedExchanges.filter((exchange) =>
+            exchange.user.channelMemoryMode === "shared" && exchange.user.sourceMessageId).map((exchange) =>
+            ({ user: exchange.user.content, assistant: exchange.assistant.content }))),
         );
       } catch (error) {
         this.logger?.warn({ error, guildId, channelId }, "Persona drift evolution failed; drift stays at its previous value");
@@ -490,6 +566,7 @@ export class ChatConversationService {
         .map((action) => ({
           action: action.action, topic: action.topic, slot: action.slot, statement: action.statement,
           subjectUserId: speaker.id, importance: importanceRatingToLevel(action.importance),
+          sourceQuote: action.sourceQuote,
         }));
       return validateMemoryActions(proposedActions, new Set([speaker.id]));
     } catch (error) {
@@ -513,16 +590,18 @@ export class ChatConversationService {
     channelMode: ChannelMemoryMode,
     now: number,
   ): Promise<void> {
+    if (!allowsDurableWrites(input.resolveMemoryMode?.() ?? channelMode) || (input.canExecute && !await input.canExecute())) return;
     const extractedActions = await this.extractPersonalMemories(
       input.message, deliveredAssistantMessage, input.currentUser, input.guildId, input.channelId,
     );
     if (extractedActions.length === 0) return;
-    const proposals = this.toProposals(extractedActions, [], input.currentUser.id);
+    const proposals = this.toProposals(extractedActions, [], input.currentUser.id, input);
     try {
       const result = await this.runMemoryMutation(input.guildId, input.currentUser.id, () => this.memoryEngine.ingest({
-        guildId: input.guildId, channelId: input.channelId, channelMode,
+        guildId: input.guildId, channelId: input.channelId, channelMode: input.resolveMemoryMode?.() ?? channelMode,
         assertedByUserId: input.currentUser.id, sourceMessageId: input.sourceMessageId ?? null,
         source: "live", now, proposals,
+        ...(input.currentEvent?.type === "message" ? { sourceTimestampMs: input.currentEvent.timestampMs } : {}),
       }));
       this.logMemoryIngestIssues(result, input.guildId, input.channelId, input.currentUser.id);
     } catch (error) {
@@ -635,9 +714,115 @@ export class ChatConversationService {
     deliver: (response: ChatResponse) => Promise<string>,
     observer?: ChatResponseObserver,
   ): Promise<ChatResponse> {
+    const key = `${input.guildId}:${input.channelId}`;
+    const lowSubstance = isLowSubstancePing(input.message, input.replyChain.length > 0 ||
+      (input.currentEvent?.type === "message" && input.currentEvent.replyToMessageId !== null), input.images.length > 0);
+    const optional = input.triggerMode !== "direct" || (input.allowSilentDirect === true && lowSubstance);
+    const expiresAt = optional ? Date.now() + 30_000 : null;
+    const limits = input.resolveActivityLimits?.() ?? input.activityLimits ?? balancedChatLimits;
+    const silent: ChatResponse = {
+      text: "", ambientAction: "ignore", reactionEmoji: null, historyReactions: [], userMemoryActions: [],
+      guildKnowledgeCandidates: [], sources: [], usage: null, webSearchUsed: false, generatedImages: [],
+    };
+    if (input.triggerMode === "direct" && lowSubstance && input.sourceMessageId) {
+      const pingKey = `${key}:${input.currentUser.id}`;
+      const previous = this.recentPings.get(pingKey);
+      if (previous && previous.messageId !== input.sourceMessageId && Date.now() - previous.at < 10_000) return Promise.resolve(silent);
+      if (this.recentPings.size >= 1024) this.recentPings.delete(this.recentPings.keys().next().value!);
+      this.recentPings.set(pingKey, { at: Date.now(), messageId: input.sourceMessageId });
+    }
+    return this.scheduler.run(key, optional, limits, async () => {
+      if (input.canExecute && !await input.canExecute()) throw new SocialOutputSuppressed();
+      if (input.channelHistoryEnabled && this.episodeStore && (input.resolveMemoryMode?.() ?? resolveChannelMemoryMode(input.channelMemoryModes ?? {}, input.channelId)) !== "disabled") {
+        const persisted = await this.episodeStore.load(input.guildId, input.channelId, Date.now());
+        persisted.forEach((event) => this.episodes.observe(key, event));
+      }
+      const contextVersion = this.episodes.version(key);
+      const privacyVersion = this.privacyVersions.get(input.guildId) ?? 0;
+      let snapshot = input.channelHistoryEnabled ? this.episodes.snapshot(key, input.currentUser.id,
+        input.currentEvent?.type === "message" ? input.currentEvent.replyToMessageId : null) : [];
+      if (input.refreshContextMessage) snapshot = (await Promise.all(snapshot.map((event) => input.refreshContextMessage!(event))))
+        .filter((event): event is ChannelHistoryMessage => event !== null);
+      const ids = new Set(input.replyChain.map((message) => message.messageId));
+      const history = [...new Map([...input.channelHistory, ...snapshot].filter((message) =>
+        !ids.has(message.messageId) && message.messageId !== input.sourceMessageId &&
+        message.timestampMs > (this.forgottenBefore.get(`${input.guildId}:${message.authorId}`) ?? -Infinity)).map((message) => [message.messageId, message])).values()]
+        .sort((a, b) => a.timestampMs - b.timestampMs).slice(-24);
+      const response = await this.runTurn({ ...input, channelHistory: history,
+        canExecute: async () => (this.privacyVersions.get(input.guildId) ?? 0) === privacyVersion && (!input.canExecute || await input.canExecute()),
+        onModelAttempt: () => this.scheduler.recordModelAttempt() }, async (result) => {
+        if ((this.privacyVersions.get(input.guildId) ?? 0) !== privacyVersion) throw new SocialOutputSuppressed();
+        if (input.shadowMode) return "";
+        if (result.outputOrigin !== "tool" && optional && (Date.now() >= expiresAt! ||
+          ((input.triggerMode === "continuation" || input.triggerMode === "spontaneous") && this.episodes.version(key) !== contextVersion)))
+          throw new SocialOutputSuppressed();
+        if (input.shouldDeliver && !input.shouldDeliver()) throw new SocialOutputSuppressed();
+        const release = this.scheduler.reserveOutput(key, "text", input.resolveActivityLimits?.() ?? limits, optional);
+        if (!release) throw new SocialOutputSuppressed();
+        try { const text = await deliver(result); release(true); return text; }
+        catch (error) { release(false); throw error; }
+      }, observer);
+      response.participationDecision = participationDecision(response, input.sourceMessageId ?? null, expiresAt);
+      if (!input.shadowMode && (!optional || Date.now() < expiresAt!) &&
+          (response.ambientAction === "reply" || (input.triggerMode !== "continuation" && input.triggerMode !== "spontaneous") || this.episodes.version(key) === contextVersion) &&
+          (!input.shouldDeliver || input.shouldDeliver()) && (!input.canExecute || await input.canExecute())) await input.afterDecision?.(response);
+      return response;
+    }, expiresAt ?? Infinity).then((result) => result ?? silent);
+  }
+
+  public observe(guildId: string, channelId: string, event: ChannelHistoryMessage): void {
+    if (event.timestampMs <= (this.forgottenBefore.get(`${guildId}:${event.authorId}`) ?? -Infinity)) return;
+    this.episodes.observe(`${guildId}:${channelId}`, event);
+    if (this.episodeStore) this.trackBackground(this.episodeStore.observe(guildId, channelId, event, Date.now()).catch((error: unknown) =>
+      this.logger?.warn({ error, guildId, channelId }, "Failed to persist short-lived conversation episode")));
+  }
+
+  public async forgetConversation(guildId: string, userId: string): Promise<void> {
+    if (this.forgottenBefore.size >= 1000) this.forgottenBefore.delete(this.forgottenBefore.keys().next().value!);
+    this.forgottenBefore.set(`${guildId}:${userId}`, Date.now());
+    this.privacyVersions.set(guildId, (this.privacyVersions.get(guildId) ?? 0) + 1);
+    this.episodes.forget(guildId, userId);
+    await this.drain();
+    await this.episodeStore?.forgetUser(guildId, userId);
+    if (this.stateStore.clearRecentHistory) await this.stateStore.clearRecentHistory(guildId, userId);
+    else await this.stateStore.purgeUser(guildId, userId);
+  }
+
+  public excludeInteraction(guildId: string, channelId: string, messageId: string): void {
+    this.episodes.excludeInteraction(`${guildId}:${channelId}`, messageId);
+    if (this.episodeStore) this.trackBackground(this.episodeStore.exclude(guildId, channelId, messageId).catch((error: unknown) =>
+      this.logger?.warn({ error, guildId, channelId }, "Failed to exclude a utility interaction from stored context")));
+  }
+
+  public hasRecentConversation(guildId: string, channelId: string, authorId: string, botId: string): boolean {
+    return this.episodes.hasRecentConversation(`${guildId}:${channelId}`, authorId, botId);
+  }
+
+  public bufferOpportunity(guildId: string, channelId: string, job: () => void): void {
+    this.scheduler.bufferOpportunity(`${guildId}:${channelId}`, job);
+  }
+
+  public reserveReaction(guildId: string, channelId: string, limits = balancedChatLimits): ((success: boolean) => void) | null {
+    return this.scheduler.reserveOutput(`${guildId}:${channelId}`, "reaction", limits, true);
+  }
+
+  public stopScheduling(): void {
+    this.scheduler.stop();
+    if (this.episodeCleanupTimer) clearInterval(this.episodeCleanupTimer);
+  }
+
+  private runTurn(
+    input: ChatConversationInput,
+    deliver: (response: ChatResponse) => Promise<string>,
+    observer?: ChatResponseObserver,
+  ): Promise<ChatResponse> {
     const key = `${input.guildId}:${input.currentUser.id}`;
-    const channelMode = resolveChannelMemoryMode(input.channelMemoryModes ?? {}, input.channelId);
+    const channelMode = input.resolveMemoryMode?.() ?? resolveChannelMemoryMode(input.channelMemoryModes ?? {}, input.channelId);
+    const canContinue = async (): Promise<boolean> => (!input.resolveMemoryMode || input.resolveMemoryMode() === channelMode) &&
+      (!input.canExecute || await input.canExecute());
     return this.queue.run(key, async () => {
+      if (!await canContinue()) throw new SocialOutputSuppressed();
+      let functionalToolExecuted = false;
       const now = Date.now();
       // Reserved here, at the very top — before any await in this turn,
       // including deliver() — rather than only once deliveredAssistantMessage
@@ -667,7 +852,7 @@ export class ChatConversationService {
       const extractionInput = new Promise<{ assistantMessage: string } | null>((resolve) => {
         resolveExtractionInput = resolve;
       });
-      if (allowsDurableWrites(channelMode)) {
+      if (allowsDurableWrites(channelMode) && input.triggerMode !== "reaction") {
         this.trackBackground(this.queue.run(key, async () => {
           const ready = await extractionInput;
           if (!ready) return;
@@ -685,7 +870,8 @@ export class ChatConversationService {
       // an empty array — channelId here only scopes the session-exchange
       // transcript; the legacy `.memories` field on this snapshot is unused
       // (private memory reads go through memoryEngine.recall below).
-      const state = await this.stateStore.load(input.guildId, input.currentUser.id, input.channelId, now);
+      const state = input.triggerMode === "reaction" ? { exchanges: [], memories: [] }
+        : await this.stateStore.load(input.guildId, input.currentUser.id, input.channelId, now);
       const recentHistory = this.promptHistorySelector.select(state.exchanges);
       const replyToContent = input.replyChain.at(-1)?.content;
       // Never rejects (failures resolve to null), so lore selection can
@@ -710,8 +896,8 @@ export class ChatConversationService {
           now,
           channelMode,
         }),
-        this.userCustomizationStore?.load(input.guildId, input.currentUser.id) ?? Promise.resolve(null),
-        this.birthdayStore?.getBirthday(input.guildId, input.currentUser.id) ?? Promise.resolve(null),
+        input.triggerMode === "reaction" ? Promise.resolve(null) : this.userCustomizationStore?.load(input.guildId, input.currentUser.id) ?? Promise.resolve(null),
+        input.triggerMode === "reaction" ? Promise.resolve(null) : this.birthdayStore?.getBirthday(input.guildId, input.currentUser.id) ?? Promise.resolve(null),
         replyChainSummaryPromise,
         this.exampleExchangeSelector.select({
           records: input.examplePool,
@@ -731,8 +917,28 @@ export class ChatConversationService {
           replyChainSummary: summary,
         })),
       ]);
-      const selectedMemories = memoryContext.memories.filter((memory) => memory.audience === "private").map(toChatMemoryRecord);
-      const selectedGuildKnowledge = memoryContext.memories.filter((memory) => memory.audience !== "private").map(toGuildKnowledgeRecord);
+      const promptSources = await this.memoryEngine.listPromptSources?.(memoryContext.memories.filter((memory) => memory.subjectType === "member").map((memory) => memory.id)) ?? [];
+      let memoryChars = 0;
+      const budget = memoryContext.maxSerializedChars ?? 8_000;
+      const fitsBudget = (record: ChatMemoryRecord | GuildKnowledgeRecord): boolean => {
+        const size = JSON.stringify({ ...record, embedding: null }).replaceAll("<", "\\u003c").replaceAll(">", "\\u003e").length * 2 + 128;
+        if (memoryChars + size > budget) return false;
+        memoryChars += size; return true;
+      };
+      const selectedMemories = memoryContext.memories.filter((memory) => memory.subjectType === "member")
+        .map((memory): ChatMemoryRecord => {
+          const sources = promptSources.filter((source) => source.memoryId === memory.id).slice(0, 2);
+          return {
+            ...toChatMemoryRecord(memory), audience: memory.audience,
+            observedSubjectNames: observedSubjectNames(memory),
+            assertedByUserId: sources.find((source) => source.assertedByUserId === memory.subjectId)?.assertedByUserId
+              ?? sources.at(-1)?.assertedByUserId ?? memory.ownerUserId ?? "unknown",
+            sourceEvidence: sources.map((source) => ({ messageId: source.sourceMessageId, channelId: source.sourceChannelId,
+              assertedByUserId: source.assertedByUserId, quote: source.sourceQuote?.slice(0, 350) ?? null,
+              timestampMs: source.sourceTimestampMs ?? null, observedAt: source.createdAt })),
+          };
+        }).filter(fitsBudget);
+      const selectedGuildKnowledge = memoryContext.memories.filter((memory) => memory.subjectType !== "member").map(toGuildKnowledgeRecord).filter(fitsBudget);
       // examplePool/loreChunks are the unfiltered candidate lists — only
       // their selector-narrowed results belong in the request, so they're
       // destructured out here purely to keep them off requestInput's spread
@@ -748,23 +954,53 @@ export class ChatConversationService {
       void personalitySourceHash;
       const request: ChatRequest = {
         ...requestInput,
+        webSearchMode: input.shadowMode ? "off" : input.webSearchMode,
+        imageGenerationEnabled: !input.shadowMode && input.imageGenerationEnabled && !(input.triggerMode === "direct" &&
+          isLowSubstancePing(input.message, input.replyChain.length > 0 ||
+            (input.currentEvent?.type === "message" && input.currentEvent.replyToMessageId !== null), input.images.length > 0)),
         recentHistory,
         channelMode,
         memories: selectedMemories,
         replyChainSummary,
         guildKnowledge: selectedGuildKnowledge,
         causalChains: memoryContext.causalChains,
+        ...(memoryContext.aliasCandidates?.length ? { aliasCandidates: memoryContext.aliasCandidates } : {}),
         exampleExchanges: selectedExampleExchanges.map((exchange) => (
           { tags: exchange.tags, user: exchange.user, character: exchange.character }
         )),
         personaLore: selectedPersonaLore.map((chunk) => ({ heading: chunk.heading, text: chunk.text })),
         userCustomization,
         birthday: birthday ? { month: birthday.month, day: birthday.day, birthYear: birthday.birthYear } : null,
-        enabledTools: toolsEnabled && this.toolRegistry
-          ? this.toolRegistry.list().filter((tool) => !disabledToolNames?.has(tool.name))
+        enabledTools: toolsEnabled && this.toolRegistry && !input.shadowMode && !(input.triggerMode === "direct" &&
+          isLowSubstancePing(input.message, input.replyChain.length > 0 ||
+            (input.currentEvent?.type === "message" && input.currentEvent.replyToMessageId !== null), input.images.length > 0))
+          ? this.toolRegistry.list().filter((tool) => !disabledToolNames?.has(tool.name)).map((tool) => ({
+              name: tool.name, description: tool.description, parameters: tool.parameters,
+              execute: async (args, context): ReturnType<ChatTool["execute"]> => {
+                if (!await canContinue()) throw new SocialOutputSuppressed();
+                if (tool.outputKind !== "context") { functionalToolExecuted = true; request.functionalToolExecuted = true; }
+                return tool.execute(args, { ...context, knownSubjectIds: [input.currentUser.id,
+                  ...input.mentionedUsers.map((user) => user.id), ...input.replyChain.map((message) => message.authorId),
+                  ...(memoryContext.aliasCandidates?.filter((alias) => alias.subjectIds.length === 1).flatMap((alias) => alias.subjectIds) ?? [])] });
+              },
+            }))
           : [],
       };
-      const response = await this.provider.reply(request, observer);
+      if (!await canContinue()) throw new SocialOutputSuppressed();
+      const needsParticipationFirst = input.triggerMode !== "direct" && !input.shadowMode &&
+        (Boolean(request.enabledTools?.length) || request.imageGenerationEnabled || request.webSearchMode === "auto");
+      let response: ChatResponse;
+      if (needsParticipationFirst) {
+        response = await this.provider.reply({ ...request, participationOnly: true,
+          capabilityToolNames: request.enabledTools?.map((tool) => tool.name) ?? [],
+          enabledTools: [], imageGenerationEnabled: false, webSearchMode: "off" });
+        if (response.ambientAction === "reply") {
+          if (!await canContinue()) throw new SocialOutputSuppressed();
+          response = await this.provider.reply(request, observer);
+        }
+      } else response = await this.provider.reply(request, observer);
+      if (response.generatedImages.length > 0) functionalToolExecuted = true;
+      if (!await canContinue()) throw new SocialOutputSuppressed();
       // Includes reply-chain authors, not just explicit @mentions — the
       // prompt (see buildChatInstructions' replyChainSection) tells the
       // model to treat the message it's replying to as the subject when the
@@ -782,6 +1018,7 @@ export class ChatConversationService {
       ]);
       const validatedResponse = {
         ...response,
+        outputOrigin: functionalToolExecuted ? "tool" as const : "chat" as const,
         contextUsage: {
           personalityChars: input.personality.length,
           personaLoreChars: JSON.stringify(selectedPersonaLore).length,
@@ -829,6 +1066,24 @@ export class ChatConversationService {
           response.historyReactions, input.sourceMessageId, input.replyChain, input.channelHistory,
         ),
       };
+      if (input.shadowMode) {
+        this.logger?.info({ guildId: input.guildId, channelId: input.channelId, sourceMessageId: input.sourceMessageId,
+          triggerMode: input.triggerMode, action: validatedResponse.ambientAction, reaction: validatedResponse.reactionEmoji !== null,
+          reason: validatedResponse.participationReason?.slice(0, 160) ?? null,
+          contextMessages: input.channelHistory.length + input.replyChain.length }, "Shadow participation decision");
+        return { ...validatedResponse, userMemoryActions: [], guildKnowledgeCandidates: [] };
+      }
+      if (functionalToolExecuted || input.triggerMode === "reaction") {
+        validatedResponse.userMemoryActions = [];
+        validatedResponse.guildKnowledgeCandidates = [];
+      }
+      if (functionalToolExecuted) {
+        validatedResponse.ambientAction = "reply";
+        validatedResponse.reactionEmoji = null;
+        validatedResponse.historyReactions = [];
+        await deliver(validatedResponse);
+        return validatedResponse;
+      }
       // ambientAction "ignore" and reactionEmoji are independent signals:
       // a non-direct turn (ambient or reaction) can reply, react, both, or
       // neither. No reply here (ambientAction !== "reply") means `deliver`
@@ -842,8 +1097,12 @@ export class ChatConversationService {
       // react or no-op.
       const proposals = this.toProposals(
         validatedResponse.userMemoryActions, validatedResponse.guildKnowledgeCandidates, input.currentUser.id,
+        input,
       );
-      if (input.triggerMode !== "direct" && validatedResponse.ambientAction !== "reply") {
+      const mayIgnore = input.triggerMode !== "direct" || (input.allowSilentDirect === true &&
+        isLowSubstancePing(input.message, input.replyChain.length > 0 ||
+          (input.currentEvent?.type === "message" && input.currentEvent.replyToMessageId !== null), input.images.length > 0));
+      if (mayIgnore && validatedResponse.ambientAction !== "reply") {
         if (validatedResponse.reactionEmoji && proposals.length > 0) {
           try {
             const result = await this.runMemoryMutation(input.guildId, input.currentUser.id, () => this.memoryEngine.ingest({
@@ -858,6 +1117,7 @@ export class ChatConversationService {
         }
         return validatedResponse;
       }
+      validatedResponse.ambientAction = "reply";
       // Mutates the already-built response object in place (not a
       // reassignment) — everything below this point (delivery, session-
       // exchange storage, dedicated personal-memory extraction on the
@@ -868,6 +1128,8 @@ export class ChatConversationService {
         validatedResponse.text, request,
       );
       const deliveredAssistantMessage = await deliver(validatedResponse);
+      if (input.shadowMode) return validatedResponse;
+      if (input.triggerMode === "reaction") return validatedResponse;
       // Signals the extraction sub-task (reserved at the very top of this
       // callback) that it can proceed — see that reservation's own comment
       // for why the slot is claimed before this point rather than here.
@@ -885,6 +1147,8 @@ export class ChatConversationService {
           channelId: input.channelId,
           userMessage: input.message.slice(0, chatMemoryLimits.maxUserMessageChars),
           assistantMessage: deliveredAssistantMessage.slice(0, chatMemoryLimits.maxAssistantMessageChars),
+          sourceMessageId: input.sourceMessageId ?? null, channelMemoryMode: channelMode,
+          ...(input.currentEvent?.type === "message" ? { sourceTimestampMs: input.currentEvent.timestampMs } : {}),
           actions: [],
           now,
         });
@@ -894,6 +1158,9 @@ export class ChatConversationService {
       }
       if (proposals.length > 0) {
         try {
+          if (proposals.some((proposal) => proposal.action === "remove")) {
+            await this.memoryMutationCoordinator?.deleteForSubject?.(input.guildId, input.currentUser.id);
+          }
           const result = await this.runMemoryMutation(input.guildId, input.currentUser.id, () => this.memoryEngine.ingest({
             guildId: input.guildId, channelId: input.channelId, channelMode,
             assertedByUserId: input.currentUser.id, sourceMessageId: input.sourceMessageId ?? null,
@@ -917,6 +1184,7 @@ export class ChatConversationService {
         input.guildId, input.channelId, channelMode, droppedExchanges, input.personaDriftEnabled ?? false,
         input.personalitySourceHash ?? hashContent(input.personality),
         { id: input.currentUser.id, displayName: input.currentUser.displayName },
+        input.canExecute,
       ).catch((error: unknown) => {
         this.logger?.warn({ error, guildId: input.guildId, channelId: input.channelId }, "Dropped-exchange consolidation failed unexpectedly");
       }));

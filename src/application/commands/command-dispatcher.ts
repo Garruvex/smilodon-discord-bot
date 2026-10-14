@@ -7,7 +7,8 @@ import { texts } from "../i18n/texts.js";
 import type { CommandRegistry } from "./command-registry.js";
 import { musicErrorText, MusicError } from "../music/music-errors.js";
 import { GuildAssetError } from "../assets/guild-asset-store.js";
-import { CommandResponseVisibility } from "./command.js";
+import { CommandModule, CommandResponseVisibility } from "./command.js";
+import type { MessageOriginStore } from "../chat/message-origin-store.js";
 import { CommandResponses } from "./command-responses.js";
 import type { CommandType } from "./command-metadata.js";
 
@@ -19,6 +20,7 @@ export class CommandDispatcher {
     // The server's configured language. Defaults to English when not wired
     // up (tests) or when there's no server (DMs).
     private readonly languageFor: (guildId: string | null) => Language = () => defaultLanguage,
+    private readonly origins: MessageOriginStore | null = null,
   ) {}
 
   public async dispatch(
@@ -93,6 +95,16 @@ export class CommandDispatcher {
             : text.command.failed,
         error instanceof MusicError ? text.command.musicErrorTitle : text.command.errorTitle,
       );
+    } finally {
+      if (this.origins && interaction.guildId && interaction.channelId && (interaction.replied || interaction.deferred)) {
+        const sent = await interaction.fetchReply().catch(() => null);
+        if (sent && !sent.flags.has(64)) {
+          await this.origins.record({
+            messageId: sent.id, guildId: interaction.guildId, channelId: interaction.channelId,
+            origin: command.module === CommandModule.Campaign ? "game" : "tool", sourceMessageId: null, createdAt: Date.now(),
+          }).catch((error: unknown) => commandLogger.warn({ error }, "Failed to record command output origin"));
+        }
+      }
     }
   }
 }

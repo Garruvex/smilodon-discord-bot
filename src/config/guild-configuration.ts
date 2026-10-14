@@ -1,4 +1,5 @@
 import type { Language } from "../application/i18n/language.js";
+import type { ParticipationSettings } from "../application/chat/participation-policy.js";
 import type { LinkConfiguration, RaidConfiguration, SpamConfiguration } from "../domain/security/detection-policy.js";
 import type { TrapConfiguration } from "../domain/security/trap-policy.js";
 
@@ -77,6 +78,7 @@ export interface GuildChannelConfiguration {
 }
 
 export interface GuildChatConfiguration {
+  participation?: ParticipationSettings;
   personalityFile: string | null;
   personalityAsset: string | null;
   examplesFile: string | null;
@@ -112,6 +114,7 @@ export interface GuildChatConfiguration {
   // src/application/memory/memory-channel-policy.ts. Unlisted channels
   // default to "shared".
   channelMemoryModes: Readonly<Record<string, "shared" | "isolated" | "session_only" | "disabled">>;
+  sharedMemoryEnabled?: boolean;
   // Experimental, off by default — see persona-drift-store.ts. Toggling
   // this off only pauses evolution/injection; it never deletes the guild's
   // accumulated persona-drift.json (see PersonaDriftStore.reset for the

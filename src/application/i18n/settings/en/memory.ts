@@ -8,6 +8,8 @@ const memoryModes = {
 };
 
 export const enMemory: SettingsTextCatalog = {
+  "memory.sharing": { label: "Shared personal memory", description: "Activate after reviewing channel modes. Existing private facts stay private." },
+  "memory.sharing.enabled": { label: "Shared personal memory", description: "Allow new eligible personal facts to be shared within the configured audience." },
   "memory": { title: "Memory", description: "What the bot reads back and remembers." },
   "memory.channel-history": {
     label: "Channel history",

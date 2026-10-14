@@ -462,6 +462,20 @@ configuration flag and no application fallback to the `public` schema.
 
 ## Configuring the AI chatbot
 
+The October 2026 conversation changes add shared channel episodes, source-aware
+memory, and optional selective participation. Read the
+[deployment guide](docs/chat-naturalness-deployment.md) before upgrading:
+shared personal memory is off by default, including upgrades. Review
+private/restricted channel and thread modes before explicitly activating it
+with `/settings-memory sharing enabled:true`. Channel episodes respect the
+separate channel-history opt-in. Continuation and spontaneous participation
+default to off and are controlled through `/settings-participation`.
+
+The [conversation design](docs/chat-naturalness-design.md) documents actual
+adaptations of Inner Thoughts, Generative Agents, LongMemEval, and LoCoMo,
+with primary references and evaluation limits. These are implementation ideas
+and regression scenarios, not claims of reproduced benchmark results.
+
 Mention chat uses any provider exposing an OpenAI-compatible
 `/chat/completions` endpoint, or Google's Gemini API natively. One API key per
 supported vendor is configured once and shared by both the main chat task and

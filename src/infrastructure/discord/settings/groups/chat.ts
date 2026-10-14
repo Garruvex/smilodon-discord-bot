@@ -135,6 +135,7 @@ export const chat = groupWithSections("chat", [
       }),
     }),
 
+
     chatSetting("reaction-replies", {
       enabled: toggle({ read: (p) => p.features.reactionReplies, write: (v) => ({ reactionReplies: v }) }),
       "min-wait": integer({

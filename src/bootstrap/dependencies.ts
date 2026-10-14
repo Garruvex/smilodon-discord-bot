@@ -1,6 +1,11 @@
 import { defaultLanguage } from "../application/i18n/language.js";
 import { catalogIssues } from "../application/i18n/texts.js";
 import type { Logger } from "pino";
+import type { MessageOriginStore } from "../application/chat/message-origin-store.js";
+import type { ConversationEpisodeStore } from "../application/chat/conversation-episode-store.js";
+import { SocialChatEligibility } from "../infrastructure/discord/behaviors/social-chat-eligibility.js";
+import { ConversationObservationBehavior } from "../infrastructure/discord/behaviors/conversation-observation-behavior.js";
+import { ProactiveChatBehavior } from "../infrastructure/discord/behaviors/proactive-chat-behavior.js";
 
 import { AccessPolicyService } from "../application/access/access-policy-service.js";
 import { createCampaignModule, type CampaignModule } from "./campaign-module.js";
@@ -452,6 +457,12 @@ export function registerCommands(
     memoryRepository, embeddingsClient, logger.child({ component: "memory-engine" }), configuration.memory,
     utilityProvider,
     relevanceTraceCollector,
+    async (userId) => {
+      if (userId === discordClient.user?.id) return true;
+      const user = await discordClient.users.fetch(userId);
+      return user.bot;
+    },
+    (guildId) => guildConfigurationProvider.find(guildId)?.chat.sharedMemoryEnabled === true,
   );
   const memberProfileService = new MemberProfileService(memoryEngine, birthdayStore, userCustomizationStore);
   commandRegistry.register(new MemoryCommand(chatStateStore, memberProfileService, memoryEngine, personalMemoryExtractionQueueStore));
@@ -544,6 +555,8 @@ export function createDependencies(
   reminderStore: ReminderStore,
   roleMenuStore: RoleMenuStore,
   messageReactionWatchStore: MessageReactionWatchStore,
+  messageOriginStore: MessageOriginStore,
+  conversationEpisodeStore: ConversationEpisodeStore,
 ): ApplicationDependencies {
   const {
     campaign,
@@ -579,6 +592,7 @@ export function createDependencies(
     // Read per interaction, so a /settings language change applies to the
     // very next command.
     (guildId) => (guildId ? guildConfigurationProvider.find(guildId)?.language : undefined) ?? defaultLanguage,
+    messageOriginStore,
   );
   const componentDispatcher = new ComponentDispatcher(
     componentRegistry,
@@ -586,6 +600,8 @@ export function createDependencies(
     logger.child({ component: "components" }),
   );
   const behaviorRegistry = new BehaviorRegistry();
+  const isGameChannel = (guildId: string, channelIds: readonly string[]): Promise<boolean> => campaign.isGameChannel(guildId, channelIds);
+  const socialEligibility = new SocialChatEligibility(configuration, guildConfigurationProvider, messageOriginStore, isGameChannel);
 
   // Prefers the cheaper utility model when configured, same preference as
   // ChatConversationService's own consolidation call. Null when no chat
@@ -595,7 +611,7 @@ export function createDependencies(
   // check instead of the scheduler probing an optional method at runtime.
   const channelSummaryScheduler = utilityProvider?.summarizeChannelMessages
     ? new ChannelSummaryScheduler(
-        new DiscordChannelHistoryReader(discordClient), guildConfigurationProvider, memoryEngine,
+        new DiscordChannelHistoryReader(discordClient, socialEligibility), guildConfigurationProvider, memoryEngine,
         channelSummaryCheckpointStore, personalMemoryExtractionQueueStore,
         {
           summarizeChannelMessages: utilityProvider.summarizeChannelMessages.bind(utilityProvider),
@@ -654,6 +670,7 @@ export function createDependencies(
         utilityProvider,
         personaDriftStore,
         personalMemoryExtractionQueueStore,
+        conversationEpisodeStore,
       )
     : null;
   const personaSource = new FilePersonaSource(
@@ -662,12 +679,20 @@ export function createDependencies(
     personaDriftStore,
     embeddingsClient,
   );
+  if (chatConversationService) for (const command of commandRegistry.getAll()) {
+    if (command instanceof MemoryCommand) command.bindConversationForget((guildId, userId) => chatConversationService.forgetConversation(guildId, userId));
+  }
   const reactionReplyScheduler = chatConversationService
     ? new ReactionReplyScheduler(
         discordClient, messageReactionWatchStore, guildConfigurationProvider, chatConversationService,
         personaSource, logger.child({ component: "reaction-reply-scheduler" }), configuration,
+        isGameChannel,
+        socialEligibility, messageOriginStore,
       )
     : null;
+  if (chatConversationService) behaviorRegistry.register(new ConversationObservationBehavior(
+    chatConversationService, guildConfigurationProvider, socialEligibility, logger.child({ component: "chat-observation" }),
+  ));
   behaviorRegistry.register(new MentionChatBehavior(
     () => discordClient.user?.id ?? null,
     configuration,
@@ -676,9 +701,10 @@ export function createDependencies(
     personaSource,
     logger.child({ component: "chat" }),
     messageReactionWatchStore,
-    campaign.isGameChannel,
+    isGameChannel,
+    socialEligibility, messageOriginStore,
   ));
-  behaviorRegistry.register(new AmbientChatBehavior(
+  const ambientChatBehavior = new AmbientChatBehavior(
     () => discordClient.user?.id ?? null,
     configuration,
     guildConfigurationProvider,
@@ -686,7 +712,13 @@ export function createDependencies(
     personaSource,
     logger.child({ component: "ambient-chat" }),
     messageReactionWatchStore,
-    campaign.isGameChannel,
+    isGameChannel,
+    socialEligibility, messageOriginStore,
+  );
+  behaviorRegistry.register(ambientChatBehavior);
+  if (chatConversationService) behaviorRegistry.register(new ProactiveChatBehavior(
+    () => discordClient.user?.id ?? null, guildConfigurationProvider, chatConversationService,
+    socialEligibility, ambientChatBehavior, logger.child({ component: "proactive-chat" }),
   ));
   behaviorRegistry.register(new ReactionArmBehavior(
     () => discordClient.user?.id ?? null,
@@ -706,7 +738,9 @@ export function createDependencies(
   behaviorRegistry.register(new LinkFixBehavior(
     guildConfigurationProvider,
     logger.child({ component: "link-fix" }),
-    campaign.isGameChannel,
+    isGameChannel,
+    messageOriginStore,
+    socialEligibility, chatConversationService,
   ));
 
   return {
