@@ -1,6 +1,6 @@
 import { defaultSecurity } from "../../src/config/guild-configuration-schema.js";
-import type { GuildMember, Message } from "discord.js";
-import { describe, expect, it, vi } from "vitest";
+import { Collection, type GuildMember, type Message } from "discord.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AmbientChatBehavior } from "../../src/infrastructure/discord/behaviors/ambient-chat-behavior.js";
 import { defaultMemoryEngineLimits } from "../../src/application/memory/memory-engine.js";
@@ -8,6 +8,11 @@ import type { ApplicationConfiguration } from "../../src/config/configuration.js
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
 import type { GuildConfigurationProvider } from "../../src/config/guild-configuration-provider.js";
 import type { ChatConversationService } from "../../src/application/chat/chat-conversation-service.js";
+import type { ChatResponse } from "../../src/application/chat/chat-provider.js";
+import { ChatTurnSupport } from "../../src/infrastructure/discord/behaviors/chat-turn-support.js";
+import { defaultParticipation } from "../../src/application/chat/participation-policy.js";
+
+afterEach(() => vi.restoreAllMocks());
 
 const botId = "111111111111111111";
 const ownerId = "678901234567890123";
@@ -165,5 +170,28 @@ describe("AmbientChatBehavior.matches", () => {
   it("stays out of a D&D game's channel even when chat is allowed there", async () => {
     await expect(behavior(profile(), {} as ChatConversationService, () => Promise.resolve(true)).matches(message())).resolves.toBe(false);
     await expect(behavior(profile(), {} as ChatConversationService, () => Promise.resolve(false)).matches(message())).resolves.toBe(true);
+  });
+});
+
+describe("AmbientChatBehavior outcome logs", () => {
+  it.each([true, false])("does not report an unsent reply as delivered (shadow=%s)", async (shadowMode) => {
+    const configured = profile();
+    configured.chat.participation = { ...defaultParticipation, shadowMode };
+    const info = vi.fn(); const error = vi.fn();
+    const run = vi.fn((): Promise<ChatResponse> => Promise.resolve({ text: "proposed reply", ambientAction: "reply", reactionEmoji: null,
+      historyReactions: [], generatedImages: [], sources: [], userMemoryActions: [], guildKnowledgeCandidates: [], usage: null, webSearchUsed: false }));
+    const subject = new AmbientChatBehavior(() => botId, configuration(), provider(configured), { run } as unknown as ChatConversationService,
+      { resolve: (): Promise<{ personality: string; loreChunks: []; examplePool: []; personaDrift: null; personalitySourceHash: string }> => Promise.resolve({ personality: "Test persona", loreChunks: [], examplePool: [], personaDrift: null, personalitySourceHash: "test-hash" }) },
+      { warn: vi.fn(), error, info, debug: vi.fn() } as never);
+    vi.spyOn(ChatTurnSupport.prototype, "isEligible").mockResolvedValue(true);
+    vi.spyOn(ChatTurnSupport.prototype, "resolveReplyChain").mockResolvedValue({ kept: [], overflow: [] });
+    const source = { ...message(), id: "source", createdTimestamp: 1000, member: null, attachments: new Collection(),
+      author: { id: "human", username: "Human", displayName: "Human", bot: false },
+      mentions: { users: new Collection() } } as unknown as Message;
+    await subject.execute(source);
+    expect(error).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalled();
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({ triggerMode: "ambient", shadowMode, textDelivered: false, ambientAction: "reply" }),
+      shadowMode ? "Ambient chat: previewed" : "Ambient chat: reply suppressed");
   });
 });

@@ -162,6 +162,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           .slice(0, 10) ?? [],
       }));
 
+    let textDelivered = false;
     try {
       const { images } = await this.turnSupport.loadImages(imageAttachments);
       const musicActor = this.turnSupport.resolveMusicActor(message, profile);
@@ -259,6 +260,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           emptyFallbackContent,
           maxImageAggregateBytes: this.configuration.chatDelivery.maxGeneratedImageAggregateBytes,
         });
+        textDelivered = true;
         const botId = this.clientUserId();
         if (deliveredResponse.outputOrigin !== "tool" && botId && profile.chat.channelMemoryModes[message.channelId] !== "disabled")
           this.conversation!.observe(message.guildId, message.channelId, {
@@ -280,8 +282,10 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         return deliveredText;
       });
 
-      const outcome = response.ambientAction === "reply"
-        ? "replied"
+      const outcome = participation.shadowMode
+        ? "previewed"
+        : response.ambientAction === "reply"
+        ? textDelivered ? "replied" : "reply suppressed"
         : response.reactionEmoji
           ? "reacted only"
           : "ignored";
@@ -290,6 +294,9 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         channelId: message.channelId,
         messageId: message.id,
         userId: message.author.id,
+        triggerMode: trigger,
+        shadowMode: participation.shadowMode,
+        textDelivered,
         ambientAction: response.ambientAction,
         reactionEmoji: response.reactionEmoji,
         historyReactionCount: response.historyReactions.length,
