@@ -122,7 +122,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
       WHERE a.guild_id = ${input.guildId} AND a.alias IN (${sql.join(tokens.map((token) => sql`${token}`), sql`, `)})
         AND m.guild_id = ${input.guildId} AND m.subject_type = 'member' AND m.status = 'active'
         AND m.module_id IS NULL
-        AND (m.expires_at IS NULL OR m.expires_at > ${new Date(input.now)})
+        AND (m.expires_at IS NULL OR m.expires_at > ${sql.param(new Date(input.now), schema.memories.expiresAt)})
         AND (m.isolation_channel_id IS NULL OR m.isolation_channel_id = ${input.channelId})
         AND (m.audience = 'guild' OR (m.audience = 'channel' AND m.channel_id = ${input.channelId})
           OR (m.audience = 'private' AND m.owner_user_id = ${input.userId}))
