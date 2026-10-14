@@ -6,7 +6,7 @@ import type { ChannelHistoryMessage } from "../../application/chat/chat-provider
 export const memoryObservedAliases = pgTable("memory_observed_aliases", {
   guildId: text("guild_id").notNull(),
   alias: text("alias").notNull(),
-  memoryId: text("memory_id").notNull().references(() => memories.id, { onDelete: "cascade" }),
+  memoryId: uuid("memory_id").notNull().references(() => memories.id, { onDelete: "cascade" }),
 }, (table) => [primaryKey({ columns: [table.memoryId, table.alias] }), index("memory_observed_aliases_lookup").on(table.guildId, table.alias)]);
 
 export const conversationEpisodes = pgTable("conversation_episodes", {

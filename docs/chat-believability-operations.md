@@ -6,6 +6,8 @@ The implementation plan is [chat-believability-plan-2026-10-14.md](chat-believab
 
 Apply the normal database migrations before starting the new build. SQLite migration 0013 and PostgreSQL migration 0022 add nullable memory module ownership, separate memory identities and conversation-window retention. Ordinary facts remain ordinary facts. Use the normal database backup and deployment procedure.
 
+If an older build fails during migration 0021 with `memory_id` text versus `memories.id` UUID, use the corrected build and rebuild/restart the bot containers. The correction makes alias references UUID in the original pending migration, schema and snapshot. PostgreSQL rolls back the failed migration; a retry keeps existing facts. No database reset or manual removal of migration history is needed. A plain-PostgreSQL recovery test reproduces the failed transaction and checks successful retry, preserved data and cascade deletion; set `POSTGRES_MIGRATION_TEST_DATABASE_URL` to a disposable test database to run it without pgvector.
+
 The existing utility-provider chain performs reflections, canon extraction, fictional sketches and voice repair. An optional OpenAI-compatible structured social provider handles addressing, motivation, topic boundaries, reply targets and candidate speech in one request:
 
 ```dotenv

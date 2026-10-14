@@ -2184,7 +2184,7 @@
         },
         "memory_id": {
           "name": "memory_id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         }
