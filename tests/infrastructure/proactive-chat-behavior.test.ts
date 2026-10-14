@@ -12,12 +12,13 @@ function message(id: string, content: string): Message {
   return { id, content, guildId, channelId, createdTimestamp: Date.now(), author: { id: "human", bot: false, displayName: "Human" },
     inGuild: () => true, mentions: { users: { has: () => false } } } as unknown as Message;
 }
-function setup(): { behavior: ProactiveChatBehavior; profiles: ReturnType<typeof memoryProvider>; opportunities: (() => void)[]; execute: ReturnType<typeof vi.fn> } {
+function setup(recent = false, implicitlyAddressed = false): { behavior: ProactiveChatBehavior; profiles: ReturnType<typeof memoryProvider>; opportunities: (() => void)[]; execute: ReturnType<typeof vi.fn> } {
   const document = freshDocument(); document.features.channelHistory = true; document.features.chatbot = true;
   document.chat.participation.spontaneousEnabled = true;
+  document.chat.participation.continuationEnabled = true;
   document.chat.participation.spontaneousChannelIds = [channelId];
   const profiles = memoryProvider(document); const opportunities: (() => void)[] = [];
-  const conversation = { hasRecentConversation: () => false, isImplicitlyAddressed: () => false,
+  const conversation = { hasRecentConversation: () => recent, isImplicitlyAddressed: () => implicitlyAddressed,
     bufferOpportunity: (_guild: string, _channel: string, work: () => void) => { opportunities.push(work); } } as unknown as ChatConversationService;
   const execute = vi.fn(() => Promise.resolve());
   const behavior = new ProactiveChatBehavior(() => "bot", profiles, conversation,
@@ -26,6 +27,10 @@ function setup(): { behavior: ProactiveChatBehavior; profiles: ReturnType<typeof
   return { behavior, profiles, opportunities, execute };
 }
 describe("optional conversation bursts", () => {
+  it("does not admit every phrase just because the bot recently replied to its author", async () => {
+    expect(await setup(true, false).behavior.matches(message("unrelated", "嗯"))).toBe(false);
+    expect(await setup(true, true).behavior.matches(message("followup", "嗯"))).toBe(true);
+  });
   it("passes all fragments to one opportunity while keeping the last message as trigger", async () => {
     const { behavior, opportunities, execute } = setup();
     const first = message("first", "did anyone finish the event?"); const last = message("last", "lol");

@@ -8,7 +8,7 @@ import { resolveChannelMemoryMode } from "../memory/memory-channel-policy.js";
 import { characterSettings, characterInactiveReason, type CharacterModuleId, type CharacterCapabilities } from "./character-settings.js";
 import { CharacterModuleRegistry, type CharacterTurn } from "./character-module-registry.js";
 import { CharacterMemory } from "./character-memory.js";
-import { CharacterDecisionService, localAddressing } from "./character-decision.js";
+import { allowsOptionalParticipation, CharacterDecisionService, localAddressing } from "./character-decision.js";
 import { createCharacterModules } from "./character-modules/index.js";
 import { hash, personaFingerprint, serious } from "./character-modules/shared.js";
 import { resolveParticipation } from "./participation-policy.js";
@@ -81,9 +81,9 @@ export class CharacterRuntime {
   public couldBeAddressed(guildId: string, channelId: string, event: ChannelHistoryMessage, history: readonly ChannelHistoryMessage[], botId: string): boolean {
     const profile = this.profiles.find(guildId); if (!profile) return false;
     const settings = characterSettings(profile);
-    if (!this.registry.has("addressing") || characterInactiveReason(settings, "addressing", channelId, this.capabilities(profile, channelId))) return false;
-    const addressing = localAddressing(history, event, botId, settings.modules.addressing.includeOtherParticipants);
-    return addressing === "bot" || addressing === "continuing" || addressing === "unclear" && history.some((line) => line.authorId === botId && event.timestampMs - line.timestampMs <= 120_000);
+    const live = this.registry.has("addressing") && !characterInactiveReason(settings, "addressing", channelId, this.capabilities(profile, channelId)) && !settings.modules.addressing.shadow;
+    const addressing = localAddressing(history, event, botId, live && settings.modules.addressing.includeOtherParticipants);
+    return addressing === "bot" || addressing === "continuing";
   }
   public selectContext(guildId: string, channelId: string, events: readonly ChannelHistoryMessage[], now = this.now()): ChannelHistoryMessage[] {
     const profile = this.profiles.find(guildId); if (!profile) return [...events];
@@ -205,7 +205,7 @@ export class CharacterRuntime {
     if (!request.characterEvaluation && (!settings.context.enabled || !capabilities.context)) this.summaries.delete(key);
     const optional = request.triggerMode === "continuation" || request.triggerMode === "spontaneous";
     if (optional && !capabilities.context) allowed = false;
-    if (!request.characterEvaluation && capabilities.context && (settings.context.enabled || enabled("addressing") || enabled("thoughts"))) {
+    if (!request.characterEvaluation && capabilities.context && (optional || settings.context.enabled || enabled("addressing") || enabled("thoughts"))) {
       const decisionEvents = events.slice(-settings.context.decisionMessages);
       const fixedTarget = optional || request.triggerMode === "reaction" ? null : request.currentEvent?.type === "message" ? request.currentEvent.messageId : null;
       const shouldDecide = optional || request.triggerMode === "reaction" || settings.context.enabled && !settings.context.shadow;
@@ -213,7 +213,16 @@ export class CharacterRuntime {
         fixedTarget, gapMs: settings.context.segmentGapMinutes * 60_000,
         speakingShare: decisionEvents.length ? decisionEvents.filter((event) => event.authorId === request.botUserId).length / decisionEvents.length : 0,
         thoughts: optional && enabled("thoughts") }) : null;
-      const local = burst.at(-1) ? localAddressing(decisionEvents, burst.at(-1)!, request.botUserId ?? "bot", settings.modules.addressing.includeOtherParticipants) : "unclear";
+      const local = burst.at(-1) ? localAddressing([...decisionEvents, ...request.replyChain], burst.at(-1)!, request.botUserId ?? "bot",
+        enabled("addressing") && !settings.modules.addressing.shadow && settings.modules.addressing.includeOtherParticipants) : "unclear";
+      if (optional) {
+        const current = burst.at(-1);
+        const replyAuthor = current?.replyToAuthorId ?? [...events, ...request.replyChain, ...burst].find((event) => event.messageId === current?.replyToMessageId)?.authorId;
+        const explicitlyElsewhere = !!replyAuthor && replyAuthor !== request.botUserId ||
+          !!current?.replyToMessageId && !replyAuthor ||
+          !!current && [...current.content.matchAll(/<@!?(\d+)>/gu)].some((match) => match[1] !== request.botUserId);
+        allowed = allowed && allowsOptionalParticipation(request.triggerMode as "continuation" | "spontaneous", local, decision, explicitlyElsewhere);
+      }
       if (decision) {
         await this.evaluationStore?.record(request.guildId, "decision", { sourceMessageId: burst.at(-1)?.messageId ?? null,
           addressing: decision.addressing, motivation: decision.motivation, boundary: decision.boundary, target: decision.target,

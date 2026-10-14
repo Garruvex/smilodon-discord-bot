@@ -1,0 +1,49 @@
+import { describe, expect, it } from "vitest";
+import { allowsOptionalParticipation, localAddressing, type CharacterDecision } from "../../src/application/chat/character-decision.js";
+import type { ChannelHistoryMessage } from "../../src/application/chat/chat-provider.js";
+
+function event(messageId: string, authorId: string, timestampMs: number, extra: Partial<ChannelHistoryMessage> = {}): ChannelHistoryMessage {
+  return { messageId, authorId, authorDisplayName: authorId, timestampMs, content: "你覺得呢？", imageCount: 0, ...extra };
+}
+const decision: CharacterDecision = { addressing: "continuing", confidence: 0.9, motivation: 0.8, boundary: "earlier", target: "current", reaction: null, thoughts: [] };
+
+describe("implicit addressees", () => {
+  const bot = event("bot-message", "bot", 2000, { replyToAuthorId: "alice" });
+  const current = event("current", "alice", 4000);
+  it("continues an uninterrupted exchange without treating a question as explicit addressing", () => {
+    expect(localAddressing([bot, current], current, "bot", false)).toBe("continuing");
+  });
+  it("abstains after another person enters the conversation", () => {
+    expect(localAddressing([bot, event("bob", "bob", 3000), current], current, "bot", true)).toBe("unclear");
+  });
+  it("does not count the current or future message as prior participation", () => {
+    expect(localAddressing([event("bot", "bot", 2000), current, event("future", "alice", 5000)], current, "bot", true)).toBe("unclear");
+    expect(localAddressing([event("future", "bot", 5000, { replyToAuthorId: "alice" })], current, "bot", true)).toBe("others");
+  });
+  it("respects replies and mentions to another person even during a bot exchange", () => {
+    expect(localAddressing([bot, event("bob", "bob", 1000)], { ...current, replyToMessageId: "bob" }, "bot", true)).toBe("others");
+    expect(localAddressing([bot], { ...current, content: "<@123456789012345678> 你覺得呢？" }, "bot", true)).toBe("others");
+    expect(localAddressing([bot], { ...current, replyToMessageId: "unknown" }, "bot", true)).toBe("unclear");
+  });
+  it("recognizes an explicit reply to the bot even after the implicit window expires", () => {
+    expect(localAddressing([bot], { ...current, timestampMs: 200000, replyToMessageId: bot.messageId }, "bot", false)).toBe("bot");
+  });
+});
+
+describe("optional participation admission", () => {
+  it("cannot revive an ambiguous or redirected continuation with a confident model decision", () => {
+    expect(allowsOptionalParticipation("continuation", "unclear", decision, false)).toBe(false);
+    expect(allowsOptionalParticipation("continuation", "continuing", decision, true)).toBe(false);
+    expect(allowsOptionalParticipation("continuation", "continuing", { ...decision, addressing: "others" }, false)).toBe(false);
+  });
+  it("requires confidence and a strong contribution for spontaneous speech", () => {
+    expect(allowsOptionalParticipation("spontaneous", "others", null, false)).toBe(false);
+    expect(allowsOptionalParticipation("spontaneous", "others", { ...decision, motivation: 0.5 }, false)).toBe(false);
+    expect(allowsOptionalParticipation("spontaneous", "others", { ...decision, confidence: 0.6 }, false)).toBe(false);
+    expect(allowsOptionalParticipation("spontaneous", "others", { ...decision, addressing: "unclear" }, false)).toBe(false);
+    expect(allowsOptionalParticipation("spontaneous", "others", { ...decision, addressing: "others" }, false)).toBe(true);
+  });
+  it("keeps clear followups available if the decision provider fails", () => {
+    expect(allowsOptionalParticipation("continuation", "continuing", null, false)).toBe(true);
+  });
+});

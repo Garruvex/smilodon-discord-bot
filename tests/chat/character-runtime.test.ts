@@ -308,6 +308,22 @@ describe("callback delivery lifecycle", () => {
   });
 });
 describe("decision windows and continuation timing", () => {
+  it("enforces addressing even when character modules are disabled", async () => {
+    const { runtime, provider } = setup(() => 4000);
+    vi.mocked(provider.generateCharacterData!).mockResolvedValue({ addressing: "bot", motivation: 0.9, boundary: "earlier", target: "current", confidence: 0.9, reaction: null, thoughts: [] });
+    const bot = { messageId: "bot-message", timestampMs: 2000, authorId: "bot", authorDisplayName: "Bot", content: "hello", imageCount: 0, replyToAuthorId: actorUserId };
+    const current = { messageId: "current", timestampMs: 4000, authorId: actorUserId, authorDisplayName: "Alice", content: "你覺得呢？", imageCount: 0 };
+    const input = { ...request(), triggerMode: "continuation" as const, currentBurst: [current], channelHistory: [bot] };
+    expect((await runtime.prepare(input))?.allowed).toBe(true);
+    expect((await runtime.prepare({ ...input, channelHistory: [bot, { ...current, messageId: "other", timestampMs: 3000, authorId: "other" }] }))?.allowed).toBe(false);
+    expect((await runtime.prepare({ ...input, currentBurst: [{ ...current, replyToAuthorId: "other", replyToMessageId: "other" }] }))?.allowed).toBe(false);
+  });
+  it("does not turn an ordinary spontaneous acknowledgment into speech", async () => {
+    const { runtime, provider } = setup(() => 4000);
+    vi.mocked(provider.generateCharacterData!).mockResolvedValue({ addressing: "others", motivation: 0.5, boundary: "earlier", target: "current", confidence: 0.9, reaction: null, thoughts: [] });
+    const input = { ...request(), triggerMode: "spontaneous" as const, currentBurst: [{ messageId: "current", timestampMs: 4000, authorId: actorUserId, authorDisplayName: "Alice", content: "just finished dinner", imageCount: 0 }] };
+    expect((await runtime.prepare(input))?.allowed).toBe(false);
+  });
   it("pins direct targets and falls back to latest on a fabricated target", async () => {
     const provider = { generateCharacterData: vi.fn(() => Promise.resolve({ addressing: "bot", motivation: 0.8, boundary: "bad", target: "fabricated", confidence: 0.9, reaction: null, thoughts: [] })) };
     const decision = new CharacterDecisionService(provider); const input = { personality: "test", events: [], burst: [{ messageId: "latest", timestampMs: 1000, authorId: "human", authorDisplayName: "human", content: "hello", imageCount: 0 }], botId: "bot", fixedTarget: null, gapMs: 600000, speakingShare: 0, thoughts: false };

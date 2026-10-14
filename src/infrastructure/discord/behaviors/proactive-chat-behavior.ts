@@ -25,10 +25,9 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
         profile.chat.channelMemoryModes[message.channelId] === "disabled" || !message.inGuild() || message.author.bot || message.mentions.users.has(botId)) return null;
     if (containsBotName(message.content, profile.displayName)) return null;
     const policy = resolveParticipation(profile.chat.participation, message.channelId);
-    if (policy.continuationEnabled && (this.conversation.hasRecentConversation(message.guildId, message.channelId, message.author.id, botId) ||
-      this.conversation.isImplicitlyAddressed(message.guildId, message.channelId, { messageId: message.id, timestampMs: message.createdTimestamp,
+    if (policy.continuationEnabled && this.conversation.isImplicitlyAddressed(message.guildId, message.channelId, { messageId: message.id, timestampMs: message.createdTimestamp,
         authorId: message.author.id, authorDisplayName: message.author.displayName, content: message.content, imageCount: 0,
-        replyToMessageId: message.reference?.messageId ?? null }, botId))) return "continuation";
+        replyToMessageId: message.reference?.messageId ?? null }, botId)) return "continuation";
     return policy.spontaneousEnabled && (message.content.trim().length >= 12 || this.bursts.has(`${message.guildId}:${message.channelId}`)) ? "spontaneous" : null;
   }
   public async matches(message: Message): Promise<boolean> {
