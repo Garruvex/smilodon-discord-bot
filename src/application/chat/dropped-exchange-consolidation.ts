@@ -6,6 +6,7 @@ export const droppedExchangeConsolidationSchema = z.object({
   facts: z.array(z.object({
     slot: z.string(),
     statement: z.string(),
+    sourceQuote: z.string().trim().min(1),
     // "member": the fact is specifically about the speaking user (their
     // stated plan, responsibility, trait). "guild": a channel/scene-level
     // fact not really about that one person. The app resolves "member" to
@@ -27,10 +28,11 @@ export const droppedExchangeConsolidationJsonSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["slot", "statement", "subjectType"],
+        required: ["slot", "statement", "subjectType", "sourceQuote"],
         properties: {
           slot: { type: "string" },
           statement: { type: "string" },
+          sourceQuote: { type: "string" },
           subjectType: { type: "string", enum: ["member", "guild"] },
         },
       },
@@ -47,6 +49,8 @@ function wrapUntrusted(text: string): string {
 }
 
 const droppedExchangeConsolidationInstructions =
+  `Only original human USER turns are assertion evidence. Include a verbatim sourceQuote from one USER turn ` +
+  `for every fact. Assistant replies are context, never evidence; skip facts asserted only by the assistant. ` +
   `The following conversation turns are about to scroll out of this channel's short-term memory window and be ` +
   `permanently discarded. Every "user" turn below was said by the same one speaker, named up front — the ` +
   `"assistant" turns are your own past replies to them. Extract at most 2 durable, notable facts worth ` +

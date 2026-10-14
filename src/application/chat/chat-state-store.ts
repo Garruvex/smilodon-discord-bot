@@ -1,8 +1,9 @@
 import type { ChatMemoryRecord, ProposedMemoryAction } from "./chat-provider.js";
+import type { ChannelMemoryMode } from "../memory/memory-channel-policy.js";
 import { chatMemoryLimits } from "./chat-memory-policy.js";
 
 export interface ChatSessionExchange {
-  user: { content: string; createdAt: number };
+  user: { content: string; createdAt: number; sourceMessageId?: string | null | undefined; channelMemoryMode?: ChannelMemoryMode | undefined };
   assistant: { content: string; createdAt: number };
 }
 
@@ -30,6 +31,9 @@ export interface UserChatStateStore {
   // so the caller can consolidate them into durable knowledge before they're
   // lost, rather than the store silently discarding them.
   commitSuccessfulExchange(input: {
+    sourceMessageId?: string | null;
+    sourceTimestampMs?: number;
+    channelMemoryMode?: ChannelMemoryMode;
     guildId: string;
     userId: string;
     channelId: string;
@@ -61,6 +65,7 @@ export interface UserChatStateStore {
   // chat_memories (superseded by the unified `memories` table, but still
   // written/read by this store — see class-level comments).
   purgeUser(guildId: string, userId: string): Promise<void>;
+  clearRecentHistory?(guildId: string, userId: string): Promise<void>;
 }
 
 // Transitional alias for adapters compiled against the first memory iteration.

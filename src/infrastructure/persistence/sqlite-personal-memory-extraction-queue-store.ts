@@ -13,6 +13,7 @@ function toJob(row: typeof schema.personalMemoryExtractionJobs.$inferSelect): Pe
   return {
     guildId: row.guildId, channelId: row.channelId, batchId: row.batchId, subjectId: row.subjectId,
     displayName: row.displayName, content: row.content, attempts: row.attempts,
+    sourceMessages: row.sourceMessages,
     nextAttemptAt: row.nextAttemptAt.getTime(), lastError: row.lastError,
     status: row.status as PersonalMemoryExtractionJob["status"],
   };
@@ -35,6 +36,7 @@ export class SqlitePersonalMemoryExtractionQueueStore implements PersonalMemoryE
     this.database.insert(schema.personalMemoryExtractionJobs).values(jobs.map((job) => ({
       guildId: job.guildId, channelId: job.channelId, batchId: job.batchId, subjectId: job.subjectId,
       displayName: job.displayName, content: job.content,
+      sourceMessages: job.sourceMessages ?? [],
       attempts: 0, nextAttemptAt: nowDate, lastError: null, status: "pending" as const,
       createdAt: nowDate, updatedAt: nowDate,
     }))).onConflictDoNothing().run();
@@ -60,7 +62,7 @@ export class SqlitePersonalMemoryExtractionQueueStore implements PersonalMemoryE
 
   public markSucceeded(guildId: string, channelId: string, batchId: string, subjectId: string): Promise<void> {
     this.database.update(schema.personalMemoryExtractionJobs).set({
-      status: "succeeded", content: "", lastError: null, updatedAt: new Date(),
+      status: "succeeded", content: "", sourceMessages: [], lastError: null, updatedAt: new Date(),
     }).where(and(
       eq(schema.personalMemoryExtractionJobs.guildId, guildId), eq(schema.personalMemoryExtractionJobs.channelId, channelId),
       eq(schema.personalMemoryExtractionJobs.batchId, batchId), eq(schema.personalMemoryExtractionJobs.subjectId, subjectId),
@@ -83,7 +85,7 @@ export class SqlitePersonalMemoryExtractionQueueStore implements PersonalMemoryE
 
   public markDeadLettered(guildId: string, channelId: string, batchId: string, subjectId: string, error: string): Promise<void> {
     this.database.update(schema.personalMemoryExtractionJobs).set({
-      status: "dead_letter", content: "", lastError: error, updatedAt: new Date(),
+      status: "dead_letter", content: "", sourceMessages: [], lastError: error, updatedAt: new Date(),
     }).where(and(
       eq(schema.personalMemoryExtractionJobs.guildId, guildId), eq(schema.personalMemoryExtractionJobs.channelId, channelId),
       eq(schema.personalMemoryExtractionJobs.batchId, batchId), eq(schema.personalMemoryExtractionJobs.subjectId, subjectId),

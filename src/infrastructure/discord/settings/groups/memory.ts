@@ -12,6 +12,9 @@ const summarizationUnavailable = ({ deps, text, path }: NodeContext): string | n
   deps.channelSummaryProviderAvailable ? null : text.message(path, "unavailable");
 
 export const memory = group("memory", [
+  chatSetting("sharing", {
+    enabled: toggle({ read: (p) => p.chat.sharedMemoryEnabled ?? false, write: (v) => ({ chatbotSharedMemoryEnabled: v }) }),
+  }),
   chatSetting("channel-history", {
     enabled: toggle({ read: (p) => p.features.channelHistory, write: (v) => ({ channelHistory: v }) }),
     limit: integer({

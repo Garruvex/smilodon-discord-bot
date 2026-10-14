@@ -100,6 +100,27 @@ const guildChatSchema = z.preprocess((value) => {
   const { webSearchEnabled, ...rest } = chat;
   return { ...rest, webSearchMode: webSearchEnabled ? "auto" : "off" };
 }, z.object({
+  participation: z.object({
+    continuationEnabled: z.boolean().default(false),
+    spontaneousEnabled: z.boolean().default(false),
+    spontaneousChannelIds: snowflakeList,
+    barePingMode: z.enum(["acknowledge", "personality"]).default("acknowledge"),
+    activity: z.enum(["quiet", "balanced", "lively"]).default("balanced"),
+    shadowMode: z.boolean().default(false),
+    channelOverrides: z.record(snowflake, z.object({
+      continuationEnabled: z.boolean().optional(), spontaneousEnabled: z.boolean().optional(),
+      reactionsEnabled: z.boolean().optional(), activity: z.enum(["quiet", "balanced", "lively"]).optional(),
+    })).default({}),
+    advanced: z.object({
+      concurrency: z.number().int().min(1).max(16).optional(),
+      optionalTurnsPer10Minutes: z.number().int().min(0).max(1000).optional(),
+      evaluationCooldownSeconds: z.number().int().min(20).max(600).optional(),
+      textCooldownSeconds: z.number().int().min(60).max(3600).optional(),
+      reactionCooldownSeconds: z.number().int().min(20).max(600).optional(),
+      textPer10Minutes: z.number().int().min(0).max(3).optional(),
+      reactionsPer10Minutes: z.number().int().min(0).max(5).optional(),
+    }).default({}),
+  }).default({}),
   personalityFile: z.string().trim().min(1).nullable().default(null),
   personalityAsset: z.string().regex(/^guild-assets\/\d{17,20}\/personality\.md$/).nullable().default(null),
   examplesFile: z.string().trim().min(1).nullable().default(null),
@@ -128,6 +149,7 @@ const guildChatSchema = z.preprocess((value) => {
   // Per-channel memory isolation mode (see src/application/memory/memory-channel-policy.ts).
   // Unlisted channels default to "shared" — today's behavior, unchanged.
   channelMemoryModes: z.record(snowflake, z.enum(["shared", "isolated", "session_only", "disabled"])).default({}),
+  sharedMemoryEnabled: z.boolean().default(false),
   personaDriftEnabled: z.boolean().default(false),
   // Channel-context (Plan 2): contextScanChannelIds get one one-time
   // history scan; contextDailyChannelIds get an ongoing daily summary. A

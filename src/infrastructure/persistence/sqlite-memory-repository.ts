@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { ChannelMemoryMode } from "../../application/memory/memory-channel-policy.js";
+import { aliasQueryTokens, observedSubjectNames } from "../../application/memory/observed-subject-names.js";
 
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, ne, notExists, or, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
@@ -87,6 +89,66 @@ function identityCondition(identity: MemoryIdentity): ReturnType<typeof and> {
 // uses a terminal `.all()`/`.get()`/`.run()` call rather than `await` —
 // better-sqlite3's `.transaction()` requires a synchronous callback.
 export class SqliteMemoryRepository implements MemoryRepository {
+  public findObservedAliases(input: CandidateQuery & { message: string }): Promise<{ alias: string; subjectId: string }[]> {
+    const tokens = aliasQueryTokens(input.message);
+    if (!tokens.length) return Promise.resolve([]);
+    const rows = this.database.all<{ alias: string; subjectId: string }>(sql`
+      SELECT a.alias AS alias, m.subject_id AS subjectId
+      FROM memory_observed_aliases a JOIN memories m ON m.id = a.memory_id
+      WHERE a.guild_id = ${input.guildId} AND a.alias IN (${sql.join(tokens.map((token) => sql`${token}`), sql`, `)})
+        AND m.guild_id = ${input.guildId} AND m.subject_type = 'member' AND m.status = 'active'
+        AND (m.expires_at IS NULL OR m.expires_at > ${input.now})
+        AND (m.isolation_channel_id IS NULL OR m.isolation_channel_id = ${input.channelId})
+        AND (m.audience = 'guild' OR (m.audience = 'channel' AND m.channel_id = ${input.channelId})
+          OR (m.audience = 'private' AND m.owner_user_id = ${input.userId}))
+      GROUP BY alias, m.subject_id LIMIT 512
+    `);
+    return Promise.resolve(rows);
+  }
+  public reclassifyPublicMemory(input: { guildId: string; memoryId: string; sourceMessageId: string; sourceChannelId: string;
+    assertedByUserId: string; sourceQuote: string; mode: "shared" | "isolated"; sourceTimestampMs?: number; now: number }): Promise<boolean> {
+    const changed = this.database.transaction((transaction) => {
+      const memory = transaction.select().from(schema.memories).where(and(
+        eq(schema.memories.guildId, input.guildId), eq(schema.memories.id, input.memoryId),
+        eq(schema.memories.audience, "private"), eq(schema.memories.subjectType, "member"),
+        eq(schema.memories.subjectId, input.assertedByUserId), eq(schema.memories.ownerUserId, input.assertedByUserId),
+      )).get();
+      if (!memory) return false;
+      const source = transaction.select().from(schema.memorySources).where(and(
+        eq(schema.memorySources.memoryId, memory.id), eq(schema.memorySources.sourceMessageId, input.sourceMessageId),
+        eq(schema.memorySources.sourceChannelId, input.sourceChannelId), eq(schema.memorySources.assertedByUserId, input.assertedByUserId),
+      )).get();
+      if (!source) return false;
+      const isolated = input.mode === "isolated" || memory.isolationChannelId !== null;
+      if (memory.isolationChannelId && memory.isolationChannelId !== input.sourceChannelId) return false;
+      transaction.update(schema.memories).set({
+        audience: isolated || memory.kind === "episode" ? "channel" : "guild", ownerUserId: null,
+        channelId: isolated || memory.kind === "episode" ? input.sourceChannelId : null,
+        isolationChannelId: isolated ? input.sourceChannelId : null, updatedAt: new Date(input.now),
+      }).where(eq(schema.memories.id, memory.id)).run();
+      transaction.update(schema.memorySources).set({ sourceQuote: input.sourceQuote, sourceChannelMode: input.mode,
+        sourceTimestamp: input.sourceTimestampMs === undefined ? source.sourceTimestamp : new Date(input.sourceTimestampMs) })
+        .where(eq(schema.memorySources.id, source.id)).run();
+      return true;
+    });
+    return Promise.resolve(changed);
+  }
+  public recordForgetCutoff(input: { guildId: string; subjectId: string; topic: string; slot: string; scopeKey: string; cutoff: number }): Promise<void> {
+    this.database.insert(schema.memoryForgetCutoffs).values({ ...input, cutoff: new Date(input.cutoff) }).onConflictDoUpdate({
+      target: [schema.memoryForgetCutoffs.guildId, schema.memoryForgetCutoffs.subjectId, schema.memoryForgetCutoffs.topic, schema.memoryForgetCutoffs.slot, schema.memoryForgetCutoffs.scopeKey],
+      set: { cutoff: new Date(input.cutoff) },
+    }).run(); return Promise.resolve();
+  }
+
+  public isSourceForgotten(input: { guildId: string; subjectId: string; topic: string; slot: string; channelId: string; sourceTimestampMs: number }): Promise<boolean> {
+    const rows = this.database.select().from(schema.memoryForgetCutoffs).where(and(
+      eq(schema.memoryForgetCutoffs.guildId, input.guildId), eq(schema.memoryForgetCutoffs.subjectId, input.subjectId),
+      or(eq(schema.memoryForgetCutoffs.scopeKey, "*"), eq(schema.memoryForgetCutoffs.scopeKey, input.channelId)),
+      or(eq(schema.memoryForgetCutoffs.topic, "*"), eq(schema.memoryForgetCutoffs.topic, input.topic)),
+      or(eq(schema.memoryForgetCutoffs.slot, "*"), eq(schema.memoryForgetCutoffs.slot, input.slot)),
+    )).all();
+    return Promise.resolve(rows.some((row) => row.cutoff.getTime() >= input.sourceTimestampMs));
+  }
   public constructor(private readonly database: BetterSQLite3Database<typeof schema>) {}
 
   public ingest(input: RepositoryIngestInput): Promise<Memory> {
@@ -186,6 +248,9 @@ export class SqliteMemoryRepository implements MemoryRepository {
         transaction.insert(schema.memorySources).values({
           id: randomUUID(),
           memoryId: row.id,
+          sourceQuote: input.sourceQuote ?? null,
+          sourceTimestamp: input.sourceTimestampMs === undefined || input.sourceTimestampMs === null ? null : new Date(input.sourceTimestampMs),
+          sourceChannelMode: input.sourceChannelMode ?? null,
           sourceMessageId: input.sourceMessageId,
           sourceChannelId: input.sourceChannelId,
           assertedByUserId: input.assertedByUserId,
@@ -194,6 +259,9 @@ export class SqliteMemoryRepository implements MemoryRepository {
           createdAt: new Date(input.now),
         }).run();
       }
+      transaction.delete(schema.memoryObservedAliases).where(eq(schema.memoryObservedAliases.memoryId, row.id)).run();
+      const aliases = [...new Set(observedSubjectNames(toMemory(row)).map((name) => name.value.toLowerCase()).filter((name) => name.length >= 2))];
+      if (aliases.length) transaction.insert(schema.memoryObservedAliases).values(aliases.map((alias) => ({ guildId: row.guildId, memoryId: row.id, alias }))).run();
       return row;
     });
     return Promise.resolve(toMemory(result));
@@ -264,6 +332,9 @@ export class SqliteMemoryRepository implements MemoryRepository {
     return Promise.resolve(rows.map((row) => ({
       id: row.id,
       memoryId: row.memoryId,
+      sourceQuote: row.sourceQuote,
+      sourceTimestampMs: row.sourceTimestamp?.getTime() ?? null,
+      sourceChannelMode: row.sourceChannelMode as ChannelMemoryMode | null,
       sourceMessageId: row.sourceMessageId,
       sourceChannelId: row.sourceChannelId,
       assertedByUserId: row.assertedByUserId,
@@ -271,6 +342,21 @@ export class SqliteMemoryRepository implements MemoryRepository {
       source: row.source as MemorySourceKind,
       createdAt: row.createdAt.getTime(),
     })));
+  }
+  public findPromptSources(memoryIds: readonly string[]): Promise<readonly MemorySource[]> {
+    if (!memoryIds.length) return Promise.resolve([]);
+    const rows = this.database.select().from(schema.memorySources).where(inArray(schema.memorySources.memoryId, [...memoryIds]))
+      .orderBy(desc(schema.memorySources.createdAt)).limit(memoryIds.length * 2).all();
+    return Promise.resolve(rows.map((row) => ({ ...row, sourceTimestampMs: row.sourceTimestamp?.getTime() ?? null,
+      sourceChannelMode: row.sourceChannelMode as ChannelMemoryMode | null, source: row.source as MemorySourceKind, createdAt: row.createdAt.getTime() })));
+  }
+
+  public listBySubject(guildId: string, userId: string): Promise<Memory[]> {
+    const rows = this.database.select().from(schema.memories).where(and(
+      eq(schema.memories.guildId, guildId), eq(schema.memories.subjectType, "member"), eq(schema.memories.subjectId, userId),
+      or(eq(schema.memories.status, "active"), eq(schema.memories.status, "candidate")),
+    )).all();
+    return Promise.resolve(rows.map(toMemory));
   }
 
   // memory_sources rows go with their memory via ON DELETE CASCADE
@@ -298,6 +384,13 @@ export class SqliteMemoryRepository implements MemoryRepository {
           )).all().map((row) => row.id).filter((id) => !ids.includes(id));
           ids.push(...frontier);
         }
+        if (query.supportingSourceIds?.length) {
+          const derived = transaction.select({ id: schema.memories.id }).from(schema.memories).where(and(
+            eq(schema.memories.guildId, query.guildId),
+            sql`exists (select 1 from json_each(case when json_type(${schema.memories.structuredValue}, '$.supportingSourceMessageIds') = 'array' then json_extract(${schema.memories.structuredValue}, '$.supportingSourceMessageIds') else '[]' end) where value in (${sql.join(query.supportingSourceIds.map((id) => sql`${id}`), sql`, `)}))`,
+          )).all();
+          ids.push(...derived.map((row) => row.id));
+        }
         return transaction.delete(schema.memories).where(inArray(schema.memories.id, ids)).run().changes;
       }
       // OR, not AND — see PostgresMemoryRepository.forget/ForgetQuery.subjectId
@@ -306,6 +399,7 @@ export class SqliteMemoryRepository implements MemoryRepository {
       const conditions = [
         query.ownerUserId ? eq(schema.memories.ownerUserId, query.ownerUserId) : undefined,
         query.subjectId ? and(eq(schema.memories.subjectType, "member"), eq(schema.memories.subjectId, query.subjectId)) : undefined,
+        query.subjectId ? sql`exists (select 1 from json_each(case when json_type(${schema.memories.structuredValue}, '$.supportingSubjects') = 'array' then json_extract(${schema.memories.structuredValue}, '$.supportingSubjects') else '[]' end) where value = ${query.subjectId})` : undefined,
       ].filter((condition) => condition !== undefined);
       let removed = conditions.length > 0
         ? transaction.delete(schema.memories).where(and(eq(schema.memories.guildId, query.guildId), or(...conditions))).run().changes

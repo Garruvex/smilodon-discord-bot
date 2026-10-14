@@ -28,18 +28,17 @@ export function resolveMemoryScope(
   mode: ChannelMemoryMode,
   channelId: string,
   requested: { audience: "private" | "guild"; channelScoped: boolean },
+  sharedMemoryEnabled = false,
 ): ResolvedMemoryScope {
+  if (!sharedMemoryEnabled && requested.audience === "private") {
+    return { audience: "private", channelId: null, isolationChannelId: mode === "isolated" ? channelId : null };
+  }
   if (mode === "isolated") {
-    return requested.audience === "private"
-      ? { audience: "private", channelId: null, isolationChannelId: channelId }
-      : { audience: "channel", channelId, isolationChannelId: channelId };
+    return { audience: "channel", channelId, isolationChannelId: channelId };
   }
-  // "shared" trusts the model's channelScoped flag for guild-audience
-  // proposals; a private proposal stays cross-channel-by-design (today's
-  // behavior, unaffected).
-  if (requested.audience === "private") {
-    return { audience: "private", channelId: null, isolationChannelId: null };
-  }
+  // Personal subject matter does not imply a private audience. All proposals
+  // on this guild-channel ingestion path originate in eligible public chat;
+  // configured channel modes, not the model, assign their allowed audience.
   return {
     audience: requested.channelScoped ? "channel" : "guild",
     channelId: requested.channelScoped ? channelId : null,

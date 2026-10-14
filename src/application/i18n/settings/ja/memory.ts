@@ -8,6 +8,8 @@ const memoryModes = {
 };
 
 export const jaMemory: SettingsTextCatalog = {
+  "memory.sharing": { label: "個人情報の共有メモリ", description: "チャンネルのメモリ設定を確認してから有効にします。既存の非公開情報は変更しません。" },
+  "memory.sharing.enabled": { label: "個人情報の共有メモリ", description: "新しい個人情報を設定された範囲内で共有します。" },
   "memory": { title: "記憶", description: "ボットが読み返し、覚えておくこと" },
   "memory.channel-history": { label: "チャンネル履歴", description: "チャンネルの最近のメッセージを返信の文脈に使う" },
   "memory.channel-history.enabled": { label: "チャンネル履歴", description: "チャンネル履歴をオンまたはオフにする" },

@@ -6,6 +6,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ChatConversationService, type ChatConversationInput } from "../../src/application/chat/chat-conversation-service.js";
 import type { ChatProvider, ChatRequest, ChatResponse } from "../../src/application/chat/chat-provider.js";
+import { ChatToolRegistry } from "../../src/application/chat/tools/chat-tool-registry.js";
+import { buildChatContext } from "../../src/infrastructure/chat/chat-structured-output.js";
 import type { ChatStateStore } from "../../src/application/chat/chat-state-store.js";
 import type { ExampleExchangeSelector } from "../../src/application/chat/example-exchange-selector.js";
 import type { UserCustomizationStore } from "../../src/application/chat/user-customization-store.js";
@@ -39,7 +41,7 @@ function testMemoryEngine(embeddingsClient?: EmbeddingsClient): { engine: Memory
   const directory = mkdtempSync(join(tmpdir(), "chat-conversation-service-"));
   const connection = createSqliteDatabaseConnection(directory);
   const repository = new SqliteMemoryRepository(connection.database);
-  return { engine: new DefaultMemoryEngine(repository, embeddingsClient ?? null), repository };
+  return { engine: new DefaultMemoryEngine(repository, embeddingsClient ?? null, null, undefined, null, null, null, () => true), repository };
 }
 
 function input(message: string): ChatConversationInput {
@@ -79,6 +81,141 @@ function baseStore(overrides: Partial<ChatStateStore> = {}): ChatStateStore {
 }
 
 describe("ChatConversationService", () => {
+  it("batches source reads and budgets the rendered memories including escaped evidence", async () => {
+    const { engine } = testMemoryEngine();
+    for (let i = 0; i < 20; i++) await engine.ingest({ guildId: "guild", channelId: "channel", channelMode: "shared",
+      assertedByUserId: "user", sourceMessageId: `source-${i}`, source: "live", now: 100 + i, proposals: [{
+        action: "upsert", audience: "private", kind: "preference", ownerUserId: "user", subjectType: "member", subjectId: "user",
+        topic: "preference", slot: `food.fruit${i}`, statement: `likes apples variety ${i}`, channelScoped: false, sourceQuote: "<".repeat(350),
+      }] });
+    const individual = vi.spyOn(engine, "listSources");
+    const batch = vi.spyOn(engine, "listPromptSources");
+    const reply = vi.fn<(request: ChatRequest) => Promise<ChatResponse>>().mockResolvedValue(response("answer"));
+    const service = new ChatConversationService({ reply }, baseStore(), engine);
+    await service.run(input("Which apples do I like?"), (output) => Promise.resolve(output.text));
+    expect(individual).not.toHaveBeenCalled(); expect(batch).toHaveBeenCalledOnce();
+    const context = buildChatContext(reply.mock.calls[0]![0]);
+    const memories = context.match(/<user_memories>([\s\S]*?)<\/user_memories>/u)?.[1] ?? "";
+    const knowledge = context.match(/<guild_knowledge[^>]*>([\s\S]*?)<\/guild_knowledge>/u)?.[1] ?? "";
+    expect(memories.length + knowledge.length).toBeLessThanOrEqual(8000);
+  });
+  it("does not send passively observed messages when channel history is off", async () => {
+    const reply = vi.fn<(request: ChatRequest) => Promise<ChatResponse>>().mockResolvedValue(response("answer"));
+    const service = new ChatConversationService({ reply }, baseStore(), testMemoryEngine().engine);
+    service.observe("guild", "channel", { messageId: "bystander", authorId: "other", authorDisplayName: "Other",
+      timestampMs: Date.now(), content: "Never addressed the bot", imageCount: 0 });
+    await service.run({ ...input("A direct question"), channelHistoryEnabled: false }, (output) => Promise.resolve(output.text));
+    expect(reply.mock.calls[0]![0].channelHistory).toEqual([]);
+  });
+
+  it("forgetting clears observed context and prevents old fetched history returning in the process", async () => {
+    const purgeUser = vi.fn(() => Promise.resolve());
+    const reply = vi.fn<(request: ChatRequest) => Promise<ChatResponse>>().mockResolvedValue(response("answer"));
+    const service = new ChatConversationService({ reply }, baseStore({ purgeUser }), testMemoryEngine().engine);
+    const forgotten = { messageId: "forgotten", authorId: "user", authorDisplayName: "User",
+      timestampMs: Date.now() - 1000, content: "Old private context", imageCount: 0 };
+    service.observe("guild", "channel", forgotten);
+    await service.forgetConversation("guild", "user");
+    await service.run({ ...input("A new question"), channelHistoryEnabled: true, channelHistory: [forgotten] }, (output) => Promise.resolve(output.text));
+    expect(purgeUser).toHaveBeenCalledWith("guild", "user");
+    expect(reply.mock.calls[0]![0].channelHistory).toEqual([]);
+  });
+  it.each(["ambient", "reaction", "direct", "continuation", "spontaneous"] as const)("preserves addressed turns while discarding changed proactive context (%s)", async (triggerMode) => {
+    let finish!: (value: ChatResponse) => void;
+    const pending = new Promise<ChatResponse>((resolve) => { finish = resolve; });
+    const reply = vi.fn(() => pending);
+    const service = new ChatConversationService({ reply }, baseStore(), testMemoryEngine().engine);
+    const deliver = vi.fn(() => Promise.resolve("answer"));
+    const turn = service.run({ ...input("What are we deciding?"), triggerMode, channelHistoryEnabled: true }, deliver);
+    const result = turn.then(() => "delivered", () => "suppressed");
+    await vi.waitFor(() => expect(reply).toHaveBeenCalled());
+    service.observe("guild", "channel", { messageId: "new-topic", timestampMs: Date.now(), authorId: "other",
+      authorDisplayName: "Other", content: "We moved on to a different topic", imageCount: 0 });
+    finish(response("answer", [], [], { action: "reply" }));
+    const staleProactive = triggerMode === "continuation" || triggerMode === "spontaneous";
+    expect(await result).toBe(staleProactive ? "suppressed" : "delivered");
+    expect(deliver).toHaveBeenCalledTimes(staleProactive ? 0 : 1);
+  });
+
+  it("does not turn legacy sessions or assistant-only summaries into public facts", async () => {
+    const store = baseStore({ commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [
+      { user: { content: "I like apples", createdAt: 100 }, assistant: { content: "Bob likes pears", createdAt: 101 } },
+    ] }) });
+    const summarizeDroppedExchanges = vi.fn(() => Promise.resolve([
+      { slot: "scene.fruit", statement: "Bob likes apples", subjectType: "member" as const, sourceQuote: "I like apples" },
+      { slot: "scene.pears", statement: "Bob likes pears", subjectType: "member" as const, sourceQuote: "Bob likes pears" },
+    ]));
+    const { engine } = testMemoryEngine();
+    const ingest = vi.spyOn(engine, "ingest");
+    const service = new ChatConversationService({ reply: (): Promise<ChatResponse> => Promise.resolve(response("ok")), summarizeDroppedExchanges }, store, engine);
+    await service.run(input("What happened?"), (output) => Promise.resolve(output.text));
+    await service.drain();
+    expect(summarizeDroppedExchanges).toHaveBeenCalledOnce();
+    expect(ingest).not.toHaveBeenCalled();
+  });
+
+  it("allows silence or reaction-only for bare pings without delivery, extraction, or fallback text", async () => {
+    const commit = vi.fn(() => Promise.resolve({ droppedExchanges: [] }));
+    const extract = vi.fn(() => Promise.resolve([]));
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("", [], [], { action: "ignore", emoji: "👀" })), extractPersonalMemories: extract };
+    const service = new ChatConversationService(provider, baseStore({ commitSuccessfulExchange: commit }), testMemoryEngine().engine);
+    const deliver = vi.fn(() => Promise.resolve("must not deliver"));
+    const result = await service.run({ ...input(""), allowSilentDirect: true }, deliver);
+    await service.drain();
+    expect(result).toMatchObject({ ambientAction: "ignore", reactionEmoji: "👀", text: "" });
+    expect(deliver).not.toHaveBeenCalled(); expect(commit).not.toHaveBeenCalled(); expect(extract).not.toHaveBeenCalled();
+  });
+
+  it("preserves meaningful direct requests even if optional silence was incorrectly requested", async () => {
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("the answer", [], [], { action: "ignore" })) };
+    const service = new ChatConversationService(provider, baseStore(), testMemoryEngine().engine);
+    const deliver = vi.fn((result: ChatResponse) => Promise.resolve(result.text));
+    const result = await service.run({ ...input("What time is the event tomorrow?"), allowSilentDirect: true }, deliver);
+    expect(result.ambientAction).toBe("reply"); expect(deliver).toHaveBeenCalledOnce();
+  });
+
+  it("does not expose executable tools before an optional participation decision accepts a reply", async () => {
+    const execute = vi.fn(() => Promise.resolve({ content: "done" }));
+    const tool = { name: "perform_action", description: "Performs an action", parameters: { type: "object" }, execute };
+    const registry = new ChatToolRegistry([tool]);
+    const reply = vi.fn(async (request: ChatRequest) => {
+      for (const candidate of request.enabledTools ?? []) await candidate.execute({}, {} as never);
+      return response("", [], [], { action: "ignore" });
+    });
+    const service = new ChatConversationService({ reply }, baseStore(), testMemoryEngine().engine, undefined, undefined, undefined, null, null, registry);
+    const deliver = vi.fn(() => Promise.resolve("must not deliver"));
+    await service.run({ ...input("someone mentioned the bot"), triggerMode: "ambient", toolsEnabled: true }, deliver);
+    expect(reply).toHaveBeenCalledOnce(); expect(execute).not.toHaveBeenCalled(); expect(deliver).not.toHaveBeenCalled();
+  });
+
+  it("shadow evaluation does not deliver output, persist facts, or run dedicated extraction", async () => {
+    const extract = vi.fn(() => Promise.resolve([]));
+    const commit = vi.fn(() => Promise.resolve({ droppedExchanges: [] }));
+    const service = new ChatConversationService({ reply: (): Promise<ChatResponse> => Promise.resolve(response("would reply")), extractPersonalMemories: extract },
+      baseStore({ commitSuccessfulExchange: commit }), testMemoryEngine().engine);
+    const deliver = vi.fn(() => Promise.resolve("must not deliver"));
+    await service.run({ ...input("continuation"), triggerMode: "continuation", shadowMode: true }, deliver);
+    await service.drain();
+    expect(deliver).not.toHaveBeenCalled(); expect(commit).not.toHaveBeenCalled(); expect(extract).not.toHaveBeenCalled();
+  });
+  it("reaction notes cannot create facts or run dedicated extraction even when quoting bot assertions", async () => {
+    const extraction = vi.fn(() => Promise.resolve([]));
+    const commit = vi.fn(() => Promise.resolve({ droppedExchanges: [] }));
+    const { engine, repository } = testMemoryEngine();
+    const store = baseStore({ commitSuccessfulExchange: commit });
+    const provider: ChatProvider = {
+      reply: () => Promise.resolve(response("follow-up", [{
+        action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit",
+        statement: "likes apples", sourceQuote: "I like apples",
+      }])), extractPersonalMemories: extraction,
+    };
+    const service = new ChatConversationService(provider, store, engine);
+    await service.run({ ...input('(reacted to your message "I like apples")'), triggerMode: "reaction" }, (result) => Promise.resolve(result.text));
+    await service.drain();
+    expect(extraction).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+    expect(await repository.listByUser("guild", "user")).toEqual([]);
+  });
   it("delegates the dm-notes preference straight to the state store", async () => {
     const getDmNotesEnabled = vi.fn(() => Promise.resolve(false));
     const store = baseStore({ getDmNotesEnabled });
@@ -924,11 +1061,11 @@ describe("ChatConversationService", () => {
   it("consolidates dropped exchanges into channel-scoped guild knowledge when the provider supports it", async () => {
     const store = baseStore({
       commitSuccessfulExchange: () => Promise.resolve({
-        droppedExchanges: [{ user: { content: "old question", createdAt: 0 }, assistant: { content: "old answer", createdAt: 0 } }],
+        droppedExchanges: [{ user: { content: "the party found a hidden door", createdAt: 0, sourceMessageId: "original-door", channelMemoryMode: "shared" as const }, assistant: { content: "old answer", createdAt: 0 } }],
       }),
     });
     const summarizeDroppedExchanges = vi.fn(() => Promise.resolve([
-      { slot: "scene.discovery", statement: "the party found a hidden door", subjectType: "guild" as const },
+      { slot: "scene.discovery", statement: "the party found a hidden door", subjectType: "guild" as const, sourceQuote: "the party found a hidden door" },
     ]));
     const provider: ChatProvider = { reply: () => Promise.resolve(response("ok")), summarizeDroppedExchanges };
     const { engine } = testMemoryEngine();
@@ -941,7 +1078,7 @@ describe("ChatConversationService", () => {
     // necessarily done yet when run() returns.
     await vi.waitFor(() => expect(summarizeDroppedExchanges).toHaveBeenCalled());
     expect(summarizeDroppedExchanges).toHaveBeenCalledWith(
-      [{ user: "old question", assistant: "old answer" }],
+      [{ user: "the party found a hidden door", assistant: "old answer" }],
       { id: "user", displayName: "User" },
     );
     // The turn itself proposes nothing (response("ok") has no candidates),
@@ -1169,11 +1306,11 @@ describe("ChatConversationService", () => {
   it("attributes a member-subject consolidation fact to the actual speaker, not the guild", async () => {
     const store = baseStore({
       commitSuccessfulExchange: () => Promise.resolve({
-        droppedExchanges: [{ user: { content: "I'll take the Friday raid lead", createdAt: 0 }, assistant: { content: "Got it.", createdAt: 0 } }],
+        droppedExchanges: [{ user: { content: "I'll take the Friday raid lead", createdAt: 0, sourceMessageId: "original-raid", channelMemoryMode: "shared" as const }, assistant: { content: "Got it.", createdAt: 0 } }],
       }),
     });
     const summarizeDroppedExchanges = vi.fn(() => Promise.resolve([
-      { slot: "raid.friday_lead", statement: "volunteered to lead Friday raids", subjectType: "member" as const },
+      { slot: "raid.friday_lead", statement: "volunteered to lead Friday raids", subjectType: "member" as const, sourceQuote: "I'll take the Friday raid lead" },
     ]));
     const provider: ChatProvider = { reply: () => Promise.resolve(response("ok")), summarizeDroppedExchanges };
     const { engine } = testMemoryEngine();
@@ -1217,7 +1354,7 @@ describe("ChatConversationService", () => {
   it("evolves persona drift after dropped exchanges when the guild has it enabled", async () => {
     const store = baseStore({
       commitSuccessfulExchange: () => Promise.resolve({
-        droppedExchanges: [{ user: { content: "old question", createdAt: 0 }, assistant: { content: "old answer", createdAt: 0 } }],
+        droppedExchanges: [{ user: { content: "old question", createdAt: 0, sourceMessageId: "old-human-message", channelMemoryMode: "shared" as const }, assistant: { content: "old answer", createdAt: 0 } }],
       }),
     });
     const evolvePersonaDrift = vi.fn(() => Promise.resolve("A little more playful lately."));

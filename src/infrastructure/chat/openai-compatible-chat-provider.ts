@@ -87,6 +87,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
         }
       : { role: "user", content: userContent };
     const body = await this.modelChain.run(async (model) => {
+      request.onModelAttempt?.();
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
@@ -96,7 +97,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
         body: JSON.stringify({
           model,
           messages: [
-            { role: "system", content: buildChatInstructions(request, chatSafetyGuard) },
+            { role: "system", content: buildChatInstructions({ ...request, enabledTools: [], webSearchMode: "off", imageGenerationEnabled: false }, chatSafetyGuard) },
             userMessage,
           ],
           response_format: {
@@ -139,6 +140,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
       webSearchUsed: false,
       generatedImages: [],
       ambientAction: modelOutput.ambientAction,
+      ...(modelOutput.participationReason !== undefined ? { participationReason: modelOutput.participationReason } : {}),
       reactionEmoji: modelOutput.reactionEmoji,
       historyReactions: modelOutput.historyReactions,
     };

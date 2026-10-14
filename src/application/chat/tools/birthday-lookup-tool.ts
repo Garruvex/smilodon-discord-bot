@@ -8,6 +8,7 @@ interface BirthdayLookupToolArgs {
 }
 
 export class BirthdayLookupTool implements ChatTool<BirthdayLookupToolArgs> {
+  public readonly outputKind = "context" as const;
   public readonly name = "lookup_birthday";
   public readonly description =
     "Looks up a Discord user's birthday on file, given their numeric user ID (from <current_user> or " +

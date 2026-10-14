@@ -12,6 +12,13 @@ import type { GuildConfiguration } from "../../../config/guild-configuration.js"
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
 import { KeyedSerialQueue } from "../../../application/concurrency/keyed-serial-queue.js";
 import { ChatTurnSupport } from "./chat-turn-support.js";
+import type { IsGameChannel } from "./game-channel-guard.js";
+import { SocialOutputSuppressed, type MessageOriginStore } from "../../../application/chat/message-origin-store.js";
+import type { SocialChatEligibility } from "./social-chat-eligibility.js";
+import { resolveParticipation } from "../../../application/chat/participation-policy.js";
+import { resolveChannelMemoryMode } from "../../../application/memory/memory-channel-policy.js";
+
+class ReactionOutputSuppressed extends Error {}
 
 // Polled far more often than ChannelSummaryScheduler's hourly cadence —
 // the reaction-reply wait (chat.reactionReplyWaitMinMinutes, at least 1 minute,
@@ -30,6 +37,7 @@ const watchRetentionMs = 7 * 24 * 60 * 60 * 1_000;
 // One emoji on the watched message and the eligible people who used it.
 interface EmojiReaction {
   emoji: string;
+  emojiId: string | null;
   userIds: readonly string[];
 }
 
@@ -91,8 +99,11 @@ export class ReactionReplyScheduler {
     private readonly personaSource: PersonaSource,
     private readonly logger: Logger,
     configuration: ApplicationConfiguration,
+    private readonly isGameChannel: IsGameChannel | null = null,
+    eligibility: SocialChatEligibility | null = null,
+    origins: MessageOriginStore | null = null,
   ) {
-    this.turnSupport = new ChatTurnSupport(logger);
+    this.turnSupport = new ChatTurnSupport(logger, eligibility, origins);
     this.chatAccess = new ChatAccessService(configuration);
   }
 
@@ -206,6 +217,10 @@ export class ReactionReplyScheduler {
       await this.giveUp(watch, now, "channel_unusable");
       return;
     }
+    if (await this.isExcludedChannel(channel, watch.guildId)) {
+      await this.giveUp(watch, now, "game_channel");
+      return;
+    }
     let message: Message | null;
     try {
       message = await channel.messages.fetch(watch.messageId);
@@ -217,6 +232,10 @@ export class ReactionReplyScheduler {
       // Deleted (resolved null instead of throwing), or — shouldn't happen
       // — somehow not our message anymore. Not retryable either way.
       await this.giveUp(watch, now, "message_gone");
+      return;
+    }
+    if (!await this.turnSupport.isEligible(message, "reaction")) {
+      await this.giveUp(watch, now, "ineligible_origin_or_policy");
       return;
     }
 
@@ -247,6 +266,22 @@ export class ReactionReplyScheduler {
       this.logger.error({ error, messageId: watch.messageId, guildId: watch.guildId }, "Reaction-reply turn failed repeatedly, giving up");
       await this.giveUp(watch, now, "turn_failed");
     }
+  }
+
+  private async isExcludedChannel(channel: GuildTextBasedChannel, guildId: string): Promise<boolean> {
+    if (!this.isGameChannel) return false;
+    try {
+      const parentId = channel.isThread() ? channel.parentId : null;
+      return await this.isGameChannel(guildId, parentId ? [channel.id, parentId] : [channel.id]);
+    } catch {
+      return true;
+    }
+  }
+
+  private async canDeliver(channel: GuildTextBasedChannel, guildId: string): Promise<boolean> {
+    const profile = this.profiles.find(guildId);
+    return Boolean(profile?.features.chatbot && profile.features.reactionReplies) &&
+      !await this.isExcludedChannel(channel, guildId);
   }
 
   // A DiscordAPIError for "Unknown Message"/"Unknown Channel"/"Missing
@@ -298,7 +333,7 @@ export class ReactionReplyScheduler {
         rawIds.add(user.id);
         userIds.push(user.id);
       }
-      rawReactions.push({ emoji: emojiLabel(reaction.emoji), userIds });
+      rawReactions.push({ emoji: emojiLabel(reaction.emoji), emojiId: reaction.emoji.id, userIds });
     }
     const eligibleIds = new Set<string>();
     for (const id of rawIds) {
@@ -306,7 +341,7 @@ export class ReactionReplyScheduler {
       if (this.chatAccess.canUseMentionChat(profile, member, id, channelId)) eligibleIds.add(id);
     }
     const reactions = rawReactions
-      .map((reaction) => ({ emoji: reaction.emoji, userIds: reaction.userIds.filter((id) => eligibleIds.has(id)) }))
+      .map((reaction) => ({ ...reaction, userIds: reaction.userIds.filter((id) => eligibleIds.has(id)) }))
       .filter((reaction) => reaction.userIds.length > 0);
     return { reactorIds: eligibleIds, reactions, complete };
   }
@@ -321,7 +356,9 @@ export class ReactionReplyScheduler {
     const reactorList = [...reactorIds].filter((id) => id !== author.id);
     const mentionedUsers = await Promise.all(reactorList.slice(0, 20).map(async (id) => {
       const member = await message.guild?.members.fetch(id).catch(() => null);
-      return { id, displayName: member?.displayName ?? id, roleNames: [] as string[] };
+      return { id, displayName: member?.displayName ?? id, username: member?.user?.username ?? null,
+        globalName: member?.user?.globalName ?? null, guildNickname: member?.nickname ?? null,
+        kind: "human" as const, roleNames: [] as string[] };
     }));
     // `before: null` — fetch the most recent channel activity rather than
     // "before message.id", since this turn is evaluated minutes after
@@ -333,6 +370,7 @@ export class ReactionReplyScheduler {
         ))
       : [];
     const currentUser = {
+      ...this.turnSupport.toChatUser(author, message.member),
       id: author.id,
       displayName: message.member?.displayName ?? author.username,
       roleNames: message.member?.roles.cache
@@ -343,43 +381,69 @@ export class ReactionReplyScheduler {
     const displayNames = new Map(mentionedUsers.map((user) => [user.id, user.displayName]));
     const syntheticPrompt = `(${reactorIds.size} ${reactorIds.size === 1 ? "person" : "people"} reacted to your message ` +
       `"${message.content.slice(0, chatMemoryLimits.maxUserMessageChars)}": ` +
-      `${describeReactions(reactions, (id) => displayNames.get(id) ?? id)})` +
-      // Tell the model how to tag the reactors; pings are limited to exactly
-      // these people via reactorMentions below.
-      (mentionedUsers.length > 0
-        ? ` Tag the people who reacted in your reply so they know it's for them: ` +
-          mentionedUsers.map((user) => `${user.displayName}=<@${user.id}>`).join(", ")
-        : "");
+      `${describeReactions(reactions, (id) => displayNames.get(id) ?? id)})`;
     const persona = await this.personaSource.resolve(profile);
-    const reactorMentions = { repliedUser: false, parse: [] as never[], users: mentionedUsers.map((user) => user.id) };
+    const reactorMentions = { repliedUser: false, parse: [] as never[], users: [] as string[] };
+    const ensureDelivery = async (): Promise<void> => {
+      await this.turnSupport.assertEligible(message, "reaction");
+      if (!await this.canDeliver(channel, guildId)) throw new ReactionOutputSuppressed();
+    };
 
     try {
+      const { kept, overflow } = await this.turnSupport.resolveReplyChain(message);
       const response = await this.conversation.run({
         guildId, channelId: message.channelId, sourceMessageId: message.id,
+        canExecute: () => this.turnSupport.isEligible(message, "reaction"),
+        activityLimits: resolveParticipation(profile.chat.participation, message.channelId).limits,
+        resolveActivityLimits: () => resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).limits,
+        resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
+        refreshContextMessage: (event) => this.turnSupport.refreshHistoryEvent(message, event),
+        shouldDeliver: () => !resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).shadowMode,
+        shadowMode: resolveParticipation(profile.chat.participation, message.channelId).shadowMode,
+        afterDecision: async (result) => {
+          if (!await this.canDeliver(channel, guildId)) return;
+          const reserve = (): ((success: boolean) => void) | null => this.conversation.reserveReaction(guildId, message.channelId,
+            resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).limits);
+          if (result.reactionEmoji && await this.turnSupport.isEligible(message, "history_reaction")) {
+            const release = reserve();
+            if (release) { try { await message.react(result.reactionEmoji); release(true); } catch { release(false); } }
+          }
+          await this.turnSupport.applyHistoryReactions(channel, result.historyReactions,
+            { guildId, sourceMessageId: message.id }, reserve);
+        },
+        botUserId: author.id,
+        currentEvent: {
+          type: "reaction_snapshot", channelId: message.channelId, targetMessageId: message.id,
+          targetAuthorId: author.id, observedAt: Date.now(), complete: true, exactReactionTimes: "unknown",
+          reactions: reactions.map((reaction) => ({ emoji: reaction.emoji, emojiId: reaction.emojiId, actorIds: reaction.userIds })),
+        },
         personality: persona.personality, examplePool: persona.examplePool, loreChunks: persona.loreChunks,
         personaDrift: persona.personaDrift, personaDriftEnabled: profile.chat.personaDriftEnabled,
         personalitySourceHash: persona.personalitySourceHash,
         currentUser, mentionedUsers,
         message: syntheticPrompt,
-        replyChain: [], replyChainOverflow: [], channelHistory,
+        replyChain: this.turnSupport.toChannelHistoryMessages(kept),
+        replyChainOverflow: this.turnSupport.toChannelHistoryMessages(overflow), channelHistory,
         images: [], webSearchMode: profile.chat.webSearchMode,
         imageGenerationEnabled: false, includeSources: profile.chat.includeSources,
         triggerMode: "reaction",
+        channelHistoryEnabled: profile.features.channelHistory,
         historyReactionsEnabled: profile.features.historyReactions && profile.features.channelHistory,
         toolsEnabled: false,
         channelMemoryModes: profile.chat.channelMemoryModes,
         channelIsNsfw: "nsfw" in channel ? Boolean(channel.nsfw) : false,
       }, async (deliveredResponse) => {
         const { deliveredText } = await this.turnSupport.deliverChatResponse({
+          sourceMessage: message, trigger: "reaction",
           sender: {
-            first: (payload) => message.reply({
+            first: async (payload) => { await ensureDelivery(); return message.reply({
               content: payload.content, files: [...payload.files],
               allowedMentions: reactorMentions,
-            }),
-            rest: (payload) => channel.send({
+            }); },
+            rest: async (payload) => { await ensureDelivery(); return channel.send({
               content: payload.content, files: [...payload.files],
               allowedMentions: reactorMentions,
-            }),
+            }); },
           },
           text: deliveredResponse.text,
           sources: deliveredResponse.sources,
@@ -389,18 +453,10 @@ export class ReactionReplyScheduler {
         });
         return deliveredText;
       });
-      if (response.reactionEmoji) {
-        await message.react(response.reactionEmoji).catch((error: unknown) => {
-          this.logger.warn({ error, messageId: message.id }, "Reaction-reply: failed to react with the model-chosen emoji");
-        });
-      }
-      if (response.historyReactions.length > 0) {
-        await this.turnSupport.applyHistoryReactions(
-          channel, response.historyReactions, { guildId, channelId: message.channelId, sourceMessageId: message.id },
-        );
-      }
+      if (!await this.canDeliver(channel, guildId) || !await this.turnSupport.isEligible(message, "reaction")) return "output_suppressed";
       return response.ambientAction === "reply" ? "replied" : response.reactionEmoji ? "reacted_only" : "model_ignored";
     } catch (error) {
+      if (error instanceof ReactionOutputSuppressed || error instanceof SocialOutputSuppressed) return "output_suppressed";
       if (error instanceof ChatStateCommitError) {
         // The reply was already delivered before the commit failed —
         // terminal, not retryable: retrying would post a second reply for

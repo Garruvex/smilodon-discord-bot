@@ -222,7 +222,7 @@ describe("GeminiChatProvider", () => {
 
   it("summarizeDroppedExchanges parses extracted facts", async () => {
     generateContentMock.mockResolvedValue({
-      text: JSON.stringify({ facts: [{ slot: "scene.tavern_fire", statement: "The tavern burned down.", subjectType: "guild" }] }),
+      text: JSON.stringify({ facts: [{ slot: "scene.tavern_fire", statement: "The tavern burned down.", subjectType: "guild", sourceQuote: "the tavern is on fire" }] }),
       functionCalls: undefined,
       candidates: [],
       usageMetadata: undefined,
@@ -235,7 +235,7 @@ describe("GeminiChatProvider", () => {
       { id: "11111111111111111", displayName: "Tester" },
     );
 
-    expect(facts).toEqual([{ slot: "scene.tavern_fire", statement: "The tavern burned down.", subjectType: "guild" }]);
+    expect(facts).toEqual([{ slot: "scene.tavern_fire", statement: "The tavern burned down.", subjectType: "guild", sourceQuote: "the tavern is on fire" }]);
   });
 
   it("summarizeReplyChainOverflow parses the recap", async () => {

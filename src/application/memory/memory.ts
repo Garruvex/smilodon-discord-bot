@@ -50,6 +50,9 @@ export interface Memory {
 }
 
 export interface MemorySource {
+  sourceTimestampMs?: number | null;
+  sourceQuote?: string | null;
+  sourceChannelMode?: ChannelMemoryMode | null;
   id: string;
   memoryId: string;
   sourceMessageId: string | null;
@@ -172,6 +175,9 @@ export function canRecall(memory: Pick<Memory, "guildId" | "isolationChannelId" 
 // --- Repository contract -----------------------------------------------
 
 export interface RepositoryIngestInput {
+  sourceTimestampMs?: number | null;
+  sourceQuote?: string | null;
+  sourceChannelMode?: ChannelMemoryMode | null;
   guildId: string;
   kind: MemoryKind;
   audience: MemoryAudience;
@@ -227,6 +233,7 @@ export interface RecallCandidates {
 }
 
 export interface ForgetQuery {
+  supportingSourceIds?: readonly string[];
   guildId: string;
   // Either a specific memory id, or every memory matching ownerUserId and/or
   // subjectId below. A memoryId forget also removes that memory's earlier
@@ -318,10 +325,16 @@ export interface SupersedeCommand {
 }
 
 export interface MemoryRepository {
+  findObservedAliases(input: CandidateQuery & { message: string }): Promise<{ alias: string; subjectId: string }[]>;
+  reclassifyPublicMemory(input: { guildId: string; memoryId: string; sourceMessageId: string; sourceChannelId: string;
+    assertedByUserId: string; sourceQuote: string; mode: "shared" | "isolated"; sourceTimestampMs?: number; now: number }): Promise<boolean>;
+  recordForgetCutoff(input: { guildId: string; subjectId: string; topic: string; slot: string; scopeKey: string; cutoff: number }): Promise<void>;
+  isSourceForgotten(input: { guildId: string; subjectId: string; topic: string; slot: string; channelId: string; sourceTimestampMs: number }): Promise<boolean>;
   ingest(input: RepositoryIngestInput): Promise<Memory>;
   findRecallCandidates(input: CandidateQuery): Promise<RecallCandidates>;
   findById(guildId: string, id: string): Promise<Memory | null>;
   listByUser(guildId: string, userId: string): Promise<Memory[]>;
+  listBySubject(guildId: string, userId: string): Promise<Memory[]>;
   forget(input: ForgetQuery): Promise<number>;
   // Provenance for one memory, oldest first — every ingest() call records a
   // row here (see RepositoryIngestInput's own sourceMessageId/sourceChannelId/
@@ -330,6 +343,7 @@ export interface MemoryRepository {
   // scoped by construction (the caller looked it up via findById/listByUser
   // first), so this doesn't take a separate guildId.
   findSources(memoryId: string): Promise<readonly MemorySource[]>;
+  findPromptSources?(memoryIds: readonly string[]): Promise<readonly MemorySource[]>;
   // Conflict-at-write support (MOSAIC-style, simplified — see
   // memory-engine.ts's checkForConflicts): every other currently-active
   // memory about the same subject, regardless of topic/slot, so the engine
@@ -372,6 +386,7 @@ export interface MemoryRepository {
 // --- Engine contract -----------------------------------------------------
 
 export interface MemoryRecallInput {
+  filterSubjectIds?: readonly string[];
   guildId: string;
   channelId: string;
   userId: string;
@@ -410,6 +425,7 @@ export interface MemoryRecallInput {
   // spent exclusively on memories that were even eligible to answer the
   // question.
   onlySelfPrivateMemories?: boolean;
+  onlySelfSubjectMemories?: boolean;
 }
 
 // A 2-node causal chain surfaced by a "consequence" relation reachable
@@ -429,6 +445,8 @@ export interface CausalChainLink {
 }
 
 export interface MemoryContext {
+  maxSerializedChars?: number;
+  aliasCandidates?: readonly { alias: string; subjectIds: readonly string[] }[];
   memories: readonly Memory[];
   // Rendered into the prompt by chat-structured-output.ts. See
   // CausalChainLink's doc comment for the hop-depth limitation.
@@ -438,6 +456,11 @@ export interface MemoryContext {
 export type ProposedMemory =
   | {
       action: "upsert";
+      sourceQuote?: string | null;
+      sourceMessageId?: string | null;
+      sourceTimestampMs?: number;
+      observedSubjectNames?: readonly string[];
+      supportingSources?: readonly { subjectId: string; messageId: string; timestampMs: number }[];
       // Model's requested intent only — "channel" is never requested
       // directly, it's a resolved output of memory-channel-policy.ts's
       // resolveMemoryScope (audience "guild" + channelScoped narrows to it).
@@ -481,6 +504,7 @@ export type ProposedMemory =
     };
 
 export interface MemoryIngestInput {
+  sourceTimestampMs?: number;
   guildId: string;
   channelId: string;
   // Resolved by the caller (e.g. ChatConversationService, from guild config)
@@ -520,6 +544,7 @@ export interface MemoryTurnCommit {
 export interface MemoryForgetInput {
   guildId: string;
   ownerUserId: string;
+  channelId?: string;
   memoryId?: string;
   // See ForgetQuery.subjectId — set this to ownerUserId's own value to widen
   // a "forget everything" call to also remove third-party claims about this
@@ -568,10 +593,11 @@ export interface MemoryEngine {
   recall(input: MemoryRecallInput): Promise<MemoryContext>;
   ingest(input: MemoryIngestInput): Promise<MemoryIngestResult>;
   ingestRelations(input: MemoryRelationIngestInput): Promise<MemoryRelationIngestResult>;
-  listUserMemories(guildId: string, userId: string): Promise<readonly Memory[]>;
+  listUserMemories(guildId: string, userId: string, channelId?: string): Promise<readonly Memory[]>;
   forget(input: MemoryForgetInput): Promise<number>;
   // Provenance for one memory — see MemoryRepository.findSources. Exposed at
   // the engine level so callers (e.g. /memory list) don't need direct
   // repository access just to render a "view source" link.
   listSources(memoryId: string): Promise<readonly MemorySource[]>;
+  listPromptSources?(memoryIds: readonly string[]): Promise<readonly MemorySource[]>;
 }

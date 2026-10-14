@@ -9,7 +9,8 @@ import { boundSessionExchanges, type ChatSessionExchange, type ChatStateSnapshot
 import * as schema from "../database/sqlite-schema.js";
 
 const exchangesSchema = z.array(z.object({
-  user: z.object({ content: z.string(), createdAt: z.number() }),
+  user: z.object({ content: z.string(), createdAt: z.number(), sourceMessageId: z.string().nullable().optional(),
+    channelMemoryMode: z.enum(["shared", "isolated", "session_only", "disabled"]).optional() }),
   assistant: z.object({ content: z.string(), createdAt: z.number() }),
 }));
 
@@ -81,6 +82,10 @@ export class SqliteChatStateStore implements ChatStateStore {
     });
     return Promise.resolve();
   }
+  public clearRecentHistory(guildId: string, userId: string): Promise<void> {
+    this.database.delete(schema.chatSessions).where(and(eq(schema.chatSessions.guildId, guildId), eq(schema.chatSessions.userId, userId))).run();
+    return Promise.resolve();
+  }
 
   public getDmNotesEnabled(guildId: string, userId: string): Promise<boolean> {
     const preference = this.database.select({ dmNotesEnabled: schema.dmNotesPreferences.dmNotesEnabled })
@@ -112,7 +117,9 @@ export class SqliteChatStateStore implements ChatStateStore {
         ? exchangesSchema.parse(session.exchanges)
         : [];
       const bounded = boundSessionExchanges([...prior, {
-        user: { content: input.userMessage, createdAt: input.now },
+      user: { content: input.userMessage, createdAt: input.sourceTimestampMs ?? input.now,
+        ...(input.sourceMessageId !== undefined ? { sourceMessageId: input.sourceMessageId } : {}),
+        ...(input.channelMemoryMode !== undefined ? { channelMemoryMode: input.channelMemoryMode } : {}) },
         assistant: { content: input.assistantMessage, createdAt: input.now },
       }]);
       transaction.insert(schema.chatSessions).values({

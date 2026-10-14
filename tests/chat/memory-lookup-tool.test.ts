@@ -98,7 +98,7 @@ describe("MemoryLookupTool", () => {
     const result = await tool.execute({ query: "", scope: "list" }, fakeContext("shared"));
 
     const parsed = JSON.parse(result.content) as { userMemories: unknown[]; guildKnowledge: unknown[] };
-    expect(parsed.userMemories).toEqual([{ topic: "preference", slot: "food.fruit", statement: "likes green apples" }]);
+    expect(parsed.userMemories).toMatchObject([{ topic: "preference", slot: "food.fruit", statement: "likes green apples", subjectId: "user-1", audience: "private" }]);
     expect(parsed.guildKnowledge).toEqual([]);
   });
 
@@ -117,10 +117,10 @@ describe("MemoryLookupTool", () => {
     const tool = new MemoryLookupTool(memoryEngine as MemoryEngine);
 
     await tool.execute({ query: "", scope: "list" }, fakeContext("shared"));
-    expect(received!.onlySelfPrivateMemories).toBe(true);
+    expect(received!.onlySelfSubjectMemories).toBe(true);
 
     await tool.execute({ query: "pizza", scope: "search" }, fakeContext("shared"));
-    expect(received!.onlySelfPrivateMemories).toBe(false);
+    expect(received!.onlySelfSubjectMemories).toBe(false);
   });
 
   it("'list' scope returns more than 10 private memories when the caller has that many, matching its 'everything stored' description", async () => {
@@ -155,6 +155,7 @@ describe("MemoryLookupTool", () => {
     const result = await tool.execute({ query: "pizza", scope: "search" }, fakeContext("shared"));
 
     const parsed = JSON.parse(result.content) as { userMemories: unknown[]; guildKnowledge: unknown[] };
-    expect(parsed.guildKnowledge).toEqual([{ topic: "preference", slot: "food.fruit", statement: "bob likes pizza" }]);
+    expect(parsed.userMemories).toMatchObject([{ topic: "preference", slot: "food.fruit", statement: "bob likes pizza", subjectId: "bob", audience: "guild" }]);
+    expect(parsed.guildKnowledge).toEqual([]);
   });
 });

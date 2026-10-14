@@ -21,6 +21,7 @@ import type {
   RelationCreateInput,
 } from "./memory.js";
 import { canRecall } from "./memory.js";
+import { observedSubjectNames, groupObservedAliasRows } from "./observed-subject-names.js";
 import { memoryValidationLimits, validateProposal, type MemoryValidationLimits } from "./memory-validation.js";
 import {
   bm25LexicalScore,
@@ -146,7 +147,8 @@ const topicalMatchMinCosine = 0.25;
 
 function toScorable(memory: Memory): ScorableRecord {
   return {
-    subjectId: memory.subjectId, topic: memory.topic, slot: memory.slot, statement: memory.statement,
+    subjectId: memory.subjectId, topic: memory.topic, slot: memory.slot,
+    statement: (memory.statement + " " + observedSubjectNames(memory).map((name) => name.value).join(" ")).trimEnd(),
     updatedAt: memory.updatedAt, importance: memory.importance,
   };
 }
@@ -209,10 +211,16 @@ export class DefaultMemoryEngine implements MemoryEngine {
     // candidate set this recall was already authorized to read; failures are
     // logged and never fail the user-facing recall.
     private readonly relevanceTraceCollector: Pick<MemoryRelevanceTraceCollector, "record" | "includePrivate"> | null = null,
+    private readonly isBotAsserter: ((userId: string) => Promise<boolean>) | null = null,
+    private readonly sharedMemoryEnabled: (guildId: string) => boolean = () => false,
   ) {}
 
   public async recall(input: MemoryRecallInput): Promise<MemoryContext> {
     if (input.channelMode === "disabled") return { memories: [], causalChains: [] };
+    const aliasCandidates = groupObservedAliasRows(await this.repository.findObservedAliases({
+      guildId: input.guildId, channelId: input.channelId, userId: input.userId, now: input.now, message: input.message,
+    }), input.message);
+    const resolvedAliasIds = aliasCandidates.filter((alias) => alias.subjectIds.length === 1).flatMap((alias) => alias.subjectIds);
     // onlySelfPrivateMemories bypasses findRecallCandidates entirely rather
     // than filtering its output: that query mixes every audience together
     // (private-of-caller, channel, guild) under one shared
@@ -225,7 +233,10 @@ export class DefaultMemoryEngine implements MemoryEngine {
     // that user's own memory count, not the guild's. It doesn't filter
     // isolationChannelId/expiresAt/status itself (unlike
     // findRecallCandidates), so those are re-applied here in JS.
-    const candidates = input.onlySelfPrivateMemories
+    const candidates = input.onlySelfSubjectMemories
+      ? { memories: (await this.repository.listBySubject(input.guildId, input.userId)).filter((memory) =>
+          canRecall(memory, { guildId: input.guildId, channelId: input.channelId, userId: input.userId }, input.now)) }
+      : input.onlySelfPrivateMemories
       ? {
           memories: (await this.repository.listByUser(input.guildId, input.userId)).filter((memory) =>
             memory.audience === "private" && memory.subjectId === input.userId && memory.status === "active" &&
@@ -238,10 +249,11 @@ export class DefaultMemoryEngine implements MemoryEngine {
           // never subjectIds, which would narrow the eligible set down to
           // just these subjects instead of merely preferring them when the
           // cap has to drop something.
-          prioritySubjectIds: input.subjectIds,
+          prioritySubjectIds: [...input.subjectIds, ...resolvedAliasIds],
+          ...(input.filterSubjectIds?.length ? { subjectIds: input.filterSubjectIds } : {}),
         });
     if (candidates.memories.length === 0) return { memories: [], causalChains: [] };
-    const { boostBySubjectId, causalChains } = await this.expandRelatedSubjects(input);
+    const { boostBySubjectId, causalChains } = await this.expandRelatedSubjects({ ...input, subjectIds: [...input.subjectIds, ...resolvedAliasIds] });
     const subjectIds = new Set(input.subjectIds);
     const context = buildRelevanceContext({ message: input.message, recentHistory: input.recentHistory, subjectIds, now: input.now });
     const scorableByMemory = new Map(candidates.memories.map((memory) => [memory, toScorable(memory)] as const));
@@ -341,7 +353,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
         this.logger?.warn({ error, guildId: input.guildId }, "Memory relevance trace collection failed");
       });
     }
-    return { memories: selected, causalChains };
+    return { memories: selected, causalChains, maxSerializedChars: this.limits.maxSelectedChars, ...(aliasCandidates.length ? { aliasCandidates } : {}) };
   }
 
   // Bounded multi-hop expansion out from the turn's subjectIds — see
@@ -400,7 +412,8 @@ export class DefaultMemoryEngine implements MemoryEngine {
   }
 
   public async ingest(input: MemoryIngestInput): Promise<MemoryIngestResult> {
-    if (!allowsDurableWrites(input.channelMode)) return { ingested: [], removed: 0, rejected: 0, failed: 0 };
+    if (!allowsDurableWrites(input.channelMode) && input.proposals.every((proposal) => proposal.action === "upsert"))
+      return { ingested: [], removed: 0, rejected: 0, failed: 0 };
     // Candidate TTL sweep, piggybacked on writes rather than a separate
     // scheduler: expired candidates are never read (recall only serves
     // active rows), so they only need to be gone before the next write that
@@ -413,10 +426,42 @@ export class DefaultMemoryEngine implements MemoryEngine {
     let rejected = 0;
     let failed = 0;
     for (const proposal of input.proposals) {
+      if (proposal.action === "upsert" && !allowsDurableWrites(input.channelMode)) continue;
+      const effectiveAsserter = proposal.action === "upsert"
+        ? proposal.assertedByUserId !== undefined ? proposal.assertedByUserId : input.assertedByUserId : null;
+      if (proposal.action === "upsert" && effectiveAsserter && this.isBotAsserter) {
+        try {
+          if (await this.isBotAsserter(effectiveAsserter)) { rejected += 1; continue; }
+        } catch {
+          // Unknown author is not human evidence. Keep transient failures
+          // retryable for background jobs rather than losing the source.
+          failed += 1;
+          continue;
+        }
+      }
       const validated = validateProposal(proposal, this.limits);
       if (!validated) { rejected += 1; continue; }
+      if (validated.proposal.action === "upsert") {
+        const timestamp = validated.proposal.sourceTimestampMs ?? input.sourceTimestampMs ?? input.now;
+        const subjects = new Set([
+          ...(validated.proposal.subjectType === "member" ? [validated.proposal.subjectId] : []),
+          ...(effectiveAsserter ? [effectiveAsserter] : []),
+        ]);
+        let forgotten = false;
+        for (const subjectId of subjects) forgotten ||= await this.repository.isSourceForgotten({
+          guildId: input.guildId, subjectId, topic: validated.topic, slot: validated.slot,
+          channelId: input.channelId, sourceTimestampMs: timestamp,
+        });
+        const sourceIds = [validated.proposal.sourceMessageId ?? input.sourceMessageId,
+          ...(validated.proposal.supportingSources?.map((source) => source.messageId) ?? [])].filter((id): id is string => Boolean(id));
+        for (const subjectId of subjects) for (const messageId of sourceIds) forgotten ||= await this.repository.isSourceForgotten({
+          guildId: input.guildId, subjectId, topic: "*", slot: `source:${messageId}`,
+          channelId: input.channelId, sourceTimestampMs: timestamp,
+        });
+        if (forgotten) { rejected += 1; continue; }
+      }
       if (validated.proposal.action === "remove") {
-        removed += await this.removeOne(input.guildId, validated.proposal, validated.topic, validated.slot);
+        removed += await this.removeOne(input, validated.proposal, validated.topic, validated.slot);
         continue;
       }
       const memory = await this.upsertOne(input, validated.proposal, validated.topic, validated.slot, validated.statement!);
@@ -469,23 +514,27 @@ export class DefaultMemoryEngine implements MemoryEngine {
   }
 
   private async removeOne(
-    guildId: string,
+    input: MemoryIngestInput,
     proposal: Extract<ProposedMemory, { action: "remove" }>,
     topic: string,
     slot: string,
   ): Promise<number> {
-    if (proposal.ownerUserId === null) return 0;
-    const owned = await this.repository.listByUser(guildId, proposal.ownerUserId);
+    if (proposal.ownerUserId === null || proposal.ownerUserId !== input.assertedByUserId ||
+        proposal.subjectType !== "member" || proposal.subjectId !== input.assertedByUserId) return 0;
+    const owned = await this.listUserMemories(input.guildId, proposal.ownerUserId, input.channelId);
     // Compare against the normalized topic/slot (validateProposal's output),
     // not proposal.topic/proposal.slot directly — ingested memories are
     // always stored normalized (see upsertOne), so matching on the raw,
     // un-normalized proposal fields would silently miss any casing/
     // whitespace difference and discard the removal.
-    const match = owned.find((memory) =>
+    const matches = owned.filter((memory) =>
       memory.subjectType === proposal.subjectType && memory.subjectId === proposal.subjectId &&
       memory.topic === topic && memory.slot === slot);
-    if (!match) return 0;
-    return this.repository.forget({ guildId, memoryId: match.id, ownerUserId: proposal.ownerUserId });
+    let removed = 0;
+    for (const match of matches) removed += await this.forget({
+      guildId: input.guildId, memoryId: match.id, ownerUserId: proposal.ownerUserId, channelId: input.channelId,
+    });
+    return removed;
   }
 
   private async upsertOne(
@@ -495,18 +544,19 @@ export class DefaultMemoryEngine implements MemoryEngine {
     slot: string,
     statement: string,
   ): Promise<Memory | null> {
+    const assertedByUserId = proposal.assertedByUserId !== undefined ? proposal.assertedByUserId : input.assertedByUserId;
     const scope = resolveMemoryScope(input.channelMode, input.channelId, {
-      audience: proposal.audience,
+      audience: !this.sharedMemoryEnabled(input.guildId) && proposal.subjectType === "member" && proposal.subjectId === assertedByUserId
+        ? "private" : proposal.audience,
       channelScoped: proposal.channelScoped,
-    });
+    }, this.sharedMemoryEnabled(input.guildId));
     // proposal.assertedByUserId overrides the ingest-level value when
     // present (including explicitly null) — see ProposedMemory's upsert
     // variant for why: a consolidation batch has no single asserter, so
     // ChannelSummaryScheduler resolves one per fact from its evidence.
-    const assertedByUserId = proposal.assertedByUserId !== undefined ? proposal.assertedByUserId : input.assertedByUserId;
     const status = resolveInitialStatus(scope.audience, proposal.subjectType, proposal.subjectId, assertedByUserId, input.source);
     const embedding = this.embeddingsClient ? await this.embeddingsClient.embed(statement).catch(() => null) : null;
-    const ownerUserId = proposal.audience === "private" ? proposal.ownerUserId : null;
+    const ownerUserId = scope.audience === "private" ? proposal.ownerUserId ?? proposal.subjectId : null;
     // Canonicalize BEFORE writing, not after: findActiveBySubject/embedding
     // are already being computed here for the write itself, so reusing them
     // to check "does an existing memory about this subject already mean
@@ -522,6 +572,11 @@ export class DefaultMemoryEngine implements MemoryEngine {
       : { topic, slot };
     let memory: Memory;
     try {
+      const previous = (await this.repository.findActiveBySubject({ guildId: input.guildId, subjectType: proposal.subjectType,
+        subjectId: proposal.subjectId, audience: scope.audience, ownerUserId, channelId: scope.channelId, isolationChannelId: scope.isolationChannelId }))
+        .find((record) => record.topic === canonical.topic && record.slot === canonical.slot);
+      const names = new Map(observedSubjectNames(previous ?? { structuredValue: null }).map((name) => [name.value, name]));
+      for (const name of proposal.observedSubjectNames ?? []) if (name.trim()) names.set(name.slice(0, 100), { value: name.slice(0, 100), observedAt: input.now });
       memory = await this.repository.ingest({
         guildId: input.guildId,
         kind: proposal.kind,
@@ -534,6 +589,14 @@ export class DefaultMemoryEngine implements MemoryEngine {
         topic: canonical.topic,
         slot: canonical.slot,
         statement,
+        structuredValue: names.size || proposal.supportingSources?.length ? {
+          ...(previous?.structuredValue && typeof previous.structuredValue === "object" ? previous.structuredValue : {}),
+          observedSubjectNames: [...names.values()].slice(-16),
+          ...(proposal.supportingSources?.length ? {
+            supportingSubjects: [...new Set(proposal.supportingSources.map((source) => source.subjectId))],
+            supportingSourceMessageIds: [...new Set(proposal.supportingSources.map((source) => source.messageId))],
+          } : {}),
+        } : previous?.structuredValue ?? null,
         status,
         source: input.source,
         importance: proposal.importance ?? 1,
@@ -541,7 +604,10 @@ export class DefaultMemoryEngine implements MemoryEngine {
         embeddingModel: embedding ? "default" : null,
         expiresAt: status === "candidate" ? input.now + this.limits.candidateTtlMs : null,
         now: input.now,
-        sourceMessageId: input.sourceMessageId,
+        sourceMessageId: proposal.sourceMessageId !== undefined ? proposal.sourceMessageId : input.sourceMessageId,
+        sourceQuote: proposal.sourceQuote ?? null,
+        sourceTimestampMs: proposal.sourceTimestampMs ?? input.sourceTimestampMs ?? null,
+        sourceChannelMode: input.channelMode,
         sourceChannelId: input.channelId,
         assertedByUserId,
       });
@@ -725,18 +791,38 @@ export class DefaultMemoryEngine implements MemoryEngine {
     }
   }
 
-  public listUserMemories(guildId: string, userId: string): Promise<readonly Memory[]> {
-    return this.repository.listByUser(guildId, userId);
+  public async listUserMemories(guildId: string, userId: string, channelId?: string): Promise<readonly Memory[]> {
+    const memories = await this.repository.listBySubject(guildId, userId);
+    return memories.filter((memory) =>
+      (memory.isolationChannelId === null || memory.isolationChannelId === channelId) &&
+      (memory.audience !== "private" || memory.ownerUserId === userId) &&
+      (memory.audience !== "channel" || memory.channelId === channelId));
   }
 
   public listSources(memoryId: string): Promise<readonly MemorySource[]> {
     return this.repository.findSources(memoryId);
   }
+  public listPromptSources(memoryIds: readonly string[]): Promise<readonly MemorySource[]> {
+    return this.repository.findPromptSources?.(memoryIds) ?? Promise.resolve([]);
+  }
 
-  public forget(input: MemoryForgetInput): Promise<number> {
+  public async forget(input: MemoryForgetInput): Promise<number> {
     if (input.memoryId) {
-      return this.repository.forget({ guildId: input.guildId, memoryId: input.memoryId, ownerUserId: input.ownerUserId });
+      const eligible = await this.listUserMemories(input.guildId, input.ownerUserId, input.channelId);
+      const memory = eligible.find((record) => record.id === input.memoryId);
+      if (!memory) return 0;
+      const sources = await this.repository.findSources(memory.id);
+      const supportingSourceIds = sources.flatMap((source) => source.sourceMessageId ? [source.sourceMessageId] : []);
+      for (const messageId of supportingSourceIds) await this.repository.recordForgetCutoff({
+        guildId: input.guildId, subjectId: input.ownerUserId, topic: "*", slot: `source:${messageId}`,
+        scopeKey: "*", cutoff: Date.now(),
+      });
+      await this.repository.recordForgetCutoff({ guildId: input.guildId, subjectId: input.ownerUserId,
+        topic: memory.topic, slot: memory.slot, scopeKey: memory.isolationChannelId ?? memory.channelId ?? "*", cutoff: Date.now() });
+      return this.repository.forget({ guildId: input.guildId, memoryId: memory.id, supportingSourceIds });
     }
+    await this.repository.recordForgetCutoff({ guildId: input.guildId, subjectId: input.ownerUserId,
+      topic: "*", slot: "*", scopeKey: "*", cutoff: Date.now() });
     return this.repository.forget({
       guildId: input.guildId, ownerUserId: input.ownerUserId,
       ...(input.subjectId !== undefined ? { subjectId: input.subjectId } : {}),

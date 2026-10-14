@@ -8,6 +8,8 @@ const memoryModes = {
 };
 
 export const zhTWMemory: SettingsTextCatalog = {
+  "memory.sharing": { label: "共享個人記憶", description: "確認頻道記憶模式後再啟用；既有私人記憶不會改變。" },
+  "memory.sharing.enabled": { label: "共享個人記憶", description: "允許新的個人事實在已設定的範圍內共享。" },
   "memory": { title: "記憶", description: "機器人會回顧和記住的內容" },
   "memory.channel-history": { label: "頻道歷史", description: "把頻道最近的訊息當作回覆的背景" },
   "memory.channel-history.enabled": { label: "頻道歷史", description: "開啟或關閉頻道歷史" },

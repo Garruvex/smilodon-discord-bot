@@ -1,6 +1,7 @@
 import type { SettingsGroup } from "../registry/types.js";
 import { access } from "./access.js";
 import { chat } from "./chat.js";
+import { participation } from "./participation.js";
 import { community } from "./community.js";
 import { dnd } from "./dnd.js";
 import { memory } from "./memory.js";
@@ -9,4 +10,4 @@ import { security } from "./security.js";
 
 // Every registered settings group, in the order the admin panel shows them.
 // Each becomes /settings-<name>; see ../registry for how the rest follows.
-export const settingsRegistry: readonly SettingsGroup[] = [access, music, chat, memory, dnd, community, security];
+export const settingsRegistry: readonly SettingsGroup[] = [access, music, chat, participation, memory, dnd, community, security];

@@ -181,8 +181,11 @@ function fakeMessage(reactorIds: readonly string[], overrides: {
   };
 }
 
-function fakeClient(message: unknown, overrides: { messagesFetch?: () => Promise<unknown> } = {}): unknown {
+function fakeClient(message: unknown, overrides: { messagesFetch?: () => Promise<unknown>; parentId?: string } = {}): unknown {
   const channel = {
+    id: channelId,
+    isThread: (): boolean => Boolean(overrides.parentId),
+    parentId: overrides.parentId ?? null,
     isTextBased: (): boolean => true,
     isDMBased: (): boolean => false,
     guildId,
@@ -197,6 +200,67 @@ function fakeClient(message: unknown, overrides: { messagesFetch?: () => Promise
 }
 
 describe("ReactionReplyScheduler", () => {
+  it.each([false, true])("excludes game channels and thread parents before model work (thread=%s)", async (thread) => {
+    const reply = vi.fn(() => Promise.resolve(response("must not send")));
+    const { store, markDone } = fakeWatchStore([watch()]);
+    const guard = vi.fn(() => Promise.resolve(true));
+    const scheduler = new ReactionReplyScheduler(
+      fakeClient(fakeMessage(["r1"]), thread ? { parentId: "party" } : {}) as never,
+      store, providerFor(profile()), testConversationService(reply), personaSource(),
+      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never, configuration(), guard,
+    );
+    await scheduler.checkNow(2_000);
+    expect(guard).toHaveBeenCalledWith(guildId, thread ? [channelId, "party"] : [channelId]);
+    expect(reply).not.toHaveBeenCalled();
+    expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
+  });
+
+  it("fails closed when game ownership cannot be resolved", async () => {
+    const reply = vi.fn(() => Promise.resolve(response("must not send")));
+    const { store, markDone } = fakeWatchStore([watch()]);
+    const scheduler = new ReactionReplyScheduler(
+      fakeClient(fakeMessage(["r1"])) as never, store, providerFor(profile()), testConversationService(reply), personaSource(),
+      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never, configuration(),
+      () => Promise.reject(new Error("ownership lookup unavailable")),
+    );
+    await scheduler.checkNow(2_000);
+    expect(reply).not.toHaveBeenCalled();
+    expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
+  });
+
+  it("suppresses text and reactions when a channel becomes game-owned during generation", async () => {
+    let gameOwned = false;
+    const reply = vi.fn(() => { gameOwned = true; return Promise.resolve(response("must not send", "reply", "😂")); });
+    const message = fakeMessage(["r1"]) as { reply: ReturnType<typeof vi.fn>; react: ReturnType<typeof vi.fn> };
+    message.reply = vi.fn();
+    message.react = vi.fn();
+    const { store, markDone } = fakeWatchStore([watch()]);
+    const scheduler = new ReactionReplyScheduler(
+      fakeClient(message) as never, store, providerFor(profile()), testConversationService(reply), personaSource(),
+      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never, configuration(),
+      () => Promise.resolve(gameOwned),
+    );
+    await scheduler.checkNow(2_000);
+    expect(reply).toHaveBeenCalledOnce();
+    expect(message.reply).not.toHaveBeenCalled();
+    expect(message.react).not.toHaveBeenCalled();
+    expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
+  });
+
+  it("does not request or allow reactor notifications", async () => {
+    const reply = vi.fn(() => Promise.resolve(response("<@r1> hey")));
+    const message = fakeMessage(["r1"]) as { reply: ReturnType<typeof vi.fn> };
+    message.reply = vi.fn(() => Promise.resolve({ id: "sent" }));
+    const { store } = fakeWatchStore([watch()]);
+    const scheduler = new ReactionReplyScheduler(
+      fakeClient(message) as never, store, providerFor(profile()), testConversationService(reply), personaSource(),
+      { warn: vi.fn(), error: vi.fn(), info: vi.fn() } as never, configuration(),
+    );
+    await scheduler.checkNow(2_000);
+    expect(JSON.stringify(reply.mock.calls)).not.toContain("Tag the people");
+    expect(message.reply.mock.calls[0]?.[0]).toMatchObject({ allowedMentions: { repliedUser: false, parse: [], users: [] } });
+  });
+
   it("marks a watch done without ever calling the model when unique reactors stay below threshold", async () => {
     const reply = vi.fn(() => Promise.resolve(response("should not be sent")));
     const conversation = testConversationService(reply);

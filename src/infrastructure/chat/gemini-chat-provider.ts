@@ -112,7 +112,6 @@ export class GeminiChatProvider implements ChatProvider {
     observer?: ChatResponseObserver,
   ): Promise<ChatResponse> {
     void observer; // No partial-image-preview streaming for Gemini in v1 — see plan notes.
-    const systemInstruction = buildChatInstructions(request, chatSafetyGuard);
     const customTools = request.enabledTools ?? [];
     const toolContext: ChatToolContext = {
       guildId: request.guildId,
@@ -144,8 +143,10 @@ export class GeminiChatProvider implements ChatProvider {
     }];
 
     for (let roundTrip = 0; ; roundTrip++) {
-      const response = await this.modelChain.run((model) =>
-        this.generateContent(model, systemInstruction, contents, this.buildTools(request, customTools)));
+      const response = await this.modelChain.run((model) => {
+        request.onModelAttempt?.();
+        return this.generateContent(model, buildChatInstructions(request, chatSafetyGuard), contents, this.buildTools(request, customTools));
+      });
       const functionCalls = response.functionCalls ?? [];
 
       if (functionCalls.length === 0) {
@@ -160,8 +161,10 @@ export class GeminiChatProvider implements ChatProvider {
           this.modelTurn(response),
           this.functionResponseTurn(functionCalls, functionCalls.map(() => ({ content: toolBudgetExhaustedMessage }))),
         ];
-        const finalizeResponse = await this.modelChain.run((model) =>
-          this.generateContent(model, systemInstruction, contents, undefined));
+        const finalizeResponse = await this.modelChain.run((model) => {
+          request.onModelAttempt?.();
+          return this.generateContent(model, buildChatInstructions(request, chatSafetyGuard), contents, undefined);
+        });
         return this.mergePendingImages(
           this.parseResponse(finalizeResponse, request),
           toolContext.pendingGeneratedImages,
@@ -333,6 +336,7 @@ export class GeminiChatProvider implements ChatProvider {
       webSearchUsed: groundingChunks.length > 0,
       generatedImages,
       ambientAction: modelOutput.ambientAction,
+      ...(modelOutput.participationReason !== undefined ? { participationReason: modelOutput.participationReason } : {}),
       reactionEmoji: modelOutput.reactionEmoji,
       historyReactions: modelOutput.historyReactions,
     };

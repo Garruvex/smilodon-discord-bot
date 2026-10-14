@@ -77,7 +77,7 @@ describe("DefaultMemoryEngine relevance tracing", () => {
     const connection = createSqliteDatabaseConnection(directory);
     const repository = new SqliteMemoryRepository(connection.database);
     const record = vi.fn<(input: MemoryRelevanceTraceInput) => Promise<void>>().mockResolvedValue(undefined);
-    const engine = new DefaultMemoryEngine(repository, null, null, undefined, null, { record, includePrivate: false });
+    const engine = new DefaultMemoryEngine(repository, null, null, undefined, null, { record, includePrivate: false }, null, () => true);
     for (const [slot, statement, audience] of [
       ["food.fruit", "likes green apples", "guild"],
       ["job.role", "works as an engineer", "guild"],
