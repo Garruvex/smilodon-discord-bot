@@ -1,31 +1,31 @@
 import type { CharacterDecisionInput, CharacterModule, CharacterTurn } from "../character-module-registry.js";
 import type { ChatRequest } from "../chat-provider.js";
+import { eligibleContribution, exchangeBranch, type ContributionCandidate } from "../character-decision.js";
 
-interface HeldThought { text: string; sourceId: string; topic: string; expiresAt: number; motivation: number }
+interface HeldThought { candidate: ContributionCandidate; scope: string; expiresAt: number }
 export class ThoughtsModule implements CharacterModule {
   public readonly id = "thoughts";
   private readonly reservoir = new Map<string, HeldThought[]>();
   public reset(guildId?: string, channelId?: string): void {
-    if (!guildId) { this.reservoir.clear(); return; }
-    for (const key of this.reservoir.keys()) if (channelId ? key === `${guildId}:${channelId}` : key.startsWith(`${guildId}:`)) this.reservoir.delete(key);
+    for (const key of this.reservoir.keys()) if (!guildId || (channelId ? key === `${guildId}:${channelId}` : key.startsWith(`${guildId}:`))) this.reservoir.delete(key);
   }
   public onDecision(turn: CharacterTurn, input: CharacterDecisionInput): { request: ChatRequest; allowed: boolean } {
-    let request = turn.request; const decision = input.decision; const controls = turn.settings.modules.thoughts;
-    if (!decision || !input.optional) return { request, allowed: true };
+    const request = turn.request; const controls = turn.settings.modules.thoughts; const decision = input.decision;
     const key = `${request.guildId}:${request.channelId}`;
-    const topic = decision.boundary === "earlier" ? input.events[0]?.messageId ?? "" : decision.boundary;
-    const sourceIds = new Set([...input.events, ...input.burst].map((event) => event.messageId));
-    const held = (this.reservoir.get(key) ?? []).filter((thought) => thought.expiresAt > turn.now && thought.topic === topic && sourceIds.has(thought.sourceId));
-    for (const thought of decision.thoughts) if (thought.motivation >= controls.threshold)
-      held.push({ text: thought.text, sourceId: thought.sourceMessageId, topic, motivation: thought.motivation, expiresAt: turn.now + controls.holdSeconds * 1000 });
+    if (!decision || !input.optional || decision.opening !== "clear") { this.reservoir.delete(key); return { request, allowed: true }; }
+    const current = input.burst.at(-1); if (!current) return { request, allowed: true };
+    const scope = JSON.stringify([exchangeBranch(input.events, current, request.botUserId ?? "bot"), decision.contribution.recipientId, decision.boundary, turn.settings, input.policy]);
+    const candidates = decision.thoughts.filter((candidate) => eligibleContribution(candidate, request.triggerMode === "spontaneous" ? "spontaneous" : "continuation", input.policy) && candidate.recipientId === decision.contribution.recipientId);
+    // Held candidates must be explicitly reassessed in the new valid decision.
+    const held = (this.reservoir.get(key) ?? []).filter((thought) => thought.scope === scope && thought.expiresAt > turn.now &&
+      candidates.some((candidate) => candidate.sourceMessageId === thought.candidate.sourceMessageId && candidate.text === thought.candidate.text));
+    for (const candidate of candidates) if (!held.some((thought) => thought.candidate.text === candidate.text && thought.candidate.sourceMessageId === candidate.sourceMessageId))
+      held.push({ candidate, scope, expiresAt: turn.now + controls.holdSeconds * 1000 });
     if (this.reservoir.size >= 256 && !this.reservoir.has(key)) this.reservoir.delete(this.reservoir.keys().next().value!);
     this.reservoir.set(key, held.slice(-3));
-    const spontaneous = request.triggerMode === "spontaneous";
-    const allowed = !(spontaneous && (controls.shadow || decision.motivation < controls.threshold));
-    if (allowed && !controls.shadow && held.length && (!spontaneous || turn.now - (input.burst.at(-1)?.timestampMs ?? turn.now) >= 1000)) {
-      request = { ...request, characterContext: [...(request.characterContext ?? []), { moduleId: "thoughts", text: JSON.stringify(held.map((thought) => ({ text: thought.text, sourceId: thought.sourceId }))) }] };
-      this.reservoir.delete(key);
-    }
-    return { request, allowed };
+    // The baseline accepted contribution always controls admission; shadow
+    // thoughts neither authorize output nor veto another eligible contribution.
+    const selected = !controls.shadow && held.find((thought) => thought.candidate.sourceMessageId === decision.contribution.sourceMessageId && thought.candidate.text === decision.contribution.text);
+    return { request: selected ? { ...request, characterContext: [...(request.characterContext ?? []), { moduleId: "thoughts", text: `Reassessed candidate, subordinate to the accepted contribution: ${JSON.stringify(selected.candidate)}` }] } : request, allowed: true };
   }
 }

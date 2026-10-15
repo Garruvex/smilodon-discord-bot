@@ -14,13 +14,16 @@ export class DiscordChannelHistoryReader implements ChannelHistoryReader {
   public constructor(private readonly client: Client, private readonly eligibility: SocialChatEligibility | null = null) {}
 
   public async canLearn(guildId: string, channelId: string, sourceMessageId: string): Promise<boolean> {
+    if (this.eligibility && !this.eligibility.canReadBackground(guildId, channelId)) return false;
     const channel = await this.client.channels.fetch(channelId).catch(() => null);
     if (!channel?.isTextBased() || channel.isDMBased() || channel.guildId !== guildId) return false;
     const message = await channel.messages.fetch(sourceMessageId).catch(() => null);
-    return Boolean(message && !message.author.bot && (!this.eligibility || (await this.eligibility.check(message, "observation")).eligible));
+    return Boolean(message && !message.author.bot && (!this.eligibility || (await this.eligibility.check(message, "background_observation")).eligible));
   }
 
   public async readBatch(request: ChannelHistoryReadRequest): Promise<ChannelHistoryReadResult> {
+    if (this.eligibility && !this.eligibility.canReadBackground(request.guildId, request.channelId))
+      return { ok: false, code: "scope_denied", message: "The channel is no longer selected for history scans or daily summaries." };
     const channel = await this.client.channels.fetch(request.channelId).catch(() => null);
     if (!channel) {
       return { ok: false, code: "channel_not_found", message: "The configured channel was not found or is inaccessible." };
@@ -56,6 +59,8 @@ export class DiscordChannelHistoryReader implements ChannelHistoryReader {
 
     try {
       while (messages.length < request.maxMessages && characters < request.maxCharacters) {
+        if (this.eligibility && !this.eligibility.canReadBackground(request.guildId, request.channelId))
+          return { ok: false, code: "scope_denied", message: "Background reading scope changed during the scan." };
         const page = await channel.messages.fetch({ limit: fetchPageSize, ...(before ? { before } : {}) });
         if (page.size === 0) {
           reachedBoundary = true;
@@ -71,7 +76,7 @@ export class DiscordChannelHistoryReader implements ChannelHistoryReader {
 
           const content = message.content.trim().slice(0, request.maxCharactersPerMessage);
           const eligible = !message.author.bot && !message.system && content.length > 0 &&
-            (!this.eligibility || (await this.eligibility.check(message, "observation")).eligible);
+            (!this.eligibility || (await this.eligibility.check(message, "background_observation")).eligible);
           // Don't advance the cursor past a message we're deferring to the
           // next batch — only past ones we've fully consumed (pushed, or
           // permanently skipped as ineligible). Advancing on every message

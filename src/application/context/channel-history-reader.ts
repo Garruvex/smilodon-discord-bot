@@ -9,6 +9,7 @@ export interface ChannelHistoryMessage {
 }
 
 export type ChannelHistoryFailureCode =
+  | "scope_denied"
   | "channel_not_found"
   | "guild_mismatch"
   | "unsupported_channel"

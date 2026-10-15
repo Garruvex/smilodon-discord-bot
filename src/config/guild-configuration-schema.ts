@@ -102,6 +102,10 @@ const guildChatSchema = z.preprocess((value) => {
   return { ...rest, webSearchMode: webSearchEnabled ? "auto" : "off" };
 }, z.object({
   participation: z.object({
+    messagesPerDecision: z.number().int().min(1).max(20).optional(),
+    spontaneousThreshold: z.number().min(0).max(1).optional(),
+    continuationThreshold: z.number().min(0).max(1).optional(),
+    observationChannelIds: snowflakeList.optional(),
     continuationEnabled: z.boolean().default(false),
     spontaneousEnabled: z.boolean().default(false),
     spontaneousChannelIds: snowflakeList,
@@ -120,6 +124,7 @@ const guildChatSchema = z.preprocess((value) => {
       reactionCooldownSeconds: z.number().int().min(20).max(600).optional(),
       textPer10Minutes: z.number().int().min(0).max(3).optional(),
       reactionsPer10Minutes: z.number().int().min(0).max(5).optional(),
+      continuationIntervalSeconds: z.number().int().min(15).max(600).optional(),
       continuationPerExchange: z.number().int().min(0).max(30).optional(),
       continuationPer10Minutes: z.number().int().min(0).max(100).optional(),
     }).default({}),
@@ -429,6 +434,24 @@ export const guildConfigurationFileSchema = z
         path: ["channels", "linkFix"],
       });
     }
+  }).transform((configuration) => {
+    const policy = configuration.chat.participation;
+    if (policy.spontaneousThreshold === undefined) {
+      const character = configuration.character;
+      // The former active shadow-thought hook vetoed spontaneous replies.
+      // Removing that veto must not silently activate existing channels.
+      if (character.enabled && character.modules.thoughts.enabled && character.modules.thoughts.shadow && character.modules.addressing.enabled && configuration.features.channelHistory) {
+        for (const channelId of policy.spontaneousChannelIds) {
+          const scope = character.channelOverrides[channelId]; const override = policy.channelOverrides[channelId];
+          if (scope?.enabled !== false && scope?.contextEnabled !== false && scope?.modules.thoughts !== false && scope?.modules.addressing !== false &&
+              configuration.chat.channelMemoryModes[channelId] !== "disabled" && (override?.continuationEnabled ?? policy.continuationEnabled))
+            policy.channelOverrides[channelId] = { ...override, spontaneousEnabled: false };
+        }
+      }
+      policy.spontaneousThreshold = Math.max(0.75, character.enabled && character.modules.thoughts.enabled && !character.modules.thoughts.shadow ? character.modules.thoughts.threshold : 0);
+    }
+    policy.continuationThreshold ??= 0.5;
+    return configuration;
   });
 
 export type ParsedGuildConfigurationFile = z.infer<typeof guildConfigurationFileSchema>;

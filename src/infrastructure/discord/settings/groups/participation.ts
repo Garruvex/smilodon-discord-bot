@@ -1,15 +1,44 @@
-import { action, channelList, choice, group, integer, toggle } from "../registry/builders.js";
+import { action, channelList, choice, group, integer, toggle, report } from "../registry/builders.js";
 import { chatSetting } from "./chat.js";
-import { defaultParticipation, resolveParticipation } from "../../../../application/chat/participation-policy.js";
+import { defaultParticipation, resolveParticipation, contributionPolicy } from "../../../../application/chat/participation-policy.js";
 
 export const participation = group("participation", [
+    report("status", ({ deps, profile, text, path }) => Promise.resolve(text.message(path, deps.characterRuntime?.decisionAvailable ? "available" : "paused") + "\n" + text.message(path, "scope", { count: (profile.chat.participation?.observationChannelIds ?? [...profile.channels.chatbot]).length }))),
+    chatSetting("observation-channels", {
+      channels: channelList({ textOnly: true, read: (p) => [...(p.chat.participation?.observationChannelIds ?? p.channels.chatbot)],
+        write: (v, p) => JSON.stringify(v) === JSON.stringify(p.chat.participation?.observationChannelIds ?? [...p.channels.chatbot]) ? {} : ({ chatParticipation: { observationChannelIds: [...v] } }) }),
+    }),
+    action("thread-scope", {
+      params: { "thread-id": { kind: "text", maxLength: 20, required: true }, observe: { kind: "toggle" }, spontaneous: { kind: "toggle" } },
+      run: async ({ profile, request, values, text, path }) => {
+        const id = values.getString("thread-id") ?? "";
+        const observe = values.getBoolean("observe"); const spontaneous = values.getBoolean("spontaneous");
+        if (!/^\d{17,20}$/u.test(id) || !request.guild || observe === null && spontaneous === null) return { ok: false, message: text.message(path, "invalid") };
+        const thread = await request.guild.channels.fetch(id).catch(() => null);
+        if (!thread?.isThread() || thread.guildId !== profile.guildId) return { ok: false, message: text.message(path, "invalid") };
+        const observations = new Set(profile.chat.participation?.observationChannelIds ?? profile.channels.chatbot);
+        const spontaneousChannels = new Set(profile.chat.participation?.spontaneousChannelIds ?? []);
+        if (observe === true) observations.add(id); else if (observe === false) observations.delete(id);
+        if (spontaneous === true && !observations.has(id)) return { ok: false, message: text.message(path, "needs-observation") };
+        if (spontaneous === true) spontaneousChannels.add(id); else if (spontaneous === false || observe === false) spontaneousChannels.delete(id);
+        return { ok: true, message: text.message(path, "done"), patch: { chatParticipation: { observationChannelIds: [...observations], spontaneousChannelIds: [...spontaneousChannels] } } };
+      },
+    }),
     chatSetting("continuation-limits", {
-      exchange: integer({ min: 0, max: 30, read: (p) => p.chat.participation?.advanced.continuationPerExchange ?? 10,
-        write: (v, p) => v === (p.chat.participation?.advanced.continuationPerExchange ?? 10) ? {} : ({ chatParticipation: { advanced: { continuationPerExchange: v } } }) }),
-      window: integer({ min: 0, max: 100, read: (p) => p.chat.participation?.advanced.continuationPer10Minutes ?? 30,
-        write: (v, p) => v === (p.chat.participation?.advanced.continuationPer10Minutes ?? 30) ? {} : ({ chatParticipation: { advanced: { continuationPer10Minutes: v } } }) }),
+      interval: integer({ min: 15, max: 600, read: (p) => resolveParticipation(p.chat.participation, "").limits.continuationIntervalMs! / 1000,
+        write: (v, p) => v === resolveParticipation(p.chat.participation, "").limits.continuationIntervalMs! / 1000 ? {} : ({ chatParticipation: { advanced: { continuationIntervalSeconds: v } } }) }),
+      exchange: integer({ min: 0, max: 30, read: (p) => p.chat.participation?.advanced.continuationPerExchange ?? resolveParticipation(p.chat.participation, "").limits.continuationPerExchange!,
+        write: (v, p) => v === resolveParticipation(p.chat.participation, "").limits.continuationPerExchange! ? {} : ({ chatParticipation: { advanced: { continuationPerExchange: v } } }) }),
+      window: integer({ min: 0, max: 100, read: (p) => p.chat.participation?.advanced.continuationPer10Minutes ?? resolveParticipation(p.chat.participation, "").limits.continuationPerWindow!,
+        write: (v, p) => v === resolveParticipation(p.chat.participation, "").limits.continuationPerWindow! ? {} : ({ chatParticipation: { advanced: { continuationPer10Minutes: v } } }) }),
     }),
     chatSetting("controls", {
+      "messages-per-decision": integer({ min: 1, max: 20, read: (p) => resolveParticipation(p.chat.participation, "").messagesPerDecision,
+        write: (v, p) => v === resolveParticipation(p.chat.participation, "").messagesPerDecision ? {} : ({ chatParticipation: { messagesPerDecision: v } }) }),
+      "spontaneous-threshold": integer({ min: 0, max: 100, read: (p) => contributionPolicy(p.chat.participation).spontaneousThreshold * 100,
+        write: (v, p) => v / 100 === contributionPolicy(p.chat.participation).spontaneousThreshold ? {} : ({ chatParticipation: { spontaneousThreshold: v / 100 } }) }),
+      "continuation-threshold": integer({ min: 0, max: 100, read: (p) => contributionPolicy(p.chat.participation).continuationThreshold * 100,
+        write: (v, p) => v / 100 === contributionPolicy(p.chat.participation).continuationThreshold ? {} : ({ chatParticipation: { continuationThreshold: v / 100 } }) }),
       continuation: toggle({ read: (p) => p.chat.participation?.continuationEnabled ?? false, write: (v) => ({ chatParticipation: { continuationEnabled: v } }) }),
       spontaneous: toggle({ read: (p) => p.chat.participation?.spontaneousEnabled ?? false, write: (v) => ({ chatParticipation: { spontaneousEnabled: v } }) }),
       activity: choice({ choices: ["quiet", "balanced", "lively"] as const, read: (p) => p.chat.participation?.activity ?? "balanced", write: (v) => ({ chatParticipation: { activity: v } }) }),

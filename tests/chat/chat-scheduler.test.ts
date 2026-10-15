@@ -78,6 +78,12 @@ describe("bounded channel scheduler", () => {
     expect(scheduler.reserveOutput("c", "text", balancedChatLimits, true)).not.toBeNull();
     expect(scheduler.reserveOutput("c", "text", balancedChatLimits, false)).not.toBeNull();
   });
+  it("cancels a buffered optional opportunity independently of other channels", async () => {
+    vi.useFakeTimers(); const scheduler = new ChatScheduler(); const old = vi.fn(); const other = vi.fn();
+    scheduler.bufferOpportunity("g:c", old); scheduler.bufferOpportunity("g:other", other);
+    scheduler.cancelBufferedOpportunity("g:c"); await vi.advanceTimersByTimeAsync(10000);
+    expect(old).not.toHaveBeenCalled(); expect(other).toHaveBeenCalledOnce(); scheduler.stop();
+  });
   it("buffers one refreshed opportunity with a maximum wait and discards it on stop", async () => {
     vi.useFakeTimers();
     const scheduler = new ChatScheduler();

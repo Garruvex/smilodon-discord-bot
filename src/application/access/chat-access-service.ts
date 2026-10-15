@@ -40,6 +40,11 @@ export class ChatAccessService {
     );
   }
 
+  public canObserve(profile: GuildConfiguration, member: GuildMember | null): boolean {
+    return !!member && !this.hasAnyRole(member.roles.cache, profile.roles.restricted) &&
+      (this.hasAnyRole(member.roles.cache, profile.roles.chatbot) || this.hasAnyRole(member.roles.cache, profile.roles.botAdministrator));
+  }
+
   private hasAnyRole(
     memberRoles: GuildMember["roles"]["cache"],
     configuredRoleIds: ReadonlySet<string>,

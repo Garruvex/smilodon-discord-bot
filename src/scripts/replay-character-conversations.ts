@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { replayParticipation } from "../application/chat/participation-evaluation.js";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -21,7 +22,14 @@ import { SqliteChatStateStore } from "../infrastructure/persistence/sqlite-chat-
 const args = process.argv.slice(2);
 const argument = (name: string): string | null => { const index = args.indexOf(name); return index >= 0 ? args[index + 1] ?? null : null; };
 if (args.includes("--help")) {
-  process.stdout.write("Usage: npm run eval:character-replay -- --fixture replay.json --persona personality.md [--settings character-settings.json] [--output review.json]\nRequires a consented, anonymized manifest with pseudonymous numeric Discord IDs. Uses configured providers and a new temporary database; posts nothing to Discord.\n");
+  process.stdout.write("Usage: npm run eval:character-replay -- --fixture replay.json --persona personality.md [--settings character-settings.json] [--output review.json]\nFor deterministic policy comparison: --participation-fixture tests/fixtures/participation-replay.json [--output review.json] (no network calls or Discord sends).\nRequires a consented, anonymized manifest with pseudonymous numeric Discord IDs. Uses configured providers and a new temporary database; posts nothing to Discord.\n");
+} else if (argument("--participation-fixture")) {
+  const fixture = JSON.parse(await readFile(resolve(argument("--participation-fixture")!), "utf8")) as unknown;
+  const outputs = await replayParticipation(fixture);
+  const path = resolve(argument("--output") ?? "participation-replay-review.json");
+  await writeFile(path, JSON.stringify({ synthetic: true, mode: "recorded-policy-comparison", hypotheticalOnly: true, humanReviewRequired: true, outputs }, null, 2), "utf8");
+  process.stdout.write(`Participation replay: ${outputs.filter((row) => row.correct).length}/${outputs.length} labelled cases match. Review: ${path}\n`);
+  if (outputs.some((row) => !row.correct)) process.exitCode = 1;
 } else {
   const fixturePath = argument("--fixture"); const personaPath = argument("--persona");
   if (!fixturePath || !personaPath) throw new Error("--fixture and --persona are required; use --help for usage.");

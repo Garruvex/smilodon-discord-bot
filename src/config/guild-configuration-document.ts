@@ -360,12 +360,16 @@ export function applyGuildConfigurationUpdate(
   if (input.chatbotMaxImagesPerRequest !== undefined) next.chat.maxImagesPerRequest = input.chatbotMaxImagesPerRequest;
   if (input.ambientReplies !== undefined) next.features.ambientReplies = input.ambientReplies;
   if (input.ambientCooldownSeconds !== undefined) next.chat.ambientCooldownSeconds = input.ambientCooldownSeconds;
-  if (input.chatParticipation !== undefined) next.chat.participation = {
-    ...next.chat.participation, ...input.chatParticipation,
+  if (input.chatParticipation !== undefined) {
+    const { observationChannelIds, ...participationPatch } = input.chatParticipation;
+    next.chat.participation = {
+    ...next.chat.participation, ...participationPatch,
+    ...(observationChannelIds === undefined ? {} : { observationChannelIds: [...observationChannelIds] }),
     spontaneousChannelIds: [...(input.chatParticipation.spontaneousChannelIds ?? next.chat.participation.spontaneousChannelIds)],
     advanced: { ...next.chat.participation.advanced, ...input.chatParticipation.advanced },
     channelOverrides: { ...next.chat.participation.channelOverrides, ...input.chatParticipation.channelOverrides },
   };
+  }
   if (input.chatParticipationResetAdvanced) next.chat.participation.advanced = {};
   if (input.channelHistory !== undefined) next.features.channelHistory = input.channelHistory;
   if (input.channelHistoryLimit !== undefined) next.chat.channelHistoryLimit = input.channelHistoryLimit;

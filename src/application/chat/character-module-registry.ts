@@ -1,4 +1,5 @@
 import type { ChatRequest, ChatResponse, ChannelHistoryMessage, PersonalMemoryExtractionAction } from "./chat-provider.js";
+import type { ContributionPolicy } from "./participation-policy.js";
 import type { CharacterDecision } from "./character-decision.js";
 import { characterDependencies, characterInactiveReason, characterModuleIds, type CharacterCapabilities, type CharacterModuleId, type CharacterSettings } from "./character-settings.js";
 
@@ -22,7 +23,7 @@ export interface CharacterModule {
 }
 export interface CharacterDecisionInput {
   decision: CharacterDecision | null; events: readonly ChannelHistoryMessage[]; burst: readonly ChannelHistoryMessage[];
-  optional: boolean; local: CharacterDecision["addressing"];
+  optional: boolean; local: CharacterDecision["addressing"]; policy: ContributionPolicy;
 }
 export class CharacterModuleRegistry {
   private readonly modules = new Map<CharacterModuleId, CharacterModule>();

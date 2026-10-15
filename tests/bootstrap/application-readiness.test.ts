@@ -97,6 +97,7 @@ function buildApplication(options: {
   handleMessage: ReturnType<typeof vi.fn>;
   commandDispatch: ReturnType<typeof vi.fn>;
   behaviorDispatch: ReturnType<typeof vi.fn>;
+  excludeChatContext: ReturnType<typeof vi.fn>;
   backgroundStarts: readonly ReturnType<typeof vi.fn>[];
 } {
   const { client, emit } = createFakeClient();
@@ -129,7 +130,10 @@ function buildApplication(options: {
     handleMemberUpdate: vi.fn().mockResolvedValue(undefined),
   } as unknown as ConstructorParameters<typeof Application>[9];
 
+  const excludeChatContext = vi.fn();
   const dependencies = {
+    campaign: { handleMessagesDeleted: vi.fn() },
+    chatConversationService: { excludeInteraction: excludeChatContext, stopScheduling: vi.fn(), drain: (): Promise<void> => Promise.resolve() },
     guildConfigurationProvider: stubProvider(),
     musicPlayerGateway: {
       initialize: () => options.musicInitResult === "resolve" ? Promise.resolve() : Promise.reject(new Error("lavalink init failed")),
@@ -151,7 +155,7 @@ function buildApplication(options: {
     {} as ApplicationConfiguration,
     dependencies,
     controlChannelService,
-    { initialize: vi.fn() } as unknown as AdminPanelService,
+    { initialize: vi.fn(), handleMessagesDeleted: vi.fn() } as unknown as AdminPanelService,
     musicPresenceService,
     birthdayAnnouncer,
     memberDepartureService,
@@ -161,12 +165,20 @@ function buildApplication(options: {
   );
 
   return {
-    application, client, emit, handleMessage, commandDispatch, behaviorDispatch,
+    application, client, emit, excludeChatContext, handleMessage, commandDispatch, behaviorDispatch,
     backgroundStarts: [musicPresenceStart, birthdayStart, channelSummaryStart, reminderStart],
   };
 }
 
 describe("Application readiness gating", () => {
+  it("invalidates ephemeral conversation sources on single and bulk message deletion", async () => {
+    const { emit, excludeChatContext } = buildApplication({ musicInitResult: "resolve", controlChannelInitResult: "resolve" });
+    const message = { guildId: "guild", channelId: "channel", id: "source" };
+    await emit(Events.MessageDelete, message);
+    expect(excludeChatContext).toHaveBeenCalledWith("guild", "channel", "source");
+    await emit(Events.MessageBulkDelete, new Map([["second", { ...message, id: "second" }]]), { guildId: "guild", id: "channel" });
+    expect(excludeChatContext).toHaveBeenCalledWith("guild", "channel", "second");
+  });
   it("never becomes ready when Lavalink initialization fails", async () => {
     const { emit, commandDispatch, backgroundStarts } = buildApplication({ musicInitResult: "reject", controlChannelInitResult: "resolve" });
     await emit(Events.ClientReady, fakeReadyClient());

@@ -16,12 +16,12 @@ export const jaMemory: SettingsTextCatalog = {
   "memory.advanced": { label: "記憶の詳細設定", description: "記憶の減衰と古い記録の整理を調整します。" },
   "memory.advanced.half-life": { label: "減衰の半減期（日）", description: "減衰する記憶の重みが半分になる日数。記憶の減衰が有効な場合に適用します。" },
   "memory.advanced.history": { label: "旧バージョンの保持日数", description: "使われなくなった記録を整理するまでの日数。使用中の記録には影響しません。" },
-  "memory.sharing": { label: "個人情報の共有メモリ", description: "チャンネルのメモリ設定を確認してから有効にします。既存の非公開情報は変更しません。" },
-  "memory.sharing.enabled": { label: "個人情報の共有メモリ", description: "新しい個人情報を設定された範囲内で共有します。" },
+  "memory.sharing": { label: "個人情報の共有メモリ", description: "各チャンネルの記憶モードに従い、新しい個人情報を共有します。" },
+  "memory.sharing.enabled": { label: "個人情報の共有メモリ", description: "既存の非公開の記憶は非公開のままです。" },
   "memory": { title: "記憶", description: "ボットが読み返し、覚えておくこと" },
-  "memory.channel-history": { label: "チャンネル履歴", description: "チャンネルの最近のメッセージを返信の文脈に使う" },
+  "memory.channel-history": { label: "チャンネル履歴", description: "最近のチャンネルメッセージをモデルに渡し、返信に使います。" },
   "memory.channel-history.enabled": { label: "チャンネル履歴", description: "チャンネル履歴をオンまたはオフにする" },
-  "memory.channel-history.limit": { label: "メッセージ数", description: "含める最近のメッセージの数" },
+  "memory.channel-history.limit": { label: "メッセージ数", description: "取得する直近の件数。キャラクター設定で参照範囲を拡張できます。" },
 
   "memory.memory-mode": {
     label: "チャンネルの記憶モード",

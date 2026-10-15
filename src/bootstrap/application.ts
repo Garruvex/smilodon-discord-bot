@@ -280,6 +280,8 @@ export class Application {
     // embed appearing, a pin) are skipped.
     this.client.on(Events.MessageUpdate, (oldMessage, newMessage) => {
       if (!this.ready) return;
+      if (newMessage.guildId && (newMessage.partial || oldMessage.content !== newMessage.content))
+        this.dependencies.chatConversationService?.excludeInteraction(newMessage.guildId, newMessage.channelId, newMessage.id);
       void (async (): Promise<void> => {
         const message = newMessage.partial ? await newMessage.fetch() : newMessage;
         if (!message.inGuild() || message.author.bot) return;
@@ -331,10 +333,12 @@ export class Application {
 
     // The admin panel repairs itself when its messages or channel go away.
     this.client.on(Events.MessageDelete, (message) => {
+      if (message.guildId) this.dependencies.chatConversationService?.excludeInteraction(message.guildId, message.channelId, message.id);
       this.adminPanelService.handleMessagesDeleted(message.guildId, message.channelId, [message.id]);
       if (message.guildId !== null) this.dependencies.campaign.handleMessagesDeleted(message.guildId, message.channelId, [message.id]);
     });
     this.client.on(Events.MessageBulkDelete, (messages, channel) => {
+      for (const id of messages.keys()) this.dependencies.chatConversationService?.excludeInteraction(channel.guildId, channel.id, id);
       this.adminPanelService.handleMessagesDeleted(channel.guildId, channel.id, [...messages.keys()]);
       this.dependencies.campaign.handleMessagesDeleted(channel.guildId, channel.id, [...messages.keys()]);
     });

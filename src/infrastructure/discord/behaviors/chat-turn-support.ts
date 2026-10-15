@@ -88,7 +88,7 @@ export class ChatTurnSupport {
   }
 
   public async refreshHistoryEvent(source: Message, event: ChannelHistoryMessage): Promise<ChannelHistoryMessage | null> {
-    if (event.channelId && event.channelId !== source.channelId) return null;
+    if (event.channelId && event.channelId !== source.channelId || !await this.isEligible(source, "observation")) return null;
     const message = await source.channel.messages.fetch(event.messageId).catch(() => null);
     return message && await this.isEligible(message, "observation") ? this.toChannelHistoryMessages([message])[0]! : null;
   }
@@ -229,6 +229,7 @@ export class ChatTurnSupport {
     before: string | null = message.id,
     maxChars: number = chatMemoryLimits.maxChannelHistoryChars,
   ): Promise<Message[]> {
+    if (!await this.isEligible(message, "observation")) return [];
     // Oversample the raw fetch (Discord's own per-request cap is 100, so
     // this never costs an extra round trip) — a flat "last `limit` from
     // anyone" fetch lets our own replies, which appear after nearly every

@@ -1,6 +1,6 @@
 # Chat improvement: participation, memory and simpler settings
 
-Date: 2026-10-15. Status: proposed; implementation and live acceptance pending.
+Date: 2026-10-15. Status: workstreams 1–6 implemented locally; live evaluation and human acceptance pending. See [participation implementation and rollout notes](chat-participation-implementation.md) and [memory migration notes](relationship-memory-fading.md).
 
 This plan also owns the agreed memory improvement: gradually fade stale impressions without abruptly losing source-backed familiarity and shared history. Keep advanced cleanup controls out of the normal settings screen. See workstream 6 for behavior, migration and acceptance criteria.
 
@@ -12,9 +12,9 @@ The bot treats too many messages as invitations to speak. It confuses relevance 
 
 The supplied production log contains consecutive continuation decisions justified by briefly acknowledging a supplement, experiment, or joke. These are weak reasons to speak. Those particular continuation entries are labelled `Shadow participation decision`: they describe proposed replies, not confirmed Discord sends. Their accompanying `Ambient chat: replied` labels were misleading. The log does not establish which revision was deployed or provide enough message content to label every recipient correctly.
 
-Current implementation weaknesses:
+Baseline implementation weaknesses recorded before this change:
 
-| Area | Current behavior | Consequence |
+| Area | Baseline behavior | Consequence |
 | --- | --- | --- |
 | Recipient inference | Recent exchanges, reply links and model judgments establish possible continuation. | Same-topic messages can still be mistaken for messages to the bot. |
 | Contribution threshold | Continuation accepts motivation >= 0.5; spontaneous participation requires >= 0.75. Model confidence must be >= 0.7 when a decision is available. | Routine follow-ups remain much easier to admit than spontaneous speech. Scores are uncalibrated self-ratings. |

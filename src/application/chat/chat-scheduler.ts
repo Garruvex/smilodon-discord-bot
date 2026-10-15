@@ -10,6 +10,8 @@ export interface ChatActivityLimits {
   optionalTurnsPerWindow?: number;
   optionalCallCost?: number;
   continuation?: boolean;
+  continuationIntervalMs?: number;
+  exchangeId?: string | undefined;
   continuationPerExchange?: number;
   continuationPerWindow?: number;
 }
@@ -31,6 +33,8 @@ interface Activity {
   lastEvaluation: number;
   text: number[];
   reaction: number[];
+  continuation: number[];
+  reservedContinuation: boolean;
   reservedText: number;
   reservedReaction: number;
 }
@@ -99,20 +103,26 @@ export class ChatScheduler {
   public reserveOutput(key: string, kind: "text" | "reaction", limits: ChatActivityLimits, optional: boolean): ((success: boolean) => void) | null {
     if (!optional) return () => undefined;
     if (kind === "text" && limits.continuation) {
-      if (this.exchanges.size >= 512 && !this.exchanges.has(key)) {
+      const state = this.state(key); this.prune(state.continuation);
+      const branchKey = `${key}:${limits.exchangeId ?? "channel"}`;
+      if (this.exchanges.size >= 512 && !this.exchanges.has(branchKey)) {
         const idle = [...this.exchanges].find(([, exchange]) => !exchange.reserved);
-        if (idle) this.exchanges.delete(idle[0]);
+        if (!idle) return null;
+        this.exchanges.delete(idle[0]);
       }
-      const exchange = this.exchanges.get(key) ?? { lastRelevantAt: -Infinity, replies: 0, reserved: false, window: [] };
+      const exchange = this.exchanges.get(branchKey) ?? { lastRelevantAt: -Infinity, replies: 0, reserved: false, window: [] };
       if (this.now() - exchange.lastRelevantAt > 120_000) exchange.replies = 0;
-      exchange.lastRelevantAt = this.now(); this.prune(exchange.window); this.exchanges.set(key, exchange);
-      if (exchange.reserved || exchange.replies >= (limits.continuationPerExchange ?? 10) || exchange.window.length >= (limits.continuationPerWindow ?? 30)) return null;
-      exchange.reserved = true;
+      this.exchanges.set(branchKey, exchange);
+      if (exchange.reserved || state.reservedContinuation || state.reservedText > 0 || exchange.replies >= (limits.continuationPerExchange ?? 10) ||
+          state.continuation.length >= (limits.continuationPerWindow ?? 30) ||
+          this.now() - Math.max(state.continuation.at(-1) ?? -Infinity, state.text.at(-1) ?? -Infinity) < (limits.continuationIntervalMs ?? 15_000)) return null;
+      exchange.reserved = true; state.reservedContinuation = true;
       let finished = false;
-      return (success) => { if (finished) return; finished = true; exchange.reserved = false;
-        if (success) { exchange.replies++; exchange.window.push(this.now()); } };
+      return (success) => { if (finished) return; finished = true; exchange.reserved = false; state.reservedContinuation = false;
+        if (success) { exchange.replies++; exchange.lastRelevantAt = this.now(); state.continuation.push(this.now()); } };
     }
     const state = this.state(key);
+    if (kind === "text" && (state.reservedContinuation || this.now() - (state.continuation.at(-1) ?? -Infinity) < limits.textCooldownMs)) return null;
     const values = state[kind];
     this.prune(values);
     const count = kind === "text" ? limits.textPerWindow : limits.reactionsPerWindow;
@@ -144,6 +154,12 @@ export class ChatScheduler {
     this.buffered.set(key, { timer, startedAt, job });
   }
 
+  public cancelBufferedOpportunity(key: string): void {
+    const buffered = this.buffered.get(key);
+    if (buffered) clearTimeout(buffered.timer);
+    this.buffered.delete(key);
+  }
+
   public stop(): void {
     this.closed = true;
     for (const { timer } of this.buffered.values()) clearTimeout(timer);
@@ -157,10 +173,10 @@ export class ChatScheduler {
     if (!state) {
       // Opportunistic bounded cleanup of inactive channel counters.
       if (this.activity.size >= 512) {
-        const idle = [...this.activity.keys()].find((id) => !this.running.has(id) && !this.pending.has(id));
+        const idle = [...this.activity.keys()].find((id) => !this.running.has(id) && !this.pending.has(id) && !this.activity.get(id)!.reservedContinuation && this.activity.get(id)!.reservedText === 0 && this.activity.get(id)!.reservedReaction === 0);
         if (idle) this.activity.delete(idle);
       }
-      state = { lastEvaluation: -Infinity, text: [], reaction: [], reservedText: 0, reservedReaction: 0 };
+      state = { lastEvaluation: -Infinity, text: [], reaction: [], continuation: [], reservedContinuation: false, reservedText: 0, reservedReaction: 0 };
       this.activity.set(key, state);
     }
     return state;

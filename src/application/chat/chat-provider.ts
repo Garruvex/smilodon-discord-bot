@@ -352,6 +352,7 @@ export interface GeneratedChatImage {
 }
 
 export interface ChatResponse {
+  participationExchangeId?: string;
   characterDeliveryProof?: readonly { messageId: string; content: string }[];
   characterMessages?: readonly string[];
   characterDelayMs?: number;

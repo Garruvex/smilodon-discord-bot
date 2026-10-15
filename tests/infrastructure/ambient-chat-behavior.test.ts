@@ -112,7 +112,7 @@ function message(overrides: {
     inGuild: () => true,
     guildId: "123456789012345678",
     channelId: overrides.channelId ?? chatChannelId,
-    content: overrides.content ?? "yohta is neat",
+    content: overrides.content ?? "yohta, what do you think?",
     author: { id: overrides.authorId ?? "890123456789012345", bot: overrides.bot ?? false },
     member: member(),
     mentions: { users: { has: (id: string) => (overrides.mentionsBot ?? false) && id === botId } },
@@ -139,7 +139,10 @@ function behavior(profileValue: GuildConfiguration | null, conversation: ChatCon
 }
 
 describe("AmbientChatBehavior.matches", () => {
-  it("matches a message naming the bot without an @mention", async () => {
+  it("does not treat third-person bot-name references as an address", async () => {
+    await expect(behavior(profile()).matches(message({ content: "yohta is neat" }))).resolves.toBe(false);
+  });
+  it("matches a message addressing the bot by name without an @mention", async () => {
     await expect(behavior(profile()).matches(message())).resolves.toBe(true);
   });
 

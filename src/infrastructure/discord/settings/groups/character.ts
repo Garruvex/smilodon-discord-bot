@@ -3,7 +3,7 @@ import { characterModuleIds, characterSettings, type CharacterModuleId } from ".
 import type { SettingNode, SettingOption } from "../registry/types.js";
 
 const extras: Partial<Record<CharacterModuleId, readonly string[]>> = {
-  canon: ["freeze"], relationships: ["interval"], thoughts: ["shadow", "threshold", "hold"],
+  canon: ["freeze"], relationships: ["interval"], thoughts: ["shadow", "hold"],
   callbacks: ["max-per-day", "min-delay"], voice: ["strictness"],
   "message-shape": ["max-messages", "max-delay"], mood: ["interval"], addressing: ["shadow", "include-others"],
   evaluation: ["probes", "interval"],
@@ -11,8 +11,9 @@ const extras: Partial<Record<CharacterModuleId, readonly string[]>> = {
 function moduleSetting(id: CharacterModuleId): SettingNode {
   const options: Record<string, SettingOption> = {
     enabled: toggle({ read: (p) => characterSettings(p).modules[id].enabled, write: (v) => ({ character: { modules: { [id]: { enabled: v } } } }) }),
-    budget: integer({ min: 100, max: 4000, read: (p) => characterSettings(p).modules[id].budget, write: (v) => ({ character: { modules: { [id]: { budget: v } } } }) }),
   };
+  if (["canon", "relationships", "recall-style", "mood", "group", "daily-sketch"].includes(id))
+    options.budget = integer({ min: 100, max: 4000, read: (p) => characterSettings(p).modules[id].budget, write: (v) => ({ character: { modules: { [id]: { budget: v } } } }) });
   if (id === "canon") options.freeze = toggle({ read: (p) => characterSettings(p).modules.canon.freeze, write: (v) => ({ character: { modules: { canon: { freeze: v } } } }) });
   if (id === "thoughts" || id === "addressing") options.shadow = toggle({ read: (p) => characterSettings(p).modules[id].shadow, write: (v) => ({ character: { modules: { [id]: { shadow: v } } } }) });
   if (id === "addressing") options["include-others"] = toggle({ read: (p) => characterSettings(p).modules.addressing.includeOtherParticipants, write: (v) => ({ character: { modules: { addressing: { includeOtherParticipants: v } } } }) });

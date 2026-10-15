@@ -1,3 +1,4 @@
+import { isRecipientCorrection, generatedContributionAllowed } from "./character-decision.js";
 import type { Logger } from "pino";
 import type { CharacterRuntime, CharacterPreparedTurn } from "./character-runtime.js";
 
@@ -232,6 +233,8 @@ export class ChatStateCommitError extends Error {
 export class ChatConversationService {
   private readonly scheduler: ChatScheduler;
   private readonly episodes = new ConversationEpisodes();
+  private readonly opportunityVersions = new Map<string, number>();
+  private nextOpportunityVersion = 0;
   private readonly recentPings = new Map<string, { at: number; messageId: string }>();
   private readonly forgottenBefore = new Map<string, number>();
   private readonly privacyVersions = new Map<string, number>();
@@ -303,6 +306,7 @@ export class ChatConversationService {
   ): ProposedMemory[] {
     const proposals: ProposedMemory[] = [];
     for (const action of userMemoryActions) {
+      if (action.action === "upsert" && "sourceQuote" in action && typeof action.sourceQuote === "string" && isRecipientCorrection(action.sourceQuote)) continue;
       if (action.action === "upsert") {
         proposals.push({
           action: "upsert", audience: "private", kind: memoryKindForTopic(action.topic),
@@ -341,6 +345,7 @@ export class ChatConversationService {
       }
     }
     for (const candidate of guildKnowledgeCandidates) {
+      if ("sourceQuote" in candidate && typeof candidate.sourceQuote === "string" && isRecipientCorrection(candidate.sourceQuote)) continue;
       proposals.push({
         action: "upsert", audience: "guild", kind: memoryKindForTopic(candidate.topic),
         ownerUserId: null, subjectType: candidate.subjectType, subjectId: candidate.subjectId,
@@ -541,6 +546,7 @@ export class ChatConversationService {
     channelId: string,
     character: { prepared: CharacterPreparedTurn; reply: ChatResponse } | null = null,
   ): Promise<readonly ProposedMemoryAction[]> {
+    if (isRecipientCorrection(userMessage)) return [];
     // Prefer utilityProvider only if it actually implements this capability
     // — falling back to it regardless (as resolveReplyChainSummary does)
     // would silently lose extraction if a configured utility provider lacks
@@ -726,6 +732,7 @@ export class ChatConversationService {
     observer?: ChatResponseObserver,
   ): Promise<ChatResponse> {
     const key = `${input.guildId}:${input.channelId}`;
+    if (input.triggerMode === "direct" || input.triggerMode === "ambient") this.cancelOptionalOpportunity(input.guildId, input.channelId);
     const lowSubstance = isLowSubstancePing(input.message, input.replyChain.length > 0 ||
       (input.currentEvent?.type === "message" && input.currentEvent.replyToMessageId !== null), input.images.length > 0);
     const optional = input.triggerMode !== "direct" || (input.allowSilentDirect === true && lowSubstance);
@@ -735,6 +742,7 @@ export class ChatConversationService {
       text: "", ambientAction: "ignore", reactionEmoji: null, historyReactions: [], userMemoryActions: [],
       guildKnowledgeCandidates: [], sources: [], usage: null, webSearchUsed: false, generatedImages: [],
     };
+    if ((input.triggerMode === "continuation" || input.triggerMode === "spontaneous") && !this.characterRuntime) return Promise.resolve(silent);
     if (input.triggerMode === "direct" && lowSubstance && input.sourceMessageId) {
       const pingKey = `${key}:${input.currentUser.id}`;
       const previous = this.recentPings.get(pingKey);
@@ -766,15 +774,15 @@ export class ChatConversationService {
         canExecute: async () => (this.privacyVersions.get(input.guildId) ?? 0) === privacyVersion && (!input.canExecute || await input.canExecute()),
         onModelAttempt: () => this.scheduler.recordModelAttempt() }, async (result) => {
         if ((this.privacyVersions.get(input.guildId) ?? 0) !== privacyVersion) throw new SocialOutputSuppressed();
-        if (input.shadowMode) return "";
+        if (input.shadowMode) { await this.characterRuntime?.recordDelivery(input.guildId, input.sourceMessageId ?? null, false, true); return ""; }
         if (result.outputOrigin !== "tool" && optional && (this.now() >= expiresAt! ||
           ((input.triggerMode === "continuation" || input.triggerMode === "spontaneous") && this.episodes.version(key) !== contextVersion)))
           throw new SocialOutputSuppressed();
         if (input.shouldDeliver && !input.shouldDeliver()) throw new SocialOutputSuppressed();
-        const release = this.scheduler.reserveOutput(key, "text", { ...(input.resolveActivityLimits?.() ?? limits), continuation: input.triggerMode === "continuation" }, optional);
-        if (!release) throw new SocialOutputSuppressed();
-        try { const text = await deliver(result); release(true); return text; }
-        catch (error) { release(false); throw error; }
+        const release = this.scheduler.reserveOutput(key, "text", { ...(input.resolveActivityLimits?.() ?? limits), continuation: input.triggerMode === "continuation", exchangeId: result.participationExchangeId }, optional);
+        if (!release) { await this.characterRuntime?.recordDelivery(input.guildId, input.sourceMessageId ?? null, false, false); throw new SocialOutputSuppressed(); }
+        try { const text = await deliver(result); release(true); await this.characterRuntime?.recordDelivery(input.guildId, input.sourceMessageId ?? null, true, false); return text; }
+        catch (error) { release(false); await this.characterRuntime?.recordDelivery(input.guildId, input.sourceMessageId ?? null, false, false); throw error; }
       }, observer);
       response.participationDecision = participationDecision(response, input.sourceMessageId ?? null, expiresAt);
       if (!input.shadowMode && (!optional || this.now() < expiresAt!) &&
@@ -795,6 +803,7 @@ export class ChatConversationService {
   }
 
   public async forgetConversation(guildId: string, userId: string): Promise<void> {
+    for (const key of this.opportunityVersions.keys()) if (key.startsWith(`${guildId}:`)) this.cancelOptionalOpportunity(guildId, key.slice(guildId.length + 1));
     this.characterRuntime?.forget(guildId, userId);
     if (this.forgottenBefore.size >= 1000) this.forgottenBefore.delete(this.forgottenBefore.keys().next().value!);
     this.forgottenBefore.set(`${guildId}:${userId}`, this.now());
@@ -807,6 +816,8 @@ export class ChatConversationService {
   }
 
   public excludeInteraction(guildId: string, channelId: string, messageId: string): void {
+    this.cancelOptionalOpportunity(guildId, channelId);
+    this.characterRuntime?.excludeContext(guildId, messageId);
     this.episodes.excludeInteraction(`${guildId}:${channelId}`, messageId);
     if (this.episodeStore) this.trackBackground(this.episodeStore.exclude(guildId, channelId, messageId).catch((error: unknown) =>
       this.logger?.warn({ error, guildId, channelId }, "Failed to exclude a utility interaction from stored context")));
@@ -815,8 +826,28 @@ export class ChatConversationService {
   public hasRecentConversation(guildId: string, channelId: string, authorId: string, botId: string): boolean {
     return this.episodes.hasRecentConversation(`${guildId}:${channelId}`, authorId, botId, this.now());
   }
+  public get optionalDecisionAvailable(): boolean { return this.characterRuntime?.decisionAvailable ?? false; }
   public isImplicitlyAddressed(guildId: string, channelId: string, event: ChannelHistoryMessage, botId: string): boolean {
     return this.characterRuntime?.couldBeAddressed(guildId, channelId, event, this.episodes.windowSnapshot(`${guildId}:${channelId}`, 2, this.now()), botId) ?? false;
+  }
+
+  public optionalOpportunityVersion(guildId: string, channelId: string): number {
+    const key = `${guildId}:${channelId}`;
+    let version = this.opportunityVersions.get(key);
+    if (version === undefined) {
+      if (this.opportunityVersions.size >= 256) {
+        const oldest = this.opportunityVersions.keys().next().value!;
+        this.scheduler.cancelBufferedOpportunity(oldest); this.opportunityVersions.delete(oldest);
+      }
+      version = ++this.nextOpportunityVersion; this.opportunityVersions.set(key, version);
+    }
+    return version;
+  }
+  public cancelOptionalOpportunity(guildId: string, channelId: string): void {
+    const key = `${guildId}:${channelId}`;
+    this.optionalOpportunityVersion(guildId, channelId);
+    this.opportunityVersions.set(key, ++this.nextOpportunityVersion);
+    this.scheduler.cancelBufferedOpportunity(key);
   }
 
   public bufferOpportunity(guildId: string, channelId: string, job: () => void): void {
@@ -1103,10 +1134,10 @@ export class ChatConversationService {
         // this catches: a "remove" action needs no grounding (nothing new to
         // ground), an "upsert" must quote something its own subject actually
         // said this turn.
-        userMemoryActions: validateMemoryActions(response.userMemoryActions, allowedSubjects).filter((action) =>
+        userMemoryActions: validateMemoryActions(response.userMemoryActions, allowedSubjects).filter((action) => !isRecipientCorrection(input.message) && (
           action.action === "remove" || isGroundedForSpeaker(
             action.sourceQuote, action.subjectUserId, input.message, input.currentUser.id, input.replyChain, input.channelHistory,
-          )),
+          ))),
         guildKnowledgeCandidates: validateGuildKnowledgeCandidates(
           response.guildKnowledgeCandidates,
           {
@@ -1154,13 +1185,19 @@ export class ChatConversationService {
       // write. The caller (AmbientChatBehavior/ReactionReplyScheduler)
       // inspects ambientAction/reactionEmoji on the returned response to
       // react or no-op.
-      const proposals = this.toProposals(
+      const proposals = isRecipientCorrection(input.message) ? [] : this.toProposals(
         validatedResponse.userMemoryActions, validatedResponse.guildKnowledgeCandidates, input.currentUser.id,
         input,
       );
+      if ((input.triggerMode === "continuation" || input.triggerMode === "spontaneous") && validatedResponse.ambientAction !== "reply") {
+        validatedResponse.reactionEmoji = null; validatedResponse.historyReactions = [];
+      }
       const mayIgnore = input.triggerMode !== "direct" || (input.allowSilentDirect === true &&
         isLowSubstancePing(input.message, input.replyChain.length > 0 ||
           (input.currentEvent?.type === "message" && input.currentEvent.replyToMessageId !== null), input.images.length > 0));
+      if (input.shadowMode && characterPrepared?.acceptedContribution && !generatedContributionAllowed(validatedResponse.text, [...request.channelHistory, ...request.replyChain], request.botUserId)) {
+        validatedResponse.text = ""; validatedResponse.ambientAction = "ignore"; validatedResponse.reactionEmoji = null; validatedResponse.historyReactions = [];
+      }
       if (mayIgnore && validatedResponse.ambientAction !== "reply") {
         if (validatedResponse.reactionEmoji && proposals.length > 0) {
           try {
@@ -1194,6 +1231,13 @@ export class ChatConversationService {
           if (corrected !== validatedResponse.text) { delete validatedResponse.characterMessages; delete validatedResponse.characterDelayMs; }
           validatedResponse.text = corrected;
         }
+      }
+      if (input.shadowMode && characterPrepared?.acceptedContribution && !generatedContributionAllowed(validatedResponse.text, [...request.channelHistory, ...request.replyChain], request.botUserId)) {
+        validatedResponse.text = ""; validatedResponse.ambientAction = "ignore"; validatedResponse.reactionEmoji = null; validatedResponse.historyReactions = [];
+      }
+      if (mayIgnore && validatedResponse.ambientAction !== "reply") {
+        await this.characterRuntime?.recordDelivery(input.guildId, input.sourceMessageId ?? null, false, input.shadowMode ?? false);
+        return validatedResponse;
       }
       if (!await canContinue()) throw new SocialOutputSuppressed();
       const deliveredAssistantMessage = await deliver(validatedResponse);

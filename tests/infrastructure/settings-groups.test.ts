@@ -1,3 +1,4 @@
+import type { Guild } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ChatToolRegistry } from "../../src/application/chat/tools/chat-tool-registry.js";
@@ -8,7 +9,7 @@ import { panelValues, type PanelScalar } from "../../src/infrastructure/discord/
 import { registeredNodes } from "../../src/infrastructure/discord/settings/registry/paths.js";
 import type { SettingOption } from "../../src/infrastructure/discord/settings/registry/types.js";
 import { registryProblems } from "../../src/infrastructure/discord/settings/registry/validate-registry.js";
-import { engineFixture, guildId, slashValues, stubEmojiCatalog } from "../helpers/settings-fixtures.js";
+import { actorUserId, engineFixture, freshDocument, guildId, slashValues, stubEmojiCatalog } from "../helpers/settings-fixtures.js";
 
 const settingNodes = registeredNodes(settingsRegistry).flatMap((registered) =>
   registered.node.kind === "setting" ? [{ path: registered.path, options: Object.entries(registered.node.options) }] : []);
@@ -21,6 +22,27 @@ function asInput(name: string, option: SettingOption, value: unknown): Parameter
 }
 
 describe("settings registry", () => {
+  it("requires an accessible explicit thread and keeps scope selection separate from global enablement", async () => {
+    const fixture = engineFixture(); const threadId = "600000000000000001";
+    const fetch = vi.fn(() => Promise.resolve({ isThread: () => true, guildId }));
+    const guild = { channels: { fetch } } as unknown as Guild;
+    const registered = fixture.engine.find("participation.thread-scope")!;
+    const run = (options: Record<string, string | boolean>): ReturnType<typeof fixture.engine.run> => fixture.engine.run(registered,
+      { guildId, guild, actorUserId, language: "en", values: slashValues({ "thread-id": threadId, ...options }) }, { kind: "panel" });
+    expect((await run({ spontaneous: true })).kind).toBe("rejected");
+    expect((await run({ observe: true, spontaneous: true })).kind).toBe("done");
+    expect(fixture.profiles.current().chat.participation).toMatchObject({ observationChannelIds: [threadId], spontaneousChannelIds: [threadId], spontaneousEnabled: false });
+    await run({ observe: false });
+    expect(fixture.profiles.current().chat.participation?.spontaneousChannelIds).toEqual([]);
+  });
+  it("keeps quiet continuation defaults unchanged on save and permits explicit larger overrides", async () => {
+    const document = freshDocument(); document.chat.participation.activity = "quiet";
+    const fixture = engineFixture({ document });
+    const unchanged = await fixture.run("participation.continuation-limits", slashValues({ exchange: 6, window: 15, interval: 30 }));
+    expect(unchanged).toMatchObject({ description: "No changes — those settings already match." });
+    await fixture.run("participation.continuation-limits", slashValues({ exchange: 10, window: 30 }));
+    expect(fixture.profiles.current().chat.participation?.advanced).toMatchObject({ continuationPerExchange: 10, continuationPer10Minutes: 30 });
+  });
   it("is valid, with complete English text and in-range translations", () => {
     expect(registryProblems(settingsRegistry)).toEqual([]);
   });

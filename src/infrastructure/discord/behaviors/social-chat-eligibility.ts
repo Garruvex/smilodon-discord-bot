@@ -5,10 +5,10 @@ import { ChatAccessService } from "../../../application/access/chat-access-servi
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
 import { isInGameChannel, type IsGameChannel } from "./game-channel-guard.js";
-import { resolveParticipation } from "../../../application/chat/participation-policy.js";
+import { resolveParticipation, passiveChannelAllowed } from "../../../application/chat/participation-policy.js";
 import type { ChatRequest } from "../../../application/chat/chat-provider.js";
 
-export type SocialTrigger = ChatRequest["triggerMode"] | "observation" | "history_reaction";
+export type SocialTrigger = ChatRequest["triggerMode"] | "observation" | "background_observation" | "history_reaction";
 
 export interface SocialEligibility { eligible: boolean; reason: string }
 
@@ -42,6 +42,12 @@ export class SocialChatEligibility {
     return value;
   }
 
+  public canReadBackground(guildId: string, channelId: string): boolean {
+    const profile = this.profiles.find(guildId);
+    return !!profile?.features.chatbot && profile.chat.channelMemoryModes[channelId] !== "disabled" && profile.chat.channelMemoryModes[channelId] !== "session_only" &&
+      (profile.chat.contextScanChannelIds.includes(channelId) || profile.chat.contextDailyChannelIds.includes(channelId));
+  }
+
   public async check(message: Message, trigger: SocialTrigger = "direct"): Promise<SocialEligibility> {
     const reject = (reason: string): SocialEligibility => ({ eligible: false, reason });
     if (!message.inGuild()) return reject("not_guild");
@@ -49,6 +55,12 @@ export class SocialChatEligibility {
     if (!profile?.features.chatbot) return reject("chat_disabled");
     if ((trigger === "continuation" || trigger === "spontaneous") && (!profile.features.channelHistory || characterSettings(profile).channelOverrides[message.channelId]?.contextEnabled === false ||
         profile.chat.channelMemoryModes[message.channelId] === "disabled")) return reject("needs_conversation_context");
+    const passive = trigger !== "direct" && trigger !== "ambient";
+    const background = trigger === "background_observation";
+    if (background && !this.canReadBackground(message.guildId, message.channelId)) return reject("background_scope_denied");
+    if (passive && !background && (!passiveChannelAllowed(profile, message.channelId) || !profile.features.channelHistory ||
+        profile.chat.channelMemoryModes[message.channelId] === "disabled" || characterSettings(profile).channelOverrides[message.channelId]?.contextEnabled === false)) return reject("passive_scope_denied");
+    if (passive && !message.author.bot && !this.access.canObserve(profile, message.member)) return reject("passive_access_denied");
     if (await isInGameChannel(message, this.isGameChannel)) return reject("game_channel");
     const participation = resolveParticipation(profile.chat.participation, message.channelId);
     if (trigger === "continuation" && !participation.continuationEnabled) return reject("continuation_disabled");
@@ -59,13 +71,13 @@ export class SocialChatEligibility {
     if (message.author.bot) {
       const origin = await this.findOrigin(message.guildId, message.channelId, message.id).catch(() => null);
       if ((origin && origin.origin !== "chat") || (!origin && trigger !== "direct")) return reject("utility_or_unknown_bot_output");
-      if (profile.channels.chatbot.size > 0 && !profile.channels.chatbot.has(message.channelId)) return reject("channel_denied");
-    } else if (!this.access.canUseMentionChat(profile, message.member, message.author.id, message.channelId)) {
+      if (!passive && profile.channels.chatbot.size > 0 && !profile.channels.chatbot.has(message.channelId)) return reject("channel_denied");
+    } else if (!passive && !this.access.canUseMentionChat(profile, message.member, message.author.id, message.channelId)) {
       return reject("access_denied");
     }
     let current = message;
     const visited = new Set<string>();
-    for (let depth = 0; depth < (trigger === "observation" ? 3 : 20); depth++) {
+    for (let depth = 0; depth < (trigger === "observation" || background ? 3 : 20); depth++) {
       if (this.recentUtilitySources.has(`${message.guildId}:${current.channelId}:${current.id}`)) return reject("utility_interaction");
       if (visited.has(current.id)) return reject("cyclic_reply_chain");
       visited.add(current.id);
@@ -82,7 +94,7 @@ export class SocialChatEligibility {
       const cachedTarget = current.channel.messages.cache?.get(targetId);
       // Passive observation never walks Discord REST history. Directly
       // addressed requests can proceed when their target was deleted.
-      const target = cachedTarget ?? (trigger === "observation" ? null : await current.channel.messages.fetch(targetId).catch(() => null));
+      const target = cachedTarget ?? (trigger === "observation" || background ? null : await current.channel.messages.fetch(targetId).catch(() => null));
       if (!target) return trigger === "direct" ? { eligible: true, reason: "direct_without_reply_context" } : reject("unresolved_reply_origin");
       current = target;
     }

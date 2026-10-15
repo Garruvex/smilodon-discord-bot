@@ -16,15 +16,15 @@ export const enMemory: SettingsTextCatalog = {
   "memory.advanced": { label: "Advanced memory", description: "Adjust memory fading and cleanup of old record versions." },
   "memory.advanced.half-life": { label: "Fading half-life (days)", description: "Days for fading recall weight to halve. Applies only when memory fading is enabled." },
   "memory.advanced.history": { label: "Old version retention (days)", description: "Days before inactive character record versions are cleaned up; active notes are unaffected." },
-  "memory.sharing": { label: "Shared personal memory", description: "Activate after reviewing channel modes. Existing private facts stay private." },
-  "memory.sharing.enabled": { label: "Shared personal memory", description: "Allow new eligible personal facts to be shared within the configured audience." },
+  "memory.sharing": { label: "Shared personal memory", description: "Share new personal facts according to each channel memory mode." },
+  "memory.sharing.enabled": { label: "Shared personal memory", description: "Existing private memories stay private." },
   "memory": { title: "Memory", description: "What the bot reads back and remembers." },
   "memory.channel-history": {
     label: "Channel history",
     description: "Use recent channel messages as context for replies.",
   },
   "memory.channel-history.enabled": { label: "Channel history", description: "Turn channel history on or off." },
-  "memory.channel-history.limit": { label: "Messages", description: "How many recent channel messages to include." },
+  "memory.channel-history.limit": { label: "Messages", description: "Recent messages fetched as context; character context can extend this." },
 
   "memory.memory-mode": {
     label: "Channel memory mode",

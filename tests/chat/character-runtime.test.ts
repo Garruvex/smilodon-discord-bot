@@ -35,7 +35,7 @@ function record(overrides: Partial<RepositoryIngestInput> = {}): RepositoryInges
   sourceMessageId: "human-source", sourceChannelId: channelId, assertedByUserId: actorUserId, ...overrides }; }
 function setup(clock: () => number = () => Date.now()): { connection: SqliteDatabaseConnection; repository: SqliteMemoryRepository; profiles: ReturnType<typeof memoryProvider>; provider: ChatProvider; runtime: CharacterRuntime } {
   const connection = createSqliteDatabaseConnection(mkdtempSync(join(tmpdir(), "character-runtime-"))); connections.push(connection);
-  const repository = new SqliteMemoryRepository(connection.database); const doc = freshDocument(); doc.features.chatbot = true; doc.features.channelHistory = true;
+  const repository = new SqliteMemoryRepository(connection.database); const doc = freshDocument(); doc.features.chatbot = true; doc.features.channelHistory = true; doc.channels.chatbot = [channelId];
   const profiles = memoryProvider(doc); const provider: ChatProvider = { reply: vi.fn(() => Promise.resolve(response())), generateCharacterData: vi.fn(() => Promise.resolve({ text: "enjoys fruit jokes" })) };
   const runtime = new CharacterRuntime(profiles, repository, { generateCharacterData: provider.generateCharacterData! }, provider, undefined, null, clock);
   return { connection, repository, profiles, provider, runtime };
@@ -121,9 +121,9 @@ describe("character module integration", () => {
       now += 30_000; await runtime.probe(request()); expect(reply).toHaveBeenCalledTimes(9);
     } finally { conversation.stopScheduling(); }
   });
-  it("leaves default turns unchanged and performs no utility work", async () => {
+  it("keeps direct requests available with lightweight restraint instructions and no utility work", async () => {
     const { runtime, provider } = setup(); const prepared = await runtime.prepare(request());
-    expect(prepared?.request.characterContext).toEqual([]); expect(prepared?.allowed).toBe(true);
+    expect(prepared?.request.characterContext?.map((section) => section.moduleId)).toEqual(["participation"]); expect(prepared?.allowed).toBe(true);
     expect(provider.generateCharacterData).not.toHaveBeenCalled();
   });
   it("invalidates in-flight context when a module or dependency is disabled", async () => {
@@ -131,7 +131,7 @@ describe("character module integration", () => {
     const prepared = (await runtime.prepare(request()))!; expect(prepared.request.characterContext?.[0]?.moduleId).toBe("recall-style");
     const reply = await runtime.process(response(), prepared); expect(reply.characterIsCurrent?.()).toBe(true);
     await profiles.update(guildId, { character: { enabled: false } }); expect(reply.characterIsCurrent?.()).toBe(false);
-    expect((await runtime.prepare(request()))?.request.characterContext).toEqual([]);
+    expect((await runtime.prepare(request()))?.request.characterContext?.map((section) => section.moduleId)).toEqual(["participation"]);
   });
   it("cannot enable modules through channel overrides or bypass context dependencies", () => {
     const settings = characterSettingsSchema.parse({ enabled: true, modules: { thoughts: { enabled: true }, addressing: { enabled: true } }, channelOverrides: { [channelId]: { modules: { canon: true } } } });
@@ -173,7 +173,7 @@ describe("character module integration", () => {
   });
   it("blocks optional delivery when a recalled impression loses its source during generation", async () => {
     const { runtime, repository, profiles } = setup(() => 3000);
-    await profiles.update(guildId, { chatbotSharedMemoryEnabled: true, character: { enabled: true, modules: { relationships: { enabled: true } } } });
+    await profiles.update(guildId, { chatbotSharedMemoryEnabled: true, chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] }, character: { enabled: true, modules: { relationships: { enabled: true } } } });
     const source = await repository.ingest(record());
     await runtime.memory.write(profiles.current(), channelId, "relationships", record({ kind: "impression", slot: "relationship", now: 2000 }), [source]);
     const prepared = (await runtime.prepare({ ...request(), triggerMode: "spontaneous" }))!;
@@ -351,31 +351,81 @@ describe("callback delivery lifecycle", () => {
   });
 });
 describe("decision windows and continuation timing", () => {
-  it("enforces addressing even when character modules are disabled", async () => {
-    const { runtime, provider } = setup(() => 4000);
-    vi.mocked(provider.generateCharacterData!).mockResolvedValue({ addressing: "bot", motivation: 0.9, boundary: "earlier", target: "current", confidence: 0.9, reaction: null, thoughts: [] });
-    const bot = { messageId: "bot-message", timestampMs: 2000, authorId: "bot", authorDisplayName: "Bot", content: "hello", imageCount: 0, replyToAuthorId: actorUserId };
-    const current = { messageId: "current", timestampMs: 4000, authorId: actorUserId, authorDisplayName: "Alice", content: "你覺得呢？", imageCount: 0 };
-    const input = { ...request(), triggerMode: "continuation" as const, currentBurst: [current], channelHistory: [bot] };
+  it.each(["continuation", "spontaneous"] as const)("cancels %s when another human takes over during generation", async (triggerMode) => {
+    let now = 4000; const { runtime, provider, profiles, repository, connection } = setup(() => now);
+    await profiles.update(guildId, { chatParticipation: { continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    const human = { messageId: "human", timestampMs: 1000, authorId: actorUserId, authorDisplayName: "Alice", content: "Compare these two ideas", imageCount: 0 };
+    const bot = { messageId: "bot-message", timestampMs: 2000, authorId: "bot", authorDisplayName: "Bot", content: "Here is the comparison", imageCount: 0, replyToAuthorId: actorUserId, replyToMessageId: "human" };
+    const current = { ...human, messageId: "current", timestampMs: 4000, content: "What about the other tradeoff?" };
+    vi.mocked(provider.generateCharacterData!).mockResolvedValue({ addressing: "continuing", motivation: 0.9, confidence: 0.9, recipientConfidence: 0.9, targetConfidence: 0.9, recipientEvidence: ["current"], target: "current", boundary: "earlier", opening: "clear", contribution: { text: "The second option is cheaper", adds: "A specific tradeoff", label: "specific-opinion", motivation: 0.9, sourceMessageId: "current", recipientId: actorUserId }, thoughts: [], reaction: null });
+    let finish!: (reply: ChatResponse) => void;
+    const pending = new Promise<ChatResponse>((resolve) => { finish = resolve; });
+    const generation = vi.spyOn(provider, "reply").mockReturnValue(pending);
+    const service = new ChatConversationService(provider, new SqliteChatStateStore(connection.database), new DefaultMemoryEngine(repository), undefined, undefined, undefined, null, null, null, null, null, null, null, null, runtime, () => now);
+    const deliver = vi.fn(() => Promise.resolve("sent"));
+    try {
+      service.observe(guildId, channelId, human); service.observe(guildId, channelId, bot);
+      const turn = service.run({ ...request(), examplePool: [], loreChunks: [], triggerMode, sourceMessageId: "current", currentBurst: [current], channelHistory: [human, bot], channelHistoryEnabled: true }, deliver);
+      const outcome = turn.then(() => "delivered", () => "suppressed");
+      await vi.waitFor(() => expect(generation).toHaveBeenCalled());
+      now = 5000; service.observe(guildId, channelId, { ...current, messageId: "new-recipient", authorId: "bob", timestampMs: now, content: "Carol, my question is for you" });
+      finish(response("The second option is cheaper"));
+      expect(await outcome).toBe("suppressed"); expect(deliver).not.toHaveBeenCalled();
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+  it("keeps reservoir thresholds and shadow controls subordinate to the baseline labelled policy", async () => {
+    const { runtime, provider, profiles } = setup(() => 4000);
+    await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, continuationEnabled: true, spontaneousChannelIds: [channelId], spontaneousThreshold: 0.75 }, character: { enabled: true, modules: { thoughts: { enabled: true, shadow: true, threshold: 1 }, addressing: { enabled: true } } } });
+    const candidate = { text: "A specific relevant joke", adds: "A joke on the current topic", label: "relevant-joke", motivation: 0.9, sourceMessageId: "current", recipientId: "group" };
+    const decision = { addressing: "others", motivation: 0.9, confidence: 0.9, recipientConfidence: 0.9, targetConfidence: 0.9, recipientEvidence: ["current"], target: "current", boundary: "earlier", opening: "clear", contribution: candidate, thoughts: [candidate], reaction: null };
+    vi.mocked(provider.generateCharacterData!).mockResolvedValue(decision);
+    const input = { ...request(), triggerMode: "spontaneous" as const, currentBurst: [{ messageId: "current", timestampMs: 4000, authorId: actorUserId, authorDisplayName: "Alice", content: "A group joke about the current game", imageCount: 0 }] };
     expect((await runtime.prepare(input))?.allowed).toBe(true);
-    expect((await runtime.prepare({ ...input, channelHistory: [bot, { ...current, messageId: "other", timestampMs: 3000, authorId: "other" }] }))?.allowed).toBe(false);
+    await profiles.update(guildId, { character: { modules: { thoughts: { shadow: false, threshold: 0 } } } });
+    vi.mocked(provider.generateCharacterData!).mockResolvedValue({ ...decision, motivation: 1, contribution: { ...candidate, label: "acknowledgment-only", motivation: 1 } });
+    expect((await runtime.prepare(input))?.allowed).toBe(false);
+  });
+  it("suppresses an acknowledgment generated for an accepted specific contribution", async () => {
+    const { runtime, provider, profiles, repository, connection } = setup(() => 4000);
+    await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    vi.mocked(provider.generateCharacterData!).mockResolvedValue({ addressing: "others", motivation: 0.9, confidence: 0.9, recipientConfidence: 0.9, targetConfidence: 0.9, recipientEvidence: ["current"], target: "current", boundary: "earlier", opening: "clear", contribution: { text: "A specific relevant joke", adds: "A joke on the current topic", label: "relevant-joke", motivation: 0.9, sourceMessageId: "current", recipientId: "group" }, thoughts: [], reaction: null });
+    vi.spyOn(provider, "reply").mockResolvedValue(response("okay"));
+    const service = new ChatConversationService(provider, new SqliteChatStateStore(connection.database), new DefaultMemoryEngine(repository), undefined, undefined, undefined, null, null, null, null, null, null, null, null, runtime, () => 4000);
+    const current = { messageId: "current", timestampMs: 4000, authorId: actorUserId, authorDisplayName: "Alice", content: "A group joke about the current game", imageCount: 0 };
+    const deliver = vi.fn(() => Promise.resolve("must not send"));
+    try {
+      const result = await service.run({ ...request(), examplePool: [], loreChunks: [], triggerMode: "spontaneous", sourceMessageId: "current", currentBurst: [current] }, deliver);
+      expect(result.ambientAction).toBe("ignore"); expect(result.text).toBe(""); expect(deliver).not.toHaveBeenCalled();
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+  it("enforces addressing even when character modules are disabled", async () => {
+    const { runtime, provider, profiles } = setup(() => 4000);
+    await profiles.update(guildId, { chatParticipation: { continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    vi.mocked(provider.generateCharacterData!).mockResolvedValue({ addressing: "bot", motivation: 0.9, boundary: "earlier", target: "current", confidence: 0.9, reaction: null, thoughts: [], recipientEvidence: ["current"], recipientConfidence: 0.9, targetConfidence: 0.9, opening: "clear", contribution: { text: "A specific observation", adds: "A new detail", label: "useful-observation", sourceMessageId: "current", recipientId: actorUserId, motivation: 0.8 } });
+    const human = { messageId: "human", timestampMs: 1000, authorId: actorUserId, authorDisplayName: "Alice", content: "tell me about cats", imageCount: 0 };
+    const bot = { replyToMessageId: "human", messageId: "bot-message", timestampMs: 2000, authorId: "bot", authorDisplayName: "Bot", content: "hello", imageCount: 0, replyToAuthorId: actorUserId };
+    const current = { messageId: "current", timestampMs: 4000, authorId: actorUserId, authorDisplayName: "Alice", content: "你覺得呢？", imageCount: 0 };
+    const input = { ...request(), triggerMode: "continuation" as const, currentBurst: [current], channelHistory: [human, bot] };
+    expect((await runtime.prepare(input))?.allowed).toBe(true);
+    expect((await runtime.prepare({ ...input, channelHistory: [human, bot, { ...current, messageId: "other", timestampMs: 3000, authorId: "other" }] }))?.allowed).toBe(false);
     expect((await runtime.prepare({ ...input, currentBurst: [{ ...current, replyToAuthorId: "other", replyToMessageId: "other" }] }))?.allowed).toBe(false);
   });
   it("does not turn an ordinary spontaneous acknowledgment into speech", async () => {
-    const { runtime, provider } = setup(() => 4000);
-    vi.mocked(provider.generateCharacterData!).mockResolvedValue({ addressing: "others", motivation: 0.5, boundary: "earlier", target: "current", confidence: 0.9, reaction: null, thoughts: [] });
+    const { runtime, provider, profiles } = setup(() => 4000);
+    await profiles.update(guildId, { chatParticipation: { continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    vi.mocked(provider.generateCharacterData!).mockResolvedValue({ addressing: "others", motivation: 0.5, boundary: "earlier", target: "current", confidence: 0.9, reaction: null, thoughts: [], recipientEvidence: ["current"], recipientConfidence: 0.9, targetConfidence: 0.9, opening: "clear", contribution: { text: "A specific observation", adds: "A new detail", label: "acknowledgment-only", sourceMessageId: "current", recipientId: actorUserId, motivation: 0.8 } });
     const input = { ...request(), triggerMode: "spontaneous" as const, currentBurst: [{ messageId: "current", timestampMs: 4000, authorId: actorUserId, authorDisplayName: "Alice", content: "just finished dinner", imageCount: 0 }] };
     expect((await runtime.prepare(input))?.allowed).toBe(false);
   });
-  it("pins direct targets and falls back to latest on a fabricated target", async () => {
+  it("rejects fabricated targets rather than silently repairing recipient evidence", async () => {
     const provider = { generateCharacterData: vi.fn(() => Promise.resolve({ addressing: "bot", motivation: 0.8, boundary: "bad", target: "fabricated", confidence: 0.9, reaction: null, thoughts: [] })) };
     const decision = new CharacterDecisionService(provider); const input = { personality: "test", events: [], burst: [{ messageId: "latest", timestampMs: 1000, authorId: "human", authorDisplayName: "human", content: "hello", imageCount: 0 }], botId: "bot", fixedTarget: null, gapMs: 600000, speakingShare: 0, thoughts: false };
-    expect((await decision.decide(input))?.target).toBe("latest"); expect((await decision.decide({ ...input, fixedTarget: "direct" }))?.target).toBe("direct");
+    expect(await decision.evaluate(input)).toEqual({ status: "failed", decision: null }); expect(await decision.decide({ ...input, fixedTarget: "direct" })).toBeNull();
   });
   it("admits active continuation inside spontaneous cooldowns while bounding exchanges and the guild", async () => {
     let now = 1000; const scheduler = new ChatScheduler(() => now); const limits = { ...balancedChatLimits, continuation: true, continuationPerExchange: 2, continuationPerWindow: 3, optionalTurnsPerWindow: 4 };
     expect(await scheduler.run("guild:channel", true, limits, () => Promise.resolve("first"))).toBe("first");
-    for (let index = 0; index < 2; index++) { scheduler.reserveOutput("guild:channel", "text", limits, true)!(true); now += 4000; expect(await scheduler.run("guild:channel", true, limits, () => Promise.resolve("follow-up"))).toBe("follow-up"); }
+    for (let index = 0; index < 2; index++) { scheduler.reserveOutput("guild:channel", "text", limits, true)!(true); now += 15000; expect(await scheduler.run("guild:channel", true, limits, () => Promise.resolve("follow-up"))).toBe("follow-up"); }
     expect(scheduler.reserveOutput("guild:channel", "text", limits, true)).toBeNull(); now += 121000;
     scheduler.reserveOutput("guild:channel", "text", limits, true)!(true);
     expect(scheduler.reserveOutput("guild:channel", "text", limits, true)).toBeNull(); scheduler.stop();

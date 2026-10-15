@@ -1,0 +1,1576 @@
+{
+  "synthetic": true,
+  "cases": [
+    {
+      "name": "50–60 second reading and typing delay",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "那第二個方法的取捨呢？",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": true,
+      "aliases": []
+    },
+    {
+      "name": "closing: lol",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "lol",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "closing: okay",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "okay",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "closing: 哈哈",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "哈哈",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "closing: 謝謝",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "謝謝",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "closing: 晚安",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "晚安",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "closing: 不是在跟你說，我在問別人",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "不是在跟你說，我在問別人",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "rejected label at .99: acknowledgment-only",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "那第二個方法的取捨呢？",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.99,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "acknowledgment-only",
+          "motivation": 0.99,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "rejected label at .99: repetition",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "那第二個方法的取捨呢？",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.99,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "repetition",
+          "motivation": 0.99,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "rejected label at .99: generic-advice",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "那第二個方法的取捨呢？",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.99,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "generic-advice",
+          "motivation": 0.99,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "rejected label at .99: speculative-help",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "那第二個方法的取捨呢？",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.99,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "speculative-help",
+          "motivation": 0.99,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "rejected label at .99: topic-hijack",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "那第二個方法的取捨呢？",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.99,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "topic-hijack",
+          "motivation": 0.99,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "rejected label at .99: stale-information",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "那第二個方法的取捨呢？",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.99,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "stale-information",
+          "motivation": 0.99,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "another person interleaves",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        },
+        {
+          "messageId": "other",
+          "authorId": "bob",
+          "authorDisplayName": "Bob",
+          "timestampMs": 40000,
+          "content": "Now my question for Carol",
+          "imageCount": 0
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "那第二個方法的取捨呢？",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "explicit other reply",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "那第二個方法的取捨呢？",
+        "imageCount": 0,
+        "replyToMessageId": "bob-msg",
+        "replyToAuthorId": "bob"
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "explicit other mention",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "<@123456789012345678> 你怎麼看？",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "plain-name other recipient",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "bob-msg",
+          "authorId": "bob",
+          "authorDisplayName": "Bob",
+          "timestampMs": 500,
+          "content": "",
+          "imageCount": 0
+        },
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "Bob, did you finish?",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "unresolved name",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "Charlie, can you check?",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "ambiguous alias",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "Ace, can you check?",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": [
+        {
+          "alias": "Ace",
+          "subjectIds": [
+            "bob",
+            "carol"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "extra bot output cannot renew window",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        },
+        {
+          "messageId": "duplicate",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 110000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 140000,
+        "content": "那第二個方法的取捨呢？",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "explicit bot reply remains addressed after window expiry",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 200000,
+        "content": "那第二個方法的取捨呢？",
+        "imageCount": 0,
+        "replyToMessageId": "bot-reply"
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": true,
+      "aliases": []
+    },
+    {
+      "name": "missing context",
+      "trigger": "continuation",
+      "events": [],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "那第二個方法的取捨呢？",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "no provider",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "那第二個方法的取捨呢？",
+        "imageCount": 0
+      },
+      "decision": null,
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "invented or future evidence",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        },
+        {
+          "messageId": "future",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 999999,
+          "content": "future evidence",
+          "imageCount": 0
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "那第二個方法的取捨呢？",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "future"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "strong score cannot override a closed opening",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "那第二個方法的取捨呢？",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "closed",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "welcome spontaneous group joke",
+      "trigger": "spontaneous",
+      "events": [
+        {
+          "messageId": "bob-msg",
+          "authorId": "bob",
+          "authorDisplayName": "Bob",
+          "timestampMs": 1000,
+          "content": "A synthetic group joke",
+          "imageCount": 0
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "那第二個方法的取捨呢？",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "others",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "relevant-joke",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "group"
+        }
+      },
+      "expected": true,
+      "aliases": []
+    },
+    {
+      "name": "third-person bot reference is not an address",
+      "trigger": "continuation",
+      "events": [],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "Bot is really quiet today.",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "continuing",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    },
+    {
+      "name": "missing image context abstains",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Alice",
+          "timestampMs": 1000,
+          "content": "Can we compare these two ideas?",
+          "imageCount": 0
+        },
+        {
+          "messageId": "bot-reply",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 8000,
+          "content": "Here is a specific comparison",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Alice",
+        "timestampMs": 60000,
+        "content": "這張圖呢？",
+        "imageCount": 1
+      },
+      "decision": {
+        "addressing": "unclear",
+        "motivation": 0.9,
+        "confidence": 0.9,
+        "recipientConfidence": 0.9,
+        "targetConfidence": 0.9,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "unclear",
+        "contribution": {
+          "text": "The second option makes a different tradeoff.",
+          "adds": "A specific tradeoff not already discussed",
+          "label": "specific-opinion",
+          "motivation": 0.9,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false,
+      "aliases": []
+    }
+  ]
+}

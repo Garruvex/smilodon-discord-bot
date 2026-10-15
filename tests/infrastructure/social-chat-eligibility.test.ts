@@ -5,6 +5,8 @@ import { freshProfile } from "../helpers/settings-fixtures.js";
 import type { ApplicationConfiguration } from "../../src/config/configuration.js";
 import type { GuildConfigurationProvider } from "../../src/config/guild-configuration-provider.js";
 import type { MessageOriginRecord, MessageOriginStore } from "../../src/application/chat/message-origin-store.js";
+import { ChatTurnSupport } from "../../src/infrastructure/discord/behaviors/chat-turn-support.js";
+import type { Logger } from "pino";
 import { SocialChatEligibility } from "../../src/infrastructure/discord/behaviors/social-chat-eligibility.js";
 
 function fixture(): { profile: GuildConfiguration; records: Map<string, MessageOriginRecord>; policy: SocialChatEligibility;
@@ -12,6 +14,9 @@ function fixture(): { profile: GuildConfiguration; records: Map<string, MessageO
   const profile = freshProfile();
   profile.features.chatbot = true;
   profile.features.reactionReplies = true;
+  profile.features.channelHistory = true;
+  profile.channels.chatbot = new Set(["channel"]);
+  profile.roles.chatbot = new Set(["chat-role"]);
   const records = new Map<string, MessageOriginRecord>();
   const messages = new Map<string, Message>();
   const origins: MessageOriginStore = {
@@ -26,7 +31,7 @@ function fixture(): { profile: GuildConfiguration; records: Map<string, MessageO
   const message = (id: string, bot = false, target?: string): Message => {
     const result = {
       id, guildId: profile.guildId, channelId: "channel", inGuild: () => true,
-      author: { id: bot ? "bot" : "human", bot }, member: { roles: { cache: new Map() } },
+      author: { id: bot ? "bot" : "human", bot }, member: { roles: { cache: new Map([["chat-role", {}]]) } },
       reference: target ? { messageId: target } : null,
       channel: { isThread: () => false, messages: { fetch: (id: string) => Promise.resolve(messages.get(id) ?? null) } },
     } as unknown as Message;
@@ -36,6 +41,27 @@ function fixture(): { profile: GuildConfiguration; records: Map<string, MessageO
 }
 
 describe("social eligibility boundary", () => {
+  it("keeps owner explicit access while denying passive reading and history fetches outside scope", async () => {
+    const { profile, policy, message } = fixture(); profile.channels.chatbot = new Set(["selected"]);
+    const current = message("owner");
+    expect((await policy.check(current, "direct")).eligible).toBe(true);
+    expect((await policy.check(current, "observation")).eligible).toBe(false);
+    const fetch = vi.spyOn(current.channel.messages, "fetch");
+    const support = new ChatTurnSupport({ warn: vi.fn() } as unknown as Logger, policy);
+    expect(await support.resolveChannelHistory(current, 10, new Set())).toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
+    profile.channels.chatbot = new Set();
+    expect((await policy.check(current, "observation")).eligible).toBe(false);
+  });
+  it("requires exact thread selection and honors memory exclusions", async () => {
+    const { profile, policy, message } = fixture(); const current = message("thread");
+    Object.assign(current, { channelId: "thread" });
+    expect((await policy.check(current, "observation")).eligible).toBe(false);
+    profile.chat.participation = { ...profile.chat.participation!, observationChannelIds: ["thread"] };
+    expect((await policy.check(current, "observation")).eligible).toBe(true);
+    profile.chat.channelMemoryModes = { thread: "disabled" };
+    expect((await policy.check(current, "observation")).eligible).toBe(false);
+  });
   it("excludes direct mentions and multi-hop replies to utility output while allowing standalone conversation", async () => {
     const { profile, records, policy, message } = fixture();
     message("utility", true);

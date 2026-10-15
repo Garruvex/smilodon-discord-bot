@@ -14,7 +14,7 @@ import type { ChatConversationService } from "../../../application/chat/chat-con
 import type { PersonaSource } from "../../../application/chat/persona-source.js";
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
-import { containsBotName } from "../../../domain/chat/name-mention.js";
+import { addressesBotName } from "../../../domain/chat/name-mention.js";
 import type { MessageReactionWatchStore } from "../../../application/chat/message-reaction-watch.js";
 import { ChatTurnSupport } from "./chat-turn-support.js";
 import { isInGameChannel, type IsGameChannel } from "./game-channel-guard.js";
@@ -70,8 +70,8 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     // noisy to be useful.
     const liveNickname = message.guild.members.me?.nickname ?? message.guild.members.me?.displayName;
     const named =
-      containsBotName(message.content, profile.displayName) ||
-      (liveNickname ? containsBotName(message.content, liveNickname) : false);
+      addressesBotName(message.content, profile.displayName) ||
+      (liveNickname ? addressesBotName(message.content, liveNickname) : false);
     if (!named) return false;
     const logContext = { guildId: message.guildId, channelId: message.channelId, messageId: message.id };
     if (!profile.features.chatbot || !profile.features.ambientReplies) {
@@ -103,6 +103,8 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
   }
 
   public async execute(message: Message, trigger: "ambient" | "continuation" | "spontaneous" = "ambient", burst: readonly Message[] = []): Promise<BehaviorResult> {
+    if (trigger === "ambient" && message.guildId) this.conversation?.cancelOptionalOpportunity?.(message.guildId, message.channelId);
+    const opportunityVersion = trigger === "ambient" || !message.guildId ? null : this.conversation?.optionalOpportunityVersion?.(message.guildId, message.channelId);
     if (!message.inGuild() || !this.conversation) return BehaviorResult.Continue;
     const profile = this.profiles.find(message.guildId);
     if (!profile) return BehaviorResult.Continue;
@@ -173,12 +175,12 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         sourceMessageId: message.id,
         channelHistoryEnabled: profile.features.channelHistory,
         currentEvent: this.turnSupport.toMessageEvent(message), botUserId: this.clientUserId(),
-        canExecute: () => this.turnSupport.isEligible(message, trigger),
+        canExecute: async () => (opportunityVersion == null || this.conversation?.optionalOpportunityVersion(message.guildId, message.channelId) === opportunityVersion) && await this.turnSupport.isEligible(message, trigger),
         activityLimits: participation.limits, shadowMode: participation.shadowMode,
         resolveActivityLimits: () => resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits,
         resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(message.guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
         refreshContextMessage: (event) => this.turnSupport.refreshHistoryEvent(message, event),
-        shouldDeliver: () => !resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).shadowMode,
+        shouldDeliver: () => (opportunityVersion == null || this.conversation?.optionalOpportunityVersion(message.guildId, message.channelId) === opportunityVersion) && !resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).shadowMode,
         afterDecision: async (result) => {
           if (result.characterIsCurrent && !result.characterIsCurrent() || result.characterCanDeliver && !await result.characterCanDeliver()) return;
           const reactionTarget = result.replyTargetMessageId && result.replyTargetMessageId !== message.id

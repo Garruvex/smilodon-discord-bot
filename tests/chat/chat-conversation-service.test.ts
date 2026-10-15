@@ -81,6 +81,17 @@ function baseStore(overrides: Partial<ChatStateStore> = {}): ChatStateStore {
 }
 
 describe("ChatConversationService", () => {
+  it("cancels a buffered optional decision when a direct request starts", async () => {
+    vi.useFakeTimers();
+    const service = new ChatConversationService({ reply: (): Promise<ChatResponse> => Promise.resolve(response("direct answer")) }, baseStore(), testMemoryEngine().engine);
+    const buffered = vi.fn(); const version = service.optionalOpportunityVersion("guild", "channel");
+    try {
+      service.bufferOpportunity("guild", "channel", buffered);
+      await service.run(input("A direct question"), (output) => Promise.resolve(output.text));
+      expect(service.optionalOpportunityVersion("guild", "channel")).not.toBe(version);
+      await vi.advanceTimersByTimeAsync(10000); expect(buffered).not.toHaveBeenCalled();
+    } finally { service.stopScheduling(); await service.drain(); vi.useRealTimers(); }
+  });
   it("batches source reads and budgets the rendered memories including escaped evidence", async () => {
     const { engine } = testMemoryEngine();
     for (let i = 0; i < 20; i++) await engine.ingest({ guildId: "guild", channelId: "channel", channelMode: "shared",
@@ -120,7 +131,14 @@ describe("ChatConversationService", () => {
     expect(purgeUser).toHaveBeenCalledWith("guild", "user");
     expect(reply.mock.calls[0]![0].channelHistory).toEqual([]);
   });
-  it.each(["ambient", "reaction", "direct", "continuation", "spontaneous"] as const)("preserves addressed turns while discarding changed proactive context (%s)", async (triggerMode) => {
+  it.each(["continuation", "spontaneous"] as const)("pauses %s without a structured decision runtime", async (triggerMode) => {
+    const reply = vi.fn(() => Promise.resolve(response("must not generate")));
+    const service = new ChatConversationService({ reply }, baseStore(), testMemoryEngine().engine);
+    const deliver = vi.fn(() => Promise.resolve("must not send"));
+    expect((await service.run({ ...input("What are we deciding?"), triggerMode }, deliver)).ambientAction).toBe("ignore");
+    expect(reply).not.toHaveBeenCalled(); expect(deliver).not.toHaveBeenCalled();
+  });
+  it.each(["ambient", "reaction", "direct"] as const)("preserves addressed turns during unrelated context changes (%s)", async (triggerMode) => {
     let finish!: (value: ChatResponse) => void;
     const pending = new Promise<ChatResponse>((resolve) => { finish = resolve; });
     const reply = vi.fn(() => pending);
@@ -132,9 +150,8 @@ describe("ChatConversationService", () => {
     service.observe("guild", "channel", { messageId: "new-topic", timestampMs: Date.now(), authorId: "other",
       authorDisplayName: "Other", content: "We moved on to a different topic", imageCount: 0 });
     finish(response("answer", [], [], { action: "reply" }));
-    const staleProactive = triggerMode === "continuation" || triggerMode === "spontaneous";
-    expect(await result).toBe(staleProactive ? "suppressed" : "delivered");
-    expect(deliver).toHaveBeenCalledTimes(staleProactive ? 0 : 1);
+    expect(await result).toBe("delivered");
+    expect(deliver).toHaveBeenCalledOnce();
   });
 
   it("does not turn legacy sessions or assistant-only summaries into public facts", async () => {
@@ -197,6 +214,14 @@ describe("ChatConversationService", () => {
     await service.run({ ...input("continuation"), triggerMode: "continuation", shadowMode: true }, deliver);
     await service.drain();
     expect(deliver).not.toHaveBeenCalled(); expect(commit).not.toHaveBeenCalled(); expect(extract).not.toHaveBeenCalled();
+  });
+  it("treats recipient corrections as conversation routing rather than a durable member fact", async () => {
+    const extraction = vi.fn(() => Promise.resolve([])); const { engine, repository } = testMemoryEngine();
+    const provider: ChatProvider = { reply: () => Promise.resolve(response("Understood", [{ action: "upsert", subjectUserId: "user", topic: "preference", slot: "conversation.target", statement: "prefers talking to someone else", sourceQuote: "I am talking to someone else" }])), extractPersonalMemories: extraction };
+    const service = new ChatConversationService(provider, baseStore(), engine);
+    await service.run(input("I am talking to someone else"), (output) => Promise.resolve(output.text));
+    await service.drain(); expect(extraction).not.toHaveBeenCalled();
+    expect(await repository.listByUser("guild", "user")).toEqual([]);
   });
   it("reaction notes cannot create facts or run dedicated extraction even when quoting bot assertions", async () => {
     const extraction = vi.fn(() => Promise.resolve([]));

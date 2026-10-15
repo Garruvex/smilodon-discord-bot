@@ -13,6 +13,21 @@ describe("human character evaluation", () => {
     expect(run).not.toHaveBeenCalled();
     expect(await replayCharacterConversations({ consented: true, anonymized: true, turns }, run)).toEqual([{ turn: 0, output: 10 }, { turn: 1, output: 20 }]);
   });
+  it("records hypothetical output separately from delivery and clears review metadata on forgetting", async () => {
+    const store = new CharacterEvaluationStore(mkdtempSync(join(tmpdir(), "participation-review-")));
+    await store.record("guild", "decision", { proposedAction: "reply", shadow: true });
+    await store.record("guild", "delivery", { delivered: false, shadow: true });
+    expect((await store.list("guild")).map((record) => record.kind)).toEqual(["decision", "delivery"]);
+    await store.forget("guild"); expect(await store.list("guild")).toEqual([]);
+  });
+  it("removes only review records linked to an excluded source and rejects stale queued records", async () => {
+    const store = new CharacterEvaluationStore(mkdtempSync(join(tmpdir(), "participation-source-")));
+    await store.record("guild", "decision", { sourceMessageId: "deleted", recipientEvidence: ["deleted"] });
+    await store.record("guild", "decision", { sourceMessageId: "kept" });
+    await store.excludeSource("guild", "deleted");
+    await store.record("guild", "delivery", { sourceMessageId: "deleted", delivered: false });
+    expect((await store.list("guild")).map((record) => record.data)).toEqual([{ sourceMessageId: "kept" }]);
+  });
   it("serializes review writes, scopes them to the guild and expires old records", async () => {
     const store = new CharacterEvaluationStore(mkdtempSync(join(tmpdir(), "character-review-")));
     await Promise.all([store.record("guild", "flag", { category: "wrong-person" }), store.record("guild", "label", { preference: "A" })]);

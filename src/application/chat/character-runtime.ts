@@ -8,10 +8,10 @@ import { resolveChannelMemoryMode } from "../memory/memory-channel-policy.js";
 import { characterSettings, characterInactiveReason, type CharacterModuleId, type CharacterCapabilities } from "./character-settings.js";
 import { CharacterModuleRegistry, type CharacterTurn } from "./character-module-registry.js";
 import { CharacterMemory } from "./character-memory.js";
-import { allowsOptionalParticipation, CharacterDecisionService, localAddressing } from "./character-decision.js";
+import { allowsOptionalParticipation, CharacterDecisionService, localAddressing, exchangeBranch, generatedContributionAllowed, addressedElsewhere, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
 import { createCharacterModules } from "./character-modules/index.js";
 import { hash, personaFingerprint, serious } from "./character-modules/shared.js";
-import { resolveParticipation } from "./participation-policy.js";
+import { resolveParticipation, contributionPolicy, passiveChannelAllowed } from "./participation-policy.js";
 import { CharacterCallbacks, callbackState } from "./character-callbacks.js";
 import { startOfLocalDay } from "./character-calendar.js";
 import type { CharacterEvaluationStore } from "./character-evaluation.js";
@@ -20,6 +20,7 @@ import type { PersonalMemoryExtractionQueueStore } from "../context/personal-mem
 
 const textSchema: Record<string, unknown> = { type: "object", additionalProperties: false, required: ["text"], properties: { text: { type: "string" } } };
 export interface CharacterPreparedTurn { turn: CharacterTurn; fingerprint: string; allowed: boolean; request: ChatRequest; targetMessageId: string | null; memoryContextSignature: string;
+  decisionStatus: DecisionOutcome["status"] | "skipped"; acceptedContribution: CharacterDecision["contribution"] | null; exchangeId: string | null;
   participation: { action: "reply" | "ignore"; reaction: string | null } | null; styleUserId: string | null; styleSignature: string | null; targetConfidence: number }
 export interface CharacterCallbackDelivery {
   run(guildId: string, channelId: string, operation: () => Promise<boolean>): Promise<boolean>;
@@ -49,6 +50,7 @@ export class CharacterRuntime {
   private stopped = false;
   private readonly pendingJobs = new Set<Promise<unknown>>();
   private readonly botIds = new Set<string>();
+  private readonly privacyVersions = new Map<string, number>();
   private readonly seriousChannels = new Map<string, number>();
   private targetPreferences: ((guildId: string, userId: string) => Promise<{ customization: string | null }>) | null = null;
   private personaVersion: ((guildId: string) => Promise<string>) | null = null;
@@ -73,13 +75,14 @@ export class CharacterRuntime {
   }
   public contextWindow(guildId: string, channelId: string): number | null {
     const profile = this.profiles.find(guildId);
-    return profile && characterSettings(profile).context.enabled && this.capabilities(profile, channelId).context ? characterSettings(profile).context.windowMinutes : null;
+    return profile && passiveChannelAllowed(profile, channelId) && characterSettings(profile).context.enabled && this.capabilities(profile, channelId).context ? characterSettings(profile).context.windowMinutes : null;
   }
   public contextAllowed(guildId: string, channelId: string): boolean {
-    const profile = this.profiles.find(guildId); return !!profile && this.capabilities(profile, channelId).context;
+    const profile = this.profiles.find(guildId); return !!profile && passiveChannelAllowed(profile, channelId) && this.capabilities(profile, channelId).context;
   }
+  public get decisionAvailable(): boolean { return this.decisions.available; }
   public couldBeAddressed(guildId: string, channelId: string, event: ChannelHistoryMessage, history: readonly ChannelHistoryMessage[], botId: string): boolean {
-    const profile = this.profiles.find(guildId); if (!profile) return false;
+    const profile = this.profiles.find(guildId); if (!profile || !passiveChannelAllowed(profile, channelId)) return false;
     const settings = characterSettings(profile);
     const live = this.registry.has("addressing") && !characterInactiveReason(settings, "addressing", channelId, this.capabilities(profile, channelId)) && !settings.modules.addressing.shadow;
     const addressing = localAddressing(history, event, botId, live && settings.modules.addressing.includeOtherParticipants);
@@ -88,7 +91,7 @@ export class CharacterRuntime {
   public selectContext(guildId: string, channelId: string, events: readonly ChannelHistoryMessage[], now = this.now()): ChannelHistoryMessage[] {
     const profile = this.profiles.find(guildId); if (!profile) return [...events];
     const context = characterSettings(profile).context;
-    if (!this.capabilities(profile, channelId).context) return [];
+    if (!passiveChannelAllowed(profile, channelId) || !this.capabilities(profile, channelId).context) return [];
     if (!context.enabled) return [...events].slice(-24);
     let segment = events.filter((event) => event.timestampMs >= now - context.windowMinutes * 60_000);
     let boundary = 0;
@@ -99,7 +102,7 @@ export class CharacterRuntime {
     return segment.slice(-(context.maxMessages + 8)).reverse().filter((event) => { size += JSON.stringify(event).length; return size <= context.budget; }).reverse();
   }
   private fingerprint(profile: GuildConfiguration, channelId: string): string {
-    return hash(JSON.stringify([characterSettings(profile), this.capabilities(profile, channelId), profile.chat.channelMemoryModes]));
+    return hash(JSON.stringify([characterSettings(profile), this.capabilities(profile, channelId), profile.chat.channelMemoryModes, profile.chat.participation, [...profile.channels.chatbot]]));
   }
   public stillEligible(prepared: CharacterPreparedTurn): boolean {
     if (this.stopped && (prepared.turn.settings.enabled || prepared.turn.settings.context.enabled)) return false;
@@ -190,6 +193,7 @@ export class CharacterRuntime {
     const settings = characterSettings(profile); const capabilities = this.capabilities(profile, request.channelId);
     request = { ...request, characterGuardEnabled: settings.enabled && !capabilities.excluded };
     const fingerprint = this.fingerprint(profile, request.channelId);
+    const privacyVersion = this.privacyVersions.get(request.guildId) ?? 0;
     const turn: CharacterTurn = { request, settings, capabilities, now: this.now() };
     const enabled = (id: CharacterModuleId): boolean => this.registry.has(id) && !characterInactiveReason(settings, id, request.channelId, capabilities);
     const events = request.channelHistory;
@@ -198,39 +202,67 @@ export class CharacterRuntime {
       authorDisplayName: request.currentUser.displayName, content: request.message, imageCount: request.images.length,
       replyToMessageId: request.currentEvent.replyToMessageId,
     }] : [];
+    let decisionStatus: DecisionOutcome["status"] | "skipped" = this.decisions.available ? "skipped" : "unavailable";
+    let acceptedContribution: CharacterDecision["contribution"] | null = null; let exchangeId: string | null = null;
+    const policy = contributionPolicy(profile.chat.participation);
     let allowed = true; let targetMessageId: string | null = null; let targetConfidence = 0;
     let participation: CharacterPreparedTurn["participation"] = null;
     let styleUserId: string | null = null; let styleSignature: string | null = null;
     const key = `${request.guildId}:${request.channelId}`;
     if (!request.characterEvaluation && (!settings.context.enabled || !capabilities.context)) this.summaries.delete(key);
     const optional = request.triggerMode === "continuation" || request.triggerMode === "spontaneous";
-    if (optional && !capabilities.context) allowed = false;
+    const participationSettings = resolveParticipation(profile.chat.participation, request.channelId);
+    if (optional && (!capabilities.context || !passiveChannelAllowed(profile, request.channelId) || !this.decisions.available ||
+        !(request.triggerMode === "continuation" ? participationSettings.continuationEnabled : participationSettings.spontaneousEnabled))) {
+      await this.evaluationStore?.record(request.guildId, "decision", { sourceMessageId: burst.at(-1)?.messageId ?? null, decisionStatus,
+        proposedAction: "ignore", rejectionReason: !this.decisions.available ? "unavailable" : "scope_or_disabled", shadow: request.characterShadow ?? false });
+      this.registry.reset(request.guildId);
+      return { turn, request, fingerprint, allowed: false, decisionStatus, acceptedContribution: null, exchangeId: null,
+        targetMessageId, memoryContextSignature: "[]", participation: { action: "ignore", reaction: null }, styleUserId, styleSignature, targetConfidence };
+    }
     if (!request.characterEvaluation && capabilities.context && (optional || settings.context.enabled || enabled("addressing") || enabled("thoughts"))) {
       const decisionEvents = events.slice(-settings.context.decisionMessages);
       const fixedTarget = optional || request.triggerMode === "reaction" ? null : request.currentEvent?.type === "message" ? request.currentEvent.messageId : null;
       const shouldDecide = optional || request.triggerMode === "reaction" || settings.context.enabled && !settings.context.shadow;
-      const decision = shouldDecide ? await this.decisions.decide({ personality: request.personality, events: decisionEvents, burst, botId: request.botUserId ?? "bot",
+      const decisionStarted = Date.now();
+      const outcome = shouldDecide ? await this.decisions.evaluate({ personality: request.personality, events: decisionEvents, burst, botId: request.botUserId ?? "bot",
         fixedTarget, gapMs: settings.context.segmentGapMinutes * 60_000,
         speakingShare: decisionEvents.length ? decisionEvents.filter((event) => event.authorId === request.botUserId).length / decisionEvents.length : 0,
-        thoughts: optional && enabled("thoughts") }) : null;
+        thoughts: optional && enabled("thoughts"), now: turn.now }) : { status: "skipped" as const, decision: null };
+      const decision = outcome.decision; decisionStatus = outcome.status;
+      const liveProfile = this.profiles.find(request.guildId);
+      if (!liveProfile || this.fingerprint(liveProfile, request.channelId) !== fingerprint || (this.privacyVersions.get(request.guildId) ?? 0) !== privacyVersion) {
+        this.registry.reset(request.guildId);
+        return { turn, request, fingerprint, allowed: false, decisionStatus, acceptedContribution: null, exchangeId: null,
+          targetMessageId, memoryContextSignature: "[]", participation: { action: "ignore", reaction: null }, styleUserId, styleSignature, targetConfidence };
+      }
       const local = burst.at(-1) ? localAddressing([...decisionEvents, ...request.replyChain], burst.at(-1)!, request.botUserId ?? "bot",
-        enabled("addressing") && !settings.modules.addressing.shadow && settings.modules.addressing.includeOtherParticipants) : "unclear";
+        enabled("addressing") && !settings.modules.addressing.shadow && settings.modules.addressing.includeOtherParticipants, 120_000, request.aliasCandidates) : "unclear";
       if (optional) {
         const current = burst.at(-1);
-        const replyAuthor = current?.replyToAuthorId ?? [...events, ...request.replyChain, ...burst].find((event) => event.messageId === current?.replyToMessageId)?.authorId;
-        const explicitlyElsewhere = !!replyAuthor && replyAuthor !== request.botUserId ||
-          !!current?.replyToMessageId && !replyAuthor ||
-          !!current && [...current.content.matchAll(/<@!?(\d+)>/gu)].some((match) => match[1] !== request.botUserId);
-        allowed = allowed && allowsOptionalParticipation(request.triggerMode as "continuation" | "spontaneous", local, decision, explicitlyElsewhere);
+        const explicitlyElsewhere = !!current && addressedElsewhere(current, [...events, ...request.replyChain, ...burst], request.botUserId ?? "bot", request.aliasCandidates);
+        allowed = allowed && allowsOptionalParticipation(request.triggerMode as "continuation" | "spontaneous", local, decision, explicitlyElsewhere, policy);
+        if (current) exchangeId = exchangeBranch([...events, ...request.replyChain, ...burst], current, request.botUserId ?? "bot");
+        if (allowed && decision) acceptedContribution = decision.contribution;
       }
+      if (optional) await this.evaluationStore?.record(request.guildId, "decision", {
+        sourceMessageId: burst.at(-1)?.messageId ?? null, decisionStatus, proposedAction: allowed ? "reply" : "ignore",
+        rejectionReason: allowed ? null : !passiveChannelAllowed(profile, request.channelId) ? "scope" : decisionStatus !== "valid" ? decisionStatus : local === "unclear" ? "recipient_unclear" : "recipient_contribution_or_opening",
+        recipient: local, recipientConfidence: decision?.recipientConfidence ?? null, targetConfidence: decision?.targetConfidence ?? null, target: decision?.target ?? null, thoughtCount: decision?.thoughts.length ?? 0, recipientEvidence: decision?.recipientEvidence ?? [], contributionLabel: decision?.contribution.label ?? null,
+        opening: decision?.opening ?? null, policy, limits: resolveParticipation(profile.chat.participation, request.channelId).limits,
+        latencyMs: Date.now() - decisionStarted, shadow: request.characterShadow ?? false,
+      });
       if (decision) {
-        await this.evaluationStore?.record(request.guildId, "decision", { sourceMessageId: burst.at(-1)?.messageId ?? null,
+        if (!optional) await this.evaluationStore?.record(request.guildId, "decision", { sourceMessageId: burst.at(-1)?.messageId ?? null,
           addressing: decision.addressing, motivation: decision.motivation, boundary: decision.boundary, target: decision.target,
-          confidence: decision.confidence, thoughtCount: decision.thoughts.length, shadow: settings.modules.addressing.shadow || settings.modules.thoughts.shadow });
+          recipientEvidence: decision.recipientEvidence, recipientConfidence: decision.recipientConfidence, targetConfidence: decision.targetConfidence,
+          contributionLabel: decision.contribution.label, opening: decision.opening, decisionStatus, allowed, policy,
+          confidence: decision.confidence, thoughtCount: decision.thoughts.length, shadow: request.characterShadow ?? false });
         const live = !settings.context.shadow || enabled("addressing") && !settings.modules.addressing.shadow || enabled("thoughts") && !settings.modules.thoughts.shadow;
-        if (live && request.triggerMode !== "direct") participation = { action: decision.motivation >= (request.triggerMode === "spontaneous" ? settings.modules.thoughts.threshold : 0.5) ? "reply" : "ignore", reaction: decision.reaction };
-        if ((optional || request.triggerMode === "reaction") && (!settings.context.shadow || enabled("addressing") && !settings.modules.addressing.shadow)) {
-          targetMessageId = decision.target; targetConfidence = decision.confidence;
+        if (optional) participation = { action: allowed ? "reply" : "ignore", reaction: null };
+        else if (live && request.triggerMode !== "direct") participation = { action: decision.opening === "clear" ? "reply" : "ignore", reaction: decision.reaction };
+        if (optional || request.triggerMode === "reaction" && (!settings.context.shadow || enabled("addressing") && !settings.modules.addressing.shadow)) {
+          targetMessageId = decision.target; targetConfidence = decision.targetConfidence;
         }
         if (settings.context.enabled && !settings.context.shadow && decision.boundary !== "earlier") {
           const index = events.findIndex((event) => event.messageId === decision.boundary);
@@ -238,7 +270,7 @@ export class CharacterRuntime {
         }
       }
       turn.request = request;
-      const contribution = this.registry.applyDecision(turn, { decision, events, burst, optional, local });
+      const contribution = this.registry.applyDecision(turn, { decision, events, burst, optional, local, policy });
       request = contribution.request; allowed = allowed && contribution.allowed;
       if (settings.context.summary && settings.context.enabled && events.length >= settings.context.maxMessages) {
         const overflow = events.slice(0, Math.max(0, events.length - 8));
@@ -268,12 +300,19 @@ export class CharacterRuntime {
       }
       else targetMessageId = null;
     }
+    if (acceptedContribution) request = { ...request, characterContext: [...(request.characterContext ?? []), { moduleId: "participation",
+      text: `Serve only this accepted contribution; do not merely acknowledge, repeat or introduce unrelated help. Do not strengthen its factual claims. Untrusted candidate: ${JSON.stringify(acceptedContribution)}` }] };
+    else if (!optional) request = { ...request, characterContext: [...(request.characterContext ?? []), { moduleId: "participation", text: "Answer explicit questions and tool requests normally. Keep acknowledgments brief; do not prolong a closing with another question or generic help." }] };
     turn.request = request;
-    return { turn, request, fingerprint, allowed, targetMessageId, memoryContextSignature: JSON.stringify(context), participation, styleUserId, styleSignature, targetConfidence };
+    return { turn, request, fingerprint, allowed, decisionStatus, acceptedContribution, exchangeId, targetMessageId, memoryContextSignature: JSON.stringify(context), participation, styleUserId, styleSignature, targetConfidence };
   }
   public async process(reply: ChatResponse, prepared: CharacterPreparedTurn): Promise<ChatResponse> {
-    const processed = await this.registry.postProcess(reply, prepared.turn);
-    return { ...processed, characterIsCurrent: () => this.stillEligible(prepared),
+    let processed = await this.registry.postProcess(reply, prepared.turn);
+    if (prepared.acceptedContribution && processed.outputOrigin !== "tool") {
+      if (!generatedContributionAllowed(processed.text, [...prepared.request.channelHistory, ...prepared.request.replyChain], prepared.request.botUserId))
+        processed = { ...processed, text: "", ambientAction: "ignore", reactionEmoji: null, historyReactions: [] };
+    }
+    return { ...processed, ...(prepared.exchangeId ? { participationExchangeId: prepared.exchangeId } : {}), characterIsCurrent: () => this.stillEligible(prepared),
       characterCanDeliver: () => this.validatePrepared(prepared),
       ...(prepared.targetMessageId ? { replyTargetMessageId: prepared.targetMessageId,
         inferredAddressing: { label: "inferred" as const, confidence: prepared.targetConfidence, messageId: prepared.targetMessageId } } : {}) };
@@ -350,13 +389,22 @@ export class CharacterRuntime {
     return `${moduleId} entry updated.`;
   }
 
+  public recordDelivery(guildId: string, sourceMessageId: string | null, delivered: boolean, shadow: boolean): Promise<void> {
+    return this.evaluationStore?.record(guildId, "delivery", { sourceMessageId, delivered, shadow }).then(() => undefined).catch(() => undefined) ?? Promise.resolve();
+  }
   public observe(guildId: string, channelId: string, event: ChannelHistoryMessage): void {
-    const profile = this.profiles.find(guildId); if (!profile || this.stopped || event.author?.kind === "bot" || this.botIds.has(event.authorId)) return;
+    const profile = this.profiles.find(guildId); if (!profile || !passiveChannelAllowed(profile, channelId) || this.stopped || event.author?.kind === "bot" || this.botIds.has(event.authorId)) return;
     if (serious(event.content)) { if (this.seriousChannels.size >= 256) this.seriousChannels.delete(this.seriousChannels.keys().next().value!); this.seriousChannels.set(`${guildId}:${channelId}`, this.now() + 10 * 60_000); }
     if (this.activity.size >= 1000) this.activity.delete(this.activity.keys().next().value!);
     this.activity.set(`${guildId}:${event.authorId}`, { at: event.timestampMs, messageId: event.messageId, channelId });
   }
+  public excludeContext(guildId: string, messageId: string): void {
+    this.privacyVersions.set(guildId, (this.privacyVersions.get(guildId) ?? 0) + 1); this.registry.reset(guildId);
+    this.trackJob(this.evaluationStore?.excludeSource(guildId, messageId) ?? Promise.resolve());
+  }
   public forget(guildId: string, userId: string): void {
+    this.privacyVersions.set(guildId, (this.privacyVersions.get(guildId) ?? 0) + 1);
+    this.trackJob(this.evaluationStore?.forget(guildId) ?? Promise.resolve());
     this.activity.delete(`${guildId}:${userId}`);
     for (const key of [...this.summaries.keys()]) if (key.startsWith(`${guildId}:`)) this.summaries.delete(key);
     this.registry.reset(guildId);

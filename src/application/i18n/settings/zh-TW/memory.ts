@@ -16,12 +16,12 @@ export const zhTWMemory: SettingsTextCatalog = {
   "memory.advanced": { label: "進階記憶設定", description: "調整記憶淡化速度與舊版紀錄的清理時間。" },
   "memory.advanced.half-life": { label: "淡化半衰期（天）", description: "淡化的回憶權重每隔幾天減半；僅在啟用記憶淡化時生效。" },
   "memory.advanced.history": { label: "舊版本保留天數", description: "不再使用的角色紀錄版本在幾天後清除；不影響使用中的紀錄。" },
-  "memory.sharing": { label: "共享個人記憶", description: "確認頻道記憶模式後再啟用；既有私人記憶不會改變。" },
-  "memory.sharing.enabled": { label: "共享個人記憶", description: "允許新的個人事實在已設定的範圍內共享。" },
+  "memory.sharing": { label: "共享個人記憶", description: "依各頻道的記憶模式，分享新的個人事實。" },
+  "memory.sharing.enabled": { label: "共享個人記憶", description: "既有私人記憶不會因此公開。" },
   "memory": { title: "記憶", description: "機器人會回顧和記住的內容" },
-  "memory.channel-history": { label: "頻道歷史", description: "把頻道最近的訊息當作回覆的背景" },
+  "memory.channel-history": { label: "頻道歷史", description: "把最近的頻道訊息交給模型，作為接話背景。" },
   "memory.channel-history.enabled": { label: "頻道歷史", description: "開啟或關閉頻道歷史" },
-  "memory.channel-history.limit": { label: "訊息數", description: "要納入的最近頻道訊息數量" },
+  "memory.channel-history.limit": { label: "訊息數", description: "讀取最近幾則訊息；角色的擴充視窗可另行設定。" },
 
   "memory.memory-mode": {
     label: "頻道記憶模式",

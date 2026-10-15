@@ -52,7 +52,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     // The narrator owns a D&D game's channels; chat stays out of them.
     private readonly isGameChannel: IsGameChannel | null = null,
     eligibility: SocialChatEligibility | null = null,
-    origins: MessageOriginStore | null = null,
+    private readonly origins: MessageOriginStore | null = null,
   ) {
     this.chatAccess = new ChatAccessService(configuration);
     this.turnSupport = new ChatTurnSupport(logger, eligibility, origins, (message) => {
@@ -60,9 +60,17 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     });
   }
 
-  public matches(message: Message): Promise<boolean> {
+  public async matches(message: Message): Promise<boolean> {
     const botId = this.clientUserId();
-    return Promise.resolve(Boolean(botId && message.inGuild() && !message.author.bot && message.mentions.users.has(botId)));
+    if (!botId || !message.inGuild() || message.author.bot) return false;
+    if (message.mentions.users.has(botId)) return true;
+    if (!message.reference?.messageId || message.reference.channelId && message.reference.channelId !== message.channelId) return false;
+    const target = message.mentions.repliedUser ?? message.channel.messages.cache?.get(message.reference.messageId)?.author;
+    if (target) return target.id === botId;
+    // Resolve our own persisted delivery metadata without passively fetching
+    // an unaddressed human reply chain from Discord. Unknown targets abstain.
+    const origin = await this.origins?.find(message.guildId, message.channelId, message.reference.messageId).catch(() => null);
+    return origin?.origin === "chat";
   }
 
   public async execute(message: Message): Promise<BehaviorResult> {
@@ -89,6 +97,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       return BehaviorResult.StopPropagation;
     }
     if (!await this.turnSupport.isEligible(message)) return BehaviorResult.StopPropagation;
+    this.conversation.cancelOptionalOpportunity?.(message.guildId, message.channelId);
 
     const botId = this.clientUserId();
     const prompt = botId
