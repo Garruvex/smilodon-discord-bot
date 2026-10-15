@@ -8,6 +8,7 @@ const interval = z.number().int().min(1).max(1440);
 const retention = z.number().int().min(1).max(365).default(90);
 export const characterModuleSchemas = {
   canon: baseControls.extend({ freeze: z.boolean().default(false), retentionDays: retention }).default({}),
+  // retentionDays is a deprecated configuration read path; new impressions never use it.
   relationships: baseControls.extend({ intervalMinutes: interval.default(30), retentionDays: retention }).default({}),
   thoughts: baseControls.extend({ shadow: z.boolean().default(true), threshold: z.number().min(0).max(1).default(0.7), holdSeconds: z.number().int().min(5).max(600).default(120) }).default({}),
   "recall-style": baseControls.default({}),

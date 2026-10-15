@@ -8,9 +8,14 @@ const memoryModes = {
 };
 
 export const jaMemory: SettingsTextCatalog = {
-  "memory.character-retention": { label: "キャラクター記憶の保持", description: "印象と旧バージョンの保持日数。現在のキャラクター設定は消去するまで残ります。" },
-  "memory.character-retention.relationships": { label: "印象の保持日数", description: "人間関係の印象が期限切れになるまでの日数。" },
-  "memory.character-retention.history": { label: "旧バージョンの保持日数", description: "置換済みのモジュール記録の保持日数。気分と日常は個別の期限に従います。" },
+  "memory.impressions": {
+    label: "印象と共有した出来事",
+    description: "出典を利用できる間は、根拠のある過去の記憶を保持します。",
+    messages: { behavior: "記憶の減衰を有効にすると、興味や口調についての古い印象を思い出す優先度が下がります。過去の出来事は、出典が有効で参照できる間は利用できます。昔の興味を現在の好みとして扱いません。印象を読み返したり整理し直したりしても、根拠が新しくなるわけではありません。出典が削除されたり期限切れになったりすると、その印象の根拠には使えなくなります。" },
+  },
+  "memory.advanced": { label: "記憶の詳細設定", description: "記憶の減衰と古い記録の整理を調整します。" },
+  "memory.advanced.half-life": { label: "減衰の半減期（日）", description: "減衰する記憶の重みが半分になる日数。記憶の減衰が有効な場合に適用します。" },
+  "memory.advanced.history": { label: "旧バージョンの保持日数", description: "使われなくなった記録を整理するまでの日数。使用中の記録には影響しません。" },
   "memory.sharing": { label: "個人情報の共有メモリ", description: "チャンネルのメモリ設定を確認してから有効にします。既存の非公開情報は変更しません。" },
   "memory.sharing.enabled": { label: "個人情報の共有メモリ", description: "新しい個人情報を設定された範囲内で共有します。" },
   "memory": { title: "記憶", description: "ボットが読み返し、覚えておくこと" },

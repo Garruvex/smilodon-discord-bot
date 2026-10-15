@@ -3,9 +3,9 @@ import type { Language } from "../language.js";
 import type { SettingsTextCatalog, SettingsNodeText } from "./catalog.js";
 
 const moduleLabels: Record<Language, readonly string[]> = {
-  en: ["Character canon", "Relationships", "Held thoughts", "Natural recall", "Event follow-ups", "Fading trivia", "Voice check", "Message shape", "Mood", "Implicit addressing", "Group behavior", "Fictional daily sketch", "Evaluation"],
-  "zh-TW": ["角色設定紀錄", "人際印象", "暫存想法", "自然回憶", "事件追問", "淡化瑣事", "語氣檢查", "訊息分段", "心情", "隱含對話對象", "群體對話", "虛構日常", "評估工具"],
-  ja: ["キャラクター設定", "人間関係", "保留する考え", "自然な記憶", "イベントの確認", "細かな記憶の減衰", "口調チェック", "メッセージ分割", "気分", "暗黙の呼びかけ", "グループ会話", "架空の日常", "評価ツール"],
+  en: ["Character canon", "Relationships", "Held thoughts", "Natural recall", "Event follow-ups", "Memory fading", "Voice check", "Message shape", "Mood", "Implicit addressing", "Group behavior", "Fictional daily sketch", "Evaluation"],
+  "zh-TW": ["角色設定紀錄", "人際印象", "暫存想法", "自然回憶", "事件追問", "記憶淡化", "語氣檢查", "訊息分段", "心情", "隱含對話對象", "群體對話", "虛構日常", "評估工具"],
+  ja: ["キャラクター設定", "人間関係", "保留する考え", "自然な記憶", "イベントの確認", "記憶の減衰", "口調チェック", "メッセージ分割", "気分", "暗黙の呼びかけ", "グループ会話", "架空の日常", "評価ツール"],
 };
 const fields: Record<string, readonly [string, string, string]> = {
   probes: ["Scheduled interview probes", "定期角色訪談", "定期インタビュー"],
@@ -32,7 +32,7 @@ export function characterSettingsText(language: Language): SettingsTextCatalog {
       channel: ["Channel overrides", "頻道覆寫", "チャンネル上書き"], ledger: ["Canon ledger", "角色紀錄管理", "キャラクター設定の管理"], status: ["Dependencies and status", "依賴及狀態", "依存条件と状態"] } as Record<string, string[]>)[node]![column]!;
     catalog[`character.${node}`] = { label, description, messages };
     const extras: Record<string, readonly string[]> = { canon: ["freeze"], relationships: ["interval"], thoughts: ["shadow", "threshold", "hold"],
-      callbacks: ["max-per-day", "min-delay"], fading: ["half-life"], voice: ["strictness"], "message-shape": ["max-messages", "max-delay"], mood: ["interval"], addressing: ["shadow", "include-others"], evaluation: ["probes", "interval"] };
+      callbacks: ["max-per-day", "min-delay"], voice: ["strictness"], "message-shape": ["max-messages", "max-delay"], mood: ["interval"], addressing: ["shadow", "include-others"], evaluation: ["probes", "interval"] };
     const options = index >= 0 ? ["enabled", "budget", ...(extras[node] ?? [])] : ({ controls: ["enabled"], context: ["enabled", "minutes", "gap", "messages", "budget", "summary", "shadow", "decision-messages"],
       channel: ["channel", "module", "enabled", "reset"], ledger: ["operation", "module", "channel", "id", "statement"], status: ["channel"] } as Record<string, string[]>)[node]!;
     for (const field of options) { const labels = fields[field]!; catalog[`character.${node}.${field}`] = { label: labels[column], description: labels[column],
@@ -48,5 +48,8 @@ export function characterSettingsText(language: Language): SettingsTextCatalog {
   for (const [node, labels] of Object.entries({ relationships: ["Impression refresh minutes", "人際印象更新分鐘", "印象の更新間隔（分）"],
     mood: ["Mood decay minutes", "心情衰減分鐘", "気分が薄れる時間（分）"], evaluation: ["Probe interval minutes (daily by default)", "訪談間隔分鐘（預設每日）", "インタビューの間隔（分、初期設定は一日）"] }))
     catalog[`character.${node}.interval`] = { label: labels[column]!, description: labels[column]! };
+  catalog["character.relationships"]!.description = ["Recall past topics and events from member memories.", "依成員的記憶回顧過往話題與事件。", "参加者の記憶から過去の話題や出来事を振り返ります。"][column]!;
+  catalog["character.fading"]!.description = ["Gradually lower recall priority for old impressions and minor memories.", "逐漸降低舊印象與瑣碎經歷的回憶優先度。", "古い印象や細かな記憶を思い出す優先度を徐々に下げます。"][column]!;
+  catalog["character.relationships.interval"] = { label: ["Impression refresh (minutes)", "印象更新間隔（分鐘）", "印象の更新間隔（分）"][column]!, description: ["Minutes between note updates; updating does not reset the age of the evidence.", "同一成員的印象整理間隔；重新整理不會讓依據變新。", "同じ参加者の印象を整理する間隔。整理しても根拠の日時は変わりません。"][column]! };
   return catalog;
 }

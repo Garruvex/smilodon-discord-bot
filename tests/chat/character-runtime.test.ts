@@ -16,7 +16,7 @@ import { CharacterDecisionService } from "../../src/application/chat/character-d
 import { characterInactiveReason, characterSettingsSchema } from "../../src/application/chat/character-settings.js";
 import { ChatScheduler, balancedChatLimits } from "../../src/application/chat/chat-scheduler.js";
 import type { ChatProvider, ChatRequest, ChatResponse } from "../../src/application/chat/chat-provider.js";
-import type { RepositoryIngestInput } from "../../src/application/memory/memory.js";
+import type { Memory, RepositoryIngestInput } from "../../src/application/memory/memory.js";
 import { DefaultMemoryEngine } from "../../src/application/memory/memory-engine.js";
 import { createSqliteDatabaseConnection, type SqliteDatabaseConnection } from "../../src/infrastructure/database/sqlite-database.js";
 import { SqliteMemoryRepository } from "../../src/infrastructure/persistence/sqlite-memory-repository.js";
@@ -200,6 +200,49 @@ describe("character module integration", () => {
     expect(replySpy).toHaveBeenCalledWith(expect.objectContaining({ characterEvaluation: true, enabledTools: [], webSearchMode: "off", imageGenerationEnabled: false }));
     expect((await repository.findModuleCandidates({ guildId, channelId, userId: actorUserId, now: Date.now(), moduleId: "mood" })).memories).toEqual([]);
     expect((await repository.findModuleCandidates({ guildId, channelId, userId: actorUserId, now: Date.now(), moduleId: "canon" })).memories).toEqual([]);
+  });
+  it("builds separate non-expiring observations without a generated summary refreshing them", async () => {
+    const { repository, profiles, runtime, provider } = setup(() => 3000);
+    await profiles.update(guildId, { chatbotSharedMemoryEnabled: true, character: { enabled: true, modules: { relationships: { enabled: true } } } });
+    await repository.ingest(record({ sourceTimestampMs: 1000 }));
+    await repository.ingest(record({ slot: "new-interest", statement: "recently discussed chess", sourceMessageId: "new-human", now: 2000, sourceTimestampMs: 2000 }));
+    const prepared = (await runtime.prepare(request()))!;
+    await runtime.consolidate(response(), prepared);
+    const rows = await runtime.memory.read(profiles.current(), { guildId, channelId, userId: actorUserId, now: 3000 }, "relationships");
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => (row.structuredValue as { relationshipEvidence: { supportedAt: number } }).relationshipEvidence.supportedAt).sort()).toEqual([1000, 2000]);
+    expect(rows.every((row) => row.expiresAt === null)).toBe(true);
+    expect(provider.generateCharacterData).not.toHaveBeenCalled();
+  });
+  it("fades by human evidence age across day 89/90/91 without losing shared history", async () => {
+    const { repository, profiles } = setup(); const memory = new CharacterMemory(repository);
+    await profiles.update(guildId, { character: { enabled: true, modules: { fading: { enabled: true, halfLifeDays: 30 } } } });
+    const day = 86_400_000;
+    const old = await repository.ingest(record({ statement: "apple interest", sourceTimestampMs: 1000 }));
+    const history = await repository.ingest(record({ kind: "episode", slot: "shared", statement: "shared apple joke", sourceMessageId: "event", sourceTimestampMs: 1000 }));
+    const note = (source: typeof old, slot: string, now: number): Promise<Memory | null> => memory.write(profiles.current(), channelId, "relationships", record({ kind: "impression", slot, statement: source.statement, now }), [source]);
+    await note(old, "old", 2000); await note(history, "history", 2000);
+    for (const days of [89, 90, 91, 365]) {
+      const now = 1000 + days * day;
+      // Rebuilding the same note is not new human evidence.
+      await note(old, "old", now);
+      const rows = await memory.read(profiles.current(), { guildId, channelId, userId: actorUserId, now }, "relationships", undefined, "apple");
+      expect(rows).toHaveLength(2);
+      expect(rows[0]!.statement).toBe("shared apple joke");
+      expect(rows[1]!.structuredValue).toMatchObject({ relationshipEvidence: { supportedAt: 1000, type: "transient" } });
+      expect(rows.every((row) => row.expiresAt === null)).toBe(true);
+      await repository.deleteExpiredModuleData(guildId, now, 90);
+      expect(await memory.read(profiles.current(), { guildId, channelId, userId: actorUserId, now }, "relationships")).toHaveLength(2);
+    }
+  });
+  it("invalidates a retained impression at its source expiry and refuses bot-only evidence", async () => {
+    const { repository, profiles } = setup(); const memory = new CharacterMemory(repository);
+    const source = await repository.ingest(record({ expiresAt: 4000 }));
+    await memory.write(profiles.current(), channelId, "relationships", record({ kind: "impression", slot: "note", now: 2000 }), [source]);
+    expect(await memory.read(profiles.current(), { guildId, channelId, userId: actorUserId, now: 3999 }, "relationships")).toHaveLength(1);
+    expect(await memory.read(profiles.current(), { guildId, channelId, userId: actorUserId, now: 4000 }, "relationships")).toHaveLength(0);
+    const bot = await repository.ingest(record({ slot: "bot", assertedByUserId: null, source: "consolidation" }));
+    expect(await memory.write(profiles.current(), channelId, "relationships", record({ kind: "impression", slot: "bot-note", now: 2000 }), [bot])).toBeNull();
   });
   it("invalidates impressions when their source changes, is forgotten, or is isolated later", async () => {
     const { repository, profiles } = setup(); const memory = new CharacterMemory(repository); const engine = new DefaultMemoryEngine(repository);

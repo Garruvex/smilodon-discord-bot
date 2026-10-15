@@ -1,3 +1,4 @@
+import { hasLegacyRelationshipExpiry } from "./memory-repository-shared.js";
 import { randomUUID } from "node:crypto";
 import type { ChannelMemoryMode } from "../../application/memory/memory-channel-policy.js";
 import { aliasQueryTokens, observedSubjectNames } from "../../application/memory/observed-subject-names.js";
@@ -299,10 +300,21 @@ export class PostgresMemoryRepository implements MemoryRepository {
   public async findRecallCandidates(query: CandidateQuery): Promise<RecallCandidates> {
     return this.selectCandidates(query, null);
   }
+  public async migrateRelationshipExpiries(guildId: string): Promise<number> {
+    const rows = await this.database.select().from(schema.memories).where(and(eq(schema.memories.guildId, guildId), eq(schema.memories.moduleId, "relationships"), eq(schema.memories.status, "active"), isNotNull(schema.memories.expiresAt)));
+    let count = 0;
+    for (const row of rows) {
+      if (!hasLegacyRelationshipExpiry(toMemory(row))) continue;
+      const result = await this.database.update(schema.memories).set({ expiresAt: null }).where(and(eq(schema.memories.id, row.id), eq(schema.memories.status, "active"), eq(schema.memories.updatedAt, row.updatedAt), eq(schema.memories.expiresAt, row.expiresAt!), eq(schema.memories.structuredValue, row.structuredValue))).returning({ id: schema.memories.id });
+      count += result.length;
+    }
+    return count;
+  }
   public findModuleCandidates(query: CandidateQuery & { moduleId: string }): Promise<RecallCandidates> {
     return this.selectCandidates(query, query.moduleId);
   }
   public async deleteExpiredModuleData(guildId: string, now: number, historyDays: number): Promise<number> {
+    await this.migrateRelationshipExpiries(guildId);
     const rows = await this.database.delete(schema.memories).where(and(eq(schema.memories.guildId, guildId), isNotNull(schema.memories.moduleId),
       or(and(isNotNull(schema.memories.expiresAt), lte(schema.memories.expiresAt, new Date(now))),
         and(ne(schema.memories.status, "active"), lte(schema.memories.updatedAt, new Date(now - historyDays * 86_400_000)))))).returning({ id: schema.memories.id });

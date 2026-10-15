@@ -1,3 +1,4 @@
+import { fadingWeight } from "./fading.js";
 import type { Logger } from "pino";
 
 import type { MemoryConflictClassifier } from "../chat/chat-provider.js";
@@ -269,7 +270,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
     const scorableByMemory = new Map(candidates.memories.map((memory) => {
       const scorable = toScorable(memory);
       if (halfLife && memory.kind === "episode" && memory.importance <= 1 && memory.source !== "explicit")
-        scorable.importance = (scorable.importance ?? 1) * 2 ** (-Math.max(0, input.now - memory.updatedAt) / (halfLife * 86_400_000));
+        scorable.importance = (scorable.importance ?? 1) * fadingWeight(input.now, memory.updatedAt, halfLife);
       return [memory, scorable] as const;
     }));
     const corpus = buildBm25Corpus([...scorableByMemory.values()]);

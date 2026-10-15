@@ -1,7 +1,9 @@
+import { fadingWeight } from "../memory/fading.js";
 import { z } from "zod";
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
 import { canRecall, type CandidateQuery, type Memory, type MemoryRepository, type RepositoryIngestInput } from "../memory/memory.js";
 import { allowsDurableWrites, resolveChannelMemoryMode } from "../memory/memory-channel-policy.js";
+import { characterSettings } from "./character-settings.js";
 import type { CharacterModuleId } from "./character-settings.js";
 import type { PersonalMemoryExtractionQueueStore } from "../context/personal-memory-extraction-queue.js";
 
@@ -36,6 +38,7 @@ export class CharacterMemory {
     return true;
   }
   public async read(profile: GuildConfiguration, query: CandidateQuery, moduleId: CharacterModuleId, personaHash?: string, message = ""): Promise<readonly Memory[]> {
+    if (moduleId === "relationships") await this.repository.migrateRelationshipExpiries?.(query.guildId);
     const rows = await this.repository.findModuleCandidates?.({ ...query, moduleId });
     const valid: Memory[] = [];
     for (const memory of rows?.memories ?? []) {
@@ -44,19 +47,39 @@ export class CharacterMemory {
       if (!parsed.success || (personaHash && parsed.data.personaHash !== personaHash)) continue;
       if (moduleId === "relationships" && (memory.kind !== "impression" || parsed.data.dependencies.length === 0)) continue;
       let eligible = true;
+      const evidenceTimes: number[] = [];
+      let sharedHistory = parsed.data.dependencies.length === 1;
       for (const dependency of parsed.data.dependencies) {
         const source = await this.repository.findById(query.guildId, dependency.id);
         if (!source || source.subjectId !== dependency.subjectId || moduleId === "relationships" && source.subjectId !== memory.subjectId ||
             source.updatedAt !== dependency.updatedAt || memoryScopeKey(source) !== memoryScopeKey(memory) ||
             !await this.sourceEligible(source, profile, query)) { eligible = false; break; }
-        const sourceIds = new Set((await this.repository.findSources(source.id)).map((evidence) => evidence.id));
+        const evidence = await this.repository.findSources(source.id);
+        const sourceIds = new Set(evidence.map((item) => item.id));
+        if (moduleId === "relationships") {
+          if (source.moduleId) { eligible = false; break; }
+          const humanTimes = evidence.filter((item) => dependency.sourceIds.includes(item.id) && item.assertedByUserId !== null && (item.source !== "consolidation" || item.sourceTimestampMs != null))
+            .map((item) => item.sourceTimestampMs ?? item.createdAt).filter((time) => Number.isFinite(time) && time <= query.now);
+          if (!humanTimes.length) { eligible = false; break; }
+          evidenceTimes.push(Math.max(...humanTimes));
+          sharedHistory = sharedHistory && source.kind === "episode";
+        }
         if (moduleId === "relationships" && (!dependency.sourceIds.length || dependency.sourceIds.some((id) => !sourceIds.has(id)))) { eligible = false; break; }
       }
-      if (eligible) valid.push(memory);
+      if (eligible) valid.push(moduleId === "relationships" ? { ...memory, structuredValue: { ...parsed.data,
+        relationshipEvidence: { supportedAt: Math.min(...evidenceTimes), type: sharedHistory ? "historical-event" : "transient" },
+      } } : memory);
     }
     const words = new Set([...new Intl.Segmenter("zh", { granularity: "word" }).segment(message.toLowerCase())].filter((part) => part.isWordLike).map((part) => part.segment));
-    const score = (memory: Memory): number => [...words].filter((word) => memory.statement.toLowerCase().includes(word)).length;
-    return valid.sort((left, right) => score(right) - score(left) || right.updatedAt - left.updatedAt);
+    const settings = characterSettings(profile);
+    const fading = settings.enabled && settings.modules.fading.enabled && settings.channelOverrides[query.channelId]?.enabled !== false && settings.channelOverrides[query.channelId]?.modules.fading !== false;
+    const score = (memory: Memory): number => {
+      const relevance = 1 + [...words].filter((word) => memory.statement.toLowerCase().includes(word)).length;
+      if (moduleId !== "relationships" || !fading) return relevance;
+      const evidence = (memory.structuredValue as { relationshipEvidence: { supportedAt: number; type: string } }).relationshipEvidence;
+      return relevance * (evidence.type === "historical-event" ? 1 : fadingWeight(query.now, evidence.supportedAt, settings.modules.fading.halfLifeDays));
+    };
+    return valid.sort((left, right) => score(right) - score(left) || (moduleId === "relationships" ? left.id.localeCompare(right.id) : right.updatedAt - left.updatedAt));
   }
   public async write(profile: GuildConfiguration, channelId: string, moduleId: CharacterModuleId, input: Omit<RepositoryIngestInput, "guildId" | "moduleId">, dependencies: readonly Memory[] = []): Promise<Memory | null> {
     const write = (): Promise<Memory | null> => this.writeChecked(profile, channelId, moduleId, input, dependencies);
@@ -84,7 +107,7 @@ export class CharacterMemory {
       topic: input.topic, slot: input.slot, channelId, sourceTimestampMs: dependencies[0]?.updatedAt ?? input.now })) return null;
     const metadata = input.structuredValue && typeof input.structuredValue === "object" ? input.structuredValue : {};
     const sourceLists = await Promise.all(dependencies.map((source) => this.repository.findSources(source.id))); const sources = sourceLists.flat();
-    if (moduleId === "relationships" && sourceLists.some((evidence) => !evidence.length)) return null;
+    if (moduleId === "relationships" && (dependencies.some((source) => source.moduleId) || sourceLists.some((evidence) => !evidence.some((item) => item.assertedByUserId !== null && (item.source !== "consolidation" || item.sourceTimestampMs != null))))) return null;
     if (this.canWrite && !this.canWrite(profile.guildId, channelId, moduleId) || this.resolveProfile && JSON.stringify(this.resolveProfile(profile.guildId)?.chat.channelMemoryModes) !== scopeFingerprint) return null;
     return this.repository.ingest({ ...input, guildId: profile.guildId, moduleId, assertedByUserId: null,
       structuredValue: { ...metadata, dependencies: dependencies.map((source, index) => ({ id: source.id, updatedAt: source.updatedAt, subjectId: source.subjectId, sourceIds: sourceLists[index]!.map((evidence) => evidence.id) })),

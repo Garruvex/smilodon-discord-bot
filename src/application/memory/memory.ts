@@ -336,6 +336,7 @@ export interface SupersedeCommand {
 }
 
 export interface MemoryRepository {
+  migrateRelationshipExpiries?(guildId: string): Promise<number>;
   deleteExpiredModuleData?(guildId: string, now: number, historyDays: number): Promise<number>;
   clearModuleData?(guildId: string, moduleId: string): Promise<number>;
   findDueCallbackCandidates?(input: CandidateQuery): Promise<RecallCandidates>;

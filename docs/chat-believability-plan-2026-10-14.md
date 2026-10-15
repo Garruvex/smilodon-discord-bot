@@ -87,6 +87,8 @@ Each workstream lists the change, what it reuses, its guardrail, and how it is j
 
 **Done when.** Regulars and newcomers are treated noticeably differently in blind comparisons, and no impression is found that the person would object to seeing. Lifecycle checks confirm that isolated evidence never reaches another channel and that forgetting or correcting a source prevents recall of its old derived impression.
 
+Memory-fading follow-up: see [the improvement plan, workstream 6](chat-participation-improvement-plan-2026-10-15.md#workstream-6-fade-impressions-without-erasing-shared-history) for the locally implemented replacement of hard impression expiry; deployment and human acceptance remain pending.
+
 ### C. Inner thoughts and timing
 
 **Problem.** Participation is a yes/no reaction to each event. People instead think of something, wait, and say it when it fits.

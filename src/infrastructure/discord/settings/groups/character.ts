@@ -4,7 +4,7 @@ import type { SettingNode, SettingOption } from "../registry/types.js";
 
 const extras: Partial<Record<CharacterModuleId, readonly string[]>> = {
   canon: ["freeze"], relationships: ["interval"], thoughts: ["shadow", "threshold", "hold"],
-  callbacks: ["max-per-day", "min-delay"], fading: ["half-life"], voice: ["strictness"],
+  callbacks: ["max-per-day", "min-delay"], voice: ["strictness"],
   "message-shape": ["max-messages", "max-delay"], mood: ["interval"], addressing: ["shadow", "include-others"],
   evaluation: ["probes", "interval"],
 };

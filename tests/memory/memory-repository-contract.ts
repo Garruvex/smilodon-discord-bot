@@ -52,6 +52,29 @@ export function memoryRepositoryContract(
       expect(await callbacks.send(claimed, 2000, () => Promise.resolve(true), () => Promise.resolve("sent-message"))).toBe(true);
       expect(await new CharacterCallbacks(repository).claim(claimed.id === pending.id ? second : pending, 3000)).toBeNull();
     });
+    it("migrates only bounded legacy relationship expiries before cleanup and preserves inactive cleanup", async () => {
+      const repository = await createRepository(); const day = 86_400_000;
+      const source = await repository.ingest(ingestInput({ sourceMessageId: "human", expiresAt: 1000 + 91 * day }));
+      const evidence = await repository.findSources(source.id);
+      const legacy = ingestInput({ moduleId: "relationships", kind: "impression", source: "consolidation", topic: "character.relationships", slot: "relationship.abcdef123456",
+        assertedByUserId: null, expiresAt: 1000 + 90 * day, structuredValue: { dependencies: [{ id: source.id, subjectId: source.subjectId, updatedAt: source.updatedAt, sourceIds: evidence.map((item) => item.id) }] } });
+      const retained = await repository.ingest(legacy);
+      const independent = await repository.ingest({ ...legacy, slot: "relationship.abcdef123457", expiresAt: 1234 });
+      const modern = await repository.ingest({ ...legacy, slot: "relationship.abcdef123458", structuredValue: { ...legacy.structuredValue as object, relationshipVersion: 2 } });
+      const inactive = await repository.ingest({ ...legacy, slot: "relationship.abcdef123459" });
+      await repository.ingest({ ...legacy, slot: "relationship.abcdef123459", statement: "replacement", expiresAt: null, now: 2000 });
+      expect(await repository.migrateRelationshipExpiries!("guild")).toBe(1);
+      expect(await repository.migrateRelationshipExpiries!("guild")).toBe(0);
+      expect((await repository.findById("guild", retained.id))!.expiresAt).toBeNull();
+      expect((await repository.findById("guild", source.id))!.expiresAt).toBe(source.expiresAt);
+      expect((await repository.findById("guild", independent.id))!.expiresAt).toBe(1234);
+      expect((await repository.findById("guild", modern.id))!.expiresAt).toBe(legacy.expiresAt);
+      await repository.deleteExpiredModuleData!("guild", 1000 + 92 * day, 90);
+      expect(await repository.findById("guild", retained.id)).not.toBeNull();
+      expect(await repository.findById("guild", inactive.id)).toBeNull();
+      expect(await repository.findById("guild", independent.id)).toBeNull();
+      expect(await repository.findById("guild", modern.id)).toBeNull();
+    });
     it("expires or clears module data without deleting ordinary facts", async () => {
       const repository = await createRepository();
       const ordinary = await repository.ingest(ingestInput());

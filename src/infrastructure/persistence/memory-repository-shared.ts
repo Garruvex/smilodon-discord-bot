@@ -1,4 +1,5 @@
 import type {
+  Memory,
   MemoryRelationKind,
   MemoryRelationPredicate,
   MemorySubjectType,
@@ -81,4 +82,20 @@ export function collectRelatedSubjects(
     }
   }
   return nextFrontier;
+}
+
+// Bounded legacy writer fingerprint. No other expiry is reinterpreted.
+export function hasLegacyRelationshipExpiry(memory: Memory): boolean {
+  if (memory.moduleId !== "relationships" || memory.kind !== "impression" || memory.subjectType !== "member" ||
+      memory.status !== "active" || memory.validUntil !== null || memory.source !== "consolidation" ||
+      memory.topic !== "character.relationships" || !/^relationship\.[a-f0-9]{12}$/.test(memory.slot) || memory.expiresAt === null) return false;
+  const days = (memory.expiresAt - memory.updatedAt) / 86_400_000;
+  const metadata = memory.structuredValue as { relationshipVersion?: unknown; dependencies?: unknown } | null;
+  return Number.isInteger(days) && days >= 1 && days <= 365 && !!metadata && metadata.relationshipVersion === undefined &&
+    Array.isArray(metadata.dependencies) && metadata.dependencies.length > 0 && metadata.dependencies.every((dependency: unknown) => {
+      if (!dependency || typeof dependency !== "object") return false;
+      const value = dependency as Record<string, unknown>;
+      return typeof value.id === "string" && value.subjectId === memory.subjectId && typeof value.updatedAt === "number" &&
+        Array.isArray(value.sourceIds) && value.sourceIds.length > 0 && value.sourceIds.every((id: unknown) => typeof id === "string");
+    });
 }

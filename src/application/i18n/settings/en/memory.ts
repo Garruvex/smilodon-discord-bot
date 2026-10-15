@@ -8,9 +8,14 @@ const memoryModes = {
 };
 
 export const enMemory: SettingsTextCatalog = {
-  "memory.character-retention": { label: "Character memory retention", description: "Days to retain impressions and old module revisions. Active canon stays until cleared." },
-  "memory.character-retention.relationships": { label: "Impression days", description: "Days before a relationship impression expires." },
-  "memory.character-retention.history": { label: "Revision history days", description: "Days to retain superseded module data. Mood and daily sketches use their own expiry." },
+  "memory.impressions": {
+    label: "Impressions and shared history",
+    description: "Keep past observations while their sources remain available.",
+    messages: { behavior: "When memory fading is enabled, older impressions about interests and tone become less likely to be recalled. Past events remain available while their sources are valid and accessible. Old interests should not be treated as current preferences. Reading or rebuilding a note does not make its evidence newer. Deleted or expired sources can no longer support a note." },
+  },
+  "memory.advanced": { label: "Advanced memory", description: "Adjust memory fading and cleanup of old record versions." },
+  "memory.advanced.half-life": { label: "Fading half-life (days)", description: "Days for fading recall weight to halve. Applies only when memory fading is enabled." },
+  "memory.advanced.history": { label: "Old version retention (days)", description: "Days before inactive character record versions are cleaned up; active notes are unaffected." },
   "memory.sharing": { label: "Shared personal memory", description: "Activate after reviewing channel modes. Existing private facts stay private." },
   "memory.sharing.enabled": { label: "Shared personal memory", description: "Allow new eligible personal facts to be shared within the configured audience." },
   "memory": { title: "Memory", description: "What the bot reads back and remembers." },

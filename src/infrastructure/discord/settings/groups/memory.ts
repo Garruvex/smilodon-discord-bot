@@ -13,9 +13,10 @@ const summarizationUnavailable = ({ deps, text, path }: NodeContext): string | n
   deps.channelSummaryProviderAvailable ? null : text.message(path, "unavailable");
 
 export const memory = group("memory", [
-  chatSetting("character-retention", {
-    relationships: integer({ min: 1, max: 365, read: (p) => characterSettings(p).modules.relationships.retentionDays,
-      write: (v) => ({ character: { modules: { relationships: { retentionDays: v } } } }) }),
+  report("impressions", ({ text, path }) => Promise.resolve(text.message(path, "behavior"))),
+  chatSetting("advanced", {
+    "half-life": integer({ min: 1, max: 365, read: (p) => characterSettings(p).modules.fading.halfLifeDays,
+      write: (v) => ({ character: { modules: { fading: { halfLifeDays: v } } } }) }),
     history: integer({ min: 1, max: 365, read: (p) => characterSettings(p).modules.canon.retentionDays,
       write: (v) => ({ character: { modules: { canon: { retentionDays: v } } } }) }),
   }),
