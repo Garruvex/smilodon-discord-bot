@@ -205,6 +205,32 @@ describe("ChatConversationService", () => {
     expect(reply).toHaveBeenCalledOnce(); expect(execute).not.toHaveBeenCalled(); expect(deliver).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])("restricts optional server lookups to the turn allow-list and guild settings (disabled=%s)", async (disabled) => {
+    const lookup = vi.fn(() => Promise.resolve({ content: "Event starts tomorrow" }));
+    const action = vi.fn(() => Promise.resolve({ content: "must not execute" }));
+    const registry = new ChatToolRegistry([
+      { name: "lookup_discord_server", outputKind: "context", description: "Server events", parameters: {}, execute: lookup },
+      { name: "perform_action", description: "Action", parameters: {}, execute: action },
+    ]);
+    const reply = vi.fn(async (request: ChatRequest): Promise<ChatResponse> => {
+      if (request.participationOnly) {
+        expect(request.enabledTools).toEqual([]);
+        expect(request.capabilityToolNames).toEqual(["lookup_discord_server"]);
+      } else {
+        expect(request.enabledTools?.map((tool) => tool.name)).toEqual(disabled ? [] : ["lookup_discord_server"]);
+        for (const tool of request.enabledTools ?? []) await tool.execute({}, {} as never);
+      }
+      return response("The event starts tomorrow", [], [], { action: "reply" });
+    });
+    const service = new ChatConversationService({ reply }, baseStore(), testMemoryEngine().engine, undefined, undefined, undefined, null, null, registry);
+    const deliver = vi.fn((result: ChatResponse) => Promise.resolve(result.text));
+    await service.run({ ...input("Are there any events tomorrow?"), triggerMode: "ambient", toolsEnabled: true,
+      allowedToolNames: new Set(["lookup_discord_server"]), disabledToolNames: new Set(disabled ? ["lookup_discord_server"] : []) }, deliver);
+    expect(action).not.toHaveBeenCalled(); expect(lookup).toHaveBeenCalledTimes(disabled ? 0 : 1);
+    expect(reply).toHaveBeenCalledTimes(disabled ? 1 : 2);
+    expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ outputOrigin: "chat" }));
+  });
+
   it("shadow evaluation does not deliver output, persist facts, or run dedicated extraction", async () => {
     const extract = vi.fn(() => Promise.resolve([]));
     const commit = vi.fn(() => Promise.resolve({ droppedExchanges: [] }));

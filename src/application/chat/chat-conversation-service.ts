@@ -184,6 +184,9 @@ export interface ChatConversationInput
   // Per-guild deny-list (profile.chat.disabledTools) — tool names withheld
   // from the model even when toolsEnabled is true.
   disabledToolNames?: ReadonlySet<string>;
+  // Turn-level restriction, intersected with the guild deny-list. Optional
+  // participation may look up server facts without exposing action tools.
+  allowedToolNames?: ReadonlySet<string>;
   // Older reply-chain hops beyond what ChatTurnSupport.resolveReplyChain
   // kept in `replyChain` — see its `overflow` return value. Condensed into
   // ChatRequest.replyChainSummary here (not by the caller) before the
@@ -1012,7 +1015,7 @@ export class ChatConversationService {
       // destructured out here purely to keep them off requestInput's spread
       // below.
       const {
-        toolsEnabled, disabledToolNames, examplePool, loreChunks, personaDriftEnabled, replyChainOverflow,
+        toolsEnabled, disabledToolNames, allowedToolNames, examplePool, loreChunks, personaDriftEnabled, replyChainOverflow,
         personalitySourceHash, ...requestInput
       } = input;
       void personaDriftEnabled;
@@ -1045,7 +1048,7 @@ export class ChatConversationService {
         enabledTools: toolsEnabled && this.toolRegistry && !input.shadowMode && !(input.triggerMode === "direct" &&
           isLowSubstancePing(input.message, input.replyChain.length > 0 ||
             (input.currentEvent?.type === "message" && input.currentEvent.replyToMessageId !== null), input.images.length > 0))
-          ? this.toolRegistry.list().filter((tool) => !disabledToolNames?.has(tool.name)).map((tool) => ({
+          ? this.toolRegistry.list().filter((tool) => !disabledToolNames?.has(tool.name) && (!allowedToolNames || allowedToolNames.has(tool.name))).map((tool) => ({
               name: tool.name, description: tool.description, parameters: tool.parameters,
               execute: async (args, context): ReturnType<ChatTool["execute"]> => {
                 if (!await canContinue()) throw new SocialOutputSuppressed();

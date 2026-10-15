@@ -177,9 +177,10 @@ describe("AmbientChatBehavior.matches", () => {
 });
 
 describe("AmbientChatBehavior outcome logs", () => {
-  it.each([true, false])("does not report an unsent reply as delivered (shadow=%s)", async (shadowMode) => {
+  it.each([["ambient", true], ["ambient", false], ["continuation", true], ["continuation", false], ["spontaneous", true], ["spontaneous", false]] as const)("does not report an unsent reply as delivered (%s shadow=%s)", async (trigger, shadowMode) => {
     const configured = profile();
     configured.chat.participation = { ...defaultParticipation, shadowMode };
+    configured.chat.toolCallingEnabled = true;
     const info = vi.fn(); const error = vi.fn();
     const run = vi.fn((): Promise<ChatResponse> => Promise.resolve({ text: "proposed reply", ambientAction: "reply", reactionEmoji: null,
       historyReactions: [], generatedImages: [], sources: [], userMemoryActions: [], guildKnowledgeCandidates: [], usage: null, webSearchUsed: false }));
@@ -191,10 +192,12 @@ describe("AmbientChatBehavior outcome logs", () => {
     const source = { ...message(), id: "source", createdTimestamp: 1000, member: null, attachments: new Collection(),
       author: { id: "human", username: "Human", displayName: "Human", bot: false },
       mentions: { users: new Collection() } } as unknown as Message;
-    await subject.execute(source);
+    await subject.execute(source, trigger);
     expect(error).not.toHaveBeenCalled();
     expect(run).toHaveBeenCalled();
-    expect(info).toHaveBeenCalledWith(expect.objectContaining({ triggerMode: "ambient", shadowMode, textDelivered: false, ambientAction: "reply" }),
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ toolsEnabled: !shadowMode,
+      ...(trigger === "ambient" ? {} : { allowedToolNames: new Set(["lookup_discord_server"]) }) }), expect.any(Function));
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({ triggerMode: trigger, shadowMode, textDelivered: false, ambientAction: "reply" }),
       shadowMode ? "Ambient chat: previewed" : "Ambient chat: reply suppressed");
   });
 });

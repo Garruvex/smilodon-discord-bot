@@ -112,6 +112,7 @@ import { SocialOutputSuppressed } from "../application/chat/message-origin-store
 import { HttpDecisionProvider } from "../infrastructure/chat/http-decision-provider.js";
 import { characterSettings, characterInactiveReason } from "../application/chat/character-settings.js";
 import { ChatToolRegistry } from "../application/chat/tools/chat-tool-registry.js";
+import { DiscordServerLookupTool } from "../infrastructure/discord/discord-server-lookup-tool.js";
 import { DiceRollTool } from "../application/chat/tools/dice-tool.js";
 import { EightBallTool } from "../application/chat/tools/eightball-tool.js";
 import { BooruSearchTool } from "../application/chat/tools/booru-search-tool.js";
@@ -652,6 +653,7 @@ export function createDependencies(
     new EightBallTool(),
     new BooruSearchTool(),
     new MemoryLookupTool(memoryEngine),
+    new DiscordServerLookupTool(discordClient, guildConfigurationProvider),
     new BirthdayLookupTool(birthdayStore, guildConfigurationProvider),
     new BirthdaySetTool(birthdayStore, guildConfigurationProvider),
     new BirthdayMemberSetTool(birthdayStore, guildConfigurationProvider, async (guildId, userId) => {
