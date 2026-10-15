@@ -8,7 +8,7 @@ export const jaChat: SettingsTextCatalog = {
   "participation.status": {"label": "参加の状態", "description": "判定サービスと受動的に読むチャンネルを確認します。", "messages": {"available": "判定サービスは利用可能です。会話履歴、チャンネル選択、参加機能の有効化も必要です。", "paused": "構造化判定サービスと代替サービスが利用できないため、自動参加は一時停止中です。明示的な依頼は利用できます。", "scope": "受動的に読むチャンネルは{count}件です。スレッドは個別に選択してください。"}},
   "participation.observation-channels": {"label": "観察と会話継続のチャンネル", "description": "受動的な読み取りと自動参加の範囲。空ならどこも読みません。"},
   "participation.observation-channels.channels": {"label": "チャンネル", "description": "選択したチャンネル・スレッドのみ。共有記憶は他の場所を読む許可にはなりません。"},
-  "participation.controls.messages-per-decision": {"label": "判定までのメッセージ数", "description": "自動参加を検討するまでに集める人のメッセージ数（1–20）。直接の呼びかけや返信は待ちません。"},
+  "participation.controls.messages-per-decision": {"label": "判定までのメッセージ数", "description": "自発的な参加を検討するまでのメッセージ数（1-20）。会話の継続や直接の呼びかけは待ちません。"},
   "participation.controls.spontaneous-threshold": {"label": "自発的な発言の貢献基準（％）", "description": "宛先、貢献の種類、発言のタイミングの確認後に適用する点数。"},
   "participation.controls.continuation-threshold": {"label": "会話継続の貢献基準（％）", "description": "宛先、貢献の種類、タイミングの確認後に適用する継続発言の点数。"},
   "participation.continuation-limits.interval": {"label": "会話継続の間隔（秒）", "description": "同じチャンネルで継続発言を送信する最短間隔。"},

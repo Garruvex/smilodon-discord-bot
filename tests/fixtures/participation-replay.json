@@ -1571,6 +1571,570 @@
       },
       "expected": false,
       "aliases": []
+    },
+    {
+      "name": "delayed personal motorcycle question: bystander, model bot",
+      "trigger": "spontaneous",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Rider",
+          "timestampMs": 1000,
+          "content": "那引擎要63單套還是63/580",
+          "imageCount": 0
+        },
+        {
+          "messageId": "advice",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 2000,
+          "content": "日常騎就63單套",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "bystander",
+        "authorDisplayName": "Human",
+        "timestampMs": 21600000,
+        "content": "你也要當跑山猴嗎",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "bot",
+        "motivation": 1,
+        "confidence": 1,
+        "recipientConfidence": 1,
+        "targetConfidence": 1,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "我才不要，山路猴你自己當就好",
+          "adds": "A joke about riding",
+          "label": "relevant-joke",
+          "motivation": 1,
+          "sourceMessageId": "current",
+          "recipientId": "bystander"
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "delayed personal motorcycle question: bystander, model others",
+      "trigger": "spontaneous",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Rider",
+          "timestampMs": 1000,
+          "content": "那引擎要63單套還是63/580",
+          "imageCount": 0
+        },
+        {
+          "messageId": "advice",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 2000,
+          "content": "日常騎就63單套",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "bystander",
+        "authorDisplayName": "Human",
+        "timestampMs": 21600000,
+        "content": "你也要當跑山猴嗎",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "others",
+        "motivation": 1,
+        "confidence": 1,
+        "recipientConfidence": 1,
+        "targetConfidence": 1,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "我才不要，山路猴你自己當就好",
+          "adds": "A joke about riding",
+          "label": "relevant-joke",
+          "motivation": 1,
+          "sourceMessageId": "current",
+          "recipientId": "bystander"
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "delayed personal motorcycle question: alice, model bot",
+      "trigger": "spontaneous",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Rider",
+          "timestampMs": 1000,
+          "content": "那引擎要63單套還是63/580",
+          "imageCount": 0
+        },
+        {
+          "messageId": "advice",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 2000,
+          "content": "日常騎就63單套",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Human",
+        "timestampMs": 21600000,
+        "content": "你也要當跑山猴嗎",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "bot",
+        "motivation": 1,
+        "confidence": 1,
+        "recipientConfidence": 1,
+        "targetConfidence": 1,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "我才不要，山路猴你自己當就好",
+          "adds": "A joke about riding",
+          "label": "relevant-joke",
+          "motivation": 1,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "delayed personal motorcycle question: alice, model others",
+      "trigger": "spontaneous",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Rider",
+          "timestampMs": 1000,
+          "content": "那引擎要63單套還是63/580",
+          "imageCount": 0
+        },
+        {
+          "messageId": "advice",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 2000,
+          "content": "日常騎就63單套",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "alice",
+        "authorDisplayName": "Human",
+        "timestampMs": 21600000,
+        "content": "你也要當跑山猴嗎",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "others",
+        "motivation": 1,
+        "confidence": 1,
+        "recipientConfidence": 1,
+        "targetConfidence": 1,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "我才不要，山路猴你自己當就好",
+          "adds": "A joke about riding",
+          "label": "relevant-joke",
+          "motivation": 1,
+          "sourceMessageId": "current",
+          "recipientId": "alice"
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "fresh different-speaker motorcycle question (continuation): bystander, model bot",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Rider",
+          "timestampMs": 1000,
+          "content": "那引擎要63單套還是63/580",
+          "imageCount": 0
+        },
+        {
+          "messageId": "advice",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 2000,
+          "content": "日常騎就63單套",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "bystander",
+        "authorDisplayName": "Human",
+        "timestampMs": 5000,
+        "content": "你也要當跑山猴嗎",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "bot",
+        "motivation": 1,
+        "confidence": 1,
+        "recipientConfidence": 1,
+        "targetConfidence": 1,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "我才不要，山路猴你自己當就好",
+          "adds": "A joke about riding",
+          "label": "relevant-joke",
+          "motivation": 1,
+          "sourceMessageId": "current",
+          "recipientId": "bystander"
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "fresh different-speaker motorcycle question (spontaneous): bystander, model bot",
+      "trigger": "spontaneous",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Rider",
+          "timestampMs": 1000,
+          "content": "那引擎要63單套還是63/580",
+          "imageCount": 0
+        },
+        {
+          "messageId": "advice",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 2000,
+          "content": "日常騎就63單套",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "bystander",
+        "authorDisplayName": "Human",
+        "timestampMs": 5000,
+        "content": "你也要當跑山猴嗎",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "bot",
+        "motivation": 1,
+        "confidence": 1,
+        "recipientConfidence": 1,
+        "targetConfidence": 1,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "我才不要，山路猴你自己當就好",
+          "adds": "A joke about riding",
+          "label": "relevant-joke",
+          "motivation": 1,
+          "sourceMessageId": "current",
+          "recipientId": "bystander"
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "fresh different-speaker motorcycle question (continuation): bystander, model others",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Rider",
+          "timestampMs": 1000,
+          "content": "那引擎要63單套還是63/580",
+          "imageCount": 0
+        },
+        {
+          "messageId": "advice",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 2000,
+          "content": "日常騎就63單套",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "bystander",
+        "authorDisplayName": "Human",
+        "timestampMs": 5000,
+        "content": "你也要當跑山猴嗎",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "others",
+        "motivation": 1,
+        "confidence": 1,
+        "recipientConfidence": 1,
+        "targetConfidence": 1,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "我才不要，山路猴你自己當就好",
+          "adds": "A joke about riding",
+          "label": "relevant-joke",
+          "motivation": 1,
+          "sourceMessageId": "current",
+          "recipientId": "bystander"
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "fresh different-speaker motorcycle question (spontaneous): bystander, model others",
+      "trigger": "spontaneous",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Rider",
+          "timestampMs": 1000,
+          "content": "那引擎要63單套還是63/580",
+          "imageCount": 0
+        },
+        {
+          "messageId": "advice",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 2000,
+          "content": "日常騎就63單套",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "bystander",
+        "authorDisplayName": "Human",
+        "timestampMs": 5000,
+        "content": "你也要當跑山猴嗎",
+        "imageCount": 0
+      },
+      "decision": {
+        "addressing": "others",
+        "motivation": 1,
+        "confidence": 1,
+        "recipientConfidence": 1,
+        "targetConfidence": 1,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "我才不要，山路猴你自己當就好",
+          "adds": "A joke about riding",
+          "label": "relevant-joke",
+          "motivation": 1,
+          "sourceMessageId": "current",
+          "recipientId": "bystander"
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "different human asks about the bot in a reply to earlier advice at 5000",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Rider",
+          "timestampMs": 1000,
+          "content": "那引擎要63單套還是63/580",
+          "imageCount": 0
+        },
+        {
+          "messageId": "advice",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 2000,
+          "content": "日常騎就63單套",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "bystander",
+        "authorDisplayName": "Human",
+        "timestampMs": 5000,
+        "content": "你也要當跑山猴嗎",
+        "imageCount": 0,
+        "replyToMessageId": "advice",
+        "replyToAuthorId": "bot"
+      },
+      "decision": {
+        "addressing": "bot",
+        "motivation": 1,
+        "confidence": 1,
+        "recipientConfidence": 1,
+        "targetConfidence": 1,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "我不跑山啦，剛剛只是回 Rider 的改車問題",
+          "adds": "Answer the question about the bot while referring to the earlier human in third person",
+          "label": "answer",
+          "motivation": 1,
+          "sourceMessageId": "current",
+          "recipientId": "bystander"
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "different human asks about the bot in a reply to earlier advice at 21600000",
+      "trigger": "continuation",
+      "events": [
+        {
+          "messageId": "human",
+          "authorId": "alice",
+          "authorDisplayName": "Rider",
+          "timestampMs": 1000,
+          "content": "那引擎要63單套還是63/580",
+          "imageCount": 0
+        },
+        {
+          "messageId": "advice",
+          "authorId": "bot",
+          "authorDisplayName": "Bot",
+          "timestampMs": 2000,
+          "content": "日常騎就63單套",
+          "imageCount": 0,
+          "replyToMessageId": "human",
+          "replyToAuthorId": "alice"
+        }
+      ],
+      "current": {
+        "messageId": "current",
+        "authorId": "bystander",
+        "authorDisplayName": "Human",
+        "timestampMs": 21600000,
+        "content": "你也要當跑山猴嗎",
+        "imageCount": 0,
+        "replyToMessageId": "advice",
+        "replyToAuthorId": "bot"
+      },
+      "decision": {
+        "addressing": "bot",
+        "motivation": 1,
+        "confidence": 1,
+        "recipientConfidence": 1,
+        "targetConfidence": 1,
+        "recipientEvidence": [
+          "current"
+        ],
+        "boundary": "earlier",
+        "target": "current",
+        "reaction": null,
+        "thoughts": [],
+        "opening": "clear",
+        "contribution": {
+          "text": "我不跑山啦，剛剛只是回 Rider 的改車問題",
+          "adds": "Answer the question about the bot while referring to the earlier human in third person",
+          "label": "answer",
+          "motivation": 1,
+          "sourceMessageId": "current",
+          "recipientId": "bystander"
+        }
+      },
+      "expected": true
     }
   ]
 }

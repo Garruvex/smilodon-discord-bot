@@ -324,6 +324,18 @@ export function buildChatInstructions(request: ChatRequest, safetyGuard: string)
       `<current_message> is empty (just a bare mention, no text of its own), the user is handing you the ` +
       `replied-to message with no further instruction — react to or comment on it directly, the way tagging ` +
       `someone into a reply with no comment of your own implies "look at this."` +
+      ` A new person may reply directly to your earlier answer to someone else. The reply link identifies the ` +
+      `message being discussed, not necessarily whom the new person is addressing. They may still be talking ` +
+      `to the original human. For each ancestor, track its ` +
+      `author and its replyingTo account separately from current_user. An earlier bot answer's "you/your" ` +
+      `refers to its original addressee, not automatically the current speaker. Keep that person's possessions, ` +
+      `plans and actions attached to their account. Answer the new speaker's actual question; if referring ` +
+      `back to another person's situation, use that person's name or third person instead of attributing it ` +
+      `to the new speaker. In your new answer, "you/your" normally addresses the current speaker. Do not ` +
+      `answer that speaker and then reuse an earlier "you/your" about someone else's possessions or plans ` +
+      `as if both people were the same account. Resolve who the current words address from the full exchange: answer a clear ` +
+      `question to you, but do not answer for yourself when the new speaker is asking the original human. ` +
+      `A speaker change alone neither authorizes nor forbids a reply.` +
       (request.replyChainSummary
         ? ` The thread actually goes back further than the hops shown — a leading line in <reply_chain> recaps ` +
           `what was condensed out of the earlier part; treat it as established background, not something to quote.`
@@ -519,11 +531,19 @@ export function buildChatContext(request: ChatRequest): string {
   const replyChainSummaryLine = request.replyChainSummary
     ? `0. [earlier in this thread, summarized]: ${wrapUntrusted(request.replyChainSummary)}\n`
     : "";
+  const replyParticipants = new Map([...request.channelHistory, ...request.replyChain].map((hop) => [hop.messageId, hop]));
   const replyChain = request.replyChain.length > 0
     ? replyChainSummaryLine + request.replyChain.map((hop, index) => {
         const imageNote = hop.imageCount > 0 ? ` [${hop.imageCount} image${hop.imageCount > 1 ? "s" : ""} attached]` : "";
+        const target = hop.replyToMessageId ? replyParticipants.get(hop.replyToMessageId) : undefined;
+        const targetId = hop.replyToAuthorId ?? target?.authorId;
+        const targetName = hop.replyToAuthorDisplayName ?? target?.authorDisplayName ?? "unknown";
+        const targetNote = targetId
+          ? `; replyingTo=${contextData(targetName)} (${targetId}, msg=${hop.replyToMessageId ?? "unknown"}); replyTargetSameAsCurrentUser=${targetId === request.currentUser.id ? "yes" : "no"}`
+          : hop.hasReplyReference || hop.replyToMessageId ? `; replyingTo=unknown; msg=${hop.replyToMessageId ?? "unknown"}` : "";
         return `${index + 1}. [id=${hop.messageId}, t=${formatTimestamp(hop.timestampMs)}] ` +
-          `${contextData(hop.authorDisplayName)} (${hop.authorId}): ${wrapUntrusted(hop.content)}${imageNote}`;
+          `${contextData(hop.authorDisplayName)} (${hop.authorId}): ${wrapUntrusted(hop.content)}${imageNote} ` +
+          `[sameAsCurrentUser=${hop.authorId === request.currentUser.id ? "yes" : "no"}${targetNote}]`;
       }).join("\n")
     : "none";
   // Ambient recent channel chatter, not reply-linked — see ChatRequest.channelHistory.

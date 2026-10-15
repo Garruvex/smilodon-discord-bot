@@ -10,10 +10,12 @@ import { addressesBotName } from "../../../domain/chat/name-mention.js";
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
 import type { AmbientChatBehavior } from "./ambient-chat-behavior.js";
 
-interface MessageBatch { messages: Message[]; seen: Map<string, number>; fingerprint: string; version: number; touchedAt: number }
-const batchIdleMs = 120_000;
+type OptionalTrigger = "continuation" | "spontaneous";
+interface MessageBatch { messages: Message[]; seen: Set<string>; fingerprint: string; version: number; trigger: OptionalTrigger; participantId: string | null }
+const spontaneousCooldownMs = 120_000;
 export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageCreated> {
   private readonly bursts = new Map<string, MessageBatch>();
+  private readonly cooldowns = new Map<string, number>();
   public readonly id = "proactive-chat";
   public readonly event = BehaviorEvent.MessageCreated;
   public readonly priority = 80;
@@ -27,13 +29,13 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
   }
   private pending(message: Message, profile: GuildConfiguration): MessageBatch | undefined {
     const key = `${message.guildId}:${message.channelId}`; const batch = this.bursts.get(key);
-    if (batch && (batch.fingerprint !== this.fingerprint(profile, message.channelId) || Date.now() - batch.touchedAt >= batchIdleMs ||
+    if (batch && (batch.fingerprint !== this.fingerprint(profile, message.channelId) ||
         batch.version !== this.conversation.optionalOpportunityVersion(message.guildId!, message.channelId))) {
       this.bursts.delete(key); return undefined;
     }
     return batch;
   }
-  private trigger(message: Message): "continuation" | "spontaneous" | null {
+  private trigger(message: Message): OptionalTrigger | null {
     const botId = this.botId();
     const profile = message.guildId ? this.profiles.find(message.guildId) : null;
     if (!this.conversation.optionalDecisionAvailable || !botId || !profile || !profile.features.chatbot || !profile.features.channelHistory || characterSettings(profile).channelOverrides[message.channelId]?.contextEnabled === false ||
@@ -45,6 +47,12 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
     if (policy.continuationEnabled && this.conversation.isImplicitlyAddressed(message.guildId, message.channelId, { messageId: message.id, timestampMs: message.createdTimestamp,
         authorId: message.author.id, authorDisplayName: message.author.displayName, content: message.content, imageCount: 0,
         replyToMessageId: message.reference?.messageId ?? null }, botId)) return "continuation";
+    const key = `${message.guildId}:${message.channelId}`;
+    const cooldownUntil = this.cooldowns.get(key);
+    if (cooldownUntil !== undefined) {
+      if (Date.now() < cooldownUntil) return null;
+      this.cooldowns.delete(key);
+    }
     const hasContent = !!message.content.trim() || (message.attachments?.size ?? 0) > 0;
     return policy.spontaneousEnabled && hasContent && (policy.messagesPerDecision > 1 || message.content.trim().length >= 12 || (batch?.messages.length ?? 0) > 0) ? "spontaneous" : null;
   }
@@ -60,15 +68,15 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
     const profile = this.profiles.find(message.guildId!); if (!profile) return BehaviorResult.Continue;
     const key = `${message.guildId}:${message.channelId}`;
     if (this.bursts.size >= 256 && !this.bursts.has(key)) this.bursts.delete(this.bursts.keys().next().value!);
-    const now = Date.now();
-    const batch = this.pending(message, profile) ?? { messages: [], seen: new Map<string, number>(), fingerprint: this.fingerprint(profile, message.channelId),
-      version: this.conversation.optionalOpportunityVersion(message.guildId!, message.channelId), touchedAt: now };
-    for (const [id, at] of batch.seen) if (now - at >= batchIdleMs) batch.seen.delete(id);
+    const pending = this.pending(message, profile);
+    const participantId = trigger === "continuation" ? message.author.id : null;
+    const batch = pending?.trigger === trigger && pending.participantId === participantId ? pending : { messages: [], seen: new Set<string>(), fingerprint: this.fingerprint(profile, message.channelId),
+      version: this.conversation.optionalOpportunityVersion(message.guildId!, message.channelId), trigger, participantId };
     if (batch.seen.has(message.id)) return BehaviorResult.Continue;
-    batch.seen.set(message.id, now); while (batch.seen.size > 64) batch.seen.delete(batch.seen.keys().next().value!);
-    batch.messages = [...batch.messages.filter((item) => now - item.createdTimestamp < batchIdleMs), message].slice(-20);
-    batch.touchedAt = now; this.bursts.set(key, batch);
-    if (batch.messages.length < resolveParticipation(profile.chat.participation, message.channelId).messagesPerDecision) return BehaviorResult.Continue;
+    batch.seen.add(message.id); while (batch.seen.size > 64) batch.seen.delete(batch.seen.values().next().value!);
+    batch.messages = [...batch.messages, message].slice(-20);
+    this.bursts.set(key, batch);
+    if (trigger === "spontaneous" && batch.messages.length < resolveParticipation(profile.chat.participation, message.channelId).messagesPerDecision) return BehaviorResult.Continue;
     this.conversation.bufferOpportunity(message.guildId!, message.channelId, () => {
       void this.flush(message, batch).catch((error: unknown) => this.logger.warn({ error, guildId: message.guildId, channelId: message.channelId }, "Optional participation failed"));
     });
@@ -77,16 +85,21 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
   private async flush(source: Message, batch: MessageBatch): Promise<void> {
     const profile = this.profiles.find(source.guildId!);
     if (!profile || this.pending(source, profile) !== batch) return;
-    const snapshot = batch.messages.filter((item) => Date.now() - item.createdTimestamp < batchIdleMs);
+    const snapshot = [...batch.messages];
     const burst = (await Promise.all(snapshot.map(async (message) => {
       const trigger = this.trigger(message);
-      return trigger && (await this.eligibility.check(message, trigger)).eligible ? message : null;
+      return trigger === batch.trigger && (await this.eligibility.check(message, trigger)).eligible ? message : null;
     }))).filter((message): message is Message => message !== null);
     const current = this.profiles.find(source.guildId!);
     if (!current || this.pending(source, current) !== batch || batch.messages.at(-1)?.id !== snapshot.at(-1)?.id) return;
     batch.messages = burst;
-    if (burst.length < resolveParticipation(current.chat.participation, source.channelId).messagesPerDecision) return;
+    if (!burst.length || batch.trigger === "spontaneous" && burst.length < resolveParticipation(current.chat.participation, source.channelId).messagesPerDecision) return;
     const latest = burst.at(-1)!; const trigger = this.trigger(latest); batch.messages = [];
+    if (trigger === "spontaneous") {
+      const key = `${source.guildId}:${source.channelId}`;
+      if (this.cooldowns.size >= 256 && !this.cooldowns.has(key)) this.cooldowns.delete(this.cooldowns.keys().next().value!);
+      this.cooldowns.set(key, Date.now() + spontaneousCooldownMs);
+    }
     if (trigger) await this.ambient.execute(latest, trigger, burst);
   }
 }

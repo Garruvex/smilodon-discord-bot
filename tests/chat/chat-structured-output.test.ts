@@ -291,6 +291,23 @@ describe("buildChatContext", () => {
     expect(context).toContain(`2. [id=222-msg, t=${new Date(1_700_000_010_000).toISOString()}] "Bob" (222):`);
     expect(context).toContain("[2 images attached]");
   });
+  it("keeps an earlier bot answer's addressee separate from a second person directly replying to it", () => {
+    const request = baseRequest({ botUserId: "bot", currentUser: { id: "new-speaker", displayName: "Bystander", roleNames: [] },
+      currentEvent: { type: "message", messageId: "current", authorId: "new-speaker", channelId: "channel", timestampMs: 3000, replyToMessageId: "advice", mentionedUserIds: [] },
+      message: "你也要當跑山猴嗎", replyChain: [
+        { messageId: "engine-question", timestampMs: 1000, authorId: "rider", authorDisplayName: "Rider", content: "那引擎要63單套還是63/580", imageCount: 0 },
+        { messageId: "advice", timestampMs: 2000, authorId: "bot", authorDisplayName: "Bot", content: "日常騎就63單套", imageCount: 0,
+          replyToMessageId: "engine-question", replyToAuthorId: "rider", replyToAuthorDisplayName: "Rider" },
+      ] });
+    const context = buildChatContext(request); const instructions = buildChatInstructions(request, chatSafetyGuard);
+    expect(context).toContain('replyingTo="Rider" (rider, msg=engine-question); replyTargetSameAsCurrentUser=no');
+    expect(context).toContain('new-speaker: "Bystander"');
+    expect(instructions).toContain("not necessarily whom the new person is addressing");
+    expect(instructions).toContain("not automatically the current speaker");
+    expect(instructions).toContain("do not answer for yourself when the new speaker is asking the original human");
+    const originalSpeaker = buildChatContext({ ...request, currentUser: { id: "rider", displayName: "Rider", roleNames: [] } });
+    expect(originalSpeaker).toContain('replyingTo="Rider" (rider, msg=engine-question); replyTargetSameAsCurrentUser=yes');
+  });
 
   it("renders ambient channel history as its own fenced section", () => {
     const withHistory = buildChatContext(baseRequest({

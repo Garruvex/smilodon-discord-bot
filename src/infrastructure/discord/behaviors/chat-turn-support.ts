@@ -285,7 +285,7 @@ export class ChatTurnSupport {
     return messages.map((message) => {
       const referenceId = message.reference?.messageId;
       const target = referenceId
-        ? selectedById.get(referenceId) ?? message.channel.messages.cache.get(referenceId)
+        ? selectedById.get(referenceId) ?? message.channel.messages.cache?.get(referenceId)
         : undefined;
       return {
         author: this.toChatUser(message.author, message.member),
@@ -299,10 +299,10 @@ export class ChatTurnSupport {
           attachment.contentType?.startsWith("image/"),
         ).length,
         hasReplyReference: Boolean(referenceId),
-        replyToAuthorId: target?.author.id ?? null,
+        replyToAuthorId: target?.author.id ?? (referenceId ? message.mentions?.repliedUser?.id : null) ?? null,
         replyToAuthorDisplayName: target
           ? target.member?.displayName ?? target.author.displayName
-          : null,
+          : referenceId ? message.mentions?.repliedUser?.displayName ?? null : null,
         replyToMessageId: referenceId ?? null,
       };
     });

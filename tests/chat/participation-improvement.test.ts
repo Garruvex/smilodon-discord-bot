@@ -34,7 +34,7 @@ describe("participation safety and replay", () => {
       expect(allowsOptionalParticipation(trigger, "continuing", { ...decision, motivation: 1, contribution: { ...candidate, label, motivation: score } }, false, { spontaneousThreshold: 0, continuationThreshold: 0 })).toBe(false);
   });
   it("has monotone configurable thresholds with no hidden spontaneous cutoff", () => {
-    const recorded = { ...decision, contribution: { ...candidate, motivation: 0.6 } };
+    const recorded = { ...decision, addressing: "others" as const, contribution: { ...candidate, motivation: 0.6 } };
     expect(allowsOptionalParticipation("spontaneous", "others", recorded, false, { spontaneousThreshold: 0.6, continuationThreshold: 0.5 })).toBe(true);
     const values = [0, 0.5, 0.6, 0.7, 1].map((threshold) => allowsOptionalParticipation("spontaneous", "others", recorded, false, { spontaneousThreshold: threshold, continuationThreshold: 0.5 }));
     expect(values).toEqual([true, true, true, false, false]);

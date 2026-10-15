@@ -187,6 +187,11 @@ export interface ReplyChainMessage {
   author?: ChatUser;
   channelId?: string;
   replyToMessageId?: string | null;
+  hasReplyReference?: boolean;
+  // Keep the addressee of each ancestor separate from the current speaker.
+  // In particular, a bot answer may have been addressed to another human.
+  replyToAuthorId?: string | null;
+  replyToAuthorDisplayName?: string | null;
   // Discord snowflake of the message this hop represents. Lets the model
   // (and any downstream tooling) refer to a specific line precisely instead
   // of by position, and gives it something stable to dedupe against when

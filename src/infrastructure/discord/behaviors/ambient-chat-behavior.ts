@@ -116,26 +116,12 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     );
 
     const { kept: replyChainMessages, overflow: replyChainOverflowMessages } = await this.turnSupport.resolveReplyChain(message);
-    const replyChain: ReplyChainMessage[] = replyChainMessages.map((hop) => ({
-      author: this.turnSupport.toChatUser(hop.author, hop.member), channelId: hop.channelId,
-      replyToMessageId: hop.reference?.messageId ?? null,
-      messageId: hop.id,
-      timestampMs: hop.createdTimestamp,
-      authorId: hop.author.id,
-      authorDisplayName: hop.member?.displayName ?? hop.author.displayName,
-      content: hop.content.slice(0, chatMemoryLimits.maxUserMessageChars),
-      imageCount: [...hop.attachments.values()].filter((attachment) => attachment.contentType?.startsWith("image/")).length,
-    }));
-    const replyChainOverflow: ReplyChainMessage[] = replyChainOverflowMessages.map((hop) => ({
-      author: this.turnSupport.toChatUser(hop.author, hop.member), channelId: hop.channelId,
-      replyToMessageId: hop.reference?.messageId ?? null,
-      messageId: hop.id,
-      timestampMs: hop.createdTimestamp,
-      authorId: hop.author.id,
-      authorDisplayName: hop.member?.displayName ?? hop.author.displayName,
-      content: hop.content.slice(0, chatMemoryLimits.maxUserMessageChars),
-      imageCount: 0,
-    }));
+    const ancestors = this.turnSupport.toChannelHistoryMessages([...replyChainOverflowMessages, ...replyChainMessages]);
+    const replyChain: ReplyChainMessage[] = ancestors.slice(replyChainOverflowMessages.length);
+    // Older ancestors are summarized without attaching their images. Preserve
+    // their original authors/addressees even when another human joins a reply.
+    const replyChainOverflow: ReplyChainMessage[] = ancestors.slice(0, replyChainOverflowMessages.length)
+      .map((hop) => ({ ...hop, imageCount: 0 }));
     const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory
       ? this.turnSupport.toChannelHistoryMessages(await this.turnSupport.resolveChannelHistory(
           message,

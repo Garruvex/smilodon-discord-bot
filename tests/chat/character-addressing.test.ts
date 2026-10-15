@@ -17,9 +17,17 @@ describe("implicit addressees", () => {
   it("abstains after another person enters the conversation", () => {
     expect(localAddressing([human, bot, event("bob", "bob", 3000), current], current, "bot", true)).toBe("unclear");
   });
+  it("does not transfer a fresh continuation to a different human, regardless of wording", () => {
+    for (const content of ["你也要當跑山猴嗎", "那下繞呢", "why?"]) {
+      const other = { ...current, timestampMs: bot.timestampMs + 1, authorId: "bob", content };
+      expect(localAddressing([human, bot], other, "bot", true)).toBe("unclear");
+      expect(allowsOptionalParticipation("continuation", "unclear", decision, false)).toBe(false);
+      expect(localAddressing([human, bot], { ...other, replyToMessageId: bot.messageId }, "bot", true)).toBe("bot");
+    }
+  });
   it("does not count the current or future message as prior participation", () => {
-    expect(localAddressing([event("bot", "bot", 2000), current, event("future", "alice", 5000)], current, "bot", true)).toBe("others");
-    expect(localAddressing([event("future", "bot", 5000, { replyToAuthorId: "alice" })], current, "bot", true)).toBe("others");
+    expect(localAddressing([event("bot", "bot", 2000), current, event("future", "alice", 5000)], current, "bot", true)).toBe("unclear");
+    expect(localAddressing([event("future", "bot", 5000, { replyToAuthorId: "alice" })], current, "bot", true)).toBe("unclear");
   });
   it("respects replies and mentions to another person even during a bot exchange", () => {
     expect(localAddressing([human, bot, event("bob", "bob", 1000)], { ...current, replyToMessageId: "bob" }, "bot", true)).toBe("others");
@@ -28,6 +36,16 @@ describe("implicit addressees", () => {
   });
   it("recognizes an explicit reply to the bot even after the implicit window expires", () => {
     expect(localAddressing([human, bot], { ...current, timestampMs: 200000, replyToMessageId: bot.messageId }, "bot", false)).toBe("bot");
+  });
+  it.each(["你也要當跑山猴嗎", "妳也要去嗎", "那你也要改嗎", "Are you going too?", "What do you think?", "あなたも行く？"])("does not assign an unresolved personal address to the bot: %s", (content) => {
+    const late = { ...current, authorId: "bystander", timestampMs: 6 * 60 * 60 * 1000, content };
+    expect(localAddressing([human, bot], late, "bot", true)).toBe("unclear");
+    expect(localAddressing([], late, "bot", true)).toBe("unclear");
+    expect(localAddressing([human, bot], { ...late, replyToMessageId: bot.messageId }, "bot", true)).toBe("bot");
+  });
+  it("keeps open group questions eligible for a distinct spontaneous contribution", () => {
+    expect(localAddressing([], { ...current, content: "你們有推薦的活動嗎？" }, "bot", true)).toBe("others");
+    expect(localAddressing([], { ...current, content: "Are you all joining?" }, "bot", true)).toBe("others");
   });
 });
 
@@ -46,5 +64,8 @@ describe("optional participation admission", () => {
   });
   it("abstains on optional followups if the decision provider fails", () => {
     expect(allowsOptionalParticipation("continuation", "continuing", null, false)).toBe(false);
+  });
+  it.each(["bot", "continuing"] as const)("does not let a spontaneous model decision invent %s addressing", (addressing) => {
+    expect(allowsOptionalParticipation("spontaneous", "others", { ...decision, addressing }, false)).toBe(false);
   });
 });

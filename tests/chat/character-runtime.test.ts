@@ -13,6 +13,7 @@ import { ThoughtsModule } from "../../src/application/chat/character-modules/tho
 import { AddressingModule } from "../../src/application/chat/character-modules/addressing.js";
 import { endOfLocalDay, startOfLocalDay } from "../../src/application/chat/character-calendar.js";
 import { CharacterDecisionService } from "../../src/application/chat/character-decision.js";
+import { buildChatContext } from "../../src/infrastructure/chat/chat-structured-output.js";
 import { characterInactiveReason, characterSettingsSchema } from "../../src/application/chat/character-settings.js";
 import { ChatScheduler, balancedChatLimits } from "../../src/application/chat/chat-scheduler.js";
 import type { ChatProvider, ChatRequest, ChatResponse } from "../../src/application/chat/chat-provider.js";
@@ -351,6 +352,46 @@ describe("callback delivery lifecycle", () => {
   });
 });
 describe("decision windows and continuation timing", () => {
+  it("answers a second person's direct question without transferring the original rider plans", async () => {
+    const now = 6 * 60 * 60 * 1000;
+    const { runtime, provider, repository, connection } = setup(() => now);
+    const decisions = vi.spyOn(provider, "generateCharacterData");
+    const rider = { messageId: "rider-question", timestampMs: 1000, authorId: actorUserId, authorDisplayName: "Rider", content: "那引擎要63單套還是63/580", imageCount: 0 };
+    const bot = { ...rider, messageId: "advice", timestampMs: 2000, authorId: "bot", authorDisplayName: "Bot", content: "日常騎就63單套", replyToMessageId: rider.messageId, replyToAuthorId: actorUserId, replyToAuthorDisplayName: "Rider" };
+    const generation = vi.spyOn(provider, "reply").mockImplementation((modelRequest): Promise<ChatResponse> => {
+      expect(modelRequest.currentUser.id).toBe("new-speaker");
+      expect(buildChatContext(modelRequest)).toContain(`replyingTo="Rider" (${actorUserId}, msg=rider-question); replyTargetSameAsCurrentUser=no`);
+      return Promise.resolve(response("我不跑山啦，剛剛只是回 Rider 的改車問題"));
+    });
+    const service = new ChatConversationService(provider, new SqliteChatStateStore(connection.database), new DefaultMemoryEngine(repository), undefined, undefined, undefined, null, null, null, null, null, null, null, null, runtime, () => now);
+    const deliver = vi.fn((reply: ChatResponse) => Promise.resolve(reply.text));
+    try {
+      await service.run({ ...request(), currentUser: { id: "new-speaker", displayName: "Bystander", roleNames: [] }, message: "你也要當跑山猴嗎",
+        currentEvent: { type: "message", messageId: "current", authorId: "new-speaker", channelId, timestampMs: now, replyToMessageId: "advice", mentionedUserIds: [] },
+        examplePool: [], loreChunks: [], triggerMode: "direct", sourceMessageId: "current", replyChain: [rider, bot] }, deliver);
+      expect(generation).toHaveBeenCalledOnce(); expect(deliver).toHaveBeenCalledOnce(); expect(decisions).not.toHaveBeenCalled();
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+  it.each((["bot", "continuing", "others"] as const).flatMap((addressing) =>
+    (["continuation", "spontaneous"] as const).flatMap((triggerMode) =>
+      [5000, 6 * 60 * 60 * 1000].map((now) => ({ addressing, triggerMode, now })))))("does not inherit another human's motorcycle exchange ($addressing / $triggerMode / $now)", async ({ addressing, triggerMode, now }) => {
+    const { runtime, provider, profiles, repository, connection } = setup(() => now);
+    const generation = vi.spyOn(provider, "reply");
+    await profiles.update(guildId, { chatParticipation: { continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    const rider = { messageId: "rider", timestampMs: 1000, authorId: actorUserId, authorDisplayName: "Rider", content: "那引擎要63單套還是63/580", imageCount: 0 };
+    const bot = { ...rider, messageId: "advice", timestampMs: 2000, authorId: "bot", authorDisplayName: "Bot", content: "日常騎就63單套", replyToMessageId: "rider", replyToAuthorId: actorUserId };
+    const current = { ...rider, messageId: "current", timestampMs: now, authorId: "bystander", authorDisplayName: "Bystander", content: "你也要當跑山猴嗎" };
+    vi.mocked(provider.generateCharacterData!).mockResolvedValue({ addressing, motivation: 1, confidence: 1, recipientConfidence: 1, targetConfidence: 1,
+      recipientEvidence: ["current"], target: "current", boundary: "earlier", opening: "clear", reaction: null, thoughts: [],
+      contribution: { text: "我才不要，山路猴你自己當就好", adds: "A relevant joke", label: "relevant-joke", motivation: 1, sourceMessageId: "current", recipientId: "bystander" } });
+    const service = new ChatConversationService(provider, new SqliteChatStateStore(connection.database), new DefaultMemoryEngine(repository), undefined, undefined, undefined, null, null, null, null, null, null, null, null, runtime, () => now);
+    const deliver = vi.fn(() => Promise.resolve("must not send"));
+    try {
+      const result = await service.run({ ...request(), message: current.content, currentUser: { id: "bystander", displayName: "Bystander", roleNames: [] },
+        examplePool: [], loreChunks: [], triggerMode, sourceMessageId: "current", currentBurst: [current], channelHistory: [rider, bot], channelHistoryEnabled: true }, deliver);
+      expect(result.ambientAction).toBe("ignore"); expect(deliver).not.toHaveBeenCalled(); expect(generation).not.toHaveBeenCalled();
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
   it.each(["continuation", "spontaneous"] as const)("cancels %s when another human takes over during generation", async (triggerMode) => {
     let now = 4000; const { runtime, provider, profiles, repository, connection } = setup(() => now);
     await profiles.update(guildId, { chatParticipation: { continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });

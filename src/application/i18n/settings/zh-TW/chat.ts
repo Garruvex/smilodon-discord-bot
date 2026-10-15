@@ -8,7 +8,7 @@ export const zhTWChat: SettingsTextCatalog = {
   "participation.status": {"label": "參與狀態", "description": "查看判斷服務是否可用，以及被動讀取的頻道範圍。", "messages": {"available": "判斷服務可用；接話仍須啟用頻道歷史、選取頻道，並開啟參與控制。", "paused": "選用接話已暫停：沒有可用的結構化判斷服務或備援服務；明確請求仍可使用。", "scope": "被動讀取使用 {count} 個指定頻道；討論串須個別選取。"}},
   "participation.observation-channels": {"label": "觀察與接續對話頻道", "description": "選擇被動讀取及選用接話的頻道；空白表示不使用任何頻道。"},
   "participation.observation-channels.channels": {"label": "頻道", "description": "僅限選取的頻道或討論串；共用記憶不代表可讀取其他頻道。"},
-  "participation.controls.messages-per-decision": {"label": "累積訊息數", "description": "累積幾則人類訊息後，才評估是否接話（1–20）；明確呼叫或回覆機器人不必等待。"},
+  "participation.controls.messages-per-decision": {"label": "累積訊息數", "description": "累積幾則人類訊息後評估主動接話（1-20）；延續對話、明確呼叫或回覆機器人不必等待。"},
   "participation.controls.spontaneous-threshold": {"label": "主動接話貢獻門檻（％）", "description": "通過對象、貢獻類別及接話時機檢查後，才套用分數門檻。"},
   "participation.controls.continuation-threshold": {"label": "接續對話貢獻門檻（％）", "description": "通過對象、貢獻類別及時機檢查後，才套用接續對話分數門檻。"},
   "participation.continuation-limits.interval": {"label": "接續對話間隔（秒）", "description": "同一頻道兩次成功送出選用接話之間的最短秒數。"},
