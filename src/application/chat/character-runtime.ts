@@ -228,7 +228,7 @@ export class CharacterRuntime {
       const outcome = shouldDecide ? await this.decisions.evaluate({ personality: request.personality, events: decisionEvents, burst, botId: request.botUserId ?? "bot",
         fixedTarget, gapMs: settings.context.segmentGapMinutes * 60_000,
         speakingShare: decisionEvents.length ? decisionEvents.filter((event) => event.authorId === request.botUserId).length / decisionEvents.length : 0,
-        thoughts: optional && enabled("thoughts"), now: turn.now }) : { status: "skipped" as const, decision: null };
+        thoughts: optional && enabled("thoughts"), availableActions: request.optionalActionsAvailable, now: turn.now }) : { status: "skipped" as const, decision: null };
       const decision = outcome.decision; decisionStatus = outcome.status;
       const liveProfile = this.profiles.find(request.guildId);
       if (!liveProfile || this.fingerprint(liveProfile, request.channelId) !== fingerprint || (this.privacyVersions.get(request.guildId) ?? 0) !== privacyVersion) {
@@ -241,7 +241,8 @@ export class CharacterRuntime {
       if (optional) {
         const current = burst.at(-1);
         const explicitlyElsewhere = !!current && addressedElsewhere(current, [...events, ...request.replyChain, ...burst], request.botUserId ?? "bot", request.aliasCandidates);
-        allowed = allowed && allowsOptionalParticipation(request.triggerMode as "continuation" | "spontaneous", local, decision, explicitlyElsewhere, policy);
+        allowed = allowed && request.optionalActionsAvailable?.text !== false &&
+          allowsOptionalParticipation(request.triggerMode as "continuation" | "spontaneous", local, decision, explicitlyElsewhere, policy);
         if (current) exchangeId = exchangeBranch([...events, ...request.replyChain, ...burst], current, request.botUserId ?? "bot");
         if (allowed && decision) acceptedContribution = decision.contribution;
       }
@@ -259,7 +260,13 @@ export class CharacterRuntime {
           contributionLabel: decision.contribution.label, opening: decision.opening, decisionStatus, allowed, policy,
           confidence: decision.confidence, thoughtCount: decision.thoughts.length, shadow: request.characterShadow ?? false });
         const live = !settings.context.shadow || enabled("addressing") && !settings.modules.addressing.shadow || enabled("thoughts") && !settings.modules.thoughts.shadow;
-        if (optional) participation = { action: allowed ? "reply" : "ignore", reaction: null };
+        if (optional) {
+          const reaction = !allowed && request.triggerMode === "spontaneous" && request.optionalActionsAvailable?.reaction !== false &&
+            decision.reaction && decision.confidence >= 0.7 && decision.targetConfidence >= 0.7 && decision.opening !== "unclear"
+            ? decision.reaction : null;
+          participation = { action: allowed ? "reply" : "ignore", reaction };
+          if (reaction) allowed = true;
+        }
         else if (live && request.triggerMode !== "direct") participation = { action: decision.opening === "clear" ? "reply" : "ignore", reaction: decision.reaction };
         if (optional || request.triggerMode === "reaction" && (!settings.context.shadow || enabled("addressing") && !settings.modules.addressing.shadow)) {
           targetMessageId = decision.target; targetConfidence = decision.targetConfidence;
@@ -271,7 +278,7 @@ export class CharacterRuntime {
       }
       turn.request = request;
       const contribution = this.registry.applyDecision(turn, { decision, events, burst, optional, local, policy });
-      request = contribution.request; allowed = allowed && contribution.allowed;
+      request = contribution.request; allowed = allowed && (participation?.reaction ? true : contribution.allowed);
       if (settings.context.summary && settings.context.enabled && events.length >= settings.context.maxMessages) {
         const overflow = events.slice(0, Math.max(0, events.length - 8));
         const ids = overflow.map((event) => event.messageId);

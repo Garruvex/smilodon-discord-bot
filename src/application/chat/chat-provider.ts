@@ -13,6 +13,7 @@ export interface ChatRequest {
   characterPersonaHash?: string;
   characterEvaluation?: boolean;
   currentBurst?: readonly ChannelHistoryMessage[];
+  optionalActionsAvailable?: { text: boolean; reaction: boolean };
   characterContext?: readonly { moduleId: string; text: string }[];
   participationOnly?: boolean;
   capabilityToolNames?: readonly string[];

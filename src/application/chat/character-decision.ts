@@ -124,7 +124,7 @@ export function generatedContributionAllowed(text: string, events: readonly Chan
   const draft = normalize(text);
   return !!draft && !closesExchange(text) && !events.some((event) => event.authorId === botId && normalize(event.content) === draft);
 }
-interface DecisionInput { personality: string; events: readonly ChannelHistoryMessage[]; burst: readonly ChannelHistoryMessage[]; botId: string; fixedTarget: string | null; gapMs: number; speakingShare: number; thoughts: boolean; now?: number }
+interface DecisionInput { personality: string; events: readonly ChannelHistoryMessage[]; burst: readonly ChannelHistoryMessage[]; botId: string; fixedTarget: string | null; gapMs: number; speakingShare: number; thoughts: boolean; availableActions?: { text: boolean; reaction: boolean } | undefined; now?: number }
 export class CharacterDecisionService {
   public constructor(private readonly provider: StructuredCharacterProvider | null, private readonly fallback: StructuredCharacterProvider | null = null) {}
   public get available(): boolean { return this.provider !== null || this.fallback !== null; }
@@ -148,7 +148,7 @@ Return recipientEvidence as supplied message IDs, recipientConfidence separately
 Contribution labels are mandatory: acknowledgment-only, repetition, generic-advice, speculative-help, topic-hijack, stale-information and none are ALWAYS rejected regardless of motivation. Answer, relevant-joke, specific-opinion, personal-reaction and useful-observation can qualify when specific and relevant. Describe what the contribution adds and its recipientId (supplied human author ID or group). Do not manufacture a candidate; use label none and empty text/adds when nothing qualifies. Motivation is a ranking judgment, not a measured probability.
 Opening clear means room to speak without interrupting and still relevant; otherwise closed or unclear. Usually stay silent on narration, thanks, lol, okay, simple updates and closings. A shared interest alone does not justify interrupting other people.
 ${input.thoughts ? "Return zero to three optional candidate thoughts with the same fields and labels. Zero is common." : "Return no thoughts; the baseline contribution assessment is still required."}
-A reaction is one ordinary emoji or null. Data: ${JSON.stringify({ ...input, events, burst: input.burst.filter((event) => event.timestampMs <= now), targets, boundaries }).replaceAll("<", "\\u003c")}`;
+A reaction is one ordinary emoji or null. It may acknowledge a human-to-human message when appropriate, without a text contribution. Choose silence when neither action adds anything. Only propose actions marked available. Data: ${JSON.stringify({ ...input, events, burst: input.burst.filter((event) => event.timestampMs <= now), targets, boundaries }).replaceAll("<", "\\u003c")}`;
     const validCandidate = (candidate: ContributionCandidate): boolean => humanIds.has(candidate.sourceMessageId) && recipients.has(candidate.recipientId);
     for (const provider of [...new Set([this.provider, this.fallback].filter((item): item is StructuredCharacterProvider => item !== null))]) try {
       const result = decisionSchema.parse(await provider.generateCharacterData(prompt, decisionJsonSchema));

@@ -439,6 +439,26 @@ describe("decision windows and continuation timing", () => {
       expect(result.ambientAction).toBe("ignore"); expect(result.text).toBe(""); expect(deliver).not.toHaveBeenCalled();
     } finally { service.stopScheduling(); await service.drain(); }
   });
+  it("uses the structured decision for a spontaneous reaction without calling the reply model", async () => {
+    const { runtime, provider, profiles, repository, connection } = setup(() => 4000);
+    await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    vi.mocked(provider.generateCharacterData!).mockResolvedValue({ addressing: "others", motivation: 0.5, confidence: 0.9,
+      recipientConfidence: 0.9, targetConfidence: 0.9, recipientEvidence: ["current"], target: "current", boundary: "earlier",
+      opening: "closed", contribution: { text: "", adds: "", label: "none", motivation: 0, sourceMessageId: "current", recipientId: "group" },
+      thoughts: [], reaction: "🎉" });
+    const service = new ChatConversationService(provider, new SqliteChatStateStore(connection.database), new DefaultMemoryEngine(repository),
+      undefined, undefined, undefined, null, null, null, null, null, null, null, null, runtime, () => 4000);
+    const current = { messageId: "current", timestampMs: 4000, authorId: actorUserId, authorDisplayName: "Alice",
+      content: "I got the job!", imageCount: 0 };
+    const deliver = vi.fn(() => Promise.resolve("unexpected"));
+    const replySpy = vi.spyOn(provider, "reply");
+    try {
+      const result = await service.run({ ...request(), examplePool: [], loreChunks: [], triggerMode: "spontaneous",
+        sourceMessageId: "current", currentBurst: [current], historyReactionsEnabled: true }, deliver);
+      expect(result).toMatchObject({ ambientAction: "ignore", reactionEmoji: "🎉", replyTargetMessageId: "current" });
+      expect(deliver).not.toHaveBeenCalled(); expect(replySpy).not.toHaveBeenCalled();
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
   it("enforces addressing even when character modules are disabled", async () => {
     const { runtime, provider, profiles } = setup(() => 4000);
     await profiles.update(guildId, { chatParticipation: { continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });

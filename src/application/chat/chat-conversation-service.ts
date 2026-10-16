@@ -774,6 +774,10 @@ export class ChatConversationService {
         .sort((a, b) => a.timestampMs - b.timestampMs).slice(windowMinutes ? -48 : -24);
       if (this.characterRuntime) history = this.characterRuntime.selectContext(input.guildId, input.channelId, history);
       const response = await this.runTurn({ ...input, channelHistory: history,
+        ...((input.triggerMode === "spontaneous" || input.triggerMode === "continuation") ? { optionalActionsAvailable: {
+          text: this.scheduler.outputAvailable(key, "text", limits),
+          reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits),
+        } } : {}),
         canExecute: async () => (this.privacyVersions.get(input.guildId) ?? 0) === privacyVersion && (!input.canExecute || await input.canExecute()),
         onModelAttempt: () => this.scheduler.recordModelAttempt() }, async (result) => {
         if ((this.privacyVersions.get(input.guildId) ?? 0) !== privacyVersion) throw new SocialOutputSuppressed();
@@ -830,6 +834,9 @@ export class ChatConversationService {
     return this.episodes.hasRecentConversation(`${guildId}:${channelId}`, authorId, botId, this.now());
   }
   public get optionalDecisionAvailable(): boolean { return this.characterRuntime?.decisionAvailable ?? false; }
+  public optionalEvaluationDelayMs(guildId: string, channelId: string, limits: ChatActivityLimits): number {
+    return this.scheduler.evaluationDelayMs(`${guildId}:${channelId}`, limits);
+  }
   public isImplicitlyAddressed(guildId: string, channelId: string, event: ChannelHistoryMessage, botId: string): boolean {
     return this.characterRuntime?.couldBeAddressed(guildId, channelId, event, this.episodes.windowSnapshot(`${guildId}:${channelId}`, 2, this.now()), botId) ?? false;
   }
@@ -1192,9 +1199,6 @@ export class ChatConversationService {
         validatedResponse.userMemoryActions, validatedResponse.guildKnowledgeCandidates, input.currentUser.id,
         input,
       );
-      if ((input.triggerMode === "continuation" || input.triggerMode === "spontaneous") && validatedResponse.ambientAction !== "reply") {
-        validatedResponse.reactionEmoji = null; validatedResponse.historyReactions = [];
-      }
       const mayIgnore = input.triggerMode !== "direct" || (input.allowSilentDirect === true &&
         isLowSubstancePing(input.message, input.replyChain.length > 0 ||
           (input.currentEvent?.type === "message" && input.currentEvent.replyToMessageId !== null), input.images.length > 0));

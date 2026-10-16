@@ -139,6 +139,19 @@ export class ChatScheduler {
     };
   }
 
+  public outputAvailable(key: string, kind: "text" | "reaction", limits: ChatActivityLimits): boolean {
+    const state = this.state(key);
+    const values = state[kind]; this.prune(values);
+    if (kind === "text" && (state.reservedContinuation || this.now() - (state.continuation.at(-1) ?? -Infinity) < limits.textCooldownMs)) return false;
+    return (kind === "text" ? state.reservedText : state.reservedReaction) === 0 &&
+      values.length < (kind === "text" ? limits.textPerWindow : limits.reactionsPerWindow) &&
+      this.now() - (values.at(-1) ?? -Infinity) >= (kind === "text" ? limits.textCooldownMs : limits.reactionCooldownMs);
+  }
+
+  public evaluationDelayMs(key: string, limits: ChatActivityLimits): number {
+    return Math.max(0, limits.evaluationCooldownMs - (this.now() - this.state(key).lastEvaluation));
+  }
+
   public bufferOpportunity(key: string, job: () => void): void {
     if (this.closed || (!this.buffered.has(key) && this.buffered.size >= this.maxPendingGlobal)) return;
     const prior = this.buffered.get(key);

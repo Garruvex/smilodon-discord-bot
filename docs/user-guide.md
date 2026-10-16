@@ -365,6 +365,15 @@ call-budget exception. `activity-limits` separately controls optional output
 spacing/counts; `activity-reset` restores defaults. Provider rate limits still
 apply. Other guilds have separate execution capacity.
 
+Spontaneous participation listens through output cooldowns. By default, it
+considers a conversation after three alternating speaker turns and a five-second
+pause, after five messages even without a pause, or after one substantive post
+and a longer pause. A separate evaluation interval limits model calls; messages
+arriving during that interval are kept for the next decision. The decision model
+can choose silence, a text contribution, or a reaction to a relevant message.
+Reaction-only participation requires `history-reactions` to be enabled. Text and
+reactions have independent output cooldowns.
+
 Like chat settings, these say so when changed while the chatbot is off. The
 history-scan and daily-summary settings need a chat provider with channel
 summarization (every built-in provider mode has it) — see the README's
