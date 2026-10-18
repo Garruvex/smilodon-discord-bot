@@ -16,6 +16,7 @@ import { CharacterDecisionService } from "../../src/application/chat/character-d
 import { buildChatContext } from "../../src/infrastructure/chat/chat-structured-output.js";
 import { characterInactiveReason, characterSettingsSchema } from "../../src/application/chat/character-settings.js";
 import { ChatScheduler, balancedChatLimits } from "../../src/application/chat/chat-scheduler.js";
+import type { Logger } from "pino";
 import type { ChatProvider, ChatRequest, ChatResponse } from "../../src/application/chat/chat-provider.js";
 import type { Memory, RepositoryIngestInput } from "../../src/application/memory/memory.js";
 import { DefaultMemoryEngine } from "../../src/application/memory/memory-engine.js";
@@ -34,11 +35,11 @@ function record(overrides: Partial<RepositoryIngestInput> = {}): RepositoryInges
   channelId: null, isolationChannelId: null, subjectType: "member", subjectId: actorUserId, topic: "schedule", slot: "exam", statement: "exam on 2026-10-15",
   status: "active", source: "live", importance: 1, embedding: null, embeddingModel: null, expiresAt: null, now: 1000,
   sourceMessageId: "human-source", sourceChannelId: channelId, assertedByUserId: actorUserId, ...overrides }; }
-function setup(clock: () => number = () => Date.now()): { connection: SqliteDatabaseConnection; repository: SqliteMemoryRepository; profiles: ReturnType<typeof memoryProvider>; provider: ChatProvider; runtime: CharacterRuntime } {
+function setup(clock: () => number = () => Date.now(), logger: Pick<Logger, "info" | "warn"> | null = null): { connection: SqliteDatabaseConnection; repository: SqliteMemoryRepository; profiles: ReturnType<typeof memoryProvider>; provider: ChatProvider; runtime: CharacterRuntime } {
   const connection = createSqliteDatabaseConnection(mkdtempSync(join(tmpdir(), "character-runtime-"))); connections.push(connection);
   const repository = new SqliteMemoryRepository(connection.database); const doc = freshDocument(); doc.features.chatbot = true; doc.features.channelHistory = true; doc.channels.chatbot = [channelId];
   const profiles = memoryProvider(doc); const provider: ChatProvider = { reply: vi.fn(() => Promise.resolve(response())), generateCharacterData: vi.fn(() => Promise.resolve({ text: "enjoys fruit jokes" })) };
-  const runtime = new CharacterRuntime(profiles, repository, { generateCharacterData: provider.generateCharacterData! }, provider, undefined, null, clock);
+  const runtime = new CharacterRuntime(profiles, repository, { generateCharacterData: provider.generateCharacterData! }, provider, undefined, null, clock, logger);
   return { connection, repository, profiles, provider, runtime };
 }
 describe("character module integration", () => {
@@ -458,6 +459,22 @@ describe("decision windows and continuation timing", () => {
       expect(result).toMatchObject({ ambientAction: "ignore", reactionEmoji: "🎉", replyTargetMessageId: "current" });
       expect(deliver).not.toHaveBeenCalled(); expect(replySpy).not.toHaveBeenCalled();
     } finally { service.stopScheduling(); await service.drain(); }
+  });
+  it("logs the confidence and exact gate that rejected a spontaneous contribution", async () => {
+    const info = vi.fn(); const logger = { info, warn: vi.fn() } as unknown as Pick<Logger, "info" | "warn">;
+    const { runtime, provider, profiles } = setup(() => 4000, logger);
+    await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    vi.mocked(provider.generateCharacterData!).mockResolvedValue({ addressing: "others", motivation: 0.9, confidence: 0.6,
+      recipientConfidence: 0.9, targetConfidence: 0.9, recipientEvidence: ["current"], target: "current", boundary: "earlier",
+      opening: "clear", contribution: { text: "A relevant joke", adds: "A new angle", label: "relevant-joke", motivation: 0.9,
+        sourceMessageId: "current", recipientId: "group" }, thoughts: [], reaction: null });
+    const prepared = await runtime.prepare({ ...request(), triggerMode: "spontaneous",
+      currentBurst: [{ messageId: "current", timestampMs: 4000, authorId: actorUserId, authorDisplayName: "Alice",
+        content: "A conversation about the game", imageCount: 0 }] });
+    expect(prepared?.allowed).toBe(false);
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({ triggerMode: "spontaneous", action: "ignore",
+      rejectionReason: "decision_confidence_low", decisionConfidence: 0.6, recipientConfidence: 0.9,
+      targetConfidence: 0.9, contributionMotivation: 0.9 }), "Optional participation decision");
   });
   it("enforces addressing even when character modules are disabled", async () => {
     const { runtime, provider, profiles } = setup(() => 4000);

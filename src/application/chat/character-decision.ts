@@ -112,12 +112,23 @@ export function exchangeBranch(events: readonly ChannelHistoryMessage[], current
 export function eligibleContribution(candidate: ContributionCandidate, trigger: "continuation" | "spontaneous", policy: ContributionPolicy): boolean {
   return eligibleLabels.has(candidate.label) && !!candidate.adds.trim() && !!candidate.text.trim() && candidate.motivation >= policy[trigger === "spontaneous" ? "spontaneousThreshold" : "continuationThreshold"];
 }
+export function optionalParticipationRejection(trigger: "continuation" | "spontaneous", local: CharacterDecision["addressing"], decision: CharacterDecision | null, explicitlyElsewhere: boolean, policy: ContributionPolicy = contributionPolicy(undefined)): string | null {
+  if (!decision) return "no_valid_decision";
+  if (explicitlyElsewhere) return "addressed_elsewhere";
+  if (local === "unclear" || decision.addressing === "unclear") return "recipient_unclear";
+  if (decision.opening !== "clear") return "opening_not_clear";
+  if (decision.recipientConfidence < 0.7) return "recipient_confidence_low";
+  if (decision.targetConfidence < 0.7) return "target_confidence_low";
+  if (decision.confidence < 0.7) return "decision_confidence_low";
+  if ((decision.addressing === "bot" || decision.addressing === "continuing") && local !== "bot" && local !== "continuing") return "recipient_mismatch";
+  if (trigger === "continuation" && (local !== "bot" && local !== "continuing" || decision.addressing === "others")) return "not_a_continuation";
+  if (!eligibleLabels.has(decision.contribution.label)) return "contribution_label_rejected";
+  if (!decision.contribution.adds.trim() || !decision.contribution.text.trim()) return "contribution_empty";
+  if (decision.contribution.motivation < policy[trigger === "spontaneous" ? "spontaneousThreshold" : "continuationThreshold"]) return "motivation_below_threshold";
+  return null;
+}
 export function allowsOptionalParticipation(trigger: "continuation" | "spontaneous", local: CharacterDecision["addressing"], decision: CharacterDecision | null, explicitlyElsewhere: boolean, policy: ContributionPolicy = contributionPolicy(undefined)): boolean {
-  if (explicitlyElsewhere || local === "unclear" || !decision || decision.opening !== "clear" || decision.addressing === "unclear") return false;
-  if (decision.recipientConfidence < 0.7 || decision.targetConfidence < 0.7 || decision.confidence < 0.7) return false;
-  if ((decision.addressing === "bot" || decision.addressing === "continuing") && local !== "bot" && local !== "continuing") return false;
-  if (trigger === "continuation" && (local !== "bot" && local !== "continuing" || decision.addressing === "others")) return false;
-  return eligibleContribution(decision.contribution, trigger, policy);
+  return optionalParticipationRejection(trigger, local, decision, explicitlyElsewhere, policy) === null;
 }
 export function generatedContributionAllowed(text: string, events: readonly ChannelHistoryMessage[], botId: string | null | undefined): boolean {
   const normalize = (value: string): string => value.trim().toLocaleLowerCase().replace(/[\s\p{P}]/gu, "");

@@ -8,7 +8,7 @@ import { resolveChannelMemoryMode } from "../memory/memory-channel-policy.js";
 import { characterSettings, characterInactiveReason, type CharacterModuleId, type CharacterCapabilities } from "./character-settings.js";
 import { CharacterModuleRegistry, type CharacterTurn } from "./character-module-registry.js";
 import { CharacterMemory } from "./character-memory.js";
-import { allowsOptionalParticipation, CharacterDecisionService, localAddressing, exchangeBranch, generatedContributionAllowed, addressedElsewhere, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
+import { optionalParticipationRejection, CharacterDecisionService, localAddressing, exchangeBranch, generatedContributionAllowed, addressedElsewhere, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
 import { createCharacterModules } from "./character-modules/index.js";
 import { hash, personaFingerprint, serious } from "./character-modules/shared.js";
 import { resolveParticipation, contributionPolicy, passiveChannelAllowed } from "./participation-policy.js";
@@ -58,8 +58,8 @@ export class CharacterRuntime {
   public constructor(private readonly profiles: GuildConfigurationProvider, private readonly repository: MemoryRepository,
     private readonly utility: StructuredCharacterProvider | null, private readonly replyProvider: ChatProvider,
     decisionProvider: StructuredCharacterProvider | null = utility, coordinator: Pick<PersonalMemoryExtractionQueueStore, "runForSubject"> | null = null,
-    private readonly now: () => number = () => Date.now(), logger: Pick<Logger, "warn"> | null = null) {
-    this.registry = new CharacterModuleRegistry((moduleId, error) => logger?.warn({ moduleId, error }, "Character module hook failed"));
+    private readonly now: () => number = () => Date.now(), private readonly logger: Pick<Logger, "info" | "warn"> | null = null) {
+    this.registry = new CharacterModuleRegistry((moduleId, error) => this.logger?.warn({ moduleId, error }, "Character module hook failed"));
     this.memory = new CharacterMemory(repository, coordinator, (guildId) => this.profiles.find(guildId), (guildId, channelId, id) => {
       const profile = this.profiles.find(guildId); if (!profile) return false;
       return this.registry.has(id) && !(id === "canon" && characterSettings(profile).modules.canon.freeze) &&
@@ -204,6 +204,7 @@ export class CharacterRuntime {
     }] : [];
     let decisionStatus: DecisionOutcome["status"] | "skipped" = this.decisions.available ? "skipped" : "unavailable";
     let acceptedContribution: CharacterDecision["contribution"] | null = null; let exchangeId: string | null = null;
+    let textRejectionReason: string | null = null;
     const policy = contributionPolicy(profile.chat.participation);
     let allowed = true; let targetMessageId: string | null = null; let targetConfidence = 0;
     let participation: CharacterPreparedTurn["participation"] = null;
@@ -241,18 +242,12 @@ export class CharacterRuntime {
       if (optional) {
         const current = burst.at(-1);
         const explicitlyElsewhere = !!current && addressedElsewhere(current, [...events, ...request.replyChain, ...burst], request.botUserId ?? "bot", request.aliasCandidates);
-        allowed = allowed && request.optionalActionsAvailable?.text !== false &&
-          allowsOptionalParticipation(request.triggerMode as "continuation" | "spontaneous", local, decision, explicitlyElsewhere, policy);
+        textRejectionReason = optionalParticipationRejection(request.triggerMode as "continuation" | "spontaneous", local, decision, explicitlyElsewhere, policy);
+        if (!textRejectionReason && request.optionalActionsAvailable?.text === false) textRejectionReason = "text_unavailable";
+        allowed = allowed && textRejectionReason === null;
         if (current) exchangeId = exchangeBranch([...events, ...request.replyChain, ...burst], current, request.botUserId ?? "bot");
         if (allowed && decision) acceptedContribution = decision.contribution;
       }
-      if (optional) await this.evaluationStore?.record(request.guildId, "decision", {
-        sourceMessageId: burst.at(-1)?.messageId ?? null, decisionStatus, proposedAction: allowed ? "reply" : "ignore",
-        rejectionReason: allowed ? null : !passiveChannelAllowed(profile, request.channelId) ? "scope" : decisionStatus !== "valid" ? decisionStatus : local === "unclear" ? "recipient_unclear" : "recipient_contribution_or_opening",
-        recipient: local, recipientConfidence: decision?.recipientConfidence ?? null, targetConfidence: decision?.targetConfidence ?? null, target: decision?.target ?? null, thoughtCount: decision?.thoughts.length ?? 0, recipientEvidence: decision?.recipientEvidence ?? [], contributionLabel: decision?.contribution.label ?? null,
-        opening: decision?.opening ?? null, policy, limits: resolveParticipation(profile.chat.participation, request.channelId).limits,
-        latencyMs: Date.now() - decisionStarted, shadow: request.characterShadow ?? false,
-      });
       if (decision) {
         if (!optional) await this.evaluationStore?.record(request.guildId, "decision", { sourceMessageId: burst.at(-1)?.messageId ?? null,
           addressing: decision.addressing, motivation: decision.motivation, boundary: decision.boundary, target: decision.target,
@@ -279,6 +274,29 @@ export class CharacterRuntime {
       turn.request = request;
       const contribution = this.registry.applyDecision(turn, { decision, events, burst, optional, local, policy });
       request = contribution.request; allowed = allowed && (participation?.reaction ? true : contribution.allowed);
+      if (optional) {
+        const action = !allowed ? "ignore" : participation?.action === "reply" ? "reply" : participation?.reaction ? "reaction" : "ignore";
+        const rejectionReason = action === "ignore" ? textRejectionReason ?? (!contribution.allowed ? "module_rejected" : "no_action") : null;
+        await this.evaluationStore?.record(request.guildId, "decision", {
+          sourceMessageId: burst.at(-1)?.messageId ?? null, decisionStatus, proposedAction: action, rejectionReason,
+          recipient: local, recipientConfidence: decision?.recipientConfidence ?? null, targetConfidence: decision?.targetConfidence ?? null,
+          decisionConfidence: decision?.confidence ?? null, contributionMotivation: decision?.contribution.motivation ?? null,
+          target: decision?.target ?? null, thoughtCount: decision?.thoughts.length ?? 0, recipientEvidence: decision?.recipientEvidence ?? [],
+          contributionLabel: decision?.contribution.label ?? null, opening: decision?.opening ?? null, policy,
+          limits: resolveParticipation(profile.chat.participation, request.channelId).limits,
+          latencyMs: Date.now() - decisionStarted, shadow: request.characterShadow ?? false,
+        });
+        this.logger?.info({ guildId: request.guildId, channelId: request.channelId, sourceMessageId: burst.at(-1)?.messageId ?? null,
+          triggerMode: request.triggerMode, shadowMode: request.characterShadow ?? false, decisionStatus, action,
+          rejectionReason,
+          textRejectionReason, textAvailable: request.optionalActionsAvailable?.text ?? null,
+          reactionAvailable: request.optionalActionsAvailable?.reaction ?? null,
+          recipientConfidence: decision?.recipientConfidence ?? null, targetConfidence: decision?.targetConfidence ?? null,
+          decisionConfidence: decision?.confidence ?? null, contributionMotivation: decision?.contribution.motivation ?? null,
+          motivationThreshold: request.triggerMode === "spontaneous" ? policy.spontaneousThreshold : policy.continuationThreshold,
+          contributionLabel: decision?.contribution.label ?? null, opening: decision?.opening ?? null, recipient: local,
+        }, "Optional participation decision");
+      }
       if (settings.context.summary && settings.context.enabled && events.length >= settings.context.maxMessages) {
         const overflow = events.slice(0, Math.max(0, events.length - 8));
         const ids = overflow.map((event) => event.messageId);
