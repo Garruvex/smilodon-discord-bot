@@ -1,8 +1,10 @@
 import { action, channelList, choice, group, integer, toggle, report } from "../registry/builders.js";
 import { chatSetting } from "./chat.js";
 import { defaultParticipation, resolveParticipation, contributionPolicy } from "../../../../application/chat/participation-policy.js";
+import { chatPolicyReport } from "./chat-policy-report.js";
 
 export const participation = group("participation", [
+    chatPolicyReport,
     report("status", ({ deps, profile, text, path }) => Promise.resolve(text.message(path, deps.characterRuntime?.decisionAvailable ? "available" : "paused") + "\n" + text.message(path, "scope", { count: (profile.chat.participation?.observationChannelIds ?? [...profile.channels.chatbot]).length }))),
     chatSetting("observation-channels", {
       channels: channelList({ textOnly: true, read: (p) => [...(p.chat.participation?.observationChannelIds ?? p.channels.chatbot)],

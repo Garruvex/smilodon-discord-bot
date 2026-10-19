@@ -1,4 +1,5 @@
 import type { SettingsTextCatalog } from "../catalog.js";
+import { chatPolicySettingsText } from "../chat-policy.js";
 import { characterSettingsText } from "../character.js";
 import { enAccess } from "./access.js";
 import { enChat } from "./chat.js";
@@ -10,6 +11,7 @@ import { enSecurity } from "./security.js";
 
 // Every registered setting's text, one spread per settings group.
 export const enSettingsText: SettingsTextCatalog = {
+  ...chatPolicySettingsText("en"),
   ...characterSettingsText("en"),
   ...enAccess,
   ...enMusic,

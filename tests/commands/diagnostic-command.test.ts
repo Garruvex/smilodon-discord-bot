@@ -3,12 +3,13 @@ import { DiagnosticCommand } from "../../src/infrastructure/discord/commands/dia
 import { CommandResponseVisibility, type CommandContext } from "../../src/application/commands/command.js";
 import type { ChatTraceStore } from "../../src/application/diagnostics/chat-trace-store.js";
 import { diagnosticRecord } from "../helpers/chat-trace-fixtures.js";
+import type { Language } from "../../src/application/i18n/language.js";
 
 const guildId = "111111111111111111";
 const channelId = "222222222222222222";
 const messageId = "333333333333333333";
 
-function setup(reference: string | null = messageId): {
+function setup(reference: string | null = messageId, language: Language = "en"): {
   command: DiagnosticCommand; context: CommandContext; reply: ReturnType<typeof vi.fn>; edit: ReturnType<typeof vi.fn>;
   lookup: ReturnType<typeof vi.fn>; permissions: ReturnType<typeof vi.fn>; fetchChannel: ReturnType<typeof vi.fn>;
 } {
@@ -27,10 +28,22 @@ function setup(reference: string | null = messageId): {
     status: () => ({ traces: 1, events: 1, bytes: 100, droppedTraces: 0, droppedEvents: 0, expiredTraces: 0, invalidRecords: 0, writeFailures: 0 }),
     forgetGuild: () => Promise.resolve(), excludeSource: () => undefined, flush: () => Promise.resolve(),
   };
-  return { command: new DiagnosticCommand(traces, new Set(["owner"])), context, reply, edit, lookup, permissions, fetchChannel };
+  return { command: new DiagnosticCommand(traces, new Set(["owner"]), null, null, () => language), context, reply, edit, lookup, permissions, fetchChannel };
 }
 
 describe("protected diagnostic timeline lookup", () => {
+  it.each([["en", "A valid decision chose silence."], ["zh-TW", "有效判斷選擇不發言。"], ["ja", "有効な判定で発言しないことを選びました。"]] as const)("adds a bounded %s explanation without losing terminal evidence", async (language, expected) => {
+    const { command, context, lookup, edit } = setup(messageId, language);
+    lookup.mockReturnValue([{ traceId: "trace", processRunId: "run", truncated: false, records: [diagnosticRecord({ data: {
+      event: "chat.decision.resolved", stage: "generation", interaction: "bare_ping", status: "ready", recovery: "none", decisionId: "d",
+      action: "silent", intent: "abstain", reason: "no_contribution", contextVersion: "v1", policyVersion: "v1",
+    } }), diagnosticRecord({ data: { event: "chat.turn.completed", triggerMode: "direct", outcome: "no_text_delivery", durationMs: 10, textDeliveryConfirmed: false } })] }]);
+    await command.execute(context);
+    expect(edit).toHaveBeenCalledWith(expect.stringContaining(expected));
+    expect(edit).toHaveBeenCalledWith(expect.stringContaining("chat.turn.completed"));
+    expect(String(edit.mock.calls[0]?.[0]).length).toBeLessThanOrEqual(2000);
+  });
+
   it("offers a deferred owner-only synthetic decision check without reading a message", async () => {
     const { context, edit, lookup } = setup();
     Object.assign(context.interaction.options, { getBoolean: () => true });

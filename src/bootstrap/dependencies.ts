@@ -349,7 +349,8 @@ export function registerCommands(
   commandRegistry.register(new BoostsCommand(boostHistoryStore));
   commandRegistry.register(new QuoteCommand());
   commandRegistry.register(new QuoteContextCommand());
-  commandRegistry.register(new DiagnosticCommand(diagnosticStore(logger), configuration.ownerUserIds, () => diagnosticPipelineStatus(logger)));
+  commandRegistry.register(new DiagnosticCommand(diagnosticStore(logger), configuration.ownerUserIds, () => diagnosticPipelineStatus(logger), null,
+    (guildId) => guildId ? guildConfigurationProvider.find(guildId)?.language ?? "en" : "en"));
   const setupCommand = new SetupCommand(guildSetupService);
   commandRegistry.register(setupCommand);
   const adminPanelHealth = new AdminPanelHealth();
@@ -512,6 +513,7 @@ export function registerCommands(
   );
   const settingsUpdater = new SettingsUpdateService(guildConfigurationProvider, guildAssetStore, auditLogService);
   const settingsDeps = {
+    chatProviderAvailable: chatProvider !== null,
     assets: guildAssetStore,
     applicationEmojiCatalog,
     auditLogService,

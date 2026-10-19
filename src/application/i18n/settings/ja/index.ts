@@ -1,4 +1,5 @@
 import type { SettingsTextCatalog } from "../catalog.js";
+import { chatPolicySettingsText } from "../chat-policy.js";
 import { characterSettingsText } from "../character.js";
 import { jaAccess } from "./access.js";
 import { jaChat } from "./chat.js";
@@ -10,6 +11,7 @@ import { jaSecurity } from "./security.js";
 
 // Every registered setting's text, one spread per settings group.
 export const jaSettingsText: SettingsTextCatalog = {
+  ...chatPolicySettingsText("ja"),
   ...characterSettingsText("ja"),
   ...jaAccess,
   ...jaMusic,

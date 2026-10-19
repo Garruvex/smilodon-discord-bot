@@ -5,6 +5,9 @@ import type { ChatTraceStore, RetainedChatTrace } from "../../../../application/
 import type { DiagnosticPipelineStatus } from "../../../../application/diagnostics/chat-diagnostics.js";
 import type { DecisionHealth } from "../../../../application/chat/character-decision.js";
 import type { GenerationHealth } from "../../../../application/diagnostics/model-diagnostics.js";
+import { explainChatTrace } from "../../../../application/diagnostics/chat-explanation.js";
+import { renderChatExplanation } from "../../../../application/i18n/chat-explanation.js";
+import type { Language } from "../../../../application/i18n/language.js";
 
 function messageInChannel(value: string, guildId: string, channelId: string): string | null {
   if (/^\d{17,20}$/u.test(value)) return value;
@@ -12,9 +15,7 @@ function messageInChannel(value: string, guildId: string, channelId: string): st
   return link && link[1] === guildId && link[2] === channelId ? link[3]! : null;
 }
 
-function timeline(traces: readonly RetainedChatTrace[]): string {
-  if (!traces.length) return "No retained record for this message in this channel. Records expire after 24 hours or capacity eviction; this does not prove the bot never received it.";
-  const trace = traces.at(-1)!;
+function timeline(trace: RetainedChatTrace, groups: number): string {
   const lines = trace.records.slice(-16).map((record) => {
     const event = record.data;
     const details = ["outcome" in event ? event.outcome : null, "action" in event ? event.action : null,
@@ -26,10 +27,10 @@ function timeline(traces: readonly RetainedChatTrace[]): string {
   const selected: string[] = [];
   let size = 0;
   for (const line of [...lines].reverse()) {
-    if (size + line.length + 1 > 1500) break;
+    if (size + line.length + 1 > 900) break;
     selected.unshift(line); size += line.length + 1;
   }
-  return [`Trace ${trace.traceId} (UTC; latest of ${traces.length} retained source groups)`,
+  return [`Trace ${trace.traceId} (UTC; latest of ${groups} retained source groups)`,
     ...(trace.truncated || trace.records.length > selected.length ? ["Partial timeline: older events were omitted or evicted."] : []), ...selected].join("\n");
 }
 
@@ -50,7 +51,8 @@ export class DiagnosticCommand implements BotCommand {
 
   public constructor(private readonly traces: ChatTraceStore | null = null, private readonly ownerUserIds: ReadonlySet<string> | null = null,
     private readonly pipelineStatus: (() => Readonly<DiagnosticPipelineStatus>) | null = null,
-    private providerHealth: { decision: () => DecisionHealth | null; generation: () => Readonly<GenerationHealth>; checkDecision: () => Promise<DecisionHealth | null> } | null = null) {}
+    private providerHealth: { decision: () => DecisionHealth | null; generation: () => Readonly<GenerationHealth>; checkDecision: () => Promise<DecisionHealth | null> } | null = null,
+    private readonly language: (guildId: string | null) => Language = () => "en") {}
   public bindProviderHealth(health: NonNullable<DiagnosticCommand["providerHealth"]>): void { this.providerHealth = health; }
 
   public async execute(context: CommandContext): Promise<void> {
@@ -88,7 +90,10 @@ export class DiagnosticCommand implements BotCommand {
         await context.responses.edit("Current channel access could not be verified; no diagnostic records were read."); return;
       }
       if (!this.traces) { await context.responses.edit("Diagnostic retention is not available on this instance."); return; }
-      await context.responses.edit(timeline(this.traces.lookup({ guildId, channelId, sourceMessageId: messageId })));
+      const traces = this.traces.lookup({ guildId, channelId, sourceMessageId: messageId });
+      const explanation = explainChatTrace(traces);
+      await context.responses.edit([renderChatExplanation(explanation, this.language(guildId)),
+        ...(explanation.trace ? [timeline(explanation.trace, traces.length)] : [])].join("\n"));
       return;
     }
     const memoryUsageMb = Math.round(process.memoryUsage().rss / 1024 / 1024);

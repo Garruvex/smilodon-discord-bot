@@ -1,0 +1,72 @@
+import type { Language } from "../language.js";
+import type { SettingsTextCatalog } from "./catalog.js";
+
+const copy = {
+  en: {
+    unverified: "unverified", views: "Use view:context for sources/limits or view:activity for timing/quotas.", view: "View", viewDescription: "Choose triggers, context, or activity details.", overview: "Triggers", contextView: "Context", activityView: "Activity",
+    label: "Effective chat policy", description: "Explain chat settings and dependencies for one channel or thread.", channel: "Channel or thread",
+    channelDescription: "Exact channel or thread to inspect; parent selection does not include threads.",
+    choose: "Choose a channel or thread with /settings-participation policy channel:… to inspect effective settings.",
+    denied: "Current channel/history access could not be verified for you. No policy report was read.",
+    heading: "Chat policy for {channel} (current configuration)", common: "Shared blockers: {reasons}", ready: "configured", blocked: "inactive", shadow: "preview only", none: "none",
+    direct: "Direct mention", reply: "Reply to bot", bare_ping: "Bare ping", name_address: "Name address", continuation: "Follow-up", spontaneous: "Group conversation", reaction: "Reaction follow-up",
+    chat_disabled: "chat off", reply_unavailable: "reply provider absent", reply_unknown: "reply readiness unknown", bot_cannot_read: "bot cannot read history", channel_not_selected: "direct channel not selected",
+    feature_disabled: "control off", history_disabled: "history off", observation_not_selected: "observation not selected", context_channel_disabled: "channel context off", memory_disabled: "memory disabled", decision_unavailable: "decision provider absent", decision_unknown: "decision readiness unknown", spontaneous_not_selected: "spontaneous channel not selected",
+    scope: "Observation: {source}; participation overrides: {overrides}; context override: {context}.", inherited: "inherits direct channels", explicit: "explicit exact selection", yes: "yes", no: "no",
+    context: "Context path: {mode}; history blockers: {reasons}. Target {count}, budget {budget} chars.", guarded: "guarded text", legacy: "legacy",
+    bounds: "Guard bounds: {pages}×{pageSize} raw; +{targeted} pages for backward references; {depth} reply hops; {seconds}s source work.",
+    exclusions: "Guarded mode excludes memory, summaries, learned state, images and tools; time/gap/summary controls are legacy-only.",
+    storage: "Memory mode: {memory}. Background scan/daily: {scan}/{daily}; separate from reply context.",
+    activity: "Activity {activity}; cooldown text/reaction {text}/{reaction}s; per 10m {texts}/{reactions}; follow-up interval {interval}s, limits {exchange}/exchange and {window}/10m.",
+    ping: "Bare ping: {ping}; follow-up failure: {fallback}.", acknowledge: "acknowledgment default", personality: "personality may stay quiet", strict: "strict", grounded_fallback: "grounded fallback",
+    access: "Roles: {chat} chat / {admin} admin / {restricted} restricted. Source eligibility is checked individually; owner interaction bypass does not grant historical access.",
+    caveat: "Configured does not guarantee a reply: live roles, source access, game/routing gates, cooldowns, quotas and model decisions still apply. Provider readiness is not a health probe.",
+  },
+  "zh-TW": {
+    unverified: "未確認", views: "用 view:context 查看來源與上限；view:activity 查看時間與配額。", view: "檢視", viewDescription: "選擇觸發模式、上下文或活躍度詳情。", overview: "觸發模式", contextView: "上下文", activityView: "活躍度",
+    label: "實際聊天規則", description: "查看指定頻道或討論串的聊天設定與相依條件。", channel: "頻道或討論串",
+    channelDescription: "要檢查的確切頻道或討論串；選取母頻道不包含討論串。",
+    choose: "請用 /settings-participation policy channel:… 選取頻道或討論串，查看實際設定。",
+    denied: "無法確認你目前的頻道與歷史讀取權限；未讀取規則報告。",
+    heading: "{channel} 的聊天規則（目前設定）", common: "共同阻擋條件：{reasons}", ready: "已設定", blocked: "未生效", shadow: "僅預覽", none: "無",
+    direct: "直接提及", reply: "回覆機器人", bare_ping: "單獨標記", name_address: "稱呼名字", continuation: "延續接話", spontaneous: "群組對話", reaction: "表情回應接話",
+    chat_disabled: "聊天關閉", reply_unavailable: "無回覆服務", reply_unknown: "回覆服務狀態未知", bot_cannot_read: "機器人無法讀歷史", channel_not_selected: "未選直接聊天頻道",
+    feature_disabled: "控制關閉", history_disabled: "歷史關閉", observation_not_selected: "未選觀察範圍", context_channel_disabled: "此頻道上下文關閉", memory_disabled: "記憶停用", decision_unavailable: "無判斷服務", decision_unknown: "判斷服務狀態未知", spontaneous_not_selected: "未選主動發言頻道",
+    scope: "觀察：{source}；參與覆寫：{overrides}；上下文覆寫：{context}。", inherited: "繼承直接聊天頻道", explicit: "個別明確選取", yes: "是", no: "否",
+    context: "上下文路徑：{mode}；歷史阻擋：{reasons}。目標 {count} 則，預算 {budget} 字元。", guarded: "受保護文字", legacy: "舊版",
+    bounds: "保護上限：{pages}×{pageSize} 則原始訊息；往前指涉加 {targeted} 頁；回覆 {depth} 層；來源工作 {seconds} 秒。",
+    exclusions: "受保護模式排除記憶、摘要、學習狀態、圖片與工具；時間／間隔／摘要控制僅舊版使用。",
+    storage: "記憶模式：{memory}。背景掃描／每日摘要：{scan}/{daily}；與回覆上下文分開。",
+    activity: "活躍度 {activity}；文字／表情冷卻 {text}/{reaction} 秒；每 10 分鐘 {texts}/{reactions} 次；接話間隔 {interval} 秒，上限每段 {exchange}／每 10 分鐘 {window}。",
+    ping: "單獨標記：{ping}；接話失敗：{fallback}。", acknowledge: "預設確認回應", personality: "可依個性沉默", strict: "嚴格", grounded_fallback: "有依據才備援",
+    access: "角色數：聊天 {chat}／管理 {admin}／限制 {restricted}。逐一檢查來源；擁有者互動特權不授予歷史讀取權。",
+    caveat: "已設定不保證回覆：仍須通過即時角色、來源、遊戲／路由、冷卻、配額及模型判斷。服務狀態並非健康探測。",
+  },
+  ja: {
+    unverified: "未確認", views: "view:context で取得元・上限、view:activity で間隔・割当を確認できます。", view: "表示", viewDescription: "トリガー、履歴、活動の詳細を選びます。", overview: "トリガー", contextView: "履歴", activityView: "活動",
+    label: "有効な会話設定", description: "チャンネルやスレッドの会話設定と依存条件を確認します。", channel: "チャンネル・スレッド",
+    channelDescription: "確認するチャンネルまたはスレッド。親の選択にスレッドは含まれません。",
+    choose: "/settings-participation policy channel:… でチャンネルかスレッドを選択してください。",
+    denied: "現在のチャンネル・履歴権限を確認できません。設定レポートは読み取っていません。",
+    heading: "{channel} の会話設定（現在の構成）", common: "共通の停止条件：{reasons}", ready: "設定済み", blocked: "無効", shadow: "プレビューのみ", none: "なし",
+    direct: "直接メンション", reply: "ボットへの返信", bare_ping: "単独メンション", name_address: "名前での呼びかけ", continuation: "会話の継続", spontaneous: "グループ会話", reaction: "リアクション後の応答",
+    chat_disabled: "会話オフ", reply_unavailable: "返信サービスなし", reply_unknown: "返信の準備状態は不明", bot_cannot_read: "ボットが履歴を読めない", channel_not_selected: "直接会話の対象外",
+    feature_disabled: "機能オフ", history_disabled: "履歴オフ", observation_not_selected: "観察対象外", context_channel_disabled: "この履歴設定はオフ", memory_disabled: "記憶無効", decision_unavailable: "判定サービスなし", decision_unknown: "判定の準備状態は不明", spontaneous_not_selected: "自発的発言の対象外",
+    scope: "観察：{source}；参加の上書き：{overrides}；履歴の上書き：{context}。", inherited: "直接会話の選択を継承", explicit: "明示的な個別選択", yes: "はい", no: "いいえ",
+    context: "履歴経路：{mode}；停止条件：{reasons}。目標 {count} 件、予算 {budget} 文字。", guarded: "保護された文字", legacy: "従来",
+    bounds: "保護上限：{pages}×{pageSize} 件；過去参照は追加 {targeted} ページ；返信 {depth} 段；取得処理 {seconds} 秒。",
+    exclusions: "保護モードは記憶、要約、学習状態、画像、ツールを除外。時間・間隔・要約の設定は従来経路のみ。",
+    storage: "記憶モード：{memory}。背景スキャン・日次要約：{scan}/{daily}；返信の履歴とは別。",
+    activity: "活動 {activity}；文字・反応の間隔 {text}/{reaction} 秒；10分あたり {texts}/{reactions} 回；継続間隔 {interval} 秒、上限 {exchange}/会話、{window}/10分。",
+    ping: "単独メンション：{ping}；継続の失敗：{fallback}。", acknowledge: "既定は応答", personality: "個性による無言を許可", strict: "厳格", grounded_fallback: "根拠付き代替",
+    access: "ロール数：会話 {chat}／管理 {admin}／制限 {restricted}。取得元ごとに確認。所有者の対話特権は履歴の閲覧権限を付与しません。",
+    caveat: "設定済みでも返信の保証ではありません。現在の権限、取得元、ゲーム・ルート、間隔、割当、モデル判定も適用。準備状態は稼働確認ではありません。",
+  },
+} satisfies Record<Language, Record<string, string>>;
+
+export function chatPolicySettingsText(language: Language): SettingsTextCatalog {
+  const text = copy[language];
+  return { "participation.policy": { label: text.label, description: text.description, messages: text },
+    "participation.policy.channel": { label: text.channel, description: text.channelDescription },
+    "participation.policy.view": { label: text.view, description: text.viewDescription, choices: { overview: text.overview, context: text.contextView, activity: text.activityView } } };
+}

@@ -37,6 +37,7 @@ export interface SettingRequest {
 
 // Services settings reach beyond the guild config.
 export interface SettingDeps {
+  chatProviderAvailable?: boolean;
   characterRuntime?: CharacterRuntime;
   assets: GuildAssetStore;
   applicationEmojiCatalog: ApplicationEmojiCatalog;
