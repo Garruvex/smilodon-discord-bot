@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 import { withDiagnosticScope } from "../../src/application/diagnostics/chat-diagnostics.js";
+import { SocialOutputSuppressed } from "../../src/application/chat/message-origin-store.js";
 
 import { ChatConversationService, type ChatConversationInput } from "../../src/application/chat/chat-conversation-service.js";
 import type { ChatProvider, ChatRequest, ChatResponse } from "../../src/application/chat/chat-provider.js";
@@ -83,6 +84,52 @@ function baseStore(overrides: Partial<ChatStateStore> = {}): ChatStateStore {
 }
 
 describe("ChatConversationService", () => {
+  it("explains duplicate pings without calling the model again", async () => {
+    const { logger, records } = captureDiagnosticLogger();
+    const reply = vi.fn(() => Promise.resolve(response("hi")));
+    const service = new ChatConversationService({ reply }, baseStore(), testMemoryEngine().engine,
+      undefined, undefined, undefined, null, null, null, logger);
+    try {
+      await service.run({ ...input(""), sourceMessageId: "first" }, (output) => Promise.resolve(output.text));
+      await service.run({ ...input(""), sourceMessageId: "second" }, (output) => Promise.resolve(output.text));
+      expect(reply).toHaveBeenCalledOnce();
+      expect(records.filter((record) => record.event === "chat.turn.skipped")).toEqual([
+        expect.objectContaining({ reason: "duplicate_ping", sourceMessageId: "second" }),
+      ]);
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+
+  it("records unavailable optional decisions without pretending the model chose silence", async () => {
+    const { logger, records } = captureDiagnosticLogger();
+    const reply = vi.fn(() => Promise.resolve(response("unexpected")));
+    const service = new ChatConversationService({ reply }, baseStore(), testMemoryEngine().engine,
+      undefined, undefined, undefined, null, null, null, logger);
+    try {
+      const result = await service.run({ ...input("follow-up"), triggerMode: "continuation" }, (output) => Promise.resolve(output.text));
+      expect(result.ambientAction).toBe("ignore");
+      expect(reply).not.toHaveBeenCalled();
+      expect(records.filter((record) => record.event === "chat.turn.skipped")).toEqual([
+        expect.objectContaining({ reason: "decision_unavailable" }),
+      ]);
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+
+  it("records a delivery veto separately from a successful generation", async () => {
+    const { logger, records } = captureDiagnosticLogger();
+    const service = new ChatConversationService({ reply: (): Promise<ChatResponse> => Promise.resolve(response("answer")) }, baseStore(), testMemoryEngine().engine,
+      undefined, undefined, undefined, null, null, null, logger);
+    const deliver = vi.fn(() => Promise.resolve("unexpected"));
+    try {
+      await expect(service.run({ ...input("question"), shouldDeliver: () => false }, deliver)).rejects.toBeInstanceOf(SocialOutputSuppressed);
+      expect(deliver).not.toHaveBeenCalled();
+      expect(records).toEqual(expect.arrayContaining([
+        expect.objectContaining({ event: "chat.model.completed", status: "valid" }),
+        expect.objectContaining({ event: "chat.output.suppressed", reason: "delivery_cancelled" }),
+        expect.objectContaining({ event: "chat.queue.changed", reason: "operation_suppressed" }),
+      ]));
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+
   it("correlates model, context, and one terminal delivery event without recording content", async () => {
     const { logger, records } = captureDiagnosticLogger();
     const service = new ChatConversationService({ reply: (): Promise<ChatResponse> => Promise.resolve(response("SECRET_ANSWER")) }, baseStore(), testMemoryEngine().engine,

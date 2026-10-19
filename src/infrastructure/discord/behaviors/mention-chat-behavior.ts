@@ -97,7 +97,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       return BehaviorResult.StopPropagation;
     }
     if (!await this.turnSupport.isEligible(message)) return BehaviorResult.StopPropagation;
-    this.conversation.cancelOptionalOpportunity?.(message.guildId, message.channelId);
+    this.conversation.cancelOptionalOpportunity?.(message.guildId, message.channelId, "addressed_request");
 
     const botId = this.clientUserId();
     const prompt = botId

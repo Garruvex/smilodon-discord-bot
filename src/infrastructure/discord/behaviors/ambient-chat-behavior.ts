@@ -103,7 +103,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
   }
 
   public async execute(message: Message, trigger: "ambient" | "continuation" | "spontaneous" = "ambient", burst: readonly Message[] = []): Promise<BehaviorResult> {
-    if (trigger === "ambient" && message.guildId) this.conversation?.cancelOptionalOpportunity?.(message.guildId, message.channelId);
+    if (trigger === "ambient" && message.guildId) this.conversation?.cancelOptionalOpportunity?.(message.guildId, message.channelId, "addressed_request");
     const opportunityVersion = trigger === "ambient" || !message.guildId ? null : this.conversation?.optionalOpportunityVersion?.(message.guildId, message.channelId);
     if (!message.inGuild() || !this.conversation) return BehaviorResult.Continue;
     const profile = this.profiles.find(message.guildId);

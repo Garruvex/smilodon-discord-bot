@@ -31,6 +31,17 @@ const eventSchema = z.discriminatedUnion("event", [
   z.object({ event: z.literal("model.decision.attempt"), providerRole: z.enum(["primary", "fallback"]), attempt: count, status: z.enum(["valid", "failed"]), durationMs: duration, failure: failureCategory.optional(), httpStatus: z.number().int().min(100).max(599).optional() }),
   z.object({ event: z.literal("chat.model.completed"), purpose: z.enum(["reply", "participation", "repair"]), status: z.enum(["valid", "failed"]), durationMs: duration, failure: failureCategory.optional(), httpStatus: z.number().int().min(100).max(599).optional() }),
   z.object({ event: z.literal("chat.turn.started"), triggerMode: trigger }),
+  z.object({ event: z.literal("chat.turn.skipped"), reason: z.enum(["decision_unavailable", "duplicate_ping"]) }),
+  z.object({ event: z.literal("chat.output.suppressed"), reason: z.enum(["execution_ineligible", "privacy_changed", "shadow", "opportunity_expired", "context_changed", "delivery_cancelled", "output_capacity"]) }),
+  z.object({ event: z.literal("chat.queue.changed"), jobId: identifier, action: z.enum(["enqueued", "admitted", "skipped", "cancelled", "completed", "failed"]),
+    reason: z.enum(["accepted", "scheduler_closed", "replaced_by_optional", "preempted_by_direct", "channel_queue_full", "global_queue_full", "evaluation_cooldown", "evaluation_budget", "expired", "shutdown", "executed", "operation_failed", "operation_suppressed"]),
+    optional: z.boolean(), queueDepth: count, waitMs: duration, failure: failureCategory.optional() }),
+  z.object({ event: z.literal("chat.opportunity.changed"), opportunityId: identifier, previousOpportunityId: identifier.optional(),
+    action: z.enum(["buffered", "coalesced", "flushed", "cancelled", "rejected"]),
+    reason: z.enum(["coalescing", "ready", "superseded", "cancelled", "addressed_request", "privacy_changed", "source_invalidated", "capacity", "shutdown", "scheduler_closed"]), delayMs: duration }),
+  z.object({ event: z.literal("chat.output.reservation"), reservationId: identifier, kind: z.enum(["text", "reaction"]), optional: z.boolean(), continuation: z.boolean(),
+    status: z.enum(["reserved", "denied", "committed", "released"]),
+    reason: z.enum(["direct", "available", "in_flight", "exchange_limit", "channel_limit", "cooldown", "capacity", "delivered", "not_delivered"]) }),
   z.object({ event: z.literal("chat.turn.completed"), triggerMode: trigger, outcome: z.enum(["text_delivered", "no_text_delivery", "suppressed", "failed", "delivered_state_unsaved"]), durationMs: duration, textDeliveryConfirmed: z.boolean(), failure: failureCategory.optional() }),
   z.object({ event: z.literal("chat.delivery.completed"), plannedParts: count, deliveredParts: count, status: z.enum(["complete", "partial", "failed", "suppressed"]), failure: failureCategory.optional() }),
 ]);
@@ -69,9 +80,9 @@ export function withDiagnosticScope<T>(input: DiagnosticScopeInput, task: () => 
 
 // Queues can execute a task from another request's async context. Capture the
 // submitter explicitly rather than inheriting whichever task pumps the queue.
-export function bindDiagnosticTask<T>(task: () => T): () => T {
+export function bindDiagnosticTask<Args extends unknown[], T>(task: (...args: Args) => T): (...args: Args) => T {
   const scope = scopes.getStore();
-  return () => scopes.run(scope, task);
+  return (...args) => scopes.run(scope, () => task(...args));
 }
 
 export function diagnosticElapsed(start: number): number {

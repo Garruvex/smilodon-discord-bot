@@ -1,6 +1,6 @@
 # Chat triggers, context, and behavior improvement plan
 
-Status: implementation started; first Phase 1 diagnostic slice implemented locally. Broader design remains proposed; no deployment performed. Prepared 2026-10-19.
+Status: implementation started; Phase 1 tracing and scheduler diagnostics implemented locally. Broader design remains proposed; no deployment performed. Prepared 2026-10-19.
 
 ### Implementation progress — 2026-10-19
 
@@ -12,12 +12,18 @@ Implemented locally:
 - Decision attempt records distinguish provider/HTTP/timeout/JSON/schema failures and invalid target, fixed target, boundary, evidence, contribution, thought, and recipient validation. Successful fallback preserves earlier failed-attempt metadata. HTTP decision errors preserve status without exposing response bodies.
 - Reply-chain/history fetch coverage, eligibility denial reasons, merged context counts, and character-context omissions by window, gap, segment, count, budget, or scope.
 - Model operation outcomes for reply, participation, and attribution repair; turn completion and delivery status with confirmed part counts, including partial delivery.
+- Scheduler job IDs and one terminal disposition per job distinguish replacement, direct-request preemption, channel/global queue limits, evaluation cooldown/budget, expiry, shutdown, execution suppression, and errors. Queue wait time is recorded without logging internal queue keys or content.
+- Buffered opportunities carry stable IDs and links between replacements; cancellation is recorded on the original opportunity's trace with addressed-request, privacy, source invalidation, capacity, or shutdown reasons when known.
+- Text/reaction reservations record admission, in-flight/cooldown/exchange/channel limits, and idempotent success/failure release. Completion events stay on the reserving trace even when released by a different caller. A committed reservation means the caller reported success, not an independent Discord receipt.
+- Conversation events identify duplicate-ping suppression, unavailable optional decisions, and known delivery vetoes (privacy version, stale context/opportunity, shadow mode, caller cancellation, or output capacity) separately from model-generated silence.
 
 The initial event schema uses `chat.route.matched`, `chat.dispatch.completed`, `context.source.selected`, `context.selection.filtered`, `model.decision.attempt`, and `chat.model.completed` in addition to turn/delivery events. The longer catalog below is the target, not a claim that every event is already emitted. A model operation can include provider-internal attempts; per-attempt transport instrumentation is still pending. `no_text_delivery` is intentionally observational and must not be interpreted as proof of deliberate silence or a confirmed reaction.
 
-Remaining Phase 1 work includes bounded retained trace storage and explain-message retrieval, loss accounting, policy/build version fields, full queue/quota/cancellation reasons, gateway pre-dispatch coverage, provider-internal/background/tool instrumentation, and caller-specific Discord rate-limit aggregation. The unified decision engine, count-first retrieval, privacy gateway, and expanded source policies are not implemented by this slice.
+Remaining Phase 1 work includes bounded retained trace storage and explain-message retrieval, loss accounting, policy/build version fields, gateway pre-dispatch coverage, provider-internal/background/tool instrumentation, and caller-specific Discord rate-limit aggregation. Some downstream execution checks still report generic operation suppression; do not infer a more specific cause where one is not recorded. The unified decision engine, count-first retrieval, privacy gateway, and expanded source policies are not implemented by these diagnostics checkpoints.
 
 Local verification: full suite passed with 4,411 tests and seven environment-dependent skips; type checking and changed-file ESLint passed. A subsequent added window-versus-gap diagnostic regression passed with the 55-test character-runtime suite, and that changed test file passed ESLint. Test temporary files were placed under `node_modules/.test-tmp/chat-diagnostics` to avoid the earlier Windows temp rename failure. No live production incident reproduction is claimed.
+
+Scheduler diagnostics checkpoint verification: full suite passed with 4,426 tests and seven environment-dependent skips; type checking, changed-file ESLint, and diff whitespace checks passed. New tests cover queue ownership and replacement, preemption, capacity, evaluation budgets, expiry, shutdown, operation errors, opportunity coalescing, reservation release/quotas, and conversation suppression causes. Each completed checkpoint is committed, as requested; the first diagnostics checkpoint is `49feee2b`.
 
 ## 1. Objective and evidence
 

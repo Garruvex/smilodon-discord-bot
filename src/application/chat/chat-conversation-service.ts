@@ -12,7 +12,7 @@ import type { ChatSessionExchange, ChatStateStore } from "./chat-state-store.js"
 import type { UserCustomizationStore } from "./user-customization-store.js";
 import { KeyedSerialQueue } from "../concurrency/keyed-serial-queue.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
-import { ChatScheduler, balancedChatLimits, type ChatActivityLimits } from "./chat-scheduler.js";
+import { ChatScheduler, balancedChatLimits, type ChatActivityLimits, type OpportunityCancellationReason } from "./chat-scheduler.js";
 import { ConversationEpisodes } from "./conversation-episodes.js";
 import { isLowSubstancePing } from "./participation-policy.js";
 import { observedSubjectNames } from "../memory/observed-subject-names.js";
@@ -280,7 +280,7 @@ export class ChatConversationService {
     private readonly characterRuntime: CharacterRuntime | null = null,
     private readonly now: () => number = () => Date.now(),
   ) {
-    this.scheduler = new ChatScheduler(this.now);
+    this.scheduler = new ChatScheduler(this.now, undefined, undefined, undefined, this.logger);
     this.episodeCleanupTimer = episodeStore ? setInterval(() => {
       this.trackBackground(episodeStore.deleteExpired(this.now()).catch((error: unknown) =>
         this.logger?.warn({ error }, "Short-lived conversation episode cleanup failed")));
@@ -765,7 +765,7 @@ export class ChatConversationService {
     observer?: ChatResponseObserver,
   ): Promise<ChatResponse> {
     const key = `${input.guildId}:${input.channelId}`;
-    if (input.triggerMode === "direct" || input.triggerMode === "ambient") this.cancelOptionalOpportunity(input.guildId, input.channelId);
+    if (input.triggerMode === "direct" || input.triggerMode === "ambient") this.cancelOptionalOpportunity(input.guildId, input.channelId, "addressed_request");
     const lowSubstance = isLowSubstancePing(input.message, input.replyChain.length > 0 ||
       (input.currentEvent?.type === "message" && input.currentEvent.replyToMessageId !== null), input.images.length > 0);
     const optional = input.triggerMode !== "direct" || (input.allowSilentDirect === true && lowSubstance);
@@ -775,16 +775,25 @@ export class ChatConversationService {
       text: "", ambientAction: "ignore", reactionEmoji: null, historyReactions: [], userMemoryActions: [],
       guildKnowledgeCandidates: [], sources: [], usage: null, webSearchUsed: false, generatedImages: [],
     };
-    if ((input.triggerMode === "continuation" || input.triggerMode === "spontaneous") && !this.characterRuntime) return Promise.resolve(silent);
+    if ((input.triggerMode === "continuation" || input.triggerMode === "spontaneous") && !this.characterRuntime) {
+      emitChatDiagnostic(this.logger, { event: "chat.turn.skipped", reason: "decision_unavailable" });
+      return Promise.resolve(silent);
+    }
     if (input.triggerMode === "direct" && lowSubstance && input.sourceMessageId) {
       const pingKey = `${key}:${input.currentUser.id}`;
       const previous = this.recentPings.get(pingKey);
-      if (previous && previous.messageId !== input.sourceMessageId && this.now() - previous.at < 10_000) return Promise.resolve(silent);
+      if (previous && previous.messageId !== input.sourceMessageId && this.now() - previous.at < 10_000) {
+        emitChatDiagnostic(this.logger, { event: "chat.turn.skipped", reason: "duplicate_ping" });
+        return Promise.resolve(silent);
+      }
       if (this.recentPings.size >= 1024) this.recentPings.delete(this.recentPings.keys().next().value!);
       this.recentPings.set(pingKey, { at: this.now(), messageId: input.sourceMessageId });
     }
     return this.scheduler.run(key, optional, limits, async () => {
-      if (input.canExecute && !await input.canExecute()) throw new SocialOutputSuppressed();
+      if (input.canExecute && !await input.canExecute()) {
+        emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "execution_ineligible" });
+        throw new SocialOutputSuppressed();
+      }
       if (input.channelHistoryEnabled && this.episodeStore && (input.resolveMemoryMode?.() ?? resolveChannelMemoryMode(input.channelMemoryModes ?? {}, input.channelId)) !== "disabled") {
         const persisted = await this.episodeStore.load(input.guildId, input.channelId, this.now());
         persisted.forEach((event) => this.episodes.observe(key, event, this.now(), (this.characterRuntime?.contextWindow(input.guildId, input.channelId) ?? 15) * 60_000));
@@ -814,14 +823,33 @@ export class ChatConversationService {
         } } : {}),
         canExecute: async () => (this.privacyVersions.get(input.guildId) ?? 0) === privacyVersion && (!input.canExecute || await input.canExecute()),
         onModelAttempt: () => this.scheduler.recordModelAttempt() }, async (result) => {
-        if ((this.privacyVersions.get(input.guildId) ?? 0) !== privacyVersion) throw new SocialOutputSuppressed();
-        if (input.shadowMode) { await this.characterRuntime?.recordDelivery(input.guildId, input.sourceMessageId ?? null, false, true); return ""; }
-        if (result.outputOrigin !== "tool" && optional && (this.now() >= expiresAt! ||
-          ((input.triggerMode === "continuation" || input.triggerMode === "spontaneous") && this.episodes.version(key) !== contextVersion)))
+        if ((this.privacyVersions.get(input.guildId) ?? 0) !== privacyVersion) {
+          emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "privacy_changed" });
           throw new SocialOutputSuppressed();
-        if (input.shouldDeliver && !input.shouldDeliver()) throw new SocialOutputSuppressed();
+        }
+        if (input.shadowMode) {
+          emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "shadow" });
+          await this.characterRuntime?.recordDelivery(input.guildId, input.sourceMessageId ?? null, false, true); return "";
+        }
+        if (result.outputOrigin !== "tool" && optional) {
+          if (this.now() >= expiresAt!) {
+            emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "opportunity_expired" });
+            throw new SocialOutputSuppressed();
+          }
+          if ((input.triggerMode === "continuation" || input.triggerMode === "spontaneous") && this.episodes.version(key) !== contextVersion) {
+            emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "context_changed" });
+            throw new SocialOutputSuppressed();
+          }
+        }
+        if (input.shouldDeliver && !input.shouldDeliver()) {
+          emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "delivery_cancelled" });
+          throw new SocialOutputSuppressed();
+        }
         const release = this.scheduler.reserveOutput(key, "text", { ...(input.resolveActivityLimits?.() ?? limits), continuation: input.triggerMode === "continuation", exchangeId: result.participationExchangeId }, optional);
-        if (!release) { await this.characterRuntime?.recordDelivery(input.guildId, input.sourceMessageId ?? null, false, false); throw new SocialOutputSuppressed(); }
+        if (!release) {
+          emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "output_capacity" });
+          await this.characterRuntime?.recordDelivery(input.guildId, input.sourceMessageId ?? null, false, false); throw new SocialOutputSuppressed();
+        }
         try { const text = await deliver(result); release(true); await this.characterRuntime?.recordDelivery(input.guildId, input.sourceMessageId ?? null, true, false); return text; }
         catch (error) { release(false); await this.characterRuntime?.recordDelivery(input.guildId, input.sourceMessageId ?? null, false, false); throw error; }
       }, observer);
@@ -844,7 +872,7 @@ export class ChatConversationService {
   }
 
   public async forgetConversation(guildId: string, userId: string): Promise<void> {
-    for (const key of this.opportunityVersions.keys()) if (key.startsWith(`${guildId}:`)) this.cancelOptionalOpportunity(guildId, key.slice(guildId.length + 1));
+    for (const key of this.opportunityVersions.keys()) if (key.startsWith(`${guildId}:`)) this.cancelOptionalOpportunity(guildId, key.slice(guildId.length + 1), "privacy_changed");
     this.characterRuntime?.forget(guildId, userId);
     if (this.forgottenBefore.size >= 1000) this.forgottenBefore.delete(this.forgottenBefore.keys().next().value!);
     this.forgottenBefore.set(`${guildId}:${userId}`, this.now());
@@ -857,7 +885,7 @@ export class ChatConversationService {
   }
 
   public excludeInteraction(guildId: string, channelId: string, messageId: string): void {
-    this.cancelOptionalOpportunity(guildId, channelId);
+    this.cancelOptionalOpportunity(guildId, channelId, "source_invalidated");
     this.characterRuntime?.excludeContext(guildId, messageId);
     this.episodes.excludeInteraction(`${guildId}:${channelId}`, messageId);
     if (this.episodeStore) this.trackBackground(this.episodeStore.exclude(guildId, channelId, messageId).catch((error: unknown) =>
@@ -881,17 +909,17 @@ export class ChatConversationService {
     if (version === undefined) {
       if (this.opportunityVersions.size >= 256) {
         const oldest = this.opportunityVersions.keys().next().value!;
-        this.scheduler.cancelBufferedOpportunity(oldest); this.opportunityVersions.delete(oldest);
+        this.scheduler.cancelBufferedOpportunity(oldest, "capacity"); this.opportunityVersions.delete(oldest);
       }
       version = ++this.nextOpportunityVersion; this.opportunityVersions.set(key, version);
     }
     return version;
   }
-  public cancelOptionalOpportunity(guildId: string, channelId: string): void {
+  public cancelOptionalOpportunity(guildId: string, channelId: string, reason: OpportunityCancellationReason = "cancelled"): void {
     const key = `${guildId}:${channelId}`;
     this.optionalOpportunityVersion(guildId, channelId);
     this.opportunityVersions.set(key, ++this.nextOpportunityVersion);
-    this.scheduler.cancelBufferedOpportunity(key);
+    this.scheduler.cancelBufferedOpportunity(key, reason);
   }
 
   public bufferOpportunity(guildId: string, channelId: string, job: () => void): void {

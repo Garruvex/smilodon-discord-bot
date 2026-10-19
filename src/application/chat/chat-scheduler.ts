@@ -1,5 +1,18 @@
 import { SocialOutputSuppressed } from "./message-origin-store.js";
-import { bindDiagnosticTask } from "../diagnostics/chat-diagnostics.js";
+import { randomUUID } from "node:crypto";
+import { bindDiagnosticTask, emitChatDiagnostic, safeFailure, type ChatDiagnosticEvent, type DiagnosticLogger } from "../diagnostics/chat-diagnostics.js";
+
+type QueueEvent = Extract<ChatDiagnosticEvent, { event: "chat.queue.changed" }>;
+type QueueReporter = (action: QueueEvent["action"], reason: QueueEvent["reason"], failure?: ReturnType<typeof safeFailure>) => void;
+type OpportunityEvent = Extract<ChatDiagnosticEvent, { event: "chat.opportunity.changed" }>;
+export type OpportunityCancellationReason = "cancelled" | "addressed_request" | "privacy_changed" | "source_invalidated" | "capacity";
+interface BufferedOpportunity {
+  timer: ReturnType<typeof setTimeout>;
+  startedAt: number;
+  opportunityId: string;
+  job: () => void;
+  report: (action: OpportunityEvent["action"], reason: OpportunityEvent["reason"], delayMs?: number, previousOpportunityId?: string) => void;
+}
 
 export interface ChatActivityLimits {
   evaluationCooldownMs: number;
@@ -29,6 +42,7 @@ interface Job {
   run: () => Promise<unknown>;
   resolve: (value: unknown) => void;
   reject: (error: unknown) => void;
+  report: QueueReporter;
 }
 interface Activity {
   lastEvaluation: number;
@@ -46,7 +60,7 @@ export class ChatScheduler {
   private readonly pending = new Map<string, Job[]>();
   private readonly running = new Set<string>();
   private readonly activity = new Map<string, Activity>();
-  private readonly buffered = new Map<string, { timer: ReturnType<typeof setTimeout>; startedAt: number; job: () => void }>();
+  private readonly buffered = new Map<string, BufferedOpportunity>();
   private active = 0;
   private queued = 0;
   private closed = false;
@@ -58,31 +72,55 @@ export class ChatScheduler {
     private readonly concurrency = 4,
     private readonly maxPendingPerChannel = 12,
     private readonly maxPendingGlobal = 256,
+    private readonly logger: DiagnosticLogger | null = null,
   ) {}
 
   public run<T>(key: string, optional: boolean, limits: ChatActivityLimits, operation: () => Promise<T>, expiresAt = Infinity): Promise<T | null> {
-    if (this.closed) return Promise.reject(new SocialOutputSuppressed());
+    const jobId = randomUUID();
+    const enqueuedAt = this.now();
+    let admittedAt: number | null = null;
+    let finished = false;
+    const report: QueueReporter = bindDiagnosticTask((action, reason, failure) => {
+      if (finished) return;
+      if (action === "admitted") admittedAt = this.now();
+      if (action !== "enqueued" && action !== "admitted") finished = true;
+      emitChatDiagnostic(this.logger, { event: "chat.queue.changed", jobId, action, reason, optional,
+        queueDepth: this.pending.get(key)?.length ?? 0, waitMs: Math.max(0, (admittedAt ?? this.now()) - enqueuedAt), ...failure });
+    });
+    if (this.closed) { report("cancelled", "scheduler_closed"); return Promise.reject(new SocialOutputSuppressed()); }
     let queue = this.pending.get(key);
     if (!queue) { queue = []; this.pending.set(key, queue); }
     if (optional) {
       const replaced = queue.findIndex((job) => job.optional);
-      if (replaced >= 0) { queue.splice(replaced, 1)[0]!.resolve(null); this.queued--; }
+      if (replaced >= 0) {
+        const replacedJob = queue.splice(replaced, 1)[0]!;
+        this.queued--; replacedJob.report("cancelled", "replaced_by_optional"); replacedJob.resolve(null);
+      }
     }
     if (queue.length >= this.maxPendingPerChannel || this.queued >= this.maxPendingGlobal) {
       const disposable = queue.findIndex((job) => job.optional);
-      if (!optional && disposable >= 0) { queue.splice(disposable, 1)[0]!.resolve(null); this.queued--; }
-      else return optional ? Promise.resolve(null) : Promise.reject(new Error("Chat queue is full; try again shortly."));
+      if (!optional && disposable >= 0) {
+        const displaced = queue.splice(disposable, 1)[0]!;
+        this.queued--; displaced.report("cancelled", "preempted_by_direct"); displaced.resolve(null);
+      } else {
+        report("skipped", queue.length >= this.maxPendingPerChannel ? "channel_queue_full" : "global_queue_full");
+        return optional ? Promise.resolve(null) : Promise.reject(new Error("Chat queue is full; try again shortly."));
+      }
     }
     return new Promise<T | null>((resolve, reject) => {
-      queue.push({ optional, expiresAt, limits, resolve: resolve as (value: unknown) => void, reject,
+      queue.push({ optional, expiresAt, limits, resolve: resolve as (value: unknown) => void, reject, report,
         run: bindDiagnosticTask(async () => {
           const activity = this.state(key);
-          if (optional && !limits.continuation && this.now() - activity.lastEvaluation < limits.evaluationCooldownMs) return null;
+          if (optional && !limits.continuation && this.now() - activity.lastEvaluation < limits.evaluationCooldownMs) {
+            report("skipped", "evaluation_cooldown"); return null;
+          }
           const guild = key.split(":")[0]!;
           const evaluations = this.evaluations.get(guild) ?? [];
           this.prune(evaluations);
           const cost = Math.max(1, Math.ceil(limits.optionalCallCost ?? 1));
-          if (optional && evaluations.length + cost > (limits.optionalTurnsPerWindow ?? 100)) return null;
+          if (optional && evaluations.length + cost > (limits.optionalTurnsPerWindow ?? 100)) {
+            report("skipped", "evaluation_budget"); return null;
+          }
           if (optional) {
             if (!limits.continuation) activity.lastEvaluation = this.now();
             for (let index = 0; index < cost; index++) evaluations.push(this.now());
@@ -92,6 +130,7 @@ export class ChatScheduler {
         }),
       });
       this.queued++;
+      report("enqueued", "accepted");
       this.pump();
     });
   }
@@ -102,42 +141,59 @@ export class ChatScheduler {
   }
 
   public reserveOutput(key: string, kind: "text" | "reaction", limits: ChatActivityLimits, optional: boolean): ((success: boolean) => void) | null {
-    if (!optional) return () => undefined;
+    type ReservationEvent = Extract<ChatDiagnosticEvent, { event: "chat.output.reservation" }>;
+    const reservationId = randomUUID();
+    const report = bindDiagnosticTask((status: ReservationEvent["status"], reason: ReservationEvent["reason"]) => {
+      emitChatDiagnostic(this.logger, { event: "chat.output.reservation", reservationId, kind, optional,
+        continuation: limits.continuation === true, status, reason });
+    });
+    const deny = (reason: ReservationEvent["reason"]): null => { report("denied", reason); return null; };
+    const reserve = (reason: "direct" | "available", release: (success: boolean) => void): ((success: boolean) => void) => {
+      report("reserved", reason);
+      let finished = false;
+      return (success) => {
+        if (finished) return;
+        finished = true;
+        release(success);
+        report(success ? "committed" : "released", success ? "delivered" : "not_delivered");
+      };
+    };
+    if (!optional) return reserve("direct", () => undefined);
     if (kind === "text" && limits.continuation) {
       const state = this.state(key); this.prune(state.continuation);
       const branchKey = `${key}:${limits.exchangeId ?? "channel"}`;
       if (this.exchanges.size >= 512 && !this.exchanges.has(branchKey)) {
         const idle = [...this.exchanges].find(([, exchange]) => !exchange.reserved);
-        if (!idle) return null;
+        if (!idle) return deny("capacity");
         this.exchanges.delete(idle[0]);
       }
       const exchange = this.exchanges.get(branchKey) ?? { lastRelevantAt: -Infinity, replies: 0, reserved: false, window: [] };
       if (this.now() - exchange.lastRelevantAt > 120_000) exchange.replies = 0;
       this.exchanges.set(branchKey, exchange);
-      if (exchange.reserved || state.reservedContinuation || state.reservedText > 0 || exchange.replies >= (limits.continuationPerExchange ?? 10) ||
-          state.continuation.length >= (limits.continuationPerWindow ?? 30) ||
-          this.now() - Math.max(state.continuation.at(-1) ?? -Infinity, state.text.at(-1) ?? -Infinity) < (limits.continuationIntervalMs ?? 15_000)) return null;
+      if (exchange.reserved || state.reservedContinuation || state.reservedText > 0) return deny("in_flight");
+      if (exchange.replies >= (limits.continuationPerExchange ?? 10)) return deny("exchange_limit");
+      if (state.continuation.length >= (limits.continuationPerWindow ?? 30)) return deny("channel_limit");
+      if (this.now() - Math.max(state.continuation.at(-1) ?? -Infinity, state.text.at(-1) ?? -Infinity) < (limits.continuationIntervalMs ?? 15_000)) return deny("cooldown");
       exchange.reserved = true; state.reservedContinuation = true;
-      let finished = false;
-      return (success) => { if (finished) return; finished = true; exchange.reserved = false; state.reservedContinuation = false;
-        if (success) { exchange.replies++; exchange.lastRelevantAt = this.now(); state.continuation.push(this.now()); } };
+      return reserve("available", (success) => { exchange.reserved = false; state.reservedContinuation = false;
+        if (success) { exchange.replies++; exchange.lastRelevantAt = this.now(); state.continuation.push(this.now()); } });
     }
     const state = this.state(key);
-    if (kind === "text" && (state.reservedContinuation || this.now() - (state.continuation.at(-1) ?? -Infinity) < limits.textCooldownMs)) return null;
+    if (kind === "text" && state.reservedContinuation) return deny("in_flight");
+    if (kind === "text" && this.now() - (state.continuation.at(-1) ?? -Infinity) < limits.textCooldownMs) return deny("cooldown");
     const values = state[kind];
     this.prune(values);
     const count = kind === "text" ? limits.textPerWindow : limits.reactionsPerWindow;
     const cooldown = kind === "text" ? limits.textCooldownMs : limits.reactionCooldownMs;
     const reserved = kind === "text" ? state.reservedText : state.reservedReaction;
-    if (values.length + reserved >= count || reserved > 0 || this.now() - (values.at(-1) ?? -Infinity) < cooldown) return null;
+    if (reserved > 0) return deny("in_flight");
+    if (values.length + reserved >= count) return deny("channel_limit");
+    if (this.now() - (values.at(-1) ?? -Infinity) < cooldown) return deny("cooldown");
     if (kind === "text") state.reservedText++; else state.reservedReaction++;
-    let finished = false;
-    return (success) => {
-      if (finished) return;
-      finished = true;
+    return reserve("available", (success) => {
       if (kind === "text") state.reservedText--; else state.reservedReaction--;
       if (success) values.push(this.now());
-    };
+    });
   }
 
   public outputAvailable(key: string, kind: "text" | "reaction", limits: ChatActivityLimits): boolean {
@@ -154,31 +210,42 @@ export class ChatScheduler {
   }
 
   public bufferOpportunity(key: string, job: () => void): void {
-    if (this.closed || (!this.buffered.has(key) && this.buffered.size >= this.maxPendingGlobal)) return;
+    const opportunityId = randomUUID();
+    let finished = false;
+    const report: BufferedOpportunity["report"] = bindDiagnosticTask((action, reason, delayMs = 0, previousOpportunityId) => {
+      if (finished) return;
+      if (action === "cancelled" || action === "flushed" || action === "rejected") finished = true;
+      emitChatDiagnostic(this.logger, { event: "chat.opportunity.changed", opportunityId, action, reason, delayMs,
+        ...(previousOpportunityId ? { previousOpportunityId } : {}) });
+    });
+    if (this.closed || (!this.buffered.has(key) && this.buffered.size >= this.maxPendingGlobal)) {
+      report("rejected", this.closed ? "scheduler_closed" : "capacity"); return;
+    }
     const prior = this.buffered.get(key);
-    if (prior) clearTimeout(prior.timer);
+    if (prior) { clearTimeout(prior.timer); prior.report("cancelled", "superseded"); }
     const startedAt = prior?.startedAt ?? this.now();
     const delay = Math.max(0, Math.min(4_000, 10_000 - (this.now() - startedAt)));
     const timer = setTimeout(() => {
       const candidate = this.buffered.get(key);
       this.buffered.delete(key);
-      if (candidate && !this.closed) candidate.job();
+      if (candidate && !this.closed) { candidate.report("flushed", "ready"); candidate.job(); }
     }, delay);
     timer.unref?.();
-    this.buffered.set(key, { timer, startedAt, job: bindDiagnosticTask(job) });
+    this.buffered.set(key, { timer, startedAt, opportunityId, report, job: bindDiagnosticTask(job) });
+    report(prior ? "coalesced" : "buffered", "coalescing", delay, prior?.opportunityId);
   }
 
-  public cancelBufferedOpportunity(key: string): void {
+  public cancelBufferedOpportunity(key: string, reason: OpportunityCancellationReason = "cancelled"): void {
     const buffered = this.buffered.get(key);
-    if (buffered) clearTimeout(buffered.timer);
+    if (buffered) { clearTimeout(buffered.timer); buffered.report("cancelled", reason); }
     this.buffered.delete(key);
   }
 
   public stop(): void {
     this.closed = true;
-    for (const { timer } of this.buffered.values()) clearTimeout(timer);
+    for (const opportunity of this.buffered.values()) { clearTimeout(opportunity.timer); opportunity.report("cancelled", "shutdown"); }
     this.buffered.clear();
-    for (const jobs of this.pending.values()) jobs.forEach((job) => job.reject(new SocialOutputSuppressed()));
+    for (const jobs of this.pending.values()) jobs.forEach((job) => { job.report("cancelled", "shutdown"); job.reject(new SocialOutputSuppressed()); });
     this.pending.clear(); this.queued = 0;
   }
 
@@ -215,9 +282,14 @@ export class ChatScheduler {
       const job = jobs.splice(direct >= 0 ? direct : 0, 1)[0]!;
       this.queued--;
       if (jobs.length === 0) this.pending.delete(key);
-      if (this.now() >= job.expiresAt) { job.resolve(null); continue; }
+      if (this.now() >= job.expiresAt) { job.report("cancelled", "expired"); job.resolve(null); continue; }
       this.active++; this.running.add(key);
-      void job.run().then(job.resolve, job.reject).finally(() => {
+      job.report("admitted", "accepted");
+      void job.run().then((result) => { job.report("completed", "executed"); job.resolve(result); }, (error: unknown) => {
+        if (error instanceof SocialOutputSuppressed) job.report("cancelled", "operation_suppressed");
+        else job.report("failed", "operation_failed", safeFailure(error, "operation_error"));
+        job.reject(error);
+      }).finally(() => {
         this.active--; this.running.delete(key); this.pump();
       });
     }
