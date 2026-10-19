@@ -1,5 +1,6 @@
 import type { Message } from "discord.js";
 import type { Logger } from "pino";
+import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
 import { SocialOutputSuppressed, type MessageOriginStore } from "../../../application/chat/message-origin-store.js";
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
 import { resolveParticipation } from "../../../application/chat/participation-policy.js";
@@ -175,7 +176,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
             resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits);
           if (result.reactionEmoji && reactionTarget && await this.turnSupport.isEligible(reactionTarget, "history_reaction")) {
             const release = reserve();
-            if (release) { try { await reactionTarget.react(result.reactionEmoji); release(true); } catch { release(false); } }
+            if (release) { try { await withDiscordCaller("chat_reaction", () => reactionTarget.react(result.reactionEmoji!)); release(true); } catch { release(false); } }
           }
           await this.turnSupport.applyHistoryReactions(message.channel, result.historyReactions,
             { guildId: message.guildId, sourceMessageId: message.id }, reserve);

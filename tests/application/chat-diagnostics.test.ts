@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { attachDiagnosticStore, bindDiagnosticTask, diagnosticFields, emitChatDiagnostic, safeFailure, withDiagnosticScope } from "../../src/application/diagnostics/chat-diagnostics.js";
+import { attachDiagnosticStore, bindDiagnosticTask, diagnosticFields, diagnosticPipelineStatus, emitChatDiagnostic, safeFailure, withDiagnosticScope } from "../../src/application/diagnostics/chat-diagnostics.js";
 import { MemoryChatTraceStore } from "../helpers/chat-trace-fixtures.js";
 import { ChatScheduler, balancedChatLimits } from "../../src/application/chat/chat-scheduler.js";
 import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
@@ -15,7 +15,14 @@ describe("chat diagnostic boundary", () => {
       emitChatDiagnostic(logger, { event: "chat.turn.started", triggerMode: "direct" });
     });
     expect(records).toHaveLength(1);
+    expect(diagnosticPipelineStatus(logger)).toMatchObject({ attempted: 1, retentionFailures: 1, logFailures: 0 });
     expect(JSON.stringify(records)).not.toContain("SECRET");
+  });
+  it("counts invalid events, unscoped metadata and throwing log sinks without affecting callers", () => {
+    const logger = { info: (): never => { throw new Error("SECRET"); }, warn: (): never => { throw new Error("SECRET"); } };
+    emitChatDiagnostic(logger, { event: "chat.turn.started", triggerMode: "direct" });
+    emitChatDiagnostic(logger, { event: "chat.turn.started", triggerMode: "invalid" } as never);
+    expect(diagnosticPipelineStatus(logger)).toEqual({ attempted: 2, invalidEvents: 1, unscopedEvents: 1, retentionFailures: 0, logFailures: 1 });
   });
   it("strips arbitrary runtime fields and emits no raw error content", () => {
     const { logger, records } = captureDiagnosticLogger();

@@ -20,7 +20,11 @@
 // counts, since the request may have reached Discord; the error is passed
 // back to every caller waiting on that write.
 
+import { withDiscordCaller, type DiscordCaller } from "../diagnostics/discord-diagnostics.js";
+import { bindDiagnosticTask } from "../diagnostics/chat-diagnostics.js";
+
 export interface ChannelEditSlotOptions {
+  caller?: DiscordCaller;
   channelId: string;
   // Unique per message slot across the whole scheduler, e.g. "<guildId>:lyrics".
   key: string;
@@ -98,7 +102,7 @@ export class ChannelEditScheduler {
         return new Promise<void>((resolve, reject) => {
           const waiters = slot.pending?.waiters ?? [];
           waiters.push({ resolve, reject });
-          slot.pending = { write, waiters, order: slot.pending?.order ?? this.order++ };
+          slot.pending = { write: bindDiagnosticTask(write), waiters, order: slot.pending?.order ?? this.order++ };
           // Deferred a microtask so writes scheduled together (e.g. a whole
           // panel refresh) are all pending before one is picked, letting
           // priority decide the first one too.
@@ -168,7 +172,7 @@ export class ChannelEditScheduler {
     const startedAt = now;
     void (async (): Promise<void> => {
       try {
-        const sent = await pending.write();
+        const sent = await withDiscordCaller(next.options.caller ?? "unknown", () => pending.write());
         if (sent) channel.sentAt.push(startedAt);
         for (const waiter of pending.waiters) waiter.resolve();
       } catch (error) {

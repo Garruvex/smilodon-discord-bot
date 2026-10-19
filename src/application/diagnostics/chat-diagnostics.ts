@@ -9,6 +9,16 @@ export const diagnosticProcessRunId = randomUUID();
 let traceSequence = 0;
 let eventSequence = 0;
 const diagnosticStoreKey = Symbol("chatDiagnosticStore");
+const pipelineKey = Symbol("chatDiagnosticPipeline");
+export interface DiagnosticPipelineStatus { attempted: number; invalidEvents: number; unscopedEvents: number; retentionFailures: number; logFailures: number }
+const pipelineStatuses = new WeakMap<DiagnosticLogger, DiagnosticPipelineStatus>();
+function pipelineStatus(logger: DiagnosticLogger): DiagnosticPipelineStatus {
+  const root = (logger as DiagnosticLogger & { [pipelineKey]?: DiagnosticLogger })[pipelineKey] ?? logger;
+  let status = pipelineStatuses.get(root);
+  if (!status) { status = { attempted: 0, invalidEvents: 0, unscopedEvents: 0, retentionFailures: 0, logFailures: 0 }; pipelineStatuses.set(root, status); }
+  return status;
+}
+export function diagnosticPipelineStatus(logger: DiagnosticLogger): Readonly<DiagnosticPipelineStatus> { return { ...pipelineStatus(logger) }; }
 
 const count = z.number().int().nonnegative();
 const duration = z.number().finite().nonnegative();
@@ -27,6 +37,8 @@ export type FailureCategory = z.infer<typeof failureCategory>;
 // Allow-list every serialized field. Runtime stripping also protects callers
 // compiled without TypeScript, and prevents raw provider/Discord objects leaking.
 const eventSchema = z.discriminatedUnion("event", [
+  z.object({ event: z.literal("discord.rate_limit.summary"), caller: z.enum(["chat_text", "chat_reaction", "control_panel", "lyrics_panel", "queue_panel", "vote_panel", "now_playing_panel", "unknown"]), kind: z.enum(["response_429", "proactive_wait", "mixed"]), method: z.enum(["POST", "PATCH", "GET", "DELETE", "OTHER"]), channelId: identifier.optional(), targetMessageId: identifier.optional(), count, maxWaitMs: duration, overflow: z.boolean() }),
+  z.object({ event: z.literal("chat.trace.interrupted"), reason: z.literal("previous_process_incomplete"), unfinishedSpans: count, unfinishedJobs: count, unfinishedOpportunities: count }),
   z.object({ event: z.literal("model.operation.completed"), purpose: identifier, status: z.enum(["completed", "reported_failure", "failed"]), durationMs: duration, failure: failureCategory.optional(), httpStatus: z.number().int().min(100).max(599).optional() }),
   z.object({ event: z.literal("model.provider.attempt"), modelIndex: count, attempt: count, status: z.enum(["completed", "failed", "cooldown"]), durationMs: duration, failure: failureCategory.optional(), httpStatus: z.number().int().min(100).max(599).optional() }),
   z.object({ event: z.literal("chat.tool.completed"), status: z.enum(["completed", "failed", "timeout", "unknown_tool", "invalid_arguments"]), durationMs: duration, failure: failureCategory.optional() }),
@@ -34,6 +46,7 @@ const eventSchema = z.discriminatedUnion("event", [
   z.object({ event: z.literal("chat.gateway.completed"), outcome: z.enum(["startup_gate", "control_channel", "dispatched", "out_of_scope", "failed"]), durationMs: duration, failure: failureCategory.optional() }),
   z.object({ event: z.literal("chat.ingress.received"), kind: z.enum(["message_created", "reaction_added", "voice_state_updated"]) }),
   z.object({ event: z.literal("chat.route.matched"), behaviorId: identifier }),
+  z.object({ event: z.literal("chat.route.skipped"), behaviorId: identifier, reason: z.enum(["not_guild", "chat_disabled", "duplicate", "game_channel", "access_denied", "provider_unconfigured", "unresolved_reply_origin"]) }),
   z.object({ event: z.literal("chat.dispatch.completed"), result: z.enum(["continue", "handled", "stop_propagation", "failed"]), behaviorId: identifier.optional(), stage: z.enum(["matches", "execute"]).optional(), durationMs: duration, failure: failureCategory.optional() }),
   z.object({ event: z.literal("context.eligibility.denied"), sourceMessageId: identifier, purpose: z.enum(["direct", "ambient", "continuation", "spontaneous", "reaction", "observation", "background_observation", "history_reaction"]), reason: eligibilityReason }),
   z.object({ event: z.literal("context.source.selected"), source: z.enum(["reply_chain", "channel_history"]), fetched: count, selected: count, omitted: count, status: z.enum(["complete", "ineligible", "fetch_failed", "bounded"]), chars: count }),
@@ -86,6 +99,7 @@ export type ChatDiagnosticRecord = z.infer<typeof chatDiagnosticRecordSchema>;
 // keeps this per-instance store available without serializing it into logs.
 export function attachDiagnosticStore(logger: DiagnosticLogger, store: ChatTraceStore): void {
   Object.defineProperty(logger, diagnosticStoreKey, { value: store, configurable: true });
+  Object.defineProperty(logger, pipelineKey, { value: logger, configurable: true });
 }
 
 export function diagnosticStore(logger: DiagnosticLogger | null): ChatTraceStore | null {
@@ -98,6 +112,8 @@ export function diagnosticFields(): Readonly<DiagnosticScope> | Record<string, n
   const scope = scopes.getStore();
   return scope ? { ...scope } : {};
 }
+
+export function withoutDiagnosticScope<T>(task: () => T): T { return scopes.run(undefined, task); }
 
 export function withDiagnosticScope<T>(input: DiagnosticScopeInput, task: () => T): T {
   const parent = scopes.getStore();
@@ -123,23 +139,24 @@ export function diagnosticElapsed(start: number): number {
 
 export function emitChatDiagnostic(logger: DiagnosticLogger | null, event: ChatDiagnosticEvent): void {
   if (!logger) return;
+  const health = pipelineStatus(logger); health.attempted++;
   try {
     const parsed = eventSchema.safeParse(event);
-    if (!parsed.success) return;
+    if (!parsed.success) { health.invalidEvents++; return; }
     const scope = scopes.getStore();
     const sequence = ++eventSequence;
     if (scope?.guildId && scope.channelId && scope.sourceMessageId) {
       try {
         diagnosticStore(logger)?.record({ schemaVersion: 1, processRunId: diagnosticProcessRunId,
           timestampMs: Date.now(), eventSequence: sequence, scope: { ...scope }, data: parsed.data });
-      } catch { /* A failed retention sink must not suppress operational logs. */ }
-    }
+      } catch { health.retentionFailures++; }
+    } else health.unscopedEvents++;
     const fields = { schemaVersion: 1, ...scope, eventSequence: sequence, ...parsed.data };
-    if ("failure" in parsed.data && parsed.data.failure) logger.warn(fields, parsed.data.event);
+    if (("failure" in parsed.data && parsed.data.failure) || parsed.data.event === "discord.rate_limit.summary") logger.warn(fields, parsed.data.event);
     else logger.info(fields, parsed.data.event);
   } catch {
+    health.logFailures++;
     // Telemetry must never change authorization, retries, or visible delivery.
-    // Sink loss accounting and durable trace storage are a later phase.
   }
 }
 

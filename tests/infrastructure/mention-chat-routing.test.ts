@@ -6,6 +6,7 @@ import type { ApplicationConfiguration } from "../../src/config/configuration.js
 import type { PersonaSource } from "../../src/application/chat/persona-source.js";
 import type { MessageOriginStore } from "../../src/application/chat/message-origin-store.js";
 import { freshDocument, memoryProvider, guildId } from "../helpers/settings-fixtures.js";
+import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 
 function setup(origins: MessageOriginStore | null = null): { behavior: MentionChatBehavior; message: Message; fetch: ReturnType<typeof vi.fn> } {
   const document = freshDocument(); document.chat.participation.messagesPerDecision = 20;
@@ -17,6 +18,17 @@ function setup(origins: MessageOriginStore | null = null): { behavior: MentionCh
   return { behavior, message, fetch };
 }
 describe("explicit reply routing bypasses optional accumulation", () => {
+  it("explains unknown reply targets and disabled direct chat without reading history", async () => {
+    const { logger, records } = captureDiagnosticLogger();
+    const document = freshDocument(); document.features.chatbot = false;
+    const { message, fetch } = setup();
+    const behavior = new MentionChatBehavior(() => "bot", { ownerUserIds: new Set() } as unknown as ApplicationConfiguration,
+      memoryProvider(document), null, {} as PersonaSource, logger);
+    expect(await behavior.matches(message)).toBe(false);
+    await behavior.execute(message);
+    expect(records.map((record) => record.reason)).toEqual(["unresolved_reply_origin", "chat_disabled"]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it("routes a reply to the bot through the direct path even with reply pings disabled and a minimum of 20", async () => {
     const { behavior, message, fetch } = setup(); Object.assign(message.mentions, { repliedUser: { id: "bot" } });
     expect(await behavior.matches(message)).toBe(true); expect(fetch).not.toHaveBeenCalled();

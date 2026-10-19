@@ -2,6 +2,7 @@ import { PermissionFlagsBits } from "discord.js";
 import { CommandModule, CommandResponseVisibility, type BotCommand, type CommandContext } from "../../../../application/commands/command.js";
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 import type { ChatTraceStore, RetainedChatTrace } from "../../../../application/diagnostics/chat-trace-store.js";
+import type { DiagnosticPipelineStatus } from "../../../../application/diagnostics/chat-diagnostics.js";
 
 function messageInChannel(value: string, guildId: string, channelId: string): string | null {
   if (/^\d{17,20}$/u.test(value)) return value;
@@ -44,7 +45,8 @@ export class DiagnosticCommand implements BotCommand {
   };
   public readonly responseVisibility = CommandResponseVisibility.Ephemeral;
 
-  public constructor(private readonly traces: ChatTraceStore | null = null, private readonly ownerUserIds: ReadonlySet<string> | null = null) {}
+  public constructor(private readonly traces: ChatTraceStore | null = null, private readonly ownerUserIds: ReadonlySet<string> | null = null,
+    private readonly pipelineStatus: (() => Readonly<DiagnosticPipelineStatus>) | null = null) {}
 
   public async execute(context: CommandContext): Promise<void> {
     if (this.ownerUserIds && !this.ownerUserIds.has(context.interaction.user.id)) {
@@ -79,6 +81,7 @@ export class DiagnosticCommand implements BotCommand {
     const memoryUsageMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
     const uptimeSeconds = Math.round(process.uptime());
     const retention = this.traces?.status();
+    const pipeline = this.pipelineStatus?.();
 
     await context.responses.reply({
       content: [
@@ -86,6 +89,7 @@ export class DiagnosticCommand implements BotCommand {
         `Resident memory: ${memoryUsageMb} MB`,
         `Guilds: ${context.interaction.client.guilds.cache.size}`,
         ...(retention ? [`Retained diagnostic events: ${retention.events}; dropped traces/events: ${retention.droppedTraces}/${retention.droppedEvents}; write failures: ${retention.writeFailures}`] : []),
+        ...(pipeline ? [`Diagnostic attempts: ${pipeline.attempted}; invalid: ${pipeline.invalidEvents}; log-only: ${pipeline.unscopedEvents}; retention/log exceptions: ${pipeline.retentionFailures}/${pipeline.logFailures}`] : []),
       ].join("\n"),
     });
   }

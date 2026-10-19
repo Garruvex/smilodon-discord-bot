@@ -1,6 +1,7 @@
 import type { Attachment, Message, User, GuildMember } from "discord.js";
 import type { ChatUser, ConversationEvent } from "../../../application/chat/chat-provider.js";
 import type { Logger } from "pino";
+import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
 import { eligibilityReason, emitChatDiagnostic, safeFailure } from "../../../application/diagnostics/chat-diagnostics.js";
 import type { SocialChatEligibility, SocialTrigger } from "./social-chat-eligibility.js";
 import { SocialOutputSuppressed, type MessageOriginStore, type MessageOrigin } from "../../../application/chat/message-origin-store.js";
@@ -353,11 +354,7 @@ export class ChatTurnSupport {
     if (droppedUnsupportedAttachments.length > 0) {
       this.logger.warn(
         {
-          images: droppedUnsupportedAttachments.map((attachment) => ({
-            name: attachment.name,
-            contentType: attachment.contentType,
-            size: attachment.size,
-          })),
+          droppedCount: droppedUnsupportedAttachments.length,
         },
         "Dropped image attachment(s): unsupported content type or size",
       );
@@ -412,7 +409,7 @@ export class ChatTurnSupport {
     const url = new URL(attachment.url);
     if (url.protocol !== "https:" || !allowedDiscordImageHosts.has(url.hostname)) {
       this.logger.warn(
-        { name: attachment.name, url: attachment.url },
+        { reason: "host_denied" },
         "Dropped image attachment: URL failed host allow-list check",
       );
       return null;
@@ -421,13 +418,13 @@ export class ChatTurnSupport {
       headers: { Accept: contentType },
       signal: AbortSignal.timeout(15_000),
     }).catch((error: unknown) => {
-      this.logger.warn({ name: attachment.name, error }, "Dropped image attachment: fetch failed");
+      this.logger.warn({ ...safeFailure(error, "operation_error") }, "Dropped image attachment: fetch failed");
       return null;
     });
     if (!response) return null;
     if (!response.ok) {
       this.logger.warn(
-        { name: attachment.name, status: response.status },
+        { status: response.status },
         "Dropped image attachment: fetch returned a non-OK status",
       );
       return null;
@@ -435,7 +432,7 @@ export class ChatTurnSupport {
     const data = Buffer.from(await response.arrayBuffer());
     if (data.length === 0 || data.length > maximumImageBytes) {
       this.logger.warn(
-        { name: attachment.name, bytes: data.length },
+        { bytes: data.length },
         "Dropped image attachment: downloaded size out of bounds",
       );
       return null;
@@ -443,7 +440,7 @@ export class ChatTurnSupport {
     const actualContentType = this.detectImageContentType(data);
     if (!actualContentType) {
       this.logger.warn(
-        { name: attachment.name, contentType, actualHeaderBytes: data.subarray(0, 12).toString("hex") },
+        { reason: "signature_mismatch" },
         "Dropped image attachment: file signature did not match any supported image format",
       );
       return null;
@@ -551,7 +548,7 @@ export class ChatTurnSupport {
       if (params.characterIsCurrent && !params.characterIsCurrent()) throw new SocialOutputSuppressed();
       if (params.characterCanDeliver && !await params.characterCanDeliver()) throw new SocialOutputSuppressed();
       if (params.sourceMessage) await this.assertEligible(params.sourceMessage, params.trigger ?? "direct");
-      const sent = await send();
+      const sent = await withDiscordCaller("chat_text", send);
       deliveredParts++;
       emitChatDiagnostic(this.logger, { event: "chat.delivery.part", deliveredMessageId: sent.id, part: deliveredParts });
       params.recordDelivery?.(sent);
@@ -619,7 +616,7 @@ export class ChatTurnSupport {
         if (target.reactions.cache.some((reaction) => reaction.me)) continue;
         const release = reserve?.();
         if (reserve && !release) continue;
-        try { await target.react(emoji); release?.(true); }
+        try { await withDiscordCaller("chat_reaction", () => target.react(emoji)); release?.(true); }
         catch (error) { release?.(false); throw error; }
       } catch (error) {
         this.logger.warn({ ...logContext, messageId, emoji, error }, "Failed to apply a history reaction");

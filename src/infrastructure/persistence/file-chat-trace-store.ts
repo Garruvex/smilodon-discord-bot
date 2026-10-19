@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import { BoundedChatTraceBuffer, type ChatTraceStore, type RetainedChatTrace, type TraceQuery, type TraceStoreLimits, type TraceStoreStatus } from "../../application/diagnostics/chat-trace-store.js";
 import { chatDiagnosticRecordSchema, safeFailure, type ChatDiagnosticRecord, type DiagnosticLogger } from "../../application/diagnostics/chat-diagnostics.js";
+import { reconcileTrace } from "../../application/diagnostics/trace-reconciliation.js";
 
 // One bounded snapshot per bot instance. Appends stay in memory; at most one
 // disk write is in flight and one debounce timer is queued.
@@ -43,6 +44,10 @@ export class FileChatTraceStore implements ChatTraceStore {
       for (const trace of snapshot.traces) {
         for (const record of trace.records) this.buffer.record(record);
         if (trace.truncated) this.buffer.restoreTruncation(trace.processRunId, trace.traceId);
+      }
+      for (const trace of this.buffer.snapshot()) {
+        const interruption = reconcileTrace(trace, this.now());
+        if (interruption) this.buffer.record(interruption);
       }
     } catch (error) {
       if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) this.warn("restore_failed", error);

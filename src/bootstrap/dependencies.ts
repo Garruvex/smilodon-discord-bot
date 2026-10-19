@@ -1,5 +1,6 @@
 import { defaultLanguage } from "../application/i18n/language.js";
 import { instrumentModel } from "../application/diagnostics/model-diagnostics.js";
+import { diagnosticPipelineStatus } from "../application/diagnostics/chat-diagnostics.js";
 import { catalogIssues } from "../application/i18n/texts.js";
 import type { Logger } from "pino";
 import type { MessageOriginStore } from "../application/chat/message-origin-store.js";
@@ -348,7 +349,7 @@ export function registerCommands(
   commandRegistry.register(new BoostsCommand(boostHistoryStore));
   commandRegistry.register(new QuoteCommand());
   commandRegistry.register(new QuoteContextCommand());
-  commandRegistry.register(new DiagnosticCommand(diagnosticStore(logger), configuration.ownerUserIds));
+  commandRegistry.register(new DiagnosticCommand(diagnosticStore(logger), configuration.ownerUserIds, () => diagnosticPipelineStatus(logger)));
   const setupCommand = new SetupCommand(guildSetupService);
   commandRegistry.register(setupCommand);
   const adminPanelHealth = new AdminPanelHealth();

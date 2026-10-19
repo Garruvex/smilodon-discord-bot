@@ -741,6 +741,7 @@ export class ControlChannelService {
     if (existing) this.releaseEditSlots(guildId);
     const register = (name: PanelEditSlotName): ChannelEditSlot => this.editScheduler.register({
       channelId, key: `control-panel:${guildId}:${name}`, priority: panelEditPriority[name],
+      caller: name === "lyrics" ? "lyrics_panel" : name === "queue" ? "queue_panel" : name === "vote" ? "vote_panel" : "now_playing_panel",
     });
     const slots = {
       queue: register("queue"), lyrics: register("lyrics"), vote: register("vote"), nowPlaying: register("nowPlaying"),

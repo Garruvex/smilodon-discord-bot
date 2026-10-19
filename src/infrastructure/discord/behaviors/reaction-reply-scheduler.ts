@@ -1,5 +1,6 @@
 import type { Client, GuildTextBasedChannel, Message } from "discord.js";
 import type { Logger } from "pino";
+import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
 import { characterSettings } from "../../../application/chat/character-settings.js";
 
 import { ChatAccessService } from "../../../application/access/chat-access-service.js";
@@ -408,7 +409,7 @@ export class ReactionReplyScheduler {
             resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).limits);
           if (result.reactionEmoji && await this.turnSupport.isEligible(message, "history_reaction")) {
             const release = reserve();
-            if (release) { try { await message.react(result.reactionEmoji); release(true); } catch { release(false); } }
+            if (release) { try { await withDiscordCaller("chat_reaction", () => message.react(result.reactionEmoji!)); release(true); } catch { release(false); } }
           }
           await this.turnSupport.applyHistoryReactions(channel, result.historyReactions,
             { guildId, sourceMessageId: message.id }, reserve);

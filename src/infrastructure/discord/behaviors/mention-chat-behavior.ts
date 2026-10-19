@@ -1,6 +1,8 @@
 import type { Message, User } from "discord.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from "discord.js";
 import type { Logger } from "pino";
+import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
+import { emitChatDiagnostic } from "../../../application/diagnostics/chat-diagnostics.js";
 import { characterSettings } from "../../../application/chat/character-settings.js";
 import { SocialOutputSuppressed, type MessageOriginStore } from "../../../application/chat/message-origin-store.js";
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
@@ -70,18 +72,32 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     // Resolve our own persisted delivery metadata without passively fetching
     // an unaddressed human reply chain from Discord. Unknown targets abstain.
     const origin = await this.origins?.find(message.guildId, message.channelId, message.reference.messageId).catch(() => null);
+    if (!origin) emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "unresolved_reply_origin" });
     return origin?.origin === "chat";
   }
 
   public async execute(message: Message): Promise<BehaviorResult> {
-    if (!message.inGuild()) return BehaviorResult.Continue;
+    if (!message.inGuild()) {
+      emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "not_guild" });
+      return BehaviorResult.Continue;
+    }
     const profile = this.profiles.find(message.guildId);
-    if (!profile?.features.chatbot) return BehaviorResult.Continue;
-    if (this.processedMessageIds.has(message.id)) return BehaviorResult.StopPropagation;
+    if (!profile?.features.chatbot) {
+      emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "chat_disabled" });
+      return BehaviorResult.Continue;
+    }
+    if (this.processedMessageIds.has(message.id)) {
+      emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "duplicate" });
+      return BehaviorResult.StopPropagation;
+    }
     this.rememberMessage(message.id);
-    if (await isInGameChannel(message, this.isGameChannel)) return BehaviorResult.Continue;
+    if (await isInGameChannel(message, this.isGameChannel)) {
+      emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "game_channel" });
+      return BehaviorResult.Continue;
+    }
 
     if (!this.chatAccess.canUseMentionChat(profile, message.member, message.author.id, message.channelId)) {
+      emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "access_denied" });
       await message.reply({
         content: profile.chat.deniedMessage,
         components: profile.chat.deniedLinkUrl
@@ -93,6 +109,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       return BehaviorResult.StopPropagation;
     }
     if (!this.conversation) {
+      emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "provider_unconfigured" });
       await message.reply({ content: "The chat subscription has not been configured yet.", allowedMentions: { repliedUser: false } });
       return BehaviorResult.StopPropagation;
     }
@@ -210,7 +227,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           if (result.reactionEmoji && this.profiles.find(message.guildId)?.features.historyReactions &&
               await this.turnSupport.isEligible(message, "history_reaction")) {
             const release = reserve();
-            if (release) { try { await message.react(result.reactionEmoji); release(true); } catch { release(false); } }
+            if (release) { try { await withDiscordCaller("chat_reaction", () => message.react(result.reactionEmoji!)); release(true); } catch { release(false); } }
           }
           await this.turnSupport.applyHistoryReactions(message.channel, result.historyReactions,
             { guildId: message.guildId, sourceMessageId: message.id }, reserve);
@@ -314,9 +331,9 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
             allowedMentions: { repliedUser: false, parse: [] as never[] },
           };
           if (sentMessages.preview) {
-            await sentMessages.preview.edit({ ...payload, attachments: [] });
+            await withDiscordCaller("chat_text", () => sentMessages.preview!.edit({ ...payload, attachments: [] }));
           } else {
-            sentMessages.preview = await message.reply(payload);
+            sentMessages.preview = await withDiscordCaller("chat_text", () => message.reply(payload));
           }
         },
       });

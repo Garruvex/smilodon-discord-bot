@@ -19,6 +19,15 @@ async function directory(): Promise<string> {
 const query = { guildId: "guild", channelId: "channel", sourceMessageId: "source" };
 
 describe("diagnostic snapshot persistence", () => {
+  it("persists a single interruption marker when a prior process lacks a terminal event", async () => {
+    const root = await directory(); const store = new FileChatTraceStore(root, null, {}, () => 1000); stores.push(store); await store.initialize();
+    store.record(diagnosticRecord({ processRunId: "previous-process" })); await store.close();
+    const restored = new FileChatTraceStore(root, null, {}, () => 1100); stores.push(restored); await restored.initialize();
+    expect(restored.lookup(query)[0]?.records.at(-1)?.data).toMatchObject({ event: "chat.trace.interrupted", unfinishedSpans: 1 });
+    await restored.close();
+    const again = new FileChatTraceStore(root, null, {}, () => 1200); stores.push(again); await again.initialize();
+    expect(again.lookup(query)[0]?.records.filter((record) => record.data.event === "chat.trace.interrupted")).toHaveLength(1);
+  });
   it("finishes a snapshot without chasing a continuously changing event stream", async () => {
     class BusyStore extends FileChatTraceStore {
       public writes = 0;

@@ -12,6 +12,7 @@ import type { MemberDepartureService } from "../application/members/member-depar
 import type { MemberWelcomeService } from "../application/members/member-welcome-service.js";
 import type { BoostTrackingService } from "../application/members/boost-tracking-service.js";
 import { diagnosticPolicyVersion, traceGateway } from "../application/diagnostics/gateway-diagnostics.js";
+import { DiscordRateLimitDiagnostics, withDiscordCaller } from "../application/diagnostics/discord-diagnostics.js";
 
 export class Application {
   // Flips true once Lavalink and the control-panel (emoji catalog +
@@ -19,6 +20,7 @@ export class Application {
   // then, interactions are rejected with a "still starting up" reply instead
   // of reaching a music/control-panel handler that isn't ready yet.
   private ready = false;
+  private readonly rateLimitDiagnostics: DiscordRateLimitDiagnostics;
 
   public constructor(
     private readonly client: Client,
@@ -34,6 +36,7 @@ export class Application {
     private readonly logger: Logger,
     private readonly onFatalError?: (reason: string) => void,
   ) {
+    this.rateLimitDiagnostics = new DiscordRateLimitDiagnostics(logger);
     this.registerDiscordEvents();
   }
 
@@ -107,7 +110,7 @@ export class Application {
       // comment) keeps running until this resolves.
       this.dependencies.channelSummaryScheduler?.drain(),
       this.dependencies.reactionReplyScheduler?.drain(),
-    ]);
+    ]).finally(() => this.rateLimitDiagnostics.stop());
   }
 
   private registerDiscordEvents(): void {
@@ -264,7 +267,7 @@ export class Application {
       void traceGateway(this.logger, { guildId: message.guildId ?? undefined, channelId: message.channelId,
         sourceMessageId: message.id, kind: "message_created", policyVersion: diagnosticPolicyVersion(message.guildId ? this.dependencies.guildConfigurationProvider.find(message.guildId) : null) }, async () => {
         if (!this.ready) { await this.replyStartingUpIfControlChannelMessage(message); return "startup_gate"; }
-        if (await this.controlChannelService.handleMessage(message)) return "control_channel";
+        if (await withDiscordCaller("control_panel", () => this.controlChannelService.handleMessage(message))) return "control_channel";
         await this.dependencies.behaviorDispatcher.dispatch(BehaviorEvent.MessageCreated, message);
         return "dispatched";
       }).catch((error: unknown) => {
@@ -394,56 +397,17 @@ export class Application {
       this.logger.warn({ message }, "Discord client warning");
     });
 
-    // Only catches a *proactive* wait — discord.js predicting, from its own
-    // local bucket tracking, that it needs to pause before sending a
-    // request. An unexpected 429 response (e.g. Discord's undocumented
-    // per-channel message-edit sublimit, confirmed as the real cause of a
-    // multi-second panel stall via direct REST response logging below) goes
-    // through a different internal path that retries silently and never
-    // reaches this listener — @discordjs/rest only surfaces that case if
-    // `rejectOnRateLimit` is explicitly configured, which this bot doesn't
-    // do. Kept for the proactive case it does catch; not a substitute for
-    // the response-level logging below.
+    // Proactive waits and actual 429 responses are separate counters; both
+    // are aggregated by caller/target rather than logging every retry.
     this.client.rest.on("rateLimited", (info) => {
-      this.logger.warn(
-        {
-          route: info.route,
-          method: info.method,
-          timeToResetMs: info.timeToReset,
-          global: info.global,
-        },
-        "Discord REST request was rate limited",
-      );
+      this.rateLimitDiagnostics.observe({ kind: "proactive_wait", method: info.method, path: info.url, waitMs: Math.max(info.timeToReset, info.retryAfter, info.sublimitTimeout) });
     });
 
-    // Temporary: pins down where a multi-second message.edit() delay
-    // actually comes from. This fires once the HTTP response is received —
-    // if its timestamp lands close to when the edit call started, discord.js
-    // sent and received the request fast and the delay is downstream of
-    // that; if it lands close to when the edit call *finished*, the request
-    // itself (queued send, network, or response body) is what's slow.
-    // Filtered to message routes only to avoid flooding the log with every
-    // other REST call the bot makes (interactions, commands, etc.). Even so,
-    // the lyrics panel alone makes one of these every second or two, so
-    // successes are trace-only and 429s warnings — keep failures visible
-    // when chasing edit latency or rate limits.
+    // Capture unexpected 429s as well as the proactive REST wait signal.
     this.client.rest.on("response", (request, response) => {
-      if (!request.route.includes("/messages/")) return;
-      const level = response.status === 429 ? "warn" : "trace";
-      this.logger[level](
-        {
-          method: request.method,
-          route: request.route,
-          status: response.status,
-          time: Date.now(),
-          remaining: response.headers.get("x-ratelimit-remaining"),
-          resetAfter: response.headers.get("x-ratelimit-reset-after"),
-          retryAfter: response.headers.get("retry-after"),
-          scope: response.headers.get("x-ratelimit-scope"),
-          bucket: response.headers.get("x-ratelimit-bucket"),
-        },
-        "Discord REST response for a message route",
-      );
+      if (response.status !== 429) return;
+      this.rateLimitDiagnostics.observe({ kind: "response_429", method: request.method, path: request.path,
+        waitMs: Number(response.headers.get("retry-after")) * 1000 });
     });
   }
 

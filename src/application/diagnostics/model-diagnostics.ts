@@ -6,7 +6,7 @@ const modelLoggers = new AsyncLocalStorage<DiagnosticLogger>();
 export function modelDiagnosticLogger(): DiagnosticLogger | null { return modelLoggers.getStore() ?? null; }
 
 // Explicit capability allow-list: preserve missing optional capabilities and
-// the receiver's private fields. Never inspect arguments, results, or prompts.
+// the receiver's private fields. Never serialize arguments, results, or prompts.
 const capabilities = new Set(["reply", "generateCharacterData", "analyzeUserCustomization", "summarizeDroppedExchanges",
   "classifyMemoryConflict", "summarizeReplyChainOverflow", "verifyAttribution", "extractPersonalMemories",
   "compilePersonaBundle", "evolvePersonaDrift", "summarizeChannelMessages", "generateReferenceImage", "embed", "embedMany"]);

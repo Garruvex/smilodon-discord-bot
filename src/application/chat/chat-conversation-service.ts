@@ -1253,7 +1253,7 @@ export class ChatConversationService {
       if (input.shadowMode) {
         this.logger?.info({ guildId: input.guildId, channelId: input.channelId, sourceMessageId: input.sourceMessageId,
           triggerMode: input.triggerMode, action: validatedResponse.ambientAction, reaction: validatedResponse.reactionEmoji !== null,
-          reason: validatedResponse.participationReason?.slice(0, 160) ?? null,
+          hasParticipationReason: Boolean(validatedResponse.participationReason),
           contextMessages: input.channelHistory.length + input.replyChain.length }, "Shadow participation decision");
         return { ...validatedResponse, userMemoryActions: [], guildKnowledgeCandidates: [] };
       }

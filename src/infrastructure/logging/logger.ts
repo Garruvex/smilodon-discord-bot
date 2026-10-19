@@ -1,10 +1,10 @@
-import pino, { type Logger } from "pino";
+import pino, { type DestinationStream, type Logger } from "pino";
 
 import type { ApplicationConfiguration } from "../../config/configuration.js";
 import { diagnosticFields, diagnosticProcessRunId, safeFailure } from "../../application/diagnostics/chat-diagnostics.js";
 import { diagnosticBuildVersion } from "../../application/diagnostics/gateway-diagnostics.js";
 
-export function createLogger(configuration: ApplicationConfiguration): Logger {
+export function createLogger(configuration: ApplicationConfiguration, destination?: DestinationStream): Logger {
   const prettyTransport = configuration.environment === "production"
     ? {}
     : {
@@ -32,5 +32,5 @@ export function createLogger(configuration: ApplicationConfiguration): Logger {
       err: (error: unknown) => safeFailure(error, "operation_error"),
     },
     ...prettyTransport,
-  });
+  }, destination);
 }
