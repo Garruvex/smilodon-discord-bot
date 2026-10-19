@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
+import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
+import { withDiagnosticScope } from "../../src/application/diagnostics/chat-diagnostics.js";
 
 import { ChatConversationService, type ChatConversationInput } from "../../src/application/chat/chat-conversation-service.js";
 import type { ChatProvider, ChatRequest, ChatResponse } from "../../src/application/chat/chat-provider.js";
@@ -81,6 +83,42 @@ function baseStore(overrides: Partial<ChatStateStore> = {}): ChatStateStore {
 }
 
 describe("ChatConversationService", () => {
+  it("correlates model, context, and one terminal delivery event without recording content", async () => {
+    const { logger, records } = captureDiagnosticLogger();
+    const service = new ChatConversationService({ reply: (): Promise<ChatResponse> => Promise.resolve(response("SECRET_ANSWER")) }, baseStore(), testMemoryEngine().engine,
+      undefined, undefined, undefined, null, null, null, logger);
+    try {
+      await withDiagnosticScope({ operation: "dispatch", sourceMessageId: "source" }, () => service.run(
+        { ...input("SECRET_QUESTION"), sourceMessageId: "source" }, (output) => Promise.resolve(output.text)));
+      const diagnostics = records.filter((record) => typeof record.event === "string");
+      expect(diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({ event: "context.selection.completed", selected: 0 }),
+        expect.objectContaining({ event: "chat.model.completed", purpose: "reply", status: "valid" }),
+        expect.objectContaining({ event: "chat.turn.completed", outcome: "text_delivered", textDeliveryConfirmed: true }),
+      ]));
+      expect(diagnostics.filter((record) => record.event === "chat.turn.completed")).toHaveLength(1);
+      expect(new Set(diagnostics.map((record) => record.traceId)).size).toBe(1);
+      expect(JSON.stringify(diagnostics)).not.toContain("SECRET");
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+
+  it("reports a failed model call rather than intentional silence", async () => {
+    const { logger, records } = captureDiagnosticLogger();
+    const error = new DOMException("SECRET_ERROR_BODY", "TimeoutError");
+    const service = new ChatConversationService({ reply: (): Promise<ChatResponse> => Promise.reject(error) }, baseStore(), testMemoryEngine().engine,
+      undefined, undefined, undefined, null, null, null, logger);
+    try {
+      await expect(service.run(input("SECRET_QUESTION"), () => Promise.resolve(""))).rejects.toBe(error);
+      const diagnostics = records.filter((record) => typeof record.event === "string");
+      expect(diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({ event: "chat.model.completed", status: "failed", failure: "timeout" }),
+        expect.objectContaining({ event: "chat.turn.completed", outcome: "failed", failure: "timeout", textDeliveryConfirmed: false }),
+      ]));
+      expect(diagnostics.filter((record) => record.event === "chat.turn.completed")).toHaveLength(1);
+      expect(JSON.stringify(diagnostics)).not.toContain("SECRET");
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+
   it("cancels a buffered optional decision when a direct request starts", async () => {
     vi.useFakeTimers();
     const service = new ChatConversationService({ reply: (): Promise<ChatResponse> => Promise.resolve(response("direct answer")) }, baseStore(), testMemoryEngine().engine);

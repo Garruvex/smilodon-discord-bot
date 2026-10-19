@@ -2,6 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 import { freshDocument, memoryProvider, guildId, actorUserId } from "../helpers/settings-fixtures.js";
 import { CharacterRuntime } from "../../src/application/chat/character-runtime.js";
 import { CharacterMemory } from "../../src/application/chat/character-memory.js";
@@ -43,6 +44,20 @@ function setup(clock: () => number = () => Date.now(), logger: Pick<Logger, "inf
   return { connection, repository, profiles, provider, runtime };
 }
 describe("character module integration", () => {
+  it("explains whether age or a quiet gap removed otherwise available context", async () => {
+    const { logger, records } = captureDiagnosticLogger();
+    const { runtime, profiles } = setup(() => 20 * 60_000, logger);
+    await profiles.update(guildId, { character: { context: { ...profiles.current().character!.context, enabled: true } } });
+    const source = { messageId: "old", authorId: actorUserId, authorDisplayName: "SECRET_NAME", content: "SECRET_TEXT", imageCount: 0, timestampMs: 0 };
+    expect(runtime.selectContext(guildId, channelId, [source])).toEqual([]);
+    expect(runtime.selectContext(guildId, channelId, [{ ...source, timestampMs: 9 * 60_000 }])).toEqual([]);
+    const diagnostics = records.filter((record) => record.event === "context.selection.filtered");
+    expect(diagnostics).toEqual([
+      expect.objectContaining({ reason: "window", before: 1, after: 0 }),
+      expect.objectContaining({ reason: "gap", before: 1, after: 0 }),
+    ]);
+    expect(JSON.stringify(diagnostics)).not.toContain("SECRET");
+  });
   it("keeps a composed module inactive when an implementation dependency is absent", () => {
     const registry = new CharacterModuleRegistry(); registry.register(new ThoughtsModule());
     expect(registry.has("thoughts")).toBe(false);
@@ -498,7 +513,7 @@ describe("decision windows and continuation timing", () => {
   it("rejects fabricated targets rather than silently repairing recipient evidence", async () => {
     const provider = { generateCharacterData: vi.fn(() => Promise.resolve({ addressing: "bot", motivation: 0.8, boundary: "bad", target: "fabricated", confidence: 0.9, reaction: null, thoughts: [] })) };
     const decision = new CharacterDecisionService(provider); const input = { personality: "test", events: [], burst: [{ messageId: "latest", timestampMs: 1000, authorId: "human", authorDisplayName: "human", content: "hello", imageCount: 0 }], botId: "bot", fixedTarget: null, gapMs: 600000, speakingShare: 0, thoughts: false };
-    expect(await decision.evaluate(input)).toEqual({ status: "failed", decision: null }); expect(await decision.decide({ ...input, fixedTarget: "direct" })).toBeNull();
+    expect(await decision.evaluate(input)).toMatchObject({ status: "failed", decision: null }); expect(await decision.decide({ ...input, fixedTarget: "direct" })).toBeNull();
   });
   it("admits active continuation inside spontaneous cooldowns while bounding exchanges and the guild", async () => {
     let now = 1000; const scheduler = new ChatScheduler(() => now); const limits = { ...balancedChatLimits, continuation: true, continuationPerExchange: 2, continuationPerWindow: 3, optionalTurnsPerWindow: 4 };

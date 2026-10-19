@@ -1,4 +1,5 @@
 import { SocialOutputSuppressed } from "./message-origin-store.js";
+import { bindDiagnosticTask } from "../diagnostics/chat-diagnostics.js";
 
 export interface ChatActivityLimits {
   evaluationCooldownMs: number;
@@ -74,7 +75,7 @@ export class ChatScheduler {
     }
     return new Promise<T | null>((resolve, reject) => {
       queue.push({ optional, expiresAt, limits, resolve: resolve as (value: unknown) => void, reject,
-        run: async () => {
+        run: bindDiagnosticTask(async () => {
           const activity = this.state(key);
           if (optional && !limits.continuation && this.now() - activity.lastEvaluation < limits.evaluationCooldownMs) return null;
           const guild = key.split(":")[0]!;
@@ -88,7 +89,7 @@ export class ChatScheduler {
             this.evaluations.set(guild, evaluations);
           }
           return operation();
-        },
+        }),
       });
       this.queued++;
       this.pump();
@@ -164,7 +165,7 @@ export class ChatScheduler {
       if (candidate && !this.closed) candidate.job();
     }, delay);
     timer.unref?.();
-    this.buffered.set(key, { timer, startedAt, job });
+    this.buffered.set(key, { timer, startedAt, job: bindDiagnosticTask(job) });
   }
 
   public cancelBufferedOpportunity(key: string): void {

@@ -1,6 +1,7 @@
 import type { Message } from "discord.js";
 import type { Logger } from "pino";
 import { describe, expect, it, vi } from "vitest";
+import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 
 import { ChatTurnSupport } from "../../src/infrastructure/discord/behaviors/chat-turn-support.js";
 
@@ -17,6 +18,16 @@ function fakeMessage(id: string, fetch: ReturnType<typeof vi.fn>): Message {
 }
 
 describe("ChatTurnSupport.resolveChannelHistory", () => {
+  it("distinguishes inaccessible history retrieval from an empty successful fetch", async () => {
+    const { logger, records } = captureDiagnosticLogger();
+    const support = new ChatTurnSupport(logger);
+    await support.resolveChannelHistory(fakeMessage("first", vi.fn(() => Promise.reject(new Error("SECRET_ERROR")))) , 8, new Set());
+    await support.resolveChannelHistory(fakeMessage("second", vi.fn(() => Promise.resolve(new Map()))), 8, new Set());
+    expect(records.map((record) => ({ status: record.status, selected: record.selected }))).toEqual([
+      { status: "fetch_failed", selected: 0 }, { status: "complete", selected: 0 },
+    ]);
+    expect(JSON.stringify(records)).not.toContain("SECRET");
+  });
   it("preserves the original addressee through a bot reply joined by another human", () => {
     const support = new ChatTurnSupport(logger());
     const common = { channelId: "channel", attachments: new Map(), channel: { messages: { cache: new Map() } }, createdTimestamp: 1000 };

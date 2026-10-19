@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { performance } from "node:perf_hooks";
+import { diagnosticElapsed, safeFailure, type FailureCategory } from "../diagnostics/chat-diagnostics.js";
 import type { ChannelHistoryMessage, StructuredCharacterProvider } from "./chat-provider.js";
 import { contributionPolicy, type ContributionPolicy } from "./participation-policy.js";
 
@@ -24,7 +26,15 @@ export const decisionJsonSchema: Record<string, unknown> = { type: "object", add
     contribution: candidateJson, opening: { type: "string", enum: ["clear", "closed", "unclear"] }, boundary: { type: "string" }, target: { type: "string" },
     confidence: { type: "number" }, reaction: { type: ["string", "null"] }, thoughts: { type: "array", items: candidateJson } },
 };
-export type DecisionOutcome = { status: "unavailable" | "failed"; decision: null } | { status: "valid"; decision: CharacterDecision };
+export interface DecisionAttempt {
+  providerRole: "primary" | "fallback";
+  attempt: number;
+  status: "valid" | "failed";
+  durationMs: number;
+  failure?: FailureCategory;
+  httpStatus?: number;
+}
+export type DecisionOutcome = ({ status: "unavailable" | "failed"; decision: null } | { status: "valid"; decision: CharacterDecision }) & { attempts: readonly DecisionAttempt[] };
 export function contextBoundaries(events: readonly ChannelHistoryMessage[], gapMs: number): readonly string[] {
   return ["earlier", ...events.filter((event, index) => !index || event.timestampMs - events[index - 1]!.timestampMs > gapMs || event.authorId !== events[index - 1]!.authorId).map((event) => event.messageId)];
 }
@@ -137,11 +147,17 @@ export function generatedContributionAllowed(text: string, events: readonly Chan
 }
 interface DecisionInput { personality: string; events: readonly ChannelHistoryMessage[]; burst: readonly ChannelHistoryMessage[]; botId: string; fixedTarget: string | null; gapMs: number; speakingShare: number; thoughts: boolean; availableActions?: { text: boolean; reaction: boolean } | undefined; now?: number }
 export class CharacterDecisionService {
-  public constructor(private readonly provider: StructuredCharacterProvider | null, private readonly fallback: StructuredCharacterProvider | null = null) {}
+  public constructor(private readonly provider: StructuredCharacterProvider | null, private readonly fallback: StructuredCharacterProvider | null = null,
+    private readonly onAttempt: ((attempt: DecisionAttempt) => void) | null = null) {}
   public get available(): boolean { return this.provider !== null || this.fallback !== null; }
   public async decide(input: DecisionInput): Promise<CharacterDecision | null> { return (await this.evaluate(input)).decision; }
   public async evaluate(input: DecisionInput): Promise<DecisionOutcome> {
-    if (!this.available) return { status: "unavailable", decision: null };
+    const attempts: DecisionAttempt[] = [];
+    const record = (attempt: DecisionAttempt): void => {
+      attempts.push(attempt);
+      try { this.onAttempt?.(attempt); } catch { /* Diagnostics cannot change decision admission. */ }
+    };
+    if (!this.available) return { status: "unavailable", decision: null, attempts };
     const latestTime = input.burst.at(-1)?.timestampMs ?? input.events.at(-1)?.timestampMs ?? 0;
     const now = Math.min(input.now ?? latestTime, latestTime);
     const events = [...new Map([...input.events, ...input.burst].filter((event) => event.timestampMs <= now).map((event) => [event.messageId, event])).values()];
@@ -161,15 +177,31 @@ Opening clear means room to speak without interrupting and still relevant; other
 ${input.thoughts ? "Return zero to three optional candidate thoughts with the same fields and labels. Zero is common." : "Return no thoughts; the baseline contribution assessment is still required."}
 A reaction is one ordinary emoji or null. It may acknowledge a human-to-human message when appropriate, without a text contribution. Choose silence when neither action adds anything. Only propose actions marked available. Data: ${JSON.stringify({ ...input, events, burst: input.burst.filter((event) => event.timestampMs <= now), targets, boundaries }).replaceAll("<", "\\u003c")}`;
     const validCandidate = (candidate: ContributionCandidate): boolean => humanIds.has(candidate.sourceMessageId) && recipients.has(candidate.recipientId);
-    for (const provider of [...new Set([this.provider, this.fallback].filter((item): item is StructuredCharacterProvider => item !== null))]) try {
-      const result = decisionSchema.parse(await provider.generateCharacterData(prompt, decisionJsonSchema));
-      if (!targets.includes(result.target) || input.fixedTarget && result.target !== input.fixedTarget || !boundaries.includes(result.boundary) ||
-          result.recipientEvidence.some((id) => !ids.has(id)) || (!validCandidate(result.contribution) || result.contribution.sourceMessageId !== result.target) || result.thoughts.some((thought) => !validCandidate(thought))) continue;
-      const target = humans.find((event) => event.messageId === result.target)!;
-      if (result.contribution.recipientId !== "group" && result.contribution.recipientId !== target.authorId) continue;
-      if (result.reaction && !/^\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*$/u.test(result.reaction)) result.reaction = null;
-      return { status: "valid", decision: result };
-    } catch { /* Invalid/failed provider output cannot authorize optional output. */ }
-    return { status: "failed", decision: null };
+    for (const provider of [...new Set([this.provider, this.fallback].filter((item): item is StructuredCharacterProvider => item !== null))]) {
+      const providerRole = provider === this.provider ? "primary" : "fallback";
+      const attempt = attempts.length + 1;
+      const started = performance.now();
+      try {
+        const result = decisionSchema.parse(await provider.generateCharacterData(prompt, decisionJsonSchema));
+        const target = humans.find((event) => event.messageId === result.target);
+        const failure: FailureCategory | null = !targets.includes(result.target) ? "invalid_target"
+          : input.fixedTarget && result.target !== input.fixedTarget ? "fixed_target_mismatch"
+          : !boundaries.includes(result.boundary) ? "invalid_boundary"
+          : result.recipientEvidence.some((id) => !ids.has(id)) ? "invalid_evidence"
+          : !validCandidate(result.contribution) || result.contribution.sourceMessageId !== result.target ? "invalid_contribution"
+          : result.thoughts.some((thought) => !validCandidate(thought)) ? "invalid_thought"
+          : result.contribution.recipientId !== "group" && result.contribution.recipientId !== target?.authorId ? "recipient_mismatch" : null;
+        if (failure) {
+          record({ providerRole, attempt, status: "failed", failure, durationMs: diagnosticElapsed(started) });
+          continue;
+        }
+        if (result.reaction && !/^\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*$/u.test(result.reaction)) result.reaction = null;
+        record({ providerRole, attempt, status: "valid", durationMs: diagnosticElapsed(started) });
+        return { status: "valid", decision: result, attempts };
+      } catch (error) {
+        record({ providerRole, attempt, status: "failed", durationMs: diagnosticElapsed(started), ...safeFailure(error) });
+      }
+    }
+    return { status: "failed", decision: null, attempts };
   }
 }

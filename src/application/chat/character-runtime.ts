@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Logger } from "pino";
+import { emitChatDiagnostic } from "../diagnostics/chat-diagnostics.js";
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
 import type { ChatProvider, ChatRequest, ChatResponse, ChannelHistoryMessage, StructuredCharacterProvider, PersonalMemoryExtractionAction } from "./chat-provider.js";
@@ -64,7 +65,8 @@ export class CharacterRuntime {
       const profile = this.profiles.find(guildId); if (!profile) return false;
       return this.registry.has(id) && !(id === "canon" && characterSettings(profile).modules.canon.freeze) &&
         !characterInactiveReason(characterSettings(profile), id, channelId, this.capabilities(profile, channelId));
-    }); this.callbacks = new CharacterCallbacks(repository); this.decisions = new CharacterDecisionService(decisionProvider, utility);
+    }); this.callbacks = new CharacterCallbacks(repository); this.decisions = new CharacterDecisionService(decisionProvider, utility,
+      (attempt) => emitChatDiagnostic(this.logger, { event: "model.decision.attempt", ...attempt }));
     this.registerModules();
   }
   public capabilities(profile: GuildConfiguration, channelId: string): CharacterCapabilities {
@@ -91,15 +93,30 @@ export class CharacterRuntime {
   public selectContext(guildId: string, channelId: string, events: readonly ChannelHistoryMessage[], now = this.now()): ChannelHistoryMessage[] {
     const profile = this.profiles.find(guildId); if (!profile) return [...events];
     const context = characterSettings(profile).context;
-    if (!passiveChannelAllowed(profile, channelId) || !this.capabilities(profile, channelId).context) return [];
-    if (!context.enabled) return [...events].slice(-24);
+    const filtered = (reason: "scope" | "window" | "gap" | "segment" | "count" | "budget", before: number, after: number): void => {
+      if (before !== after) emitChatDiagnostic(this.logger, { event: "context.selection.filtered", reason, before, after });
+    };
+    if (!passiveChannelAllowed(profile, channelId) || !this.capabilities(profile, channelId).context) {
+      filtered("scope", events.length, 0); return [];
+    }
+    if (!context.enabled) {
+      const selected = [...events].slice(-24); filtered("count", events.length, selected.length); return selected;
+    }
     let segment = events.filter((event) => event.timestampMs >= now - context.windowMinutes * 60_000);
+    filtered("window", events.length, segment.length);
     let boundary = 0;
     for (let index = 1; index < segment.length; index++) if (segment[index]!.timestampMs - segment[index - 1]!.timestampMs > context.segmentGapMinutes * 60_000) boundary = index;
-    if (segment.length && now - segment.at(-1)!.timestampMs > context.segmentGapMinutes * 60_000) return [];
+    if (segment.length && now - segment.at(-1)!.timestampMs > context.segmentGapMinutes * 60_000) {
+      filtered("gap", segment.length, 0); return [];
+    }
+    const beforeSegment = segment.length;
     segment = segment.slice(Math.min(boundary, Math.max(0, segment.length - 8)));
+    filtered("segment", beforeSegment, segment.length);
     let size = 0;
-    return segment.slice(-(context.maxMessages + 8)).reverse().filter((event) => { size += JSON.stringify(event).length; return size <= context.budget; }).reverse();
+    const bounded = segment.slice(-(context.maxMessages + 8)); filtered("count", segment.length, bounded.length);
+    const selected = bounded.reverse().filter((event) => { size += JSON.stringify(event).length; return size <= context.budget; }).reverse();
+    filtered("budget", bounded.length, selected.length);
+    return selected;
   }
   private fingerprint(profile: GuildConfiguration, channelId: string): string {
     return hash(JSON.stringify([characterSettings(profile), this.capabilities(profile, channelId), profile.chat.channelMemoryModes, profile.chat.participation, [...profile.channels.chatbot]]));

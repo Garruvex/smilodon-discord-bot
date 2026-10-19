@@ -1,6 +1,7 @@
 import type { Attachment, Message, User, GuildMember } from "discord.js";
 import type { ChatUser, ConversationEvent } from "../../../application/chat/chat-provider.js";
 import type { Logger } from "pino";
+import { eligibilityReason, emitChatDiagnostic, safeFailure } from "../../../application/diagnostics/chat-diagnostics.js";
 import type { SocialChatEligibility, SocialTrigger } from "./social-chat-eligibility.js";
 import { SocialOutputSuppressed, type MessageOriginStore, type MessageOrigin } from "../../../application/chat/message-origin-store.js";
 
@@ -94,7 +95,12 @@ export class ChatTurnSupport {
   }
 
   public async isEligible(message: Message, trigger: SocialTrigger = "direct"): Promise<boolean> {
-    return !this.eligibility || (await this.eligibility.check(message, trigger)).eligible;
+    if (!this.eligibility) return true;
+    const result = await this.eligibility.check(message, trigger);
+    const reason = eligibilityReason.safeParse(result.reason);
+    if (!result.eligible && reason.success) emitChatDiagnostic(this.logger, { event: "context.eligibility.denied",
+      sourceMessageId: message.id, purpose: trigger, reason: reason.data });
+    return result.eligible;
   }
 
   public async assertEligible(message: Message, trigger: SocialTrigger = "direct"): Promise<void> {
@@ -165,14 +171,17 @@ export class ChatTurnSupport {
   // message) stops the walk cleanly rather than throwing.
   public async resolveReplyChain(message: Message): Promise<{ kept: Message[]; overflow: Message[] }> {
     const kept: Message[] = [];
+    let fetched = 0;
+    let status: "complete" | "fetch_failed" | "ineligible" | "bounded" = "complete";
     let current: Message = message;
     let remainingChars = chatMemoryLimits.maxReplyChainChars;
     for (let depth = 0; depth < chatMemoryLimits.maxReplyChainDepth; depth++) {
       const referenceId = current.reference?.messageId;
       if (!referenceId) break;
       const parent = await current.channel.messages.fetch(referenceId).catch(() => null);
-      if (!parent) break;
-      if (!await this.isEligible(parent, "direct")) break;
+      if (!parent) { status = "fetch_failed"; break; }
+      fetched++;
+      if (!await this.isEligible(parent, "direct")) { status = "ineligible"; break; }
       const contentLength = Math.min(parent.content.length, chatMemoryLimits.maxUserMessageChars);
       // Always keep at least the immediate parent even if it alone exceeds
       // the budget; only stop *extending further* once the next hop won't fit.
@@ -195,14 +204,19 @@ export class ChatTurnSupport {
       const referenceId = current.reference?.messageId;
       if (!referenceId) break;
       const parent = await current.channel.messages.fetch(referenceId).catch(() => null);
-      if (!parent) break;
-      if (!await this.isEligible(parent, "direct")) break;
+      if (!parent) { status = "fetch_failed"; break; }
+      fetched++;
+      if (!await this.isEligible(parent, "direct")) { status = "ineligible"; break; }
       const contentLength = Math.min(parent.content.length, chatMemoryLimits.maxUserMessageChars);
       if (overflow.length > 0 && contentLength > overflowChars) break;
       overflowChars -= contentLength;
       overflow.push(parent);
       current = parent;
     }
+    if (status === "complete" && current.reference?.messageId) status = "bounded";
+    emitChatDiagnostic(this.logger, { event: "context.source.selected", source: "reply_chain", fetched,
+      selected: kept.length + overflow.length, omitted: Math.max(0, fetched - kept.length - overflow.length), status,
+      chars: [...kept, ...overflow].reduce((total, item) => total + item.content.length, 0) });
     return { kept: kept.reverse(), overflow: overflow.reverse() };
   }
 
@@ -229,7 +243,10 @@ export class ChatTurnSupport {
     before: string | null = message.id,
     maxChars: number = chatMemoryLimits.maxChannelHistoryChars,
   ): Promise<Message[]> {
-    if (!await this.isEligible(message, "observation")) return [];
+    if (!await this.isEligible(message, "observation")) {
+      emitChatDiagnostic(this.logger, { event: "context.source.selected", source: "channel_history", fetched: 0, selected: 0, omitted: 0, chars: 0, status: "ineligible" });
+      return [];
+    }
     // Oversample the raw fetch (Discord's own per-request cap is 100, so
     // this never costs an extra round trip) — a flat "last `limit` from
     // anyone" fetch lets our own replies, which appear after nearly every
@@ -241,7 +258,10 @@ export class ChatTurnSupport {
       limit: fetchLimit,
       ...(before ? { before } : {}),
     }).catch(() => null);
-    if (!fetched) return [];
+    if (!fetched) {
+      emitChatDiagnostic(this.logger, { event: "context.source.selected", source: "channel_history", fetched: 0, selected: 0, omitted: 0, chars: 0, status: "fetch_failed" });
+      return [];
+    }
     const selfId = message.client.user?.id ?? null;
     // Budgeted separately from human messages: our own recent replies are
     // still valuable context (a human often reacts to what we just said),
@@ -271,6 +291,9 @@ export class ChatTurnSupport {
       if (isSelf) selfKept++; else humanKept++;
       if (humanKept >= humanBudget && selfKept >= selfBudget) break;
     }
+    emitChatDiagnostic(this.logger, { event: "context.source.selected", source: "channel_history", fetched: fetched.size,
+      selected: kept.length, omitted: fetched.size - kept.length, chars: kept.reduce((total, item) => total + item.content.length, 0),
+      status: kept.length < fetched.size || fetched.size === fetchLimit ? "bounded" : "complete" });
     return kept.reverse();
   }
 
@@ -522,11 +545,14 @@ export class ChatTurnSupport {
       sends[0]!.content = params.emptyFallbackContent;
     }
 
+    let deliveredParts = 0;
+    let partial = false;
     const sendAndRecord = async (send: () => Promise<Message>): Promise<Message> => {
       if (params.characterIsCurrent && !params.characterIsCurrent()) throw new SocialOutputSuppressed();
       if (params.characterCanDeliver && !await params.characterCanDeliver()) throw new SocialOutputSuppressed();
       if (params.sourceMessage) await this.assertEligible(params.sourceMessage, params.trigger ?? "direct");
       const sent = await send();
+      deliveredParts++;
       params.recordDelivery?.(sent);
       if (this.origins && params.sourceMessage?.guildId) {
         await this.origins.record({
@@ -537,12 +563,20 @@ export class ChatTurnSupport {
       return sent;
     };
     const [firstSend, ...restSends] = sends;
-    const firstMessage = await sendWithRetry(() => sendAndRecord(() => params.sender.first(firstSend!)));
+    let firstMessage: Message;
+    try {
+      firstMessage = await sendWithRetry(() => sendAndRecord(() => params.sender.first(firstSend!)));
+    } catch (error) {
+      emitChatDiagnostic(this.logger, { event: "chat.delivery.completed", plannedParts: sends.length, deliveredParts,
+        status: error instanceof SocialOutputSuppressed ? "suppressed" : "failed", ...(error instanceof SocialOutputSuppressed ? {} : safeFailure(error)) });
+      throw error;
+    }
     for (const send of restSends) {
       try {
         if (params.characterDelayMs) await new Promise((resolve) => setTimeout(resolve, params.characterDelayMs! / Math.max(1, restSends.length)));
         await sendWithRetry(() => sendAndRecord(() => params.sender.rest(send)));
       } catch (error) {
+        partial = true;
         if (error instanceof SocialOutputSuppressed) break;
         this.logger.warn({ error }, "Chat reply delivery failed partway through a multi-message response");
         await params.sender.rest({
@@ -552,6 +586,7 @@ export class ChatTurnSupport {
         break;
       }
     }
+    emitChatDiagnostic(this.logger, { event: "chat.delivery.completed", plannedParts: sends.length, deliveredParts, status: partial ? "partial" : "complete" });
     if (params.origin && params.origin !== "chat" && params.sourceMessage && !params.sourceMessage.author.bot) {
       this.eligibility?.markUtilitySource(params.sourceMessage);
       this.onUtilitySource?.(params.sourceMessage);

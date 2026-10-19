@@ -829,7 +829,7 @@ export function createDependencies(
     guildConfigurationProvider,
     playbackService,
     pollService,
-    behaviorDispatcher: new BehaviorDispatcher(behaviorRegistry),
+    behaviorDispatcher: new BehaviorDispatcher(behaviorRegistry, logger.child({ component: "behavior-dispatcher" })),
     settingsEngine,
     settingsUpdater,
     adminPanelHealth,

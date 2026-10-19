@@ -1,6 +1,10 @@
 import pino, { type Logger } from "pino";
+import { randomUUID } from "node:crypto";
 
 import type { ApplicationConfiguration } from "../../config/configuration.js";
+import { diagnosticFields } from "../../application/diagnostics/chat-diagnostics.js";
+
+const processRunId = randomUUID();
 
 export function createLogger(configuration: ApplicationConfiguration): Logger {
   const prettyTransport = configuration.environment === "production"
@@ -13,9 +17,12 @@ export function createLogger(configuration: ApplicationConfiguration): Logger {
       };
   return pino({
     level: configuration.logLevel,
+    mixin: () => ({ ...diagnosticFields() }),
     base: {
       application: "fntu-discord-bot",
       environment: configuration.environment,
+      instanceName: configuration.instanceName ?? "default",
+      processRunId,
     },
     redact: {
       paths: ["token", "apiKey", "authorization", "req.headers.authorization"],

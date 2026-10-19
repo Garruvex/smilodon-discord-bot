@@ -1,6 +1,7 @@
 import type { Message } from "discord.js";
 import type { Logger } from "pino";
 import { describe, expect, it, vi } from "vitest";
+import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 
 import { ChatTurnSupport, type ChatDeliveryPayload } from "../../src/infrastructure/discord/behaviors/chat-turn-support.js";
 import type { GeneratedChatImage } from "../../src/application/chat/chat-provider.js";
@@ -237,7 +238,8 @@ describe("ChatTurnSupport.deliverChatResponse", () => {
   }, 10_000);
 
   it("stops after a later chunk fails 3 times, posts a partial-delivery notice, and does not throw", async () => {
-    const support = new ChatTurnSupport(logger());
+    const capture = captureDiagnosticLogger();
+    const support = new ChatTurnSupport(capture.logger);
     const first = vi.fn((_payload: ChatDeliveryPayload) => Promise.resolve(fakeMessage("1")));
     let restCallCount = 0;
     const rest = vi.fn((_payload: ChatDeliveryPayload) => {
@@ -257,6 +259,10 @@ describe("ChatTurnSupport.deliverChatResponse", () => {
       emptyFallbackContent: "I ran out of words.",
       maxImageAggregateBytes: 10 * oneMiB,
     });
+
+    expect(capture.records.filter((record) => record.event === "chat.delivery.completed")).toEqual([
+      expect.objectContaining({ status: "partial", deliveredParts: 1 }),
+    ]);
 
     expect(result.deliveredText).toBe(text);
     // 3 failed retries for the failing chunk, plus 1 successful notice send.

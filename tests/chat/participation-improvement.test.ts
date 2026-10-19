@@ -40,9 +40,10 @@ describe("participation safety and replay", () => {
     expect(values).toEqual([true, true, true, false, false]);
   });
   it("distinguishes unavailable and failed providers and uses the utility fallback", async () => {
-    expect(await new CharacterDecisionService(null).evaluate(input)).toEqual({ status: "unavailable", decision: null });
+    expect(await new CharacterDecisionService(null).evaluate(input)).toEqual({ status: "unavailable", decision: null, attempts: [] });
     const failed = { generateCharacterData: vi.fn(() => Promise.reject(new Error("offline"))) };
-    expect(await new CharacterDecisionService(failed).evaluate(input)).toEqual({ status: "failed", decision: null });
+    expect(await new CharacterDecisionService(failed).evaluate(input)).toMatchObject({ status: "failed", decision: null,
+      attempts: [{ providerRole: "primary", status: "failed", failure: "provider_error" }] });
     const fallback = { generateCharacterData: vi.fn(() => Promise.resolve(decision)) };
     expect((await new CharacterDecisionService(failed, fallback).evaluate(input)).status).toBe("valid");
     expect(fallback.generateCharacterData).toHaveBeenCalledOnce();

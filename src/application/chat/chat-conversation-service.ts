@@ -1,5 +1,7 @@
 import { isRecipientCorrection, generatedContributionAllowed } from "./character-decision.js";
 import type { Logger } from "pino";
+import { performance } from "node:perf_hooks";
+import { diagnosticElapsed, emitChatDiagnostic, safeFailure, withDiagnosticScope } from "../diagnostics/chat-diagnostics.js";
 import type { CharacterRuntime, CharacterPreparedTurn } from "./character-runtime.js";
 
 import { hashContent } from "../assets/content-hash.js";
@@ -508,7 +510,7 @@ export class ChatConversationService {
       if (!notes) return draftResponse;
       // Keep the original request/persona, but never execute tools or emit previews twice.
       // Only the repaired text is consumed; all secondary output is discarded.
-      const repair = await this.provider.reply({
+      const repair = await this.replyWithDiagnostics({
         ...request,
         attributionRepair: { draft: draftResponse, notes },
         enabledTools: [],
@@ -734,6 +736,34 @@ export class ChatConversationService {
     deliver: (response: ChatResponse) => Promise<string>,
     observer?: ChatResponseObserver,
   ): Promise<ChatResponse> {
+    return withDiagnosticScope({ operation: "chat_turn", guildId: input.guildId, channelId: input.channelId,
+      sourceMessageId: input.sourceMessageId ?? undefined }, async () => {
+      const started = performance.now();
+      let textDeliveryConfirmed = false;
+      emitChatDiagnostic(this.logger, { event: "chat.turn.started", triggerMode: input.triggerMode });
+      try {
+        const response = await this.runScheduled(input, async (result) => {
+          const text = await deliver(result);
+          textDeliveryConfirmed = true;
+          return text;
+        }, observer);
+        emitChatDiagnostic(this.logger, { event: "chat.turn.completed", triggerMode: input.triggerMode,
+          outcome: textDeliveryConfirmed ? "text_delivered" : "no_text_delivery", textDeliveryConfirmed, durationMs: diagnosticElapsed(started) });
+        return response;
+      } catch (error) {
+        emitChatDiagnostic(this.logger, { event: "chat.turn.completed", triggerMode: input.triggerMode,
+          outcome: error instanceof ChatStateCommitError ? "delivered_state_unsaved" : error instanceof SocialOutputSuppressed ? "suppressed" : "failed",
+          textDeliveryConfirmed, durationMs: diagnosticElapsed(started), ...(error instanceof SocialOutputSuppressed ? {} : safeFailure(error)) });
+        throw error;
+      }
+    });
+  }
+
+  private runScheduled(
+    input: ChatConversationInput,
+    deliver: (response: ChatResponse) => Promise<string>,
+    observer?: ChatResponseObserver,
+  ): Promise<ChatResponse> {
     const key = `${input.guildId}:${input.channelId}`;
     if (input.triggerMode === "direct" || input.triggerMode === "ambient") this.cancelOptionalOpportunity(input.guildId, input.channelId);
     const lowSubstance = isLowSubstancePing(input.message, input.replyChain.length > 0 ||
@@ -772,7 +802,11 @@ export class ChatConversationService {
         !ids.has(message.messageId) && message.messageId !== input.sourceMessageId &&
         message.timestampMs > (this.forgottenBefore.get(`${input.guildId}:${message.authorId}`) ?? -Infinity)).map((message) => [message.messageId, message])).values()]
         .sort((a, b) => a.timestampMs - b.timestampMs).slice(windowMinutes ? -48 : -24);
+      const merged = history.length;
       if (this.characterRuntime) history = this.characterRuntime.selectContext(input.guildId, input.channelId, history);
+      emitChatDiagnostic(this.logger, { event: "context.selection.completed", fetchedHistory: input.channelHistory.length,
+        episodeCandidates: snapshot.length, burstCandidates: input.currentBurst?.length ?? 0, merged, selected: history.length,
+        replyChain: input.replyChain.length, chars: history.reduce((total, message) => total + message.content.length, 0) });
       const response = await this.runTurn({ ...input, channelHistory: history,
         ...((input.triggerMode === "spontaneous" || input.triggerMode === "continuation") ? { optionalActionsAvailable: {
           text: this.scheduler.outputAvailable(key, "text", limits),
@@ -884,6 +918,19 @@ export class ChatConversationService {
     this.characterRuntime?.stop();
     this.scheduler.stop();
     if (this.episodeCleanupTimer) clearInterval(this.episodeCleanupTimer);
+  }
+
+  private async replyWithDiagnostics(request: ChatRequest, observer?: ChatResponseObserver): Promise<ChatResponse> {
+    const started = performance.now();
+    const purpose = request.attributionRepair ? "repair" : request.participationOnly ? "participation" : "reply";
+    try {
+      const response = purpose === "reply" ? await this.provider.reply(request, observer) : await this.provider.reply(request);
+      emitChatDiagnostic(this.logger, { event: "chat.model.completed", purpose, status: "valid", durationMs: diagnosticElapsed(started) });
+      return response;
+    } catch (error) {
+      emitChatDiagnostic(this.logger, { event: "chat.model.completed", purpose, status: "failed", durationMs: diagnosticElapsed(started), ...safeFailure(error) });
+      throw error;
+    }
   }
 
   private runTurn(
@@ -1089,14 +1136,14 @@ export class ChatConversationService {
         (Boolean(request.enabledTools?.length) || request.imageGenerationEnabled || request.webSearchMode === "auto");
       let response: ChatResponse;
       if (needsParticipationFirst && !characterPrepared?.participation) {
-        response = await this.provider.reply({ ...request, participationOnly: true,
+        response = await this.replyWithDiagnostics({ ...request, participationOnly: true,
           capabilityToolNames: request.enabledTools?.map((tool) => tool.name) ?? [],
           enabledTools: [], imageGenerationEnabled: false, webSearchMode: "off" });
         if (response.ambientAction === "reply") {
           if (!await canContinue()) throw new SocialOutputSuppressed();
-          response = await this.provider.reply(request, observer);
+          response = await this.replyWithDiagnostics(request, observer);
         }
-      } else response = await this.provider.reply(request, observer);
+      } else response = await this.replyWithDiagnostics(request, observer);
       if (response.generatedImages.length > 0) functionalToolExecuted = true;
       if (!await canContinue()) throw new SocialOutputSuppressed();
       // Includes reply-chain authors, not just explicit @mentions — the
