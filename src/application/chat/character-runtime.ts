@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { budgetEligibleHistory } from "./eligible-channel-history.js";
 import type { Logger } from "pino";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { emitChatDiagnostic } from "../diagnostics/chat-diagnostics.js";
@@ -107,6 +108,15 @@ export class CharacterRuntime {
     }
     if (!context.enabled) {
       const selected = [...events].slice(-24); filtered("count", events.length, selected.length); return selected;
+    }
+    if (context.retrievalMode === "eligible_count") {
+      const selected = budgetEligibleHistory(events, context.maxMessages, context.budget);
+      filtered("count", events.length, events.length - selected.countOmitted);
+      filtered("budget", events.length - selected.countOmitted, selected.messages.length);
+      emitChatDiagnostic(this.logger, { event: "context.history.budget", candidates: events.length, selected: selected.messages.length,
+        truncated: selected.truncated, omitted: selected.countOmitted + selected.budgetOmitted, budget: context.budget,
+        chars: selected.messages.reduce((total, event) => total + JSON.stringify(event).length, 0) });
+      return selected.messages;
     }
     let segment = events.filter((event) => event.timestampMs >= now - context.windowMinutes * 60_000);
     filtered("window", events.length, segment.length);
@@ -236,7 +246,7 @@ export class CharacterRuntime {
     let conversationDecision: ConversationDecisionResult | undefined;
     let styleUserId: string | null = null; let styleSignature: string | null = null;
     const key = `${request.guildId}:${request.channelId}`;
-    if (!request.characterEvaluation && (!settings.context.enabled || !capabilities.context)) this.summaries.delete(key);
+    if (!request.characterEvaluation && (!settings.context.enabled || !capabilities.context || settings.context.retrievalMode === "eligible_count")) this.summaries.delete(key);
     const optional = request.triggerMode === "continuation" || request.triggerMode === "spontaneous";
     const participationSettings = resolveParticipation(profile.chat.participation, request.channelId);
     if (optional && (!capabilities.context || !passiveChannelAllowed(profile, request.channelId) ||
@@ -279,7 +289,7 @@ export class CharacterRuntime {
         targetConfidence = assessment.targetConfidence;
         textRejectionReason = participation.action === "reply" ? null : conversationDecision.decision.reasonCode;
       }
-      if (decision && settings.context.enabled && !settings.context.shadow && decision.boundary !== "earlier") {
+      if (settings.context.retrievalMode !== "eligible_count" && decision && settings.context.enabled && !settings.context.shadow && decision.boundary !== "earlier") {
         const index = events.findIndex((event) => event.messageId === decision.boundary);
         if (index >= 0) request = { ...request, channelHistory: events.slice(Math.min(index, Math.max(0, events.length - 8))) };
       }
@@ -301,7 +311,7 @@ export class CharacterRuntime {
           decisionConfidence: decision?.confidence ?? null, contributionMotivation: decision?.contribution.motivation ?? null,
           recovery: conversationDecision?.recovery, recipient: local }, "Optional participation decision");
       }
-      if (settings.context.summary && settings.context.enabled && events.length >= settings.context.maxMessages) {
+      if (settings.context.retrievalMode !== "eligible_count" && settings.context.summary && settings.context.enabled && events.length >= settings.context.maxMessages) {
         const overflow = events.slice(0, Math.max(0, events.length - 8));
         const ids = overflow.map((event) => event.messageId);
         const cached = this.summaries.get(key);

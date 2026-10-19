@@ -547,7 +547,7 @@ export function buildChatContext(request: ChatRequest): string {
           ? `; replyingTo=${contextData(targetName)} (${targetId}, msg=${hop.replyToMessageId ?? "unknown"}); replyTargetSameAsCurrentUser=${targetId === request.currentUser.id ? "yes" : "no"}`
           : hop.hasReplyReference || hop.replyToMessageId ? `; replyingTo=unknown; msg=${hop.replyToMessageId ?? "unknown"}` : "";
         return `${index + 1}. [id=${hop.messageId}, t=${formatTimestamp(hop.timestampMs)}] ` +
-          `${contextData(hop.authorDisplayName)} (${hop.authorId}): ${wrapUntrusted(hop.content)}${imageNote} ` +
+          `${contextData(hop.authorDisplayName)} (${hop.authorId}): ${wrapUntrusted(hop.content)}${hop.contentTruncated ? " [content truncated; remainder unavailable]" : ""}${imageNote} ` +
           `[sameAsCurrentUser=${hop.authorId === request.currentUser.id ? "yes" : "no"}${targetNote}]`;
       }).join("\n")
     : "none";
@@ -571,7 +571,7 @@ export function buildChatContext(request: ChatRequest): string {
             : "";
         return `${index + 1}. [id=${hop.messageId}, t=${formatTimestamp(hop.timestampMs)}] ` +
           `${contextData(hop.authorDisplayName)} (${hop.authorId}) [${currentUserNote}${replyTargetNote}]: ` +
-          `${wrapUntrusted(hop.content)}${imageNote}`;
+          `${wrapUntrusted(hop.content)}${hop.contentTruncated ? " [content truncated; remainder unavailable]" : ""}${imageNote}`;
       }).join("\n")
     : "none";
   // Explicit, structured, user-supplied facts (currently just birthday) —

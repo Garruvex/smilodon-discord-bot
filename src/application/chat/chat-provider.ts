@@ -212,6 +212,7 @@ export interface ReplyChainMessage {
   authorId: string;
   authorDisplayName: string;
   content: string;
+  contentTruncated?: boolean;
   imageCount: number;
 }
 
@@ -226,6 +227,7 @@ export interface ChannelHistoryMessage {
   authorId: string;
   authorDisplayName: string;
   content: string;
+  contentTruncated?: boolean;
   imageCount: number;
   // True when this message was itself a Discord reply to something,
   // independent of whether that target could be resolved below. Needed so

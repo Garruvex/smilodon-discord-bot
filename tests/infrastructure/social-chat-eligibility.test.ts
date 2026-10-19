@@ -33,7 +33,7 @@ function fixture(): { profile: GuildConfiguration; records: Map<string, MessageO
       id, guildId: profile.guildId, channelId: "channel", inGuild: () => true,
       author: { id: bot ? "bot" : "human", bot }, member: { roles: { cache: new Map([["chat-role", {}]]) } },
       reference: target ? { messageId: target } : null,
-      channel: { isThread: () => false, messages: { fetch: (id: string) => Promise.resolve(messages.get(id) ?? null) } },
+      channel: { isThread: () => false, messages: { fetch: (target: string | { message: string }) => Promise.resolve(messages.get(typeof target === "string" ? target : target.message) ?? null) } },
     } as unknown as Message;
     messages.set(id, result); return result;
   };
@@ -41,6 +41,46 @@ function fixture(): { profile: GuildConfiguration; records: Map<string, MessageO
 }
 
 describe("social eligibility boundary", () => {
+  it.each([false, true])("resolves admitted historical origins equally with warm cache=%s", async (warm) => {
+    const { policy, message } = fixture();
+    const target = message("old-human");
+    const reply = message("reply", false, "old-human");
+    Object.assign(reply.channel.messages, { cache: new Map(warm ? [[target.id, target]] : []) });
+    const fetch = vi.spyOn(reply.channel.messages, "fetch");
+    const budget = { remaining: 2, resolved: new Map<string, Message | null>() };
+    expect(await policy.check(reply, "history", budget)).toMatchObject({ eligible: true });
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(budget.remaining).toBe(1);
+  });
+  it("bounds origin resolution across candidates and fails closed on missing origins", async () => {
+    const { policy, message } = fixture();
+    message("first-target"); message("second-target");
+    const first = message("first", false, "first-target");
+    const second = message("second", false, "second-target");
+    const budget = { remaining: 1, resolved: new Map<string, Message | null>() };
+    expect((await policy.check(first, "history", budget)).eligible).toBe(true);
+    expect(await policy.check(second, "history", budget)).toMatchObject({ eligible: false, reason: "reply_depth_limit" });
+    expect(await policy.check(message("missing", false, "deleted"), "history", { remaining: 1, resolved: new Map() }))
+      .toMatchObject({ eligible: false, reason: "unresolved_reply_origin" });
+  });
+  it("excludes legacy derived bot text on expanded history even with a chat origin", async () => {
+    const { profile, records, policy, message } = fixture();
+    const bot = message("derived", true);
+    records.set(bot.id, { messageId: bot.id, guildId: profile.guildId, channelId: "channel", origin: "chat", sourceMessageId: "human", createdAt: 1 });
+    expect(await policy.check(bot, "history", { remaining: 20, resolved: new Map() }))
+      .toMatchObject({ eligible: false, reason: "unverifiable_bot_context" });
+    expect((await policy.check(bot, "observation")).eligible).toBe(true);
+  });
+  it("does not treat historical resolution as access to a protected author or another channel", async () => {
+    const { policy, message } = fixture();
+    const protectedMessage = message("restricted"); Object.assign(protectedMessage, { member: null });
+    expect((await policy.check(protectedMessage, "history", { remaining: 20, resolved: new Map() })).eligible).toBe(false);
+    const cross = message("cross", false, "other"); Object.assign(cross, { reference: { messageId: "other", channelId: "private" } });
+    const fetch = vi.spyOn(cross.channel.messages, "fetch");
+    expect(await policy.check(cross, "history", { remaining: 20, resolved: new Map() }))
+      .toMatchObject({ eligible: false, reason: "cross_channel_reply" });
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it("keeps owner explicit access while denying passive reading and history fetches outside scope", async () => {
     const { profile, policy, message } = fixture(); profile.channels.chatbot = new Set(["selected"]);
     const current = message("owner");

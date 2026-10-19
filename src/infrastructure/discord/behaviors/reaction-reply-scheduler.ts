@@ -370,6 +370,7 @@ export class ReactionReplyScheduler {
       ? this.turnSupport.toChannelHistoryMessages(await this.turnSupport.resolveChannelHistory(
           message, characterSettings(profile).context.enabled ? characterSettings(profile).context.maxMessages : profile.chat.channelHistoryLimit, new Set([message.id]), null,
           characterSettings(profile).context.enabled ? characterSettings(profile).context.budget : chatMemoryLimits.maxChannelHistoryChars,
+          characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count",
         ))
       : [];
     const currentUser = {
@@ -400,6 +401,8 @@ export class ReactionReplyScheduler {
         activityLimits: resolveParticipation(profile.chat.participation, message.channelId).limits,
         resolveActivityLimits: () => resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).limits,
         resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
+        ...(characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count" ? { refreshHistoricalContext:
+          this.turnSupport.createHistoricalContextRefresh(message) } : {}),
         refreshContextMessage: (event) => this.turnSupport.refreshHistoryEvent(message, event),
         shouldDeliver: () => !resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).shadowMode,
         shadowMode: resolveParticipation(profile.chat.participation, message.channelId).shadowMode,

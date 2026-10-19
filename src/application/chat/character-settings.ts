@@ -29,6 +29,7 @@ export const characterSettingsSchema = z.object({
     contextEnabled: z.boolean().optional(),
   })).default({}),
   context: z.object({
+    retrievalMode: z.enum(["legacy", "eligible_count"]).default("legacy"),
     enabled: z.boolean().default(false), windowMinutes: z.number().int().min(1).max(20).default(15),
     segmentGapMinutes: z.number().int().min(1).max(20).default(10),
     maxMessages: z.number().int().min(8).max(48).default(40), budget: z.number().int().min(2000).max(24000).default(12000),

@@ -136,6 +136,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           characterSettings(profile).context.enabled ? characterSettings(profile).context.maxMessages : profile.chat.channelHistoryLimit,
           new Set(replyChainMessages.map((hop) => hop.id)),
           undefined, characterSettings(profile).context.enabled ? characterSettings(profile).context.budget : chatMemoryLimits.maxChannelHistoryChars,
+          characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count",
         ))
       : [];
     const { selected: imageAttachments, droppedUnsupported, droppedOverLimit } = profile.chat.imageInputEnabled
@@ -219,6 +220,8 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         activityLimits: participation.limits,
         resolveActivityLimits: () => resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits,
         resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(message.guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
+        ...(characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count" ? { refreshHistoricalContext:
+          this.turnSupport.createHistoricalContextRefresh(message) } : {}),
         refreshContextMessage: (event) => this.turnSupport.refreshHistoryEvent(message, event),
         allowSilentDirect: participation.barePingMode === "personality",
         afterDecision: async (result) => {

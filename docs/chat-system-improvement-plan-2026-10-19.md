@@ -1,6 +1,6 @@
 # Chat triggers, context, and behavior improvement plan
 
-Status: Phases 1 and 2 implemented and verified locally. Phases 3–5 and the privacy gateway remain pending; no deployment performed. Prepared 2026-10-19.
+Status: Phases 1 and 2 implemented and verified locally. Phase 3 is in progress with an opt-in eligible-history collector checkpoint. Phases 4–5 and the privacy gateway remain pending; no deployment performed. Prepared 2026-10-19.
 
 ### Implementation progress — 2026-10-19
 
@@ -48,6 +48,27 @@ Local verification: full suite passed with 4,411 tests and seven environment-dep
 Scheduler diagnostics checkpoint verification: full suite passed with 4,426 tests and seven environment-dependent skips; type checking, changed-file ESLint, and diff whitespace checks passed. New tests cover queue ownership and replacement, preemption, capacity, evaluation budgets, expiry, shutdown, operation errors, opportunity coalescing, reservation release/quotas, and conversation suppression causes. Each completed checkpoint is committed, as requested; the first diagnostics checkpoint is `49feee2b`.
 
 Retention/lookup checkpoint verification: full suite passed with 4,456 tests and seven environment-dependent skips. A final bounded-flush regression and related suites passed with 125 tests after tightening snapshot coalescing. Type checking, changed-file ESLint, and whitespace checks passed. Coverage includes exact lookup scope, current viewer/bot permissions, restart/expiry, capacity and byte caps, safe corrupt-file handling, write failure/retry, old-snapshot deletion races, late callback invalidation, independent instance sinks, and preserving primary cleanup on diagnostic disk failure. Traditional Chinese and Japanese descriptions were added for the new slash-command option. Source-edit invalidation updates memory immediately and uses debounced snapshots; explicit forgetting waits for its snapshot revision to be persisted.
+
+### Phase 3 checkpoint: eligible channel history (in progress)
+
+The shared channel-history collector now supports count-first retrieval: at most three pages / 300 raw messages, exclusions do not consume X, and selected messages retain chronological order. All seven interactions reach this collector through the mention, ambient/optional, and reaction adapters. The new mode does not discard messages because of their age, a quiet gap, or a model-proposed topic boundary. Count and prompt budgets are separate; all candidates remain verbatim when they fit, otherwise content is fairly truncated with an explicit prompt marker while retaining identity/time/reply metadata.
+
+Historical eligibility is separate from passive observation. Admitted historical reads resolve same-channel reply origins with a shared 20-fetch budget per collection; passive observation remains cache-only. Historical origin-store errors fail closed. Revalidation forces source-message reads, rechecks access/scope/origins before model use and delivery, and suppresses output when selected evidence changes. Its per-turn refresher is capped at 12 passes / 600 source-message checks and an additional shared 20 ancestry fetches. These are work bounds, not latency guarantees.
+
+The new mode excludes bot-authored channel-history messages without complete dependency provenance and does not merge legacy bot episodes. It also avoids importing reply-author names from unselected cached targets. It does **not** yet migrate session transcripts, reply-chain/overflow sources, durable memories, daily summaries, learned character state, or tools to the mandatory gateway. Existing direct/session/memory behavior remains on its current boundaries. Therefore this is a collector checkpoint, not completion of the source privacy contract or Phase 3.
+
+Rollout is deliberately off by default: `character.context.retrievalMode` defaults to `legacy`. `eligible_count` plus `character.context.enabled=true` selects the new path in local/synthetic evaluation. Existing profiles keep their behavior. Do not enable the new mode for a production pilot until the remaining source gates and acceptance cases below are implemented. The public settings UI has not yet been extended for this experimental mode.
+
+Content-free events now report raw fetched/examined/eligible counts, pages, selected message IDs, exclusions, filled/end/scan-cap/fetch-failure/no-progress outcomes, prompt truncation/budget counts, and refresh/change/budget exhaustion. They contain no message bodies, author labels, or provider error text.
+
+Checkpoint verification: full suite **4,549 passed / 7 skipped**, TypeScript typecheck, changed-file ESLint, and whitespace checks passed. Synthetic tests cover paging past unreadable authors, count/size separation, old timestamps, oversized/escaped content, guard absence, warm/cold origin resolution, scope/unknown-origin rejection, and suppressing delivery after source access changes. No live-provider or deployed Discord validation is claimed.
+
+Remaining Phase 3 work:
+
+1. Carry source dependencies for confirmed bot output and session exchanges; revalidate derived sources and invalidate after deletion/forgetting/access changes. Audit memory/summary/character/tool sources before enabling their expanded reuse.
+2. Unify reply ancestry/overflow and current burst under the same guarded assembly, including current-member resolution, source-specific omission reports, and coverage parity across all seven interactions.
+3. Add a request-wide historical deadline and efficient revalidation, bounded targeted backward expansion, shared decision/answer grounding projections, and source-priority budgeting.
+4. Exercise the complete warm/cold-cache, long-gap, contextual bare-ping/personality, reaction, and permission-change matrix; then decide migration defaults and settings presentation. Full gateway enforcement remains tracked separately in the privacy-gateway plan.
 
 ## 1. Objective and evidence
 

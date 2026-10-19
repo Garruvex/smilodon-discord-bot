@@ -85,6 +85,35 @@ function baseStore(overrides: Partial<ChatStateStore> = {}): ChatStateStore {
 }
 
 describe("ChatConversationService", () => {
+  it("refreshes expanded history before use and suppresses delivery after a source becomes unreadable", async () => {
+    const old = { messageId: "old", channelId: "channel", timestampMs: 0, authorId: "user", authorDisplayName: "User", content: "earlier question", imageCount: 0 };
+    let readable = true;
+    const refreshHistoricalContext = vi.fn((events) => Promise.resolve(readable ? events : []));
+    const reply = vi.fn((request: ChatRequest) => {
+      expect(request.channelHistory).toEqual([old]); readable = false; return Promise.resolve(response("answer"));
+    });
+    const deliver = vi.fn(() => Promise.resolve("sent"));
+    const service = new ChatConversationService({ reply }, baseStore(), testMemoryEngine().engine);
+    try {
+      await expect(service.run({ ...input("question"), channelHistoryEnabled: true, channelHistory: [old], refreshHistoricalContext }, deliver))
+        .rejects.toBeInstanceOf(SocialOutputSuppressed);
+      expect(reply).toHaveBeenCalledOnce(); expect(deliver).not.toHaveBeenCalled();
+      expect(refreshHistoricalContext.mock.calls.length).toBeGreaterThanOrEqual(2);
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+
+  it("does not merge unverified bot episode text into expanded history", async () => {
+    const reply = vi.fn((request: ChatRequest) => {
+      expect(request.channelHistory).toEqual([]); return Promise.resolve(response("answer"));
+    });
+    const service = new ChatConversationService({ reply }, baseStore(), testMemoryEngine().engine);
+    try {
+      service.observe("guild", "channel", { messageId: "bot-episode", channelId: "channel", timestampMs: Date.now(), authorId: "bot",
+        authorDisplayName: "Bot", content: "UNVERIFIABLE_DERIVED_TEXT", imageCount: 0 });
+      await service.run({ ...input("question"), channelHistoryEnabled: true, refreshHistoricalContext: () => Promise.resolve([]) }, (result) => Promise.resolve(result.text));
+      expect(reply).toHaveBeenCalledOnce();
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
   it("clears stored sessions even when durable diagnostic cleanup fails", async () => {
     const { logger } = captureDiagnosticLogger();
     const traces = new MemoryChatTraceStore(); attachDiagnosticStore(logger, traces);

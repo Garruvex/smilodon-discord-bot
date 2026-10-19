@@ -24,7 +24,7 @@ const count = z.number().int().nonnegative();
 const duration = z.number().finite().nonnegative();
 const identifier = z.string().min(1).max(128).regex(/^[\w.:-]+$/u);
 const trigger = z.enum(["direct", "ambient", "continuation", "spontaneous", "reaction"]);
-export const eligibilityReason = z.enum(["not_guild", "chat_disabled", "needs_conversation_context", "background_scope_denied", "passive_scope_denied", "passive_access_denied", "game_channel", "continuation_disabled", "spontaneous_disabled", "history_reactions_disabled", "ambient_disabled", "reaction_disabled", "utility_or_unknown_bot_output", "channel_denied", "access_denied", "utility_interaction", "cyclic_reply_chain", "unknown_bot_output", "utility_reply", "cross_channel_reply", "unresolved_reply_origin", "reply_depth_limit"]);
+export const eligibilityReason = z.enum(["not_guild", "chat_disabled", "needs_conversation_context", "background_scope_denied", "passive_scope_denied", "passive_access_denied", "game_channel", "continuation_disabled", "spontaneous_disabled", "history_reactions_disabled", "ambient_disabled", "reaction_disabled", "utility_or_unknown_bot_output", "channel_denied", "access_denied", "utility_interaction", "cyclic_reply_chain", "unknown_bot_output", "utility_reply", "cross_channel_reply", "unresolved_reply_origin", "reply_depth_limit", "unverifiable_bot_context", "origin_lookup_failed"]);
 
 export const failureCategory = z.enum([
   "timeout", "http_error", "rate_limited", "invalid_json", "schema_mismatch",
@@ -37,6 +37,11 @@ export type FailureCategory = z.infer<typeof failureCategory>;
 // Allow-list every serialized field. Runtime stripping also protects callers
 // compiled without TypeScript, and prevents raw provider/Discord objects leaking.
 const eventSchema = z.discriminatedUnion("event", [
+  z.object({ event: z.literal("context.history.revalidated"), requested: count, selected: count, status: z.enum(["refreshed", "underfilled", "budget_exhausted", "changed"]) }),
+  z.object({ event: z.literal("context.history.budget"), candidates: count, selected: count, truncated: count, omitted: count, budget: count, chars: count }),
+  z.object({ event: z.literal("context.history.coverage"), requested: count, fetched: count, examined: count, eligible: count, pages: count,
+    selectedIds: z.array(identifier).max(300), status: z.enum(["filled", "end", "scan_cap", "fetch_failed", "no_progress", "ineligible"]),
+    omissions: z.object({ excluded: count, ineligible: count, unverifiable_bot: count, duplicate: count }) }),
   z.object({ event: z.literal("chat.decision.resolved"), stage: z.enum(["preflight", "generation"]), interaction: z.enum(["direct_mention", "explicit_reply", "bare_ping", "name_address", "implicit_followup", "group_conversation", "reaction"]), status: z.enum(["ready", "denied", "failed"]), recovery: z.enum(["none", "grounded_reply", "error_reply"]), decisionId: identifier, action: z.enum(["reply", "react", "reply_and_react", "silent"]), intent: z.enum(["answer", "clarify", "social", "closing", "contribute", "abstain"]), reason: identifier, contextVersion: identifier, policyVersion: identifier }),
   z.object({ event: z.literal("discord.rate_limit.summary"), caller: z.enum(["chat_text", "chat_reaction", "control_panel", "lyrics_panel", "queue_panel", "vote_panel", "now_playing_panel", "unknown"]), kind: z.enum(["response_429", "proactive_wait", "mixed"]), method: z.enum(["POST", "PATCH", "GET", "DELETE", "OTHER"]), channelId: identifier.optional(), targetMessageId: identifier.optional(), count, maxWaitMs: duration, overflow: z.boolean() }),
   z.object({ event: z.literal("chat.trace.interrupted"), reason: z.literal("previous_process_incomplete"), unfinishedSpans: count, unfinishedJobs: count, unfinishedOpportunities: count }),
@@ -49,7 +54,7 @@ const eventSchema = z.discriminatedUnion("event", [
   z.object({ event: z.literal("chat.route.matched"), behaviorId: identifier }),
   z.object({ event: z.literal("chat.route.skipped"), behaviorId: identifier, reason: z.enum(["not_guild", "chat_disabled", "duplicate", "game_channel", "access_denied", "provider_unconfigured", "unresolved_reply_origin"]) }),
   z.object({ event: z.literal("chat.dispatch.completed"), result: z.enum(["continue", "handled", "stop_propagation", "failed"]), behaviorId: identifier.optional(), stage: z.enum(["matches", "execute"]).optional(), durationMs: duration, failure: failureCategory.optional() }),
-  z.object({ event: z.literal("context.eligibility.denied"), sourceMessageId: identifier, purpose: z.enum(["direct", "ambient", "continuation", "spontaneous", "reaction", "observation", "background_observation", "history_reaction"]), reason: eligibilityReason }),
+  z.object({ event: z.literal("context.eligibility.denied"), sourceMessageId: identifier, purpose: z.enum(["direct", "ambient", "continuation", "spontaneous", "reaction", "observation", "background_observation", "history_reaction", "history"]), reason: eligibilityReason }),
   z.object({ event: z.literal("context.source.selected"), source: z.enum(["reply_chain", "channel_history"]), fetched: count, selected: count, omitted: count, status: z.enum(["complete", "ineligible", "fetch_failed", "bounded"]), chars: count }),
   z.object({ event: z.literal("context.selection.completed"), fetchedHistory: count, episodeCandidates: count, burstCandidates: count, merged: count, selected: count, replyChain: count, chars: count }),
   z.object({ event: z.literal("context.selection.filtered"), reason: z.enum(["scope", "window", "gap", "segment", "count", "budget"]), before: count, after: count }),

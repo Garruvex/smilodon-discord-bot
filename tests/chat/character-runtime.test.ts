@@ -67,18 +67,15 @@ describe("character module integration", () => {
       expect(deliver).toHaveBeenCalledOnce(); expect(execute).not.toHaveBeenCalled();
     } finally { service.stopScheduling(); await service.drain(); }
   });
-  it("explains whether age or a quiet gap removed otherwise available context", async () => {
+  it("preserves eligible context despite its age or a quiet gap", async () => {
     const { logger, records } = captureDiagnosticLogger();
     const { runtime, profiles } = setup(() => 20 * 60_000, logger);
-    await profiles.update(guildId, { character: { context: { ...profiles.current().character!.context, enabled: true } } });
+    await profiles.update(guildId, { character: { context: { ...profiles.current().character!.context, enabled: true, retrievalMode: "eligible_count" } } });
     const source = { messageId: "old", authorId: actorUserId, authorDisplayName: "SECRET_NAME", content: "SECRET_TEXT", imageCount: 0, timestampMs: 0 };
-    expect(runtime.selectContext(guildId, channelId, [source])).toEqual([]);
-    expect(runtime.selectContext(guildId, channelId, [{ ...source, timestampMs: 9 * 60_000 }])).toEqual([]);
+    expect(runtime.selectContext(guildId, channelId, [source])).toEqual([source]);
+    expect(runtime.selectContext(guildId, channelId, [{ ...source, timestampMs: 9 * 60_000 }])).toEqual([{ ...source, timestampMs: 9 * 60_000 }]);
     const diagnostics = records.filter((record) => record.event === "context.selection.filtered");
-    expect(diagnostics).toEqual([
-      expect.objectContaining({ reason: "window", before: 1, after: 0 }),
-      expect.objectContaining({ reason: "gap", before: 1, after: 0 }),
-    ]);
+    expect(diagnostics).toEqual([]);
     expect(JSON.stringify(diagnostics)).not.toContain("SECRET");
   });
   it("keeps a composed module inactive when an implementation dependency is absent", () => {

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 
 import { ChatTurnSupport } from "../../src/infrastructure/discord/behaviors/chat-turn-support.js";
+import type { SocialChatEligibility } from "../../src/infrastructure/discord/behaviors/social-chat-eligibility.js";
 
 function logger(): Logger {
   return { warn: vi.fn() } as unknown as Logger;
@@ -18,6 +19,45 @@ function fakeMessage(id: string, fetch: ReturnType<typeof vi.fn>): Message {
 }
 
 describe("ChatTurnSupport.resolveChannelHistory", () => {
+  it("uses one shared bounded history gate for count-first retrieval and reports exclusions without content", async () => {
+    const { logger, records } = captureDiagnosticLogger();
+    const policy = { canReadHistory: vi.fn(() => Promise.resolve(true)), check: vi.fn((message: Message) => Promise.resolve({ eligible: message.author.id === "allowed", reason: "passive_access_denied" })) };
+    const messages = Array.from({ length: 200 }, (_, index) => ({ id: `m${300 - index}`, channelId: "channel", guildId: "guild",
+      author: { id: index < 100 ? "protected" : "allowed", bot: false }, content: "SECRET_SOURCE_TEXT" })) as Message[];
+    const fetch = vi.fn().mockResolvedValueOnce(new Map(messages.slice(0, 100).map((message) => [message.id, message])))
+      .mockResolvedValueOnce(new Map(messages.slice(100).map((message) => [message.id, message])));
+    const source = Object.assign(fakeMessage("current", fetch), { channelId: "channel", guildId: "guild" });
+    const support = new ChatTurnSupport(logger, policy as unknown as SocialChatEligibility);
+    expect(await support.resolveChannelHistory(source, 40, new Set(), undefined, 4000, true)).toHaveLength(40);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(policy.check.mock.calls.every((call) => call[0].author.id !== "bot")).toBe(true);
+    expect(records.find((record) => record.event === "context.history.coverage")).toMatchObject({ status: "filled", pages: 2, eligible: 40 });
+    expect(JSON.stringify(records)).not.toContain("SECRET");
+  });
+
+  it("does not fetch expanded history without a guard or outside the allowed scope", async () => {
+    const fetch = vi.fn(); const source = fakeMessage("current", fetch);
+    expect(await new ChatTurnSupport(logger()).resolveChannelHistory(source, 40, new Set(), null, 4000, true)).toEqual([]);
+    const policy = { canReadHistory: () => Promise.resolve(false) } as unknown as SocialChatEligibility;
+    expect(await new ChatTurnSupport(logger(), policy).resolveChannelHistory(source, 40, new Set(), null, 4000, true)).toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("forces current source reads during revalidation and excludes newly denied messages", async () => {
+    let readable = true;
+    const policy = { canReadHistory: () => Promise.resolve(true), check: () => Promise.resolve({ eligible: readable, reason: "passive_access_denied" }) } as unknown as SocialChatEligibility;
+    const old = { id: "old", channelId: "channel", guildId: "guild", createdTimestamp: 0, author: { id: "human", username: "Human", displayName: "Human", bot: false },
+      content: "earlier request", attachments: new Map(), channel: { messages: { cache: new Map() } } } as unknown as Message;
+    const fetch = vi.fn(() => Promise.resolve(old));
+    const source = Object.assign(fakeMessage("current", fetch), { channelId: "channel", guildId: "guild" });
+    const support = new ChatTurnSupport(logger(), policy);
+    const refresh = support.createHistoricalContextRefresh(source);
+    const events = support.toChannelHistoryMessages([old]);
+    expect(await refresh(events)).toEqual(events);
+    expect(fetch).toHaveBeenCalledWith({ message: "old", force: true });
+    readable = false;
+    expect(await refresh(events)).toEqual([]);
+  });
   it("distinguishes inaccessible history retrieval from an empty successful fetch", async () => {
     const { logger, records } = captureDiagnosticLogger();
     const support = new ChatTurnSupport(logger);
