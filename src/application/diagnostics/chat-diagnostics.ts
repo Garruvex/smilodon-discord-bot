@@ -3,6 +3,12 @@ import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type { Logger } from "pino";
 import { z } from "zod";
+import type { ChatTraceStore } from "./chat-trace-store.js";
+
+export const diagnosticProcessRunId = randomUUID();
+let traceSequence = 0;
+let eventSequence = 0;
+const diagnosticStoreKey = Symbol("chatDiagnosticStore");
 
 const count = z.number().int().nonnegative();
 const duration = z.number().finite().nonnegative();
@@ -44,6 +50,7 @@ const eventSchema = z.discriminatedUnion("event", [
     reason: z.enum(["direct", "available", "in_flight", "exchange_limit", "channel_limit", "cooldown", "capacity", "delivered", "not_delivered"]) }),
   z.object({ event: z.literal("chat.turn.completed"), triggerMode: trigger, outcome: z.enum(["text_delivered", "no_text_delivery", "suppressed", "failed", "delivered_state_unsaved"]), durationMs: duration, textDeliveryConfirmed: z.boolean(), failure: failureCategory.optional() }),
   z.object({ event: z.literal("chat.delivery.completed"), plannedParts: count, deliveredParts: count, status: z.enum(["complete", "partial", "failed", "suppressed"]), failure: failureCategory.optional() }),
+  z.object({ event: z.literal("chat.delivery.part"), deliveredMessageId: identifier, part: count }),
 ]);
 
 export type ChatDiagnosticEvent = z.infer<typeof eventSchema>;
@@ -59,9 +66,28 @@ interface DiagnosticScope extends DiagnosticScopeInput {
   traceId: string;
   spanId: string;
   parentSpanId?: string;
+  traceSequence: number;
 }
 const scopes = new AsyncLocalStorage<DiagnosticScope | undefined>();
 const scopeInputSchema = z.object({ operation: z.enum(["dispatch", "chat_turn"]), guildId: identifier.optional(), channelId: identifier.optional(), sourceMessageId: identifier.optional() });
+export const chatDiagnosticRecordSchema = z.object({
+  schemaVersion: z.literal(1), processRunId: identifier, timestampMs: count, eventSequence: count,
+  scope: scopeInputSchema.extend({ traceId: identifier, spanId: identifier, parentSpanId: identifier.optional(), traceSequence: count }),
+  data: eventSchema,
+});
+export type ChatDiagnosticRecord = z.infer<typeof chatDiagnosticRecordSchema>;
+
+// Pino child loggers inherit their parent's properties. A non-enumerable symbol
+// keeps this per-instance store available without serializing it into logs.
+export function attachDiagnosticStore(logger: DiagnosticLogger, store: ChatTraceStore): void {
+  Object.defineProperty(logger, diagnosticStoreKey, { value: store, configurable: true });
+}
+
+export function diagnosticStore(logger: DiagnosticLogger | null): ChatTraceStore | null {
+  return logger ? (logger as DiagnosticLogger & { [diagnosticStoreKey]?: ChatTraceStore })[diagnosticStoreKey] ?? null : null;
+}
+
+export function currentDiagnosticTraceSequence(): number { return traceSequence; }
 
 export function diagnosticFields(): Readonly<DiagnosticScope> | Record<string, never> {
   const scope = scopes.getStore();
@@ -73,6 +99,7 @@ export function withDiagnosticScope<T>(input: DiagnosticScopeInput, task: () => 
   const parsed = scopeInputSchema.safeParse(input);
   const scope: DiagnosticScope = {
     ...(parsed.success ? parsed.data : { operation: "dispatch" as const }), traceId: parent?.traceId ?? randomUUID(), spanId: randomUUID(),
+    traceSequence: parent?.traceSequence ?? ++traceSequence,
     ...(parent ? { parentSpanId: parent.spanId } : {}),
   };
   return scopes.run(scope, task);
@@ -95,7 +122,14 @@ export function emitChatDiagnostic(logger: DiagnosticLogger | null, event: ChatD
     const parsed = eventSchema.safeParse(event);
     if (!parsed.success) return;
     const scope = scopes.getStore();
-    const fields = { schemaVersion: 1, ...scope, ...parsed.data };
+    const sequence = ++eventSequence;
+    if (scope?.guildId && scope.channelId && scope.sourceMessageId) {
+      try {
+        diagnosticStore(logger)?.record({ schemaVersion: 1, processRunId: diagnosticProcessRunId,
+          timestampMs: Date.now(), eventSequence: sequence, scope: { ...scope }, data: parsed.data });
+      } catch { /* A failed retention sink must not suppress operational logs. */ }
+    }
+    const fields = { schemaVersion: 1, ...scope, eventSequence: sequence, ...parsed.data };
     if ("failure" in parsed.data && parsed.data.failure) logger.warn(fields, parsed.data.event);
     else logger.info(fields, parsed.data.event);
   } catch {

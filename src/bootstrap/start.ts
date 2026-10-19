@@ -2,6 +2,8 @@ import { Application, createDiscordClient } from "./application.js";
 import { createDependencies } from "./dependencies.js";
 import { loadConfiguration } from "../config/environment.js";
 import { createLogger } from "../infrastructure/logging/logger.js";
+import { attachDiagnosticStore, currentDiagnosticTraceSequence } from "../application/diagnostics/chat-diagnostics.js";
+import { FileChatTraceStore } from "../infrastructure/persistence/file-chat-trace-store.js";
 import { LavalinkPlayerGateway } from "../infrastructure/lavalink/lavalink-player-gateway.js";
 import { MusicEventBus } from "../application/music/music-event-bus.js";
 import { ControlChannelService } from "../application/control-panel/control-channel-service.js";
@@ -22,6 +24,9 @@ import { createActivityServer } from "../infrastructure/activity/activity-server
 
 const configuration = loadConfiguration();
 const logger = createLogger(configuration);
+const diagnosticTraces = new FileChatTraceStore(configuration.runtimeDataDirectory, logger.child({ component: "diagnostic-retention" }));
+await diagnosticTraces.initialize();
+attachDiagnosticStore(logger, diagnosticTraces);
 let activityServer: ReturnType<typeof createActivityServer> | null = null;
 const persistence = await createPersistenceServices(configuration);
 const guildConfigurationProvider = persistence.guildConfigurationProvider;
@@ -116,7 +121,13 @@ const birthdayAnnouncer = new BirthdayAnnouncer(
 );
 const memberDepartureService = new MemberDepartureService(
   guildConfigurationProvider,
-  persistence.memberDataPurger,
+  { purge: async (guildId, userId): Promise<void> => {
+    const results = await Promise.allSettled([
+      diagnosticTraces.forgetGuild(guildId, currentDiagnosticTraceSequence()),
+      persistence.memberDataPurger.purge(guildId, userId),
+    ]);
+    if (results.some((result) => result.status === "rejected")) throw new Error("Member cleanup did not complete for all stores");
+  } },
 );
 const memberWelcomeService = new MemberWelcomeService(
   guildConfigurationProvider,
@@ -161,7 +172,8 @@ async function shutdown(signal: string, exitCode = 0): Promise<void> {
   try {
     await activityServer?.stop();
     await application.stop(signal);
-    await persistence.close();
+    const results = await Promise.allSettled([diagnosticTraces.close(), persistence.close()]);
+    if (results.some((result) => result.status === "rejected")) throw new Error("Persistence shutdown did not complete for all stores");
   } catch (error) {
     logger.error({ error, signal }, "Shutdown did not complete cleanly");
     process.exit(exitCode === 0 ? 1 : exitCode);

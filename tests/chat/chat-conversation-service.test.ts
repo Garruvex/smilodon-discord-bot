@@ -4,7 +4,8 @@ import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
-import { withDiagnosticScope } from "../../src/application/diagnostics/chat-diagnostics.js";
+import { attachDiagnosticStore, withDiagnosticScope } from "../../src/application/diagnostics/chat-diagnostics.js";
+import { MemoryChatTraceStore } from "../helpers/chat-trace-fixtures.js";
 import { SocialOutputSuppressed } from "../../src/application/chat/message-origin-store.js";
 
 import { ChatConversationService, type ChatConversationInput } from "../../src/application/chat/chat-conversation-service.js";
@@ -84,6 +85,35 @@ function baseStore(overrides: Partial<ChatStateStore> = {}): ChatStateStore {
 }
 
 describe("ChatConversationService", () => {
+  it("clears stored sessions even when durable diagnostic cleanup fails", async () => {
+    const { logger } = captureDiagnosticLogger();
+    const traces = new MemoryChatTraceStore(); attachDiagnosticStore(logger, traces);
+    vi.spyOn(traces, "forgetGuild").mockImplementation((guildId, sequence) => {
+      traces.buffer.forgetGuild(guildId, sequence); return Promise.reject(new Error("SECRET_DISK_FAILURE"));
+    });
+    const clearRecentHistory = vi.fn(() => Promise.resolve());
+    const service = new ChatConversationService({ reply: (): Promise<ChatResponse> => Promise.resolve(response("answer")) }, baseStore({ clearRecentHistory }), testMemoryEngine().engine,
+      undefined, undefined, undefined, null, null, null, logger);
+    try {
+      await service.run({ ...input("question"), sourceMessageId: "source" }, (output) => Promise.resolve(output.text));
+      expect(traces.lookup({ guildId: "guild", channelId: "channel", sourceMessageId: "source" })).toHaveLength(1);
+      await expect(service.forgetConversation("guild", "user")).rejects.toThrow("diagnostic retention cleanup failed");
+      expect(clearRecentHistory).toHaveBeenCalledWith("guild", "user");
+      expect(traces.lookup({ guildId: "guild", channelId: "channel", sourceMessageId: "source" })).toEqual([]);
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+
+  it("excludes retained metadata for an edited or deleted source", async () => {
+    const { logger } = captureDiagnosticLogger(); const traces = new MemoryChatTraceStore(); attachDiagnosticStore(logger, traces);
+    const service = new ChatConversationService({ reply: (): Promise<ChatResponse> => Promise.resolve(response("answer")) }, baseStore(), testMemoryEngine().engine,
+      undefined, undefined, undefined, null, null, null, logger);
+    try {
+      await service.run({ ...input("question"), sourceMessageId: "source" }, (output) => Promise.resolve(output.text));
+      service.excludeInteraction("guild", "channel", "source");
+      await service.drain();
+      expect(traces.lookup({ guildId: "guild", channelId: "channel", sourceMessageId: "source" })).toEqual([]);
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
   it("explains duplicate pings without calling the model again", async () => {
     const { logger, records } = captureDiagnosticLogger();
     const reply = vi.fn(() => Promise.resolve(response("hi")));

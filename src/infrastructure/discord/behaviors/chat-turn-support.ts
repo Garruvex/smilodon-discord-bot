@@ -553,6 +553,7 @@ export class ChatTurnSupport {
       if (params.sourceMessage) await this.assertEligible(params.sourceMessage, params.trigger ?? "direct");
       const sent = await send();
       deliveredParts++;
+      emitChatDiagnostic(this.logger, { event: "chat.delivery.part", deliveredMessageId: sent.id, part: deliveredParts });
       params.recordDelivery?.(sent);
       if (this.origins && params.sourceMessage?.guildId) {
         await this.origins.record({

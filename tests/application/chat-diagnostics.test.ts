@@ -1,10 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { bindDiagnosticTask, diagnosticFields, emitChatDiagnostic, safeFailure, withDiagnosticScope } from "../../src/application/diagnostics/chat-diagnostics.js";
+import { attachDiagnosticStore, bindDiagnosticTask, diagnosticFields, emitChatDiagnostic, safeFailure, withDiagnosticScope } from "../../src/application/diagnostics/chat-diagnostics.js";
+import { MemoryChatTraceStore } from "../helpers/chat-trace-fixtures.js";
 import { ChatScheduler, balancedChatLimits } from "../../src/application/chat/chat-scheduler.js";
 import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 
 describe("chat diagnostic boundary", () => {
+  it("continues operational logging when diagnostic retention itself fails", () => {
+    const { logger, records } = captureDiagnosticLogger();
+    const store = new MemoryChatTraceStore();
+    vi.spyOn(store, "record").mockImplementation(() => { throw new Error("SECRET_RETENTION_FAILURE"); });
+    attachDiagnosticStore(logger, store);
+    withDiagnosticScope({ operation: "chat_turn", guildId: "guild", channelId: "channel", sourceMessageId: "source" }, () => {
+      emitChatDiagnostic(logger, { event: "chat.turn.started", triggerMode: "direct" });
+    });
+    expect(records).toHaveLength(1);
+    expect(JSON.stringify(records)).not.toContain("SECRET");
+  });
   it("strips arbitrary runtime fields and emits no raw error content", () => {
     const { logger, records } = captureDiagnosticLogger();
     const error = Object.assign(new Error("SECRET_PROVIDER_BODY"), { status: 429, token: "SECRET_TOKEN", cause: { prompt: "SECRET_PROMPT" } });

@@ -49,6 +49,7 @@ import { FurryReactionCommand } from "../infrastructure/discord/commands/image/f
 import { BooruSearchCommand } from "../infrastructure/discord/commands/image/booru-search-command.js";
 import { FursuitFurtrackCommand } from "../infrastructure/discord/commands/image/fursuit-furtrack-command.js";
 import { DiagnosticCommand } from "../infrastructure/discord/commands/diagnostics/diagnostic-command.js";
+import { diagnosticStore } from "../application/diagnostics/chat-diagnostics.js";
 import { PauseCommand } from "../infrastructure/discord/commands/music/pause-command.js";
 import { PlayCommand } from "../infrastructure/discord/commands/music/play-command.js";
 import { ResumeCommand } from "../infrastructure/discord/commands/music/resume-command.js";
@@ -342,7 +343,7 @@ export function registerCommands(
   commandRegistry.register(new BoostsCommand(boostHistoryStore));
   commandRegistry.register(new QuoteCommand());
   commandRegistry.register(new QuoteContextCommand());
-  commandRegistry.register(new DiagnosticCommand());
+  commandRegistry.register(new DiagnosticCommand(diagnosticStore(logger), configuration.ownerUserIds));
   const setupCommand = new SetupCommand(guildSetupService);
   commandRegistry.register(setupCommand);
   const adminPanelHealth = new AdminPanelHealth();

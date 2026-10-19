@@ -1,7 +1,7 @@
 import { isRecipientCorrection, generatedContributionAllowed } from "./character-decision.js";
 import type { Logger } from "pino";
 import { performance } from "node:perf_hooks";
-import { diagnosticElapsed, emitChatDiagnostic, safeFailure, withDiagnosticScope } from "../diagnostics/chat-diagnostics.js";
+import { currentDiagnosticTraceSequence, diagnosticElapsed, diagnosticStore, emitChatDiagnostic, safeFailure, withDiagnosticScope } from "../diagnostics/chat-diagnostics.js";
 import type { CharacterRuntime, CharacterPreparedTurn } from "./character-runtime.js";
 
 import { hashContent } from "../assets/content-hash.js";
@@ -878,16 +878,26 @@ export class ChatConversationService {
     this.forgottenBefore.set(`${guildId}:${userId}`, this.now());
     this.privacyVersions.set(guildId, (this.privacyVersions.get(guildId) ?? 0) + 1);
     this.episodes.forget(guildId, userId);
+    // Traces can reference multiple participants. Drop this guild's bounded
+    // diagnostic cache and reject late events from pre-forget scopes.
+    const diagnosticCleanup = diagnosticStore(this.logger)?.forgetGuild(guildId, currentDiagnosticTraceSequence()).then(() => true, () => false) ?? Promise.resolve(true);
     await this.drain();
     await this.episodeStore?.forgetUser(guildId, userId);
     if (this.stateStore.clearRecentHistory) await this.stateStore.clearRecentHistory(guildId, userId);
     else await this.stateStore.purgeUser(guildId, userId);
+    if (!await diagnosticCleanup) throw new Error("Conversation data was cleared, but diagnostic retention cleanup failed");
   }
 
   public excludeInteraction(guildId: string, channelId: string, messageId: string): void {
     this.cancelOptionalOpportunity(guildId, channelId, "source_invalidated");
     this.characterRuntime?.excludeContext(guildId, messageId);
     this.episodes.excludeInteraction(`${guildId}:${channelId}`, messageId);
+    const traces = diagnosticStore(this.logger);
+    if (traces) {
+      traces.excludeSource({ guildId, channelId, sourceMessageId: messageId }, currentDiagnosticTraceSequence());
+      // The store coalesces snapshot writes. Per-edit flush promises would
+      // create an unbounded waiter queue during rapid control-panel updates.
+    }
     if (this.episodeStore) this.trackBackground(this.episodeStore.exclude(guildId, channelId, messageId).catch((error: unknown) =>
       this.logger?.warn({ error, guildId, channelId }, "Failed to exclude a utility interaction from stored context")));
   }
