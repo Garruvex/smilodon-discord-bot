@@ -1,4 +1,5 @@
 import type { ChatTool } from "./tools/chat-tool.js";
+import type { ConversationInteraction } from "./conversation-trigger.js";
 import type { ExampleExchange } from "./example-exchange.js";
 import type { PlaybackActor } from "../music/playback-service.js";
 import type { ChannelMessageSummarizer } from "../context/channel-message-summarizer.js";
@@ -7,6 +8,7 @@ import type { ChannelMemoryMode } from "../memory/memory-channel-policy.js";
 import type { ParticipationDecision } from "./participation-decision.js";
 
 export interface ChatRequest {
+  interactionMode?: ConversationInteraction;
   characterGuardEnabled?: boolean;
   characterShadow?: boolean;
   characterStyleExamples?: readonly ExampleExchange[];

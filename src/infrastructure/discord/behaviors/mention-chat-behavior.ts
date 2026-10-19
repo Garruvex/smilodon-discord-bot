@@ -3,6 +3,8 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from "disc
 import type { Logger } from "pino";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
 import { emitChatDiagnostic } from "../../../application/diagnostics/chat-diagnostics.js";
+import { mentionInteraction } from "../../../application/chat/conversation-trigger.js";
+import { resolvesReplyToBot } from "./direct-reply-resolver.js";
 import { characterSettings } from "../../../application/chat/character-settings.js";
 import { SocialOutputSuppressed, type MessageOriginStore } from "../../../application/chat/message-origin-store.js";
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
@@ -67,13 +69,11 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     if (!botId || !message.inGuild() || message.author.bot) return false;
     if (message.mentions.users.has(botId)) return true;
     if (!message.reference?.messageId || message.reference.channelId && message.reference.channelId !== message.channelId) return false;
-    const target = message.mentions.repliedUser ?? message.channel.messages.cache?.get(message.reference.messageId)?.author;
-    if (target) return target.id === botId;
-    // Resolve our own persisted delivery metadata without passively fetching
-    // an unaddressed human reply chain from Discord. Unknown targets abstain.
-    const origin = await this.origins?.find(message.guildId, message.channelId, message.reference.messageId).catch(() => null);
-    if (!origin) emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "unresolved_reply_origin" });
-    return origin?.origin === "chat";
+    const profile = this.profiles.find(message.guildId);
+    const allowFetch = !!profile?.features.chatbot && this.chatAccess.canUseMentionChat(profile, message.member, message.author.id, message.channelId) && !await isInGameChannel(message, this.isGameChannel);
+    const resolved = await resolvesReplyToBot(message, botId, this.origins, 1500, allowFetch);
+    if (!resolved) emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "unresolved_reply_origin" });
+    return resolved;
   }
 
   public async execute(message: Message): Promise<BehaviorResult> {
@@ -257,6 +257,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         imageGenerationEnabled: profile.chat.imageGenerationEnabled && !lowSubstance,
         includeSources: profile.chat.includeSources,
         triggerMode: "direct",
+        interactionMode: botId && message.mentions.users.has(botId) ? mentionInteraction(message.content, botId, message.attachments.size > 0) : "explicit_reply",
         historyReactionsEnabled: profile.features.historyReactions && profile.features.channelHistory,
         toolsEnabled: profile.chat.toolCallingEnabled && !lowSubstance,
         disabledToolNames: new Set(profile.chat.disabledTools),

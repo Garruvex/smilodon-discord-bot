@@ -73,9 +73,9 @@ export function localAddressing(events: readonly ChannelHistoryMessage[], curren
   const history = events.filter((event) => event.messageId !== current.messageId && event.timestampMs < current.timestampMs).sort((a, b) => a.timestampMs - b.timestampMs);
   const reply = history.find((event) => event.messageId === current.replyToMessageId);
   const replyAuthor = current.replyToAuthorId ?? reply?.authorId;
-  if (replyAuthor) return replyAuthor === botId ? "bot" : "others";
   const mentions = [...current.content.matchAll(/<@!?(\d+)>/gu)].map((match) => match[1]);
   if (mentions.length) return mentions.includes(botId) ? "bot" : "others";
+  if (replyAuthor) return replyAuthor === botId ? "bot" : "others";
   if (current.replyToMessageId) return "unclear";
   const named = namedRecipient(current.content, history, aliases);
   if (named) return named === "unclear" ? "unclear" : named === botId ? "bot" : "others";
@@ -95,6 +95,7 @@ export function localAddressing(events: readonly ChannelHistoryMessage[], curren
   return "continuing";
 }
 export function addressedElsewhere(current: ChannelHistoryMessage, events: readonly ChannelHistoryMessage[], botId: string, aliases: readonly RecipientAliases[] = []): boolean {
+  if ([...current.content.matchAll(/<@!?(\d+)>/gu)].some((match) => match[1] === botId)) return false;
   const replyAuthor = current.replyToAuthorId ?? events.find((event) => event.messageId === current.replyToMessageId)?.authorId;
   if (replyAuthor) return replyAuthor !== botId;
   if (current.replyToMessageId) return true;

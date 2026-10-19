@@ -4,6 +4,8 @@ Status: Phase 1 diagnostics implemented and verified locally. Phases 2–5 and t
 
 ### Implementation progress — 2026-10-19
 
+Phase 2 routing checkpoint: added the shared seven-interaction trigger contract, separate response/discussion identities, explicit mention precedence over a human reply target, and one-hop same-channel ping-disabled reply resolution with a 1.5-second bound. Uncached target fetch requires the existing feature/user/channel/game gates; fetched content is not forwarded by routing. Explicit/name-address turns retain scheduler priority regardless of bare-ping silence preferences. Verified with 53 trigger/routing/addressing regression tests, typecheck, and changed-file lint. Decision ownership and contextual response migration remain in progress.
+
 Implemented locally:
 
 - A typed, runtime-validated diagnostic event boundary with allow-listed fields and safe failure categories. Diagnostic events omit raw message/prompt/response/error content. Production exception serializers omit messages/stacks/bodies/causes; legacy shadow-reason and attachment-content logging in the chat path were removed. This is not a repository-wide audit of unrelated feature logs.

@@ -15,6 +15,7 @@ import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { ChatScheduler, balancedChatLimits, type ChatActivityLimits, type OpportunityCancellationReason } from "./chat-scheduler.js";
 import { ConversationEpisodes } from "./conversation-episodes.js";
 import { isLowSubstancePing } from "./participation-policy.js";
+import { resolveConversationTrigger } from "./conversation-trigger.js";
 import { observedSubjectNames } from "../memory/observed-subject-names.js";
 import type { ConversationEpisodeStore } from "./conversation-episode-store.js";
 import { participationDecision } from "./participation-decision.js";
@@ -768,7 +769,7 @@ export class ChatConversationService {
     if (input.triggerMode === "direct" || input.triggerMode === "ambient") this.cancelOptionalOpportunity(input.guildId, input.channelId, "addressed_request");
     const lowSubstance = isLowSubstancePing(input.message, input.replyChain.length > 0 ||
       (input.currentEvent?.type === "message" && input.currentEvent.replyToMessageId !== null), input.images.length > 0);
-    const optional = input.triggerMode !== "direct" || (input.allowSilentDirect === true && lowSubstance);
+    const optional = !resolveConversationTrigger(input).explicit;
     const expiresAt = optional ? this.now() + 30_000 : null;
     const limits = { ...(input.resolveActivityLimits?.() ?? input.activityLimits ?? balancedChatLimits), continuation: input.triggerMode === "continuation" };
     const silent: ChatResponse = {
