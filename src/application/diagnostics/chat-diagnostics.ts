@@ -28,7 +28,7 @@ export const eligibilityReason = z.enum(["not_guild", "chat_disabled", "needs_co
 
 export const failureCategory = z.enum([
   "timeout", "http_error", "rate_limited", "invalid_json", "schema_mismatch",
-  "incomplete_response", "transport_error", "provider_error", "operation_error", "invalid_target",
+  "incomplete_response", "transport_error", "provider_error", "provider_cooldown", "operation_error", "invalid_target",
   "fixed_target_mismatch", "invalid_boundary", "invalid_evidence", "invalid_contribution",
   "invalid_thought", "recipient_mismatch",
 ]);
@@ -37,6 +37,7 @@ export type FailureCategory = z.infer<typeof failureCategory>;
 // Allow-list every serialized field. Runtime stripping also protects callers
 // compiled without TypeScript, and prevents raw provider/Discord objects leaking.
 const eventSchema = z.discriminatedUnion("event", [
+  z.object({ event: z.literal("chat.decision.resolved"), stage: z.enum(["preflight", "generation"]), interaction: z.enum(["direct_mention", "explicit_reply", "bare_ping", "name_address", "implicit_followup", "group_conversation", "reaction"]), status: z.enum(["ready", "denied", "failed"]), recovery: z.enum(["none", "grounded_reply", "error_reply"]), decisionId: identifier, action: z.enum(["reply", "react", "reply_and_react", "silent"]), intent: z.enum(["answer", "clarify", "social", "closing", "contribute", "abstain"]), reason: identifier, contextVersion: identifier, policyVersion: identifier }),
   z.object({ event: z.literal("discord.rate_limit.summary"), caller: z.enum(["chat_text", "chat_reaction", "control_panel", "lyrics_panel", "queue_panel", "vote_panel", "now_playing_panel", "unknown"]), kind: z.enum(["response_429", "proactive_wait", "mixed"]), method: z.enum(["POST", "PATCH", "GET", "DELETE", "OTHER"]), channelId: identifier.optional(), targetMessageId: identifier.optional(), count, maxWaitMs: duration, overflow: z.boolean() }),
   z.object({ event: z.literal("chat.trace.interrupted"), reason: z.literal("previous_process_incomplete"), unfinishedSpans: count, unfinishedJobs: count, unfinishedOpportunities: count }),
   z.object({ event: z.literal("model.operation.completed"), purpose: identifier, status: z.enum(["completed", "reported_failure", "failed"]), durationMs: duration, failure: failureCategory.optional(), httpStatus: z.number().int().min(100).max(599).optional() }),

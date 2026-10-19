@@ -7,14 +7,14 @@ import type { CharacterRuntime, CharacterPreparedTurn } from "./character-runtim
 import { hashContent } from "../assets/content-hash.js";
 import { stripUntrustedMarkers } from "./attribution-verification.js";
 import { chatMemoryInstructions, chatMemoryLimits, importanceRatingToLevel, normalizeForGroundingCheck, validateMemoryActions } from "./chat-memory-policy.js";
-import { chatSafetyGuard, type ChannelHistoryMessage, type ChatProvider, type ChatRequest, type ChatResponse, type ChatResponseObserver, type ReplyChainMessage } from "./chat-provider.js";
+import { ChatProviderError, chatSafetyGuard, type ChannelHistoryMessage, type ChatProvider, type ChatRequest, type ChatResponse, type ChatResponseObserver, type ReplyChainMessage } from "./chat-provider.js";
 import type { ChatSessionExchange, ChatStateStore } from "./chat-state-store.js";
 import type { UserCustomizationStore } from "./user-customization-store.js";
 import { KeyedSerialQueue } from "../concurrency/keyed-serial-queue.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { ChatScheduler, balancedChatLimits, type ChatActivityLimits, type OpportunityCancellationReason } from "./chat-scheduler.js";
 import { ConversationEpisodes } from "./conversation-episodes.js";
-import { isLowSubstancePing } from "./participation-policy.js";
+import { ConversationDecisionEngine, reportConversationDecision } from "./conversation-decision-engine.js";
 import { resolveConversationTrigger } from "./conversation-trigger.js";
 import { observedSubjectNames } from "../memory/observed-subject-names.js";
 import type { ConversationEpisodeStore } from "./conversation-episode-store.js";
@@ -237,6 +237,7 @@ export class ChatStateCommitError extends Error {
 }
 
 export class ChatConversationService {
+  private readonly decisionEngine = new ConversationDecisionEngine();
   private readonly scheduler: ChatScheduler;
   private readonly episodes = new ConversationEpisodes();
   private readonly opportunityVersions = new Map<string, number>();
@@ -767,8 +768,6 @@ export class ChatConversationService {
   ): Promise<ChatResponse> {
     const key = `${input.guildId}:${input.channelId}`;
     if (input.triggerMode === "direct" || input.triggerMode === "ambient") this.cancelOptionalOpportunity(input.guildId, input.channelId, "addressed_request");
-    const lowSubstance = isLowSubstancePing(input.message, input.replyChain.length > 0 ||
-      (input.currentEvent?.type === "message" && input.currentEvent.replyToMessageId !== null), input.images.length > 0);
     const optional = !resolveConversationTrigger(input).explicit;
     const expiresAt = optional ? this.now() + 30_000 : null;
     const limits = { ...(input.resolveActivityLimits?.() ?? input.activityLimits ?? balancedChatLimits), continuation: input.triggerMode === "continuation" };
@@ -779,16 +778,6 @@ export class ChatConversationService {
     if ((input.triggerMode === "continuation" || input.triggerMode === "spontaneous") && !this.characterRuntime) {
       emitChatDiagnostic(this.logger, { event: "chat.turn.skipped", reason: "decision_unavailable" });
       return Promise.resolve(silent);
-    }
-    if (input.triggerMode === "direct" && lowSubstance && input.sourceMessageId) {
-      const pingKey = `${key}:${input.currentUser.id}`;
-      const previous = this.recentPings.get(pingKey);
-      if (previous && previous.messageId !== input.sourceMessageId && this.now() - previous.at < 10_000) {
-        emitChatDiagnostic(this.logger, { event: "chat.turn.skipped", reason: "duplicate_ping" });
-        return Promise.resolve(silent);
-      }
-      if (this.recentPings.size >= 1024) this.recentPings.delete(this.recentPings.keys().next().value!);
-      this.recentPings.set(pingKey, { at: this.now(), messageId: input.sourceMessageId });
     }
     return this.scheduler.run(key, optional, limits, async () => {
       if (input.canExecute && !await input.canExecute()) {
@@ -1122,9 +1111,7 @@ export class ChatConversationService {
         characterPersonaHash: input.personalitySourceHash ?? hashContent(input.personality),
         ...requestInput,
         webSearchMode: input.shadowMode ? "off" : input.webSearchMode,
-        imageGenerationEnabled: !input.shadowMode && input.imageGenerationEnabled && !(input.triggerMode === "direct" &&
-          isLowSubstancePing(input.message, input.replyChain.length > 0 ||
-            (input.currentEvent?.type === "message" && input.currentEvent.replyToMessageId !== null), input.images.length > 0)),
+        imageGenerationEnabled: !input.shadowMode && input.imageGenerationEnabled,
         recentHistory,
         channelMode,
         memories: selectedMemories,
@@ -1138,9 +1125,7 @@ export class ChatConversationService {
         personaLore: selectedPersonaLore.map((chunk) => ({ heading: chunk.heading, text: chunk.text })),
         userCustomization,
         birthday: birthday ? { month: birthday.month, day: birthday.day, birthYear: birthday.birthYear } : null,
-        enabledTools: toolsEnabled && this.toolRegistry && !input.shadowMode && !(input.triggerMode === "direct" &&
-          isLowSubstancePing(input.message, input.replyChain.length > 0 ||
-            (input.currentEvent?.type === "message" && input.currentEvent.replyToMessageId !== null), input.images.length > 0))
+        enabledTools: toolsEnabled && this.toolRegistry && !input.shadowMode
           ? this.toolRegistry.list().filter((tool) => !disabledToolNames?.has(tool.name) && (!allowedToolNames || allowedToolNames.has(tool.name))).map((tool) => ({
               name: tool.name, description: tool.description, parameters: tool.parameters,
               execute: async (args, context): ReturnType<ChatTool["execute"]> => {
@@ -1159,26 +1144,31 @@ export class ChatConversationService {
         characterPrepared = await this.characterRuntime.prepare(request);
         if (characterPrepared) {
           request = characterPrepared.request;
-          if (!characterPrepared.allowed) return { text: "", ambientAction: "ignore", reactionEmoji: null, historyReactions: [],
+          if (!characterPrepared.allowed) return { ...(characterPrepared.conversationDecision ? { conversationDecision: characterPrepared.conversationDecision } : {}), text: "", ambientAction: "ignore", reactionEmoji: null, historyReactions: [],
             userMemoryActions: [], guildKnowledgeCandidates: [], sources: [], usage: null, webSearchUsed: false, generatedImages: [] };
         }
       }
+      if (characterPrepared?.conversationDecision?.recovery === "grounded_reply") request = { ...request, enabledTools: [], imageGenerationEnabled: false, webSearchMode: "off",
+        characterContext: [...(request.characterContext ?? []), { moduleId: "participation", text: "The participation decision failed. This is a narrowly authorized same-person continuation. Answer or clarify only the supplied current exchange and its proven branch. No tools, image generation, web search, new actions, or invented context." }] };
       if (!await canContinue()) throw new SocialOutputSuppressed();
       if (characterPrepared?.participation?.action === "ignore" && !input.shadowMode) return {
+        ...(characterPrepared.conversationDecision ? { conversationDecision: characterPrepared.conversationDecision } : {}),
         text: "", ambientAction: "ignore", reactionEmoji: characterPrepared.participation.reaction, historyReactions: [], userMemoryActions: [],
         guildKnowledgeCandidates: [], sources: [], usage: null, webSearchUsed: false, generatedImages: [],
         ...(characterPrepared.targetMessageId ? { replyTargetMessageId: characterPrepared.targetMessageId } : {}),
         characterIsCurrent: () => this.characterRuntime!.stillEligible(characterPrepared!),
         characterCanDeliver: () => this.characterRuntime!.validatePrepared(characterPrepared!),
       };
-      const needsParticipationFirst = input.triggerMode !== "direct" && !input.shadowMode &&
+      const needsParticipationFirst = !resolveConversationTrigger(input).explicit && !input.shadowMode &&
         (Boolean(request.enabledTools?.length) || request.imageGenerationEnabled || request.webSearchMode === "auto");
       let response: ChatResponse;
       if (needsParticipationFirst && !characterPrepared?.participation) {
         response = await this.replyWithDiagnostics({ ...request, participationOnly: true,
           capabilityToolNames: request.enabledTools?.map((tool) => tool.name) ?? [],
           enabledTools: [], imageGenerationEnabled: false, webSearchMode: "off" });
-        if (response.ambientAction === "reply") {
+        const assessment = this.decisionEngine.finalize(request, response, this.now(), characterPrepared?.fingerprint);
+        if (assessment.status === "failed") return { ...response, text: "", ambientAction: "ignore", reactionEmoji: null, historyReactions: [], userMemoryActions: [], guildKnowledgeCandidates: [], conversationDecision: assessment };
+        if (assessment.decision.action === "reply" || assessment.decision.action === "reply_and_react") {
           if (!await canContinue()) throw new SocialOutputSuppressed();
           response = await this.replyWithDiagnostics(request, observer);
         }
@@ -1252,17 +1242,21 @@ export class ChatConversationService {
         ),
       };
       if (input.shadowMode) {
+        const shadowDecision = this.decisionEngine.finalize(request, validatedResponse, this.now(), characterPrepared?.fingerprint, characterPrepared?.conversationDecision);
+        reportConversationDecision(this.logger, shadowDecision, "generation", resolveConversationTrigger(input).interaction);
         this.logger?.info({ guildId: input.guildId, channelId: input.channelId, sourceMessageId: input.sourceMessageId,
           triggerMode: input.triggerMode, action: validatedResponse.ambientAction, reaction: validatedResponse.reactionEmoji !== null,
           hasParticipationReason: Boolean(validatedResponse.participationReason),
           contextMessages: input.channelHistory.length + input.replyChain.length }, "Shadow participation decision");
-        return { ...validatedResponse, userMemoryActions: [], guildKnowledgeCandidates: [] };
+        return { ...validatedResponse, conversationDecision: shadowDecision, userMemoryActions: [], guildKnowledgeCandidates: [] };
       }
       if (functionalToolExecuted || input.triggerMode === "reaction") {
         validatedResponse.userMemoryActions = [];
         validatedResponse.guildKnowledgeCandidates = [];
       }
       if (functionalToolExecuted) {
+        validatedResponse.conversationDecision = this.decisionEngine.finalize({ ...request, functionalToolExecuted: true }, validatedResponse, this.now(), characterPrepared?.fingerprint);
+        reportConversationDecision(this.logger, validatedResponse.conversationDecision, "generation", resolveConversationTrigger(input).interaction);
         if (characterPrepared && !await this.characterRuntime!.validatePrepared(characterPrepared) && functionalResults.length) validatedResponse.text = functionalResults.join("\n");
         validatedResponse.ambientAction = "reply";
         validatedResponse.reactionEmoji = null;
@@ -1285,13 +1279,36 @@ export class ChatConversationService {
         validatedResponse.userMemoryActions, validatedResponse.guildKnowledgeCandidates, input.currentUser.id,
         input,
       );
-      const mayIgnore = input.triggerMode !== "direct" || (input.allowSilentDirect === true &&
-        isLowSubstancePing(input.message, input.replyChain.length > 0 ||
-          (input.currentEvent?.type === "message" && input.currentEvent.replyToMessageId !== null), input.images.length > 0));
+      const decisionResult = this.decisionEngine.finalize(request, validatedResponse, this.now(), characterPrepared?.fingerprint, characterPrepared?.conversationDecision);
+      validatedResponse.conversationDecision = decisionResult;
+      if (resolveConversationTrigger(input).explicit && (validatedResponse.responseIntent === "social" || validatedResponse.responseIntent === "closing") && input.sourceMessageId) {
+        const pingKey = `${input.guildId}:${input.channelId}:${input.currentUser.id}`;
+        const previous = this.recentPings.get(pingKey);
+        if (previous && previous.messageId !== input.sourceMessageId && this.now() - previous.at < 10_000) {
+          decisionResult.status = "denied"; decisionResult.decision.action = "silent"; decisionResult.decision.reasonCode = "duplicate_ping";
+          validatedResponse.reactionEmoji = null; validatedResponse.historyReactions = [];
+          emitChatDiagnostic(this.logger, { event: "chat.turn.skipped", reason: "duplicate_ping" });
+        } else {
+          if (this.recentPings.size >= 1024) this.recentPings.delete(this.recentPings.keys().next().value!);
+          this.recentPings.set(pingKey, { at: this.now(), messageId: input.sourceMessageId });
+        }
+      }
+      if (decisionResult.recovery === "error_reply") {
+        reportConversationDecision(this.logger, decisionResult, "generation", resolveConversationTrigger(input).interaction);
+        throw new ChatProviderError("Invalid contextual response evidence", 502, "invalid_structured_output");
+      }
+      if (decisionResult.status === "failed" && decisionResult.decision.action === "silent") {
+        validatedResponse.reactionEmoji = null; validatedResponse.historyReactions = [];
+        validatedResponse.userMemoryActions = []; validatedResponse.guildKnowledgeCandidates = [];
+      }
+      const mayIgnore = decisionResult.decision.action === "silent" || decisionResult.decision.action === "react";
+      if (mayIgnore) { validatedResponse.ambientAction = "ignore"; validatedResponse.text = ""; }
+      else validatedResponse.ambientAction = "reply";
       if (input.shadowMode && characterPrepared?.acceptedContribution && !generatedContributionAllowed(validatedResponse.text, [...request.channelHistory, ...request.replyChain], request.botUserId)) {
         validatedResponse.text = ""; validatedResponse.ambientAction = "ignore"; validatedResponse.reactionEmoji = null; validatedResponse.historyReactions = [];
       }
       if (mayIgnore && validatedResponse.ambientAction !== "reply") {
+        reportConversationDecision(this.logger, decisionResult, "generation", resolveConversationTrigger(input).interaction);
         if (validatedResponse.reactionEmoji && proposals.length > 0) {
           try {
             const result = await this.runMemoryMutation(input.guildId, input.currentUser.id, () => this.memoryEngine.ingest({
@@ -1328,7 +1345,13 @@ export class ChatConversationService {
       if (input.shadowMode && characterPrepared?.acceptedContribution && !generatedContributionAllowed(validatedResponse.text, [...request.channelHistory, ...request.replyChain], request.botUserId)) {
         validatedResponse.text = ""; validatedResponse.ambientAction = "ignore"; validatedResponse.reactionEmoji = null; validatedResponse.historyReactions = [];
       }
-      if (mayIgnore && validatedResponse.ambientAction !== "reply") {
+      const finalDecision = this.decisionEngine.finalize(request, validatedResponse, this.now(), characterPrepared?.fingerprint, decisionResult);
+      validatedResponse.conversationDecision = finalDecision;
+      reportConversationDecision(this.logger, finalDecision, "generation", resolveConversationTrigger(input).interaction);
+      if (finalDecision.recovery === "error_reply") throw new ChatProviderError("Invalid contextual response", 502, "invalid_structured_output");
+      const finalSilent = finalDecision.decision.action === "silent" || finalDecision.decision.action === "react";
+      if (finalSilent) { validatedResponse.ambientAction = "ignore"; validatedResponse.text = ""; delete validatedResponse.characterMessages; delete validatedResponse.characterDelayMs; }
+      if (finalSilent) {
         await this.characterRuntime?.recordDelivery(input.guildId, input.sourceMessageId ?? null, false, input.shadowMode ?? false);
         return validatedResponse;
       }

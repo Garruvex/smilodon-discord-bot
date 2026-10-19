@@ -1,3 +1,4 @@
+import type { StructuredCallOptions } from "../../application/chat/chat-provider.js";
 import { z } from "zod";
 import { performance } from "node:perf_hooks";
 import { diagnosticElapsed, emitChatDiagnostic, safeFailure } from "../../application/diagnostics/chat-diagnostics.js";
@@ -392,7 +393,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     instructions: string,
     schemaName: string,
     jsonSchema: object,
-    options?: { maxOutputTokens?: number; timeoutMs?: number },
+    options?: { maxOutputTokens?: number; timeoutMs?: number; signal?: AbortSignal; maxAttempts?: number },
   ): Promise<string> {
     const body = await this.summaryModelChain.run(async (model) => {
       const response = await fetch(`${this.baseUrl}/responses`, {
@@ -412,7 +413,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
           },
           max_output_tokens: options?.maxOutputTokens ?? this.generation.maxOutputTokens,
         }),
-        signal: AbortSignal.timeout(options?.timeoutMs ?? 30_000),
+        signal: options?.signal ?? AbortSignal.timeout(options?.timeoutMs ?? 30_000),
       });
       if (!response.ok) {
         const errorBody: unknown = await response.json().catch(() => null);
@@ -427,7 +428,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
         );
       }
       return response.json();
-    });
+    }, options);
     const parsed = responseSchema.parse(body);
     const texts: string[] = [];
     for (const item of parsed.output) {
@@ -456,8 +457,8 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     return { ok: true, markdown };
   }
 
-  public async generateCharacterData(prompt: string, schema: Record<string, unknown>): Promise<unknown> {
-    return JSON.parse(await this.callStructuredOutput(prompt, "character_data", schema)) as unknown;
+  public async generateCharacterData(prompt: string, schema: Record<string, unknown>, options?: StructuredCallOptions): Promise<unknown> {
+    return JSON.parse(await this.callStructuredOutput(prompt, "character_data", schema, options)) as unknown;
   }
 
   public async summarizeDroppedExchanges(
@@ -739,6 +740,8 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
       generatedImages,
       ambientAction: modelOutput.ambientAction,
       ...(modelOutput.participationReason !== undefined ? { participationReason: modelOutput.participationReason } : {}),
+      ...(modelOutput.responseIntent ? { responseIntent: modelOutput.responseIntent } : {}),
+      ...(modelOutput.referentSourceIds?.length ? { referentSourceIds: modelOutput.referentSourceIds } : {}),
       reactionEmoji: modelOutput.reactionEmoji,
       historyReactions: modelOutput.historyReactions,
     };

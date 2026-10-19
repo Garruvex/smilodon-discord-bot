@@ -3,6 +3,7 @@ import { Collection, type GuildMember, type Message } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AmbientChatBehavior } from "../../src/infrastructure/discord/behaviors/ambient-chat-behavior.js";
+import { BehaviorResult } from "../../src/application/behaviors/behavior.js";
 import { defaultMemoryEngineLimits } from "../../src/application/memory/memory-engine.js";
 import type { ApplicationConfiguration } from "../../src/config/configuration.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
@@ -177,6 +178,18 @@ describe("AmbientChatBehavior.matches", () => {
 });
 
 describe("AmbientChatBehavior outcome logs", () => {
+  it("keeps a response/error path for a clear name address when generation fails", async () => {
+    vi.spyOn(ChatTurnSupport.prototype, "isEligible").mockResolvedValue(true);
+    vi.spyOn(ChatTurnSupport.prototype, "resolveReplyChain").mockResolvedValue({ kept: [], overflow: [] });
+    const run = vi.fn(() => Promise.reject(new Error("provider unavailable")));
+    const subject = behavior(profile(), { run } as unknown as ChatConversationService);
+    const reply = vi.fn(() => Promise.resolve({ id: "error-note" }));
+    const source = { ...message(), id: "source", createdTimestamp: 1000, member: null, attachments: new Collection(), reply,
+      author: { id: "human", username: "Human", displayName: "Human", bot: false }, mentions: { users: new Collection() } } as unknown as Message;
+    expect(await subject.execute(source)).toBe(BehaviorResult.StopPropagation);
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ interactionMode: "name_address" }), expect.any(Function));
+    expect(reply).toHaveBeenCalledOnce();
+  });
   it.each([["ambient", true], ["ambient", false], ["continuation", true], ["continuation", false], ["spontaneous", true], ["spontaneous", false]] as const)("does not report an unsent reply as delivered (%s shadow=%s)", async (trigger, shadowMode) => {
     const configured = profile();
     configured.chat.participation = { ...defaultParticipation, shadowMode };

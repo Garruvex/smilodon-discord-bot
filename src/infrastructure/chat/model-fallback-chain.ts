@@ -26,17 +26,18 @@ export class ModelFallbackChain {
     if (models.length === 0) throw new Error("ModelFallbackChain requires at least one model.");
   }
 
-  public async run<T>(attempt: (model: string) => Promise<T>): Promise<T> {
+  public async run<T>(attempt: (model: string) => Promise<T>, options?: { maxAttempts?: number; signal?: AbortSignal }): Promise<T> {
     const now = Date.now();
     for (const [modelIndex, model] of this.models.entries()) if ((this.cooldownUntil.get(model) ?? 0) > now)
       emitChatDiagnostic(modelDiagnosticLogger(), { event: "model.provider.attempt", modelIndex, attempt: 0, status: "cooldown", durationMs: 0 });
-    const candidates = this.models.filter((model) => (this.cooldownUntil.get(model) ?? 0) <= now);
+    const candidates = this.models.filter((model) => (this.cooldownUntil.get(model) ?? 0) <= now).slice(0, options?.maxAttempts ?? Infinity);
     if (candidates.length === 0) throw new ChatModelFallbackExhaustedError();
 
     let lastError: unknown;
     for (const model of candidates) {
+      options?.signal?.throwIfAborted();
       try {
-        return await this.attemptWithStreamRetry(attempt, model);
+        return await this.attemptWithStreamRetry(attempt, model, options?.maxAttempts !== 1);
       } catch (error) {
         lastError = error;
         if (error instanceof ChatProviderError) {
@@ -59,7 +60,7 @@ export class ModelFallbackChain {
   // event is a dropped connection, not a quota or capability signal — retried
   // once on the same model before falling into the normal (non-retrying)
   // error path above.
-  private async attemptWithStreamRetry<T>(attempt: (model: string) => Promise<T>, model: string): Promise<T> {
+  private async attemptWithStreamRetry<T>(attempt: (model: string) => Promise<T>, model: string, retryStream: boolean): Promise<T> {
     let ordinal = 0;
     const traced = async (): Promise<T> => {
       const started = performance.now(); const number = ++ordinal;
@@ -75,7 +76,7 @@ export class ModelFallbackChain {
     try {
       return await traced();
     } catch (error) {
-      if (error instanceof ChatProviderError && error.code === "incomplete_stream") {
+      if (retryStream && error instanceof ChatProviderError && error.code === "incomplete_stream") {
         return await traced();
       }
       throw error;

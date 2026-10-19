@@ -35,7 +35,6 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
   public readonly priority = 90;
   private readonly chatAccess: ChatAccessService;
   private readonly turnSupport: ChatTurnSupport;
-  private readonly cooldownUntilByChannel = new Map<string, number>();
 
   public constructor(
     private readonly clientUserId: () => string | null,
@@ -91,15 +90,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       this.logger.debug(logContext, "Ambient chat: name mentioned in a D&D game channel, which the narrator owns");
       return false;
     }
-    const cooldownUntil = this.cooldownUntilByChannel.get(message.channelId) ?? 0;
     if (!await this.turnSupport.isEligible(message, "ambient")) return false;
-    if (Date.now() < cooldownUntil) {
-      this.logger.debug(
-        { ...logContext, cooldownRemainingMs: cooldownUntil - Date.now() },
-        "Ambient chat: name mentioned but channel is on cooldown",
-      );
-      return false;
-    }
     return true;
   }
 
@@ -111,10 +102,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     if (!profile) return BehaviorResult.Continue;
     if (!await this.turnSupport.isEligible(message, trigger)) return BehaviorResult.Continue;
     const participation = resolveParticipation(profile.chat.participation, message.channelId);
-    if (trigger === "ambient") this.cooldownUntilByChannel.set(
-      message.channelId,
-      Date.now() + profile.chat.ambientCooldownSeconds * 1_000,
-    );
+
 
     const { kept: replyChainMessages, overflow: replyChainOverflowMessages } = await this.turnSupport.resolveReplyChain(message);
     const ancestors = this.turnSupport.toChannelHistoryMessages([...replyChainOverflowMessages, ...replyChainMessages]);
@@ -208,6 +196,8 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         imageGenerationEnabled: trigger === "ambient" && !participation.shadowMode && profile.chat.imageGenerationEnabled,
         includeSources: profile.chat.includeSources,
         triggerMode: trigger,
+        interactionMode: trigger === "ambient" ? "name_address" : trigger === "continuation" ? "implicit_followup" : "group_conversation",
+        allowSilentDirect: trigger === "ambient" && participation.barePingMode === "personality",
         historyReactionsEnabled: profile.features.historyReactions && profile.features.channelHistory,
         toolsEnabled: !participation.shadowMode && profile.chat.toolCallingEnabled,
         ...(trigger === "ambient" ? {} : { allowedToolNames: new Set(["lookup_discord_server"]) }),
@@ -295,15 +285,14 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       }, `Ambient chat: ${outcome}`);
     } catch (error) {
       if (error instanceof SocialOutputSuppressed) return BehaviorResult.Continue;
-      // Unlike a direct mention, a failed ambient judgment call fails silent
-      // (no error reply) — the user never asked to be addressed, so
-      // surfacing an error here would be more surprising than just staying
-      // quiet.
       this.logger.error(
         { error, guildId: message.guildId, channelId: message.channelId, messageId: message.id, userId: message.author.id },
         "Ambient chat request failed",
       );
+      if (trigger === "ambient" && await this.turnSupport.isEligible(message, "ambient")) {
+        await withDiscordCaller("chat_text", () => message.reply({ content: "I couldn't answer that request right now. Please try again shortly.", allowedMentions: { repliedUser: false, parse: [] } }));
+      }
     }
-    return BehaviorResult.Continue;
+    return trigger === "ambient" ? BehaviorResult.StopPropagation : BehaviorResult.Continue;
   }
 }

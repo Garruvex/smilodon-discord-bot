@@ -1,3 +1,4 @@
+import type { StructuredCallOptions } from "../../application/chat/chat-provider.js";
 import { GoogleGenAI } from "@google/genai";
 import { performance } from "node:perf_hooks";
 import { diagnosticElapsed, emitChatDiagnostic, safeFailure } from "../../application/diagnostics/chat-diagnostics.js";
@@ -347,6 +348,8 @@ export class GeminiChatProvider implements ChatProvider {
       generatedImages,
       ambientAction: modelOutput.ambientAction,
       ...(modelOutput.participationReason !== undefined ? { participationReason: modelOutput.participationReason } : {}),
+      ...(modelOutput.responseIntent ? { responseIntent: modelOutput.responseIntent } : {}),
+      ...(modelOutput.referentSourceIds?.length ? { referentSourceIds: modelOutput.referentSourceIds } : {}),
       reactionEmoji: modelOutput.reactionEmoji,
       historyReactions: modelOutput.historyReactions,
     };
@@ -425,8 +428,8 @@ export class GeminiChatProvider implements ChatProvider {
     return { ok: true, markdown };
   }
 
-  public async generateCharacterData(prompt: string, schema: Record<string, unknown>): Promise<unknown> {
-    const response = await this.summaryModelChain.run((model) => this.generateStructured(model, prompt, schema));
+  public async generateCharacterData(prompt: string, schema: Record<string, unknown>, options?: StructuredCallOptions): Promise<unknown> {
+    const response = await this.summaryModelChain.run((model) => this.generateStructured(model, prompt, schema, undefined, undefined, options?.signal), options);
     return JSON.parse((response.text ?? "").trim()) as unknown;
   }
 
@@ -540,13 +543,14 @@ export class GeminiChatProvider implements ChatProvider {
     jsonSchema: Record<string, unknown>,
     maxOutputTokens: number = this.generation.maxOutputTokens,
     timeoutMs = 30_000,
+    signal?: AbortSignal,
   ): Promise<GenerateContentResponse> {
     try {
       return await this.client.models.generateContent({
         model,
         contents: [{ role: "user", parts: [{ text: "Follow the instructions above." }] }],
         config: {
-          abortSignal: AbortSignal.timeout(timeoutMs),
+          abortSignal: signal ?? AbortSignal.timeout(timeoutMs),
           systemInstruction: prompt,
           maxOutputTokens,
           responseMimeType: "application/json",

@@ -3,6 +3,8 @@ import { CommandModule, CommandResponseVisibility, type BotCommand, type Command
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 import type { ChatTraceStore, RetainedChatTrace } from "../../../../application/diagnostics/chat-trace-store.js";
 import type { DiagnosticPipelineStatus } from "../../../../application/diagnostics/chat-diagnostics.js";
+import type { DecisionHealth } from "../../../../application/chat/character-decision.js";
+import type { GenerationHealth } from "../../../../application/diagnostics/model-diagnostics.js";
 
 function messageInChannel(value: string, guildId: string, channelId: string): string | null {
   if (/^\d{17,20}$/u.test(value)) return value;
@@ -35,7 +37,8 @@ export class DiagnosticCommand implements BotCommand {
   public readonly definition = {
     name: "diagnostic",
     description: "Displays owner-only runtime diagnostics.",
-    options: [{ type: "string", name: "message", description: "Explain a message ID or link in this channel.", required: false, maxLength: 150 }],
+    options: [{ type: "string", name: "message", description: "Explain a message ID or link in this channel.", required: false, maxLength: 150 },
+      { type: "boolean", name: "decision", description: "Run a cached synthetic decision-provider health check.", required: false }],
   } satisfies BotCommand["definition"];
 
   public readonly module = CommandModule.Diagnostics;
@@ -46,11 +49,21 @@ export class DiagnosticCommand implements BotCommand {
   public readonly responseVisibility = CommandResponseVisibility.Ephemeral;
 
   public constructor(private readonly traces: ChatTraceStore | null = null, private readonly ownerUserIds: ReadonlySet<string> | null = null,
-    private readonly pipelineStatus: (() => Readonly<DiagnosticPipelineStatus>) | null = null) {}
+    private readonly pipelineStatus: (() => Readonly<DiagnosticPipelineStatus>) | null = null,
+    private providerHealth: { decision: () => DecisionHealth | null; generation: () => Readonly<GenerationHealth>; checkDecision: () => Promise<DecisionHealth | null> } | null = null) {}
+  public bindProviderHealth(health: NonNullable<DiagnosticCommand["providerHealth"]>): void { this.providerHealth = health; }
 
   public async execute(context: CommandContext): Promise<void> {
     if (this.ownerUserIds && !this.ownerUserIds.has(context.interaction.user.id)) {
       await context.responses.reply("Only a bot owner can inspect diagnostics."); return;
+    }
+    if (context.interaction.options.getBoolean?.("decision")) {
+      await context.responses.defer();
+      try {
+        const health = await this.providerHealth?.checkDecision();
+        await context.responses.edit(health ? `Decision providers configured: ${health.configured}; cooling down: ${health.coolingDownProviders}; last valid decision: ${health.lastSuccessAt === null ? "none observed" : new Date(health.lastSuccessAt).toISOString()}; last failure: ${health.lastFailureAt === null ? "none observed" : new Date(health.lastFailureAt).toISOString()}. Synthetic checks are cached for 60 seconds.` : "Decision-provider health checks are unavailable.");
+      } catch { await context.responses.edit("The synthetic decision health check failed; no conversation content was used."); }
+      return;
     }
     const reference = context.interaction.options.getString("message");
     if (reference !== null) {
@@ -82,6 +95,7 @@ export class DiagnosticCommand implements BotCommand {
     const uptimeSeconds = Math.round(process.uptime());
     const retention = this.traces?.status();
     const pipeline = this.pipelineStatus?.();
+    const decision = this.providerHealth?.decision(); const generation = this.providerHealth?.generation();
 
     await context.responses.reply({
       content: [
@@ -90,6 +104,8 @@ export class DiagnosticCommand implements BotCommand {
         `Guilds: ${context.interaction.client.guilds.cache.size}`,
         ...(retention ? [`Retained diagnostic events: ${retention.events}; dropped traces/events: ${retention.droppedTraces}/${retention.droppedEvents}; write failures: ${retention.writeFailures}`] : []),
         ...(pipeline ? [`Diagnostic attempts: ${pipeline.attempted}; invalid: ${pipeline.invalidEvents}; log-only: ${pipeline.unscopedEvents}; retention/log exceptions: ${pipeline.retentionFailures}/${pipeline.logFailures}`] : []),
+        ...(decision ? [`Decision providers configured: ${decision.configured}; cooling down: ${decision.coolingDownProviders}; last valid result: ${decision.lastSuccessAt === null ? "none observed" : new Date(decision.lastSuccessAt).toISOString()}`] : []),
+        ...(generation ? [`Observed reply calls completed/failed: ${generation.completed}/${generation.failed}`] : []),
       ].join("\n"),
     });
   }

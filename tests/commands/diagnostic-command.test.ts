@@ -31,6 +31,15 @@ function setup(reference: string | null = messageId): {
 }
 
 describe("protected diagnostic timeline lookup", () => {
+  it("offers a deferred owner-only synthetic decision check without reading a message", async () => {
+    const { context, edit, lookup } = setup();
+    Object.assign(context.interaction.options, { getBoolean: () => true });
+    const checkDecision = vi.fn(() => Promise.resolve({ configured: true, coolingDownProviders: 1, lastSuccessAt: null, lastFailureAt: 1000 }));
+    const command = new DiagnosticCommand(null, new Set(["owner"]), null, { decision: (): null => null, generation: (): { completed: number; failed: number; lastSuccessAt: null; lastFailureAt: null } => ({ completed: 0, failed: 0, lastSuccessAt: null, lastFailureAt: null }), checkDecision });
+    await command.execute(context);
+    expect(checkDecision).toHaveBeenCalledOnce(); expect(lookup).not.toHaveBeenCalled();
+    expect(edit).toHaveBeenCalledWith(expect.stringContaining("cooling down: 1"));
+  });
   it("is owner-only/ephemeral and accepts a same-channel message link", async () => {
     const { command, context, edit, lookup, fetchChannel } = setup(`https://discord.com/channels/${guildId}/${channelId}/${messageId}`);
     expect(command.access.ownerOnly).toBe(true);

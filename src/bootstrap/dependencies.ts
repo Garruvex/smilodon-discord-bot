@@ -1,5 +1,5 @@
 import { defaultLanguage } from "../application/i18n/language.js";
-import { instrumentModel } from "../application/diagnostics/model-diagnostics.js";
+import { instrumentModel, modelGenerationHealth } from "../application/diagnostics/model-diagnostics.js";
 import { diagnosticPipelineStatus } from "../application/diagnostics/chat-diagnostics.js";
 import { catalogIssues } from "../application/i18n/texts.js";
 import type { Logger } from "pino";
@@ -683,6 +683,9 @@ export function createDependencies(
     chatProvider, configuration.decision ? instrumentModel(new HttpDecisionProvider(configuration.decision), logger)
       : utilityProvider?.generateCharacterData ? { generateCharacterData: utilityProvider.generateCharacterData.bind(utilityProvider) } : null, personalMemoryExtractionQueueStore, undefined, logger.child({ component: "character" })) : null;
   if (characterRuntime) settingsEngine.bindCharacterRuntime(characterRuntime);
+  const diagnosticCommand = commandRegistry.getAll().find((command): command is DiagnosticCommand => command instanceof DiagnosticCommand);
+  diagnosticCommand?.bindProviderHealth({ decision: () => characterRuntime?.decisionHealth ?? null, generation: () => modelGenerationHealth(logger),
+    checkDecision: () => characterRuntime?.checkDecisionHealth() ?? Promise.resolve(null) });
   characterRuntime?.bindTargetPreferences(async (guildId, userId) => ({ customization: await userCustomizationStore.load(guildId, userId) }));
   const chatConversationService = chatProvider
     ? new ChatConversationService(

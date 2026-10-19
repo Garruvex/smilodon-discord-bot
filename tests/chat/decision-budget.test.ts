@@ -1,0 +1,46 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { CharacterDecisionService } from "../../src/application/chat/character-decision.js";
+import type { StructuredCallOptions } from "../../src/application/chat/chat-provider.js";
+import { branchCurrent, decisionProposal } from "../helpers/conversation-decision-fixtures.js";
+import { OpenAiResponsesChatProvider } from "../../src/infrastructure/chat/openai-responses-chat-provider.js";
+import { OpenAiCompatibleChatProvider } from "../../src/infrastructure/chat/openai-compatible-chat-provider.js";
+const input = { personality: "synthetic", events: [], burst: [branchCurrent], botId: "bot", fixedTarget: "current", gapMs: 1000, speakingShare: 0, thoughts: false };
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+describe("bounded decision recovery", () => {
+  it.each(["responses", "compatible"])("passes cancellation and a one-model budget into %s transport", async (kind) => {
+    const fetch = vi.fn((_url: unknown, request?: RequestInit) => {
+      expect(request?.signal).toBe(controller.signal);
+      return Promise.resolve(new Response(JSON.stringify({ error: { code: "rate_limit" } }), { status: 429 }));
+    });
+    const controller = new AbortController(); vi.stubGlobal("fetch", fetch);
+    const provider = kind === "responses" ? new OpenAiResponsesChatProvider("https://example.test", "secret", ["first", "second"], { reasoningEffort: "low", verbosity: "low", maxOutputTokens: 100 })
+      : new OpenAiCompatibleChatProvider("https://example.test", "secret", ["first", "second"], null);
+    await expect(provider.generateCharacterData("synthetic", {}, { signal: controller.signal, maxAttempts: 1 })).rejects.toMatchObject({ status: 429 });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+  it("aborts two stalled endpoint attempts inside the overall budget", async () => {
+    vi.useFakeTimers(); const signals: AbortSignal[] = [];
+    const pending = { generateCharacterData: (_prompt: string, _schema: object, options?: StructuredCallOptions): Promise<unknown> => { signals.push(options!.signal!); expect(options!.maxAttempts).toBe(1); return new Promise(() => undefined); } };
+    const service = new CharacterDecisionService(pending, { ...pending });
+    const outcome = service.evaluate(input); await vi.advanceTimersByTimeAsync(12_000);
+    const result = await outcome;
+    expect(result.status).toBe("failed"); expect(result.attempts.map((attempt) => attempt.failure)).toEqual(["timeout", "timeout"]);
+    expect(signals).toHaveLength(2); expect(signals.every((signal) => signal.aborted)).toBe(true);
+  });
+  it("uses cached circuit health and resumes after cooldown", async () => {
+    vi.useFakeTimers(); const generate = vi.fn((): Promise<unknown> => Promise.reject(new Error("unavailable")));
+    const service = new CharacterDecisionService({ generateCharacterData: generate });
+    for (let i = 0; i < 3; i++) await service.evaluate(input);
+    expect((await service.evaluate(input)).attempts[0]?.failure).toBe("provider_cooldown"); expect(generate).toHaveBeenCalledTimes(3);
+    expect(service.healthStatus().coolingDownProviders).toBe(1);
+    await vi.advanceTimersByTimeAsync(30_001); generate.mockImplementation(() => Promise.resolve(decisionProposal()));
+    expect((await service.evaluate(input)).status).toBe("valid"); expect(service.healthStatus().coolingDownProviders).toBe(0);
+  });
+  it("caches a synthetic schema health check without using conversation content", async () => {
+    const proposal = decisionProposal({ target: "diagnostic-source", recipientEvidence: ["diagnostic-source"], contribution: { ...decisionProposal().contribution, sourceMessageId: "diagnostic-source", recipientId: "diagnostic-human" } });
+    const generate = vi.fn(() => Promise.resolve(proposal)); const service = new CharacterDecisionService({ generateCharacterData: generate });
+    const first = service.checkHealth(); expect(service.checkHealth()).toBe(first);
+    expect((await first).lastSuccessAt).not.toBeNull(); expect(generate).toHaveBeenCalledOnce();
+    expect(generate.mock.calls[0]).toBeDefined();
+  });
+});

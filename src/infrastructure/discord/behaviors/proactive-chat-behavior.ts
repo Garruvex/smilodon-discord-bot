@@ -40,7 +40,7 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
   private trigger(message: Message): OptionalTrigger | null {
     const botId = this.botId();
     const profile = message.guildId ? this.profiles.find(message.guildId) : null;
-    if (!this.conversation.optionalDecisionAvailable || !botId || !profile || !profile.features.chatbot || !profile.features.channelHistory || characterSettings(profile).channelOverrides[message.channelId]?.contextEnabled === false ||
+    if (!botId || !profile || (!this.conversation.optionalDecisionAvailable && profile.chat.participation?.continuationFailureMode !== "grounded_fallback") || !profile.features.chatbot || !profile.features.channelHistory || characterSettings(profile).channelOverrides[message.channelId]?.contextEnabled === false ||
         profile.chat.channelMemoryModes[message.channelId] === "disabled" || !message.inGuild() || message.author.bot || message.mentions.users.has(botId)) return null;
     if (addressesBotName(message.content, profile.displayName) || message.mentions.repliedUser?.id === botId ||
         message.reference?.messageId && message.channel?.messages?.cache?.get(message.reference.messageId)?.author.id === botId) return null;
@@ -49,7 +49,7 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
         authorId: message.author.id, authorDisplayName: message.author.displayName, content: message.content, imageCount: 0,
         replyToMessageId: message.reference?.messageId ?? null }, botId)) return "continuation";
     const hasContent = !!message.content.trim() || (message.attachments?.size ?? 0) > 0;
-    return policy.spontaneousEnabled && hasContent ? "spontaneous" : null;
+    return this.conversation.optionalDecisionAvailable && policy.spontaneousEnabled && hasContent ? "spontaneous" : null;
   }
   public async matches(message: Message): Promise<boolean> {
     const trigger = this.trigger(message);

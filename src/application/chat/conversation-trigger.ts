@@ -16,8 +16,8 @@ export function mentionInteraction(content: string, botId: string, hasImages: bo
 }
 
 export function resolveConversationTrigger(request: Pick<ChatRequest, "triggerMode" | "interactionMode" | "currentEvent"> & { sourceMessageId?: string | null | undefined }): TriggerResolution {
-  const interaction = request.interactionMode ?? ({ direct: "direct_mention", ambient: "name_address", continuation: "implicit_followup", spontaneous: "group_conversation", reaction: "reaction" } as const)[request.triggerMode];
-  return { interaction, explicit: request.triggerMode === "direct" || request.triggerMode === "ambient",
+  const interaction = request.interactionMode ?? ({ direct: "direct_mention", ambient: "group_conversation", continuation: "implicit_followup", spontaneous: "group_conversation", reaction: "reaction" } as const)[request.triggerMode];
+  return { interaction, explicit: request.triggerMode === "direct" || request.triggerMode === "ambient" && interaction === "name_address",
     responseToEventId: request.sourceMessageId ?? (request.currentEvent?.type === "message" ? request.currentEvent.messageId : null),
     discussedMessageId: request.currentEvent?.type === "message" ? request.currentEvent.replyToMessageId : null };
 }

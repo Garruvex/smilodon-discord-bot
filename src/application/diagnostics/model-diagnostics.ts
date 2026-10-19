@@ -3,6 +3,17 @@ import { performance } from "node:perf_hooks";
 import { diagnosticElapsed, diagnosticFields, emitChatDiagnostic, safeFailure, withDiagnosticScope, type DiagnosticLogger } from "./chat-diagnostics.js";
 
 const modelLoggers = new AsyncLocalStorage<DiagnosticLogger>();
+export interface GenerationHealth { completed: number; failed: number; lastSuccessAt: number | null; lastFailureAt: number | null }
+const generationHealth = new WeakMap<DiagnosticLogger, GenerationHealth>();
+export function modelGenerationHealth(logger: DiagnosticLogger): Readonly<GenerationHealth> {
+  return { ...(generationHealth.get(logger) ?? { completed: 0, failed: 0, lastSuccessAt: null, lastFailureAt: null }) };
+}
+function recordGeneration(logger: DiagnosticLogger, success: boolean): void {
+  const health = { ...modelGenerationHealth(logger) };
+  if (success) { health.completed++; health.lastSuccessAt = Date.now(); }
+  else { health.failed++; health.lastFailureAt = Date.now(); }
+  generationHealth.set(logger, health);
+}
 export function modelDiagnosticLogger(): DiagnosticLogger | null { return modelLoggers.getStore() ?? null; }
 
 // Explicit capability allow-list: preserve missing optional capabilities and
@@ -22,10 +33,12 @@ export function instrumentModel<T extends object>(provider: T, logger: Diagnosti
         const started = performance.now();
         try {
           const result: unknown = await Reflect.apply(value, target, args);
+          if (key === "reply") recordGeneration(logger, true);
           const reportedFailure = result !== null && typeof result === "object" && "ok" in result && result.ok === false;
           emitChatDiagnostic(logger, { event: "model.operation.completed", purpose: key, status: reportedFailure ? "reported_failure" : "completed", durationMs: diagnosticElapsed(started) });
           return result;
         } catch (error) {
+          if (key === "reply") recordGeneration(logger, false);
           emitChatDiagnostic(logger, { event: "model.operation.completed", purpose: key, status: "failed", durationMs: diagnosticElapsed(started), ...safeFailure(error) });
           throw error;
         }

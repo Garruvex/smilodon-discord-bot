@@ -114,15 +114,15 @@ describe("ChatConversationService", () => {
       expect(traces.lookup({ guildId: "guild", channelId: "channel", sourceMessageId: "source" })).toEqual([]);
     } finally { service.stopScheduling(); await service.drain(); }
   });
-  it("explains duplicate pings without calling the model again", async () => {
+  it("explains repeated social pings after contextual interpretation", async () => {
     const { logger, records } = captureDiagnosticLogger();
-    const reply = vi.fn(() => Promise.resolve(response("hi")));
+    const reply = vi.fn(() => Promise.resolve({ ...response("hi"), responseIntent: "social" as const }));
     const service = new ChatConversationService({ reply }, baseStore(), testMemoryEngine().engine,
       undefined, undefined, undefined, null, null, null, logger);
     try {
       await service.run({ ...input(""), sourceMessageId: "first" }, (output) => Promise.resolve(output.text));
       await service.run({ ...input(""), sourceMessageId: "second" }, (output) => Promise.resolve(output.text));
-      expect(reply).toHaveBeenCalledOnce();
+      expect(reply).toHaveBeenCalledTimes(2);
       expect(records.filter((record) => record.event === "chat.turn.skipped")).toEqual([
         expect.objectContaining({ reason: "duplicate_ping", sourceMessageId: "second" }),
       ]);
@@ -289,7 +289,7 @@ describe("ChatConversationService", () => {
   it("allows silence or reaction-only for bare pings without delivery, extraction, or fallback text", async () => {
     const commit = vi.fn(() => Promise.resolve({ droppedExchanges: [] }));
     const extract = vi.fn(() => Promise.resolve([]));
-    const provider: ChatProvider = { reply: () => Promise.resolve(response("", [], [], { action: "ignore", emoji: "👀" })), extractPersonalMemories: extract };
+    const provider: ChatProvider = { reply: () => Promise.resolve({ ...response("", [], [], { action: "ignore", emoji: "👀" }), responseIntent: "social" }), extractPersonalMemories: extract };
     const service = new ChatConversationService(provider, baseStore({ commitSuccessfulExchange: commit }), testMemoryEngine().engine);
     const deliver = vi.fn(() => Promise.resolve("must not deliver"));
     const result = await service.run({ ...input(""), allowSilentDirect: true }, deliver);
@@ -304,6 +304,31 @@ describe("ChatConversationService", () => {
     const deliver = vi.fn((result: ChatResponse) => Promise.resolve(result.text));
     const result = await service.run({ ...input("What time is the event tomorrow?"), allowSilentDirect: true }, deliver);
     expect(result.ambientAction).toBe("reply"); expect(deliver).toHaveBeenCalledOnce();
+  });
+  it("answers a contextual request after a social ping without disabling capabilities or repeat-suppressing it", async () => {
+    let calls = 0;
+    const provider: ChatProvider = { reply: (request) => {
+      calls++;
+      if (calls === 1) return Promise.resolve({ ...response("hey"), responseIntent: "social" });
+      expect(request.channelHistory.map((event) => event.messageId)).toContain("question");
+      expect(request.enabledTools?.map((tool) => tool.name)).toEqual(["context_lookup"]);
+      expect(request.imageGenerationEnabled).toBe(true);
+      return Promise.resolve({ ...response("Here is the answer"), responseIntent: "answer", referentSourceIds: ["question"] });
+    } };
+    const tools = new ChatToolRegistry([{ name: "context_lookup", outputKind: "context", description: "Read-only", parameters: {}, execute: (): Promise<{ content: string }> => Promise.resolve({ content: "result" }) }]);
+    const service = new ChatConversationService(provider, baseStore(), testMemoryEngine().engine, undefined, undefined, undefined, null, null, tools);
+    const deliver = vi.fn((result: ChatResponse) => Promise.resolve(result.text));
+    await service.run({ ...input(""), sourceMessageId: "first", allowSilentDirect: true }, deliver);
+    const result = await service.run({ ...input(""), sourceMessageId: "second", allowSilentDirect: true, toolsEnabled: true, imageGenerationEnabled: true,
+      channelHistory: [{ messageId: "question", timestampMs: 1, authorId: "user", authorDisplayName: "User", content: "Can you explain the earlier problem?", imageCount: 0 }] }, deliver);
+    expect(result.text).toBe("Here is the answer"); expect(result.ambientAction).toBe("reply"); expect(deliver).toHaveBeenCalledTimes(2);
+  });
+  it("rejects direct generation with unknown context evidence instead of silently abstaining", async () => {
+    const provider: ChatProvider = { reply: () => Promise.resolve({ ...response("invented answer"), referentSourceIds: ["unknown"] }) };
+    const service = new ChatConversationService(provider, baseStore(), testMemoryEngine().engine);
+    const deliver = vi.fn(() => Promise.resolve("must not send"));
+    await expect(service.run(input("What happened?"), deliver)).rejects.toThrow("Invalid contextual response evidence");
+    expect(deliver).not.toHaveBeenCalled();
   });
 
   it("does not expose executable tools before an optional participation decision accepts a reply", async () => {

@@ -147,15 +147,39 @@ export function generatedContributionAllowed(text: string, events: readonly Chan
   return !!draft && !closesExchange(text) && !events.some((event) => event.authorId === botId && normalize(event.content) === draft);
 }
 interface DecisionInput { personality: string; events: readonly ChannelHistoryMessage[]; burst: readonly ChannelHistoryMessage[]; botId: string; fixedTarget: string | null; gapMs: number; speakingShare: number; thoughts: boolean; availableActions?: { text: boolean; reaction: boolean } | undefined; now?: number }
+export const decisionCallLimits = { totalMs: 12_000, attemptMs: 6_000, failuresBeforeCooldown: 3, cooldownMs: 30_000, probeCacheMs: 60_000 } as const;
+export interface DecisionHealth { configured: boolean; coolingDownProviders: number; lastSuccessAt: number | null; lastFailureAt: number | null }
 export class CharacterDecisionService {
+  private readonly health = new Map<StructuredCharacterProvider, { failures: number; until: number }>();
+  private lastSuccessAt: number | null = null;
+  private lastFailureAt: number | null = null;
+  private probe: { at: number; task: Promise<DecisionHealth> } | null = null;
   public constructor(private readonly provider: StructuredCharacterProvider | null, private readonly fallback: StructuredCharacterProvider | null = null,
     private readonly onAttempt: ((attempt: DecisionAttempt) => void) | null = null) {}
   public get available(): boolean { return this.provider !== null || this.fallback !== null; }
+  public healthStatus(): DecisionHealth { return { configured: this.available, coolingDownProviders: [...this.health.values()].filter((entry) => entry.until > Date.now()).length,
+    lastSuccessAt: this.lastSuccessAt, lastFailureAt: this.lastFailureAt }; }
+  public checkHealth(): Promise<DecisionHealth> {
+    if (this.probe && Date.now() - this.probe.at < decisionCallLimits.probeCacheMs) return this.probe.task;
+    const current: ChannelHistoryMessage = { messageId: "diagnostic-source", timestampMs: Date.now(), authorId: "diagnostic-human", authorDisplayName: "Synthetic tester",
+      content: "Diagnostic fixture: please answer whether two plus two equals four.", imageCount: 0 };
+    const task = this.evaluate({ personality: "Synthetic health check; no real conversation.", events: [], burst: [current], botId: "diagnostic-bot",
+      fixedTarget: current.messageId, gapMs: 60_000, speakingShare: 0, thoughts: false }).then(() => this.healthStatus());
+    this.probe = { at: Date.now(), task }; return task;
+  }
   public async decide(input: DecisionInput): Promise<CharacterDecision | null> { return (await this.evaluate(input)).decision; }
   public async evaluate(input: DecisionInput): Promise<DecisionOutcome> {
     const attempts: DecisionAttempt[] = [];
+    const deadline = Date.now() + decisionCallLimits.totalMs;
     const record = (attempt: DecisionAttempt): void => {
       attempts.push(attempt);
+      const provider = attempt.providerRole === "primary" ? this.provider : this.fallback;
+      if (attempt.status === "valid") { this.lastSuccessAt = Date.now(); if (provider) this.health.delete(provider); }
+      else if (attempt.failure !== "provider_cooldown") {
+        this.lastFailureAt = Date.now();
+        if (provider) { const failures = (this.health.get(provider)?.failures ?? 0) + 1;
+          this.health.set(provider, { failures, until: failures >= decisionCallLimits.failuresBeforeCooldown ? Date.now() + decisionCallLimits.cooldownMs : 0 }); }
+      }
       try { this.onAttempt?.(attempt); } catch { /* Diagnostics cannot change decision admission. */ }
     };
     if (!this.available) return { status: "unavailable", decision: null, attempts };
@@ -182,8 +206,17 @@ A reaction is one ordinary emoji or null. It may acknowledge a human-to-human me
       const providerRole = provider === this.provider ? "primary" : "fallback";
       const attempt = attempts.length + 1;
       const started = performance.now();
+      if ((this.health.get(provider)?.until ?? 0) > Date.now()) {
+        record({ providerRole, attempt, status: "failed", failure: "provider_cooldown", durationMs: 0 }); continue;
+      }
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) { record({ providerRole, attempt, status: "failed", failure: "timeout", durationMs: 0 }); break; }
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const controller = new AbortController();
       try {
-        const result = decisionSchema.parse(await provider.generateCharacterData(prompt, decisionJsonSchema));
+        const result = decisionSchema.parse(await Promise.race([provider.generateCharacterData(prompt, decisionJsonSchema, { signal: controller.signal, maxAttempts: 1 }), new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(() => { controller.abort(); reject(new DOMException("Decision deadline exceeded", "TimeoutError")); }, Math.min(decisionCallLimits.attemptMs, remaining));
+        })]));
         const target = humans.find((event) => event.messageId === result.target);
         const failure: FailureCategory | null = !targets.includes(result.target) ? "invalid_target"
           : input.fixedTarget && result.target !== input.fixedTarget ? "fixed_target_mismatch"
@@ -201,7 +234,7 @@ A reaction is one ordinary emoji or null. It may acknowledge a human-to-human me
         return { status: "valid", decision: result, attempts };
       } catch (error) {
         record({ providerRole, attempt, status: "failed", durationMs: diagnosticElapsed(started), ...safeFailure(error) });
-      }
+      } finally { if (timeout) clearTimeout(timeout); }
     }
     return { status: "failed", decision: null, attempts };
   }

@@ -1,3 +1,4 @@
+import type { StructuredCallOptions } from "../../application/chat/chat-provider.js";
 import type { Logger } from "pino";
 import { z } from "zod";
 
@@ -141,6 +142,8 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
       generatedImages: [],
       ambientAction: modelOutput.ambientAction,
       ...(modelOutput.participationReason !== undefined ? { participationReason: modelOutput.participationReason } : {}),
+      ...(modelOutput.responseIntent ? { responseIntent: modelOutput.responseIntent } : {}),
+      ...(modelOutput.referentSourceIds?.length ? { referentSourceIds: modelOutput.referentSourceIds } : {}),
       reactionEmoji: modelOutput.reactionEmoji,
       historyReactions: modelOutput.historyReactions,
     };
@@ -190,18 +193,18 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
     return { ok: true, markdown };
   }
 
-  public generateCharacterData(prompt: string, schema: Record<string, unknown>): Promise<unknown> {
+  public generateCharacterData(prompt: string, schema: Record<string, unknown>, options?: StructuredCallOptions): Promise<unknown> {
     return this.summaryModelChain.run(async (model) => {
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST", headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ model, messages: [{ role: "system", content: prompt }],
           response_format: { type: "json_schema", json_schema: { name: "character_data", strict: true, schema } } }),
-        signal: AbortSignal.timeout(30_000),
+        signal: options?.signal ?? AbortSignal.timeout(30_000),
       });
       if (!response.ok) throw new ChatProviderError(`Character utility call returned HTTP ${response.status}.`, response.status, null);
       const body = responseSchema.parse(await response.json());
       return JSON.parse(body.choices[0]!.message.content) as unknown;
-    });
+    }, options);
   }
 
   // See ChatProvider.extractPersonalMemories — chat_completions is the

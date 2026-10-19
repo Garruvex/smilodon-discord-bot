@@ -105,6 +105,7 @@ const guildChatSchema = z.preprocess((value) => {
     messagesPerDecision: z.number().int().min(1).max(20).optional(),
     spontaneousThreshold: z.number().min(0).max(1).optional(),
     continuationThreshold: z.number().min(0).max(1).optional(),
+    continuationFailureMode: z.enum(["strict", "grounded_fallback"]).default("strict"),
     observationChannelIds: snowflakeList.optional(),
     continuationEnabled: z.boolean().default(false),
     spontaneousEnabled: z.boolean().default(false),

@@ -88,6 +88,7 @@ export const jaCommandDescriptions = {
   "wolfy:text": "犬の鳴き声に変換する文章。", // The sentence to translate.
   "diagnostic": "オーナー専用の実行時診断情報を表示します。", // Displays owner-only runtime diagnostics.
   "diagnostic:message": "このチャンネル内のメッセージIDまたはリンクの処理履歴を確認します。",
+  "diagnostic:decision": "キャッシュ付きの合成データによる判断サービスのヘルスチェックを実行します。",
   "memory-eval": "関連性の調整のため、サンプリングされた記憶検索結果を確認します。", // Review sampled memory retrievals for relevance calibration.
   "memory-eval/pending": "未レビューの最新の検索サンプルを表示します。", // Shows the newest unreviewed retrieval sample.
   "memory-eval/label": "取得されるべきだった候補にラベルを付けます。", // Marks the candidates that should have been retrieved.

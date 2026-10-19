@@ -220,7 +220,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         resolveActivityLimits: () => resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits,
         resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(message.guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
         refreshContextMessage: (event) => this.turnSupport.refreshHistoryEvent(message, event),
-        allowSilentDirect: lowSubstance && participation.barePingMode === "personality",
+        allowSilentDirect: participation.barePingMode === "personality",
         afterDecision: async (result) => {
           const reserve = (): ((success: boolean) => void) | null => this.conversation!.reserveReaction(message.guildId, message.channelId,
             resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits);
@@ -254,12 +254,12 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         channelHistory,
         images,
         webSearchMode: profile.chat.webSearchMode,
-        imageGenerationEnabled: profile.chat.imageGenerationEnabled && !lowSubstance,
+        imageGenerationEnabled: profile.chat.imageGenerationEnabled,
         includeSources: profile.chat.includeSources,
         triggerMode: "direct",
         interactionMode: botId && message.mentions.users.has(botId) ? mentionInteraction(message.content, botId, message.attachments.size > 0) : "explicit_reply",
         historyReactionsEnabled: profile.features.historyReactions && profile.features.channelHistory,
-        toolsEnabled: profile.chat.toolCallingEnabled && !lowSubstance,
+        toolsEnabled: profile.chat.toolCallingEnabled,
         disabledToolNames: new Set(profile.chat.disabledTools),
         channelMemoryModes: profile.chat.channelMemoryModes,
         isOwner: this.configuration.ownerUserIds.has(message.author.id),

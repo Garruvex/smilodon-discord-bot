@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Logger } from "pino";
+import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { emitChatDiagnostic } from "../diagnostics/chat-diagnostics.js";
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
@@ -9,18 +10,20 @@ import { resolveChannelMemoryMode } from "../memory/memory-channel-policy.js";
 import { characterSettings, characterInactiveReason, type CharacterModuleId, type CharacterCapabilities } from "./character-settings.js";
 import { CharacterModuleRegistry, type CharacterTurn } from "./character-module-registry.js";
 import { CharacterMemory } from "./character-memory.js";
-import { optionalParticipationRejection, CharacterDecisionService, localAddressing, exchangeBranch, generatedContributionAllowed, addressedElsewhere, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
+import { CharacterDecisionService, localAddressing, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
 import { createCharacterModules } from "./character-modules/index.js";
 import { hash, personaFingerprint, serious } from "./character-modules/shared.js";
 import { resolveParticipation, contributionPolicy, passiveChannelAllowed } from "./participation-policy.js";
 import { CharacterCallbacks, callbackState } from "./character-callbacks.js";
 import { startOfLocalDay } from "./character-calendar.js";
 import type { CharacterEvaluationStore } from "./character-evaluation.js";
+import { ConversationDecisionEngine, reportConversationDecision, type ConversationDecisionResult } from "./conversation-decision-engine.js";
+import { resolveConversationTrigger } from "./conversation-trigger.js";
 import { interviewProbes } from "./character-evaluation.js";
 import type { PersonalMemoryExtractionQueueStore } from "../context/personal-memory-extraction-queue.js";
 
 const textSchema: Record<string, unknown> = { type: "object", additionalProperties: false, required: ["text"], properties: { text: { type: "string" } } };
-export interface CharacterPreparedTurn { turn: CharacterTurn; fingerprint: string; allowed: boolean; request: ChatRequest; targetMessageId: string | null; memoryContextSignature: string;
+export interface CharacterPreparedTurn { conversationDecision?: ConversationDecisionResult; turn: CharacterTurn; fingerprint: string; allowed: boolean; request: ChatRequest; targetMessageId: string | null; memoryContextSignature: string;
   decisionStatus: DecisionOutcome["status"] | "skipped"; acceptedContribution: CharacterDecision["contribution"] | null; exchangeId: string | null;
   participation: { action: "reply" | "ignore"; reaction: string | null } | null; styleUserId: string | null; styleSignature: string | null; targetConfidence: number }
 export interface CharacterCallbackDelivery {
@@ -37,6 +40,7 @@ export class CharacterRuntime {
   public readonly memory: CharacterMemory;
   private readonly callbacks: CharacterCallbacks;
   private readonly decisions: CharacterDecisionService;
+  private readonly decisionEngine = new ConversationDecisionEngine();
   private readonly summaries = new Map<string, { ids: string[]; text: string; fingerprint: string }>();
   private readonly refreshes = new Map<string, number>();
   private readonly activity = new Map<string, { at: number; messageId: string; channelId: string }>();
@@ -83,6 +87,8 @@ export class CharacterRuntime {
     const profile = this.profiles.find(guildId); return !!profile && passiveChannelAllowed(profile, channelId) && this.capabilities(profile, channelId).context;
   }
   public get decisionAvailable(): boolean { return this.decisions.available; }
+  public get decisionHealth(): ReturnType<CharacterDecisionService["healthStatus"]> { return this.decisions.healthStatus(); }
+  public checkDecisionHealth(): ReturnType<CharacterDecisionService["checkHealth"]> { return this.decisions.checkHealth(); }
   public couldBeAddressed(guildId: string, channelId: string, event: ChannelHistoryMessage, history: readonly ChannelHistoryMessage[], botId: string): boolean {
     const profile = this.profiles.find(guildId); if (!profile || !passiveChannelAllowed(profile, channelId)) return false;
     const settings = characterSettings(profile);
@@ -128,6 +134,7 @@ export class CharacterRuntime {
   }
   public async validatePrepared(prepared: CharacterPreparedTurn): Promise<boolean> {
     if (!this.stillEligible(prepared)) return false;
+    if (prepared.conversationDecision?.recovery === "grounded_reply" && !this.decisionEngine.canUseGroundedContinuation(prepared.request, this.now())) return false;
     if (this.personaVersion && prepared.request.characterPersonaHash && (prepared.turn.settings.enabled || prepared.turn.settings.context.enabled) &&
         await this.personaVersion(prepared.request.guildId) !== prepared.request.characterPersonaHash) return false;
     if (prepared.styleUserId && prepared.styleSignature && this.targetPreferences &&
@@ -219,29 +226,33 @@ export class CharacterRuntime {
       authorDisplayName: request.currentUser.displayName, content: request.message, imageCount: request.images.length,
       replyToMessageId: request.currentEvent.replyToMessageId,
     }] : [];
+    request = { ...request, currentBurst: burst }; turn.request = request;
     let decisionStatus: DecisionOutcome["status"] | "skipped" = this.decisions.available ? "skipped" : "unavailable";
     let acceptedContribution: CharacterDecision["contribution"] | null = null; let exchangeId: string | null = null;
     let textRejectionReason: string | null = null;
     const policy = contributionPolicy(profile.chat.participation);
     let allowed = true; let targetMessageId: string | null = null; let targetConfidence = 0;
     let participation: CharacterPreparedTurn["participation"] = null;
+    let conversationDecision: ConversationDecisionResult | undefined;
     let styleUserId: string | null = null; let styleSignature: string | null = null;
     const key = `${request.guildId}:${request.channelId}`;
     if (!request.characterEvaluation && (!settings.context.enabled || !capabilities.context)) this.summaries.delete(key);
     const optional = request.triggerMode === "continuation" || request.triggerMode === "spontaneous";
     const participationSettings = resolveParticipation(profile.chat.participation, request.channelId);
-    if (optional && (!capabilities.context || !passiveChannelAllowed(profile, request.channelId) || !this.decisions.available ||
+    if (optional && (!capabilities.context || !passiveChannelAllowed(profile, request.channelId) ||
         !(request.triggerMode === "continuation" ? participationSettings.continuationEnabled : participationSettings.spontaneousEnabled))) {
+      const denied = this.decisionEngine.assess(request, { status: "skipped", decision: null }, profile.chat.participation, false, turn.now, fingerprint).result;
+      reportConversationDecision(this.logger, denied, "preflight", resolveConversationTrigger(request).interaction);
       await this.evaluationStore?.record(request.guildId, "decision", { sourceMessageId: burst.at(-1)?.messageId ?? null, decisionStatus,
         proposedAction: "ignore", rejectionReason: !this.decisions.available ? "unavailable" : "scope_or_disabled", shadow: request.characterShadow ?? false });
       this.registry.reset(request.guildId);
-      return { turn, request, fingerprint, allowed: false, decisionStatus, acceptedContribution: null, exchangeId: null,
+      return { turn, request, fingerprint, allowed: false, decisionStatus, conversationDecision: denied, acceptedContribution: null, exchangeId: null,
         targetMessageId, memoryContextSignature: "[]", participation: { action: "ignore", reaction: null }, styleUserId, styleSignature, targetConfidence };
     }
     if (!request.characterEvaluation && capabilities.context && (optional || settings.context.enabled || enabled("addressing") || enabled("thoughts"))) {
       const decisionEvents = events.slice(-settings.context.decisionMessages);
-      const fixedTarget = optional || request.triggerMode === "reaction" ? null : request.currentEvent?.type === "message" ? request.currentEvent.messageId : null;
-      const shouldDecide = optional || request.triggerMode === "reaction" || settings.context.enabled && !settings.context.shadow;
+      const fixedTarget = request.triggerMode === "continuation" ? burst.at(-1)?.messageId ?? null : optional || request.triggerMode === "reaction" ? null : request.currentEvent?.type === "message" ? request.currentEvent.messageId : null;
+      const shouldDecide = optional || request.triggerMode === "reaction";
       const decisionStarted = Date.now();
       const outcome = shouldDecide ? await this.decisions.evaluate({ personality: request.personality, events: decisionEvents, burst, botId: request.botUserId ?? "bot",
         fixedTarget, gapMs: settings.context.segmentGapMinutes * 60_000,
@@ -251,68 +262,44 @@ export class CharacterRuntime {
       const liveProfile = this.profiles.find(request.guildId);
       if (!liveProfile || this.fingerprint(liveProfile, request.channelId) !== fingerprint || (this.privacyVersions.get(request.guildId) ?? 0) !== privacyVersion) {
         this.registry.reset(request.guildId);
-        return { turn, request, fingerprint, allowed: false, decisionStatus, acceptedContribution: null, exchangeId: null,
-          targetMessageId, memoryContextSignature: "[]", participation: { action: "ignore", reaction: null }, styleUserId, styleSignature, targetConfidence };
+        emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "privacy_changed" });
+        throw new SocialOutputSuppressed();
       }
-      const local = burst.at(-1) ? localAddressing([...decisionEvents, ...request.replyChain], burst.at(-1)!, request.botUserId ?? "bot",
-        enabled("addressing") && !settings.modules.addressing.shadow && settings.modules.addressing.includeOtherParticipants, 120_000, request.aliasCandidates) : "unclear";
-      if (optional) {
-        const current = burst.at(-1);
-        const explicitlyElsewhere = !!current && addressedElsewhere(current, [...events, ...request.replyChain, ...burst], request.botUserId ?? "bot", request.aliasCandidates);
-        textRejectionReason = optionalParticipationRejection(request.triggerMode as "continuation" | "spontaneous", local, decision, explicitlyElsewhere, policy);
-        if (!textRejectionReason && request.optionalActionsAvailable?.text === false) textRejectionReason = "text_unavailable";
-        allowed = allowed && textRejectionReason === null;
-        if (current) exchangeId = exchangeBranch([...events, ...request.replyChain, ...burst], current, request.botUserId ?? "bot");
-        if (allowed && decision) acceptedContribution = decision.contribution;
+      const assessment = this.decisionEngine.assess({ ...request, currentBurst: burst }, outcome, profile.chat.participation, true, turn.now, fingerprint);
+      if (optional || request.triggerMode === "reaction") reportConversationDecision(this.logger, assessment.result, "preflight", resolveConversationTrigger(request).interaction);
+      const local = assessment.local;
+      if (optional || request.triggerMode === "reaction") {
+        conversationDecision = assessment.result;
+        const action = conversationDecision.decision.action;
+        allowed = action !== "silent";
+        participation = { action: action === "reply" || action === "reply_and_react" ? "reply" : "ignore", reaction: assessment.reaction };
+        acceptedContribution = assessment.contribution;
+        exchangeId = assessment.exchangeId;
+        targetMessageId = assessment.targetMessageId;
+        targetConfidence = assessment.targetConfidence;
+        textRejectionReason = participation.action === "reply" ? null : conversationDecision.decision.reasonCode;
       }
-      if (decision) {
-        if (!optional) await this.evaluationStore?.record(request.guildId, "decision", { sourceMessageId: burst.at(-1)?.messageId ?? null,
-          addressing: decision.addressing, motivation: decision.motivation, boundary: decision.boundary, target: decision.target,
-          recipientEvidence: decision.recipientEvidence, recipientConfidence: decision.recipientConfidence, targetConfidence: decision.targetConfidence,
-          contributionLabel: decision.contribution.label, opening: decision.opening, decisionStatus, allowed, policy,
-          confidence: decision.confidence, thoughtCount: decision.thoughts.length, shadow: request.characterShadow ?? false });
-        const live = !settings.context.shadow || enabled("addressing") && !settings.modules.addressing.shadow || enabled("thoughts") && !settings.modules.thoughts.shadow;
-        if (optional) {
-          const reaction = !allowed && request.triggerMode === "spontaneous" && request.optionalActionsAvailable?.reaction !== false &&
-            decision.reaction && decision.confidence >= 0.7 && decision.targetConfidence >= 0.7 && decision.opening !== "unclear"
-            ? decision.reaction : null;
-          participation = { action: allowed ? "reply" : "ignore", reaction };
-          if (reaction) allowed = true;
-        }
-        else if (live && request.triggerMode !== "direct") participation = { action: decision.opening === "clear" ? "reply" : "ignore", reaction: decision.reaction };
-        if (optional || request.triggerMode === "reaction" && (!settings.context.shadow || enabled("addressing") && !settings.modules.addressing.shadow)) {
-          targetMessageId = decision.target; targetConfidence = decision.targetConfidence;
-        }
-        if (settings.context.enabled && !settings.context.shadow && decision.boundary !== "earlier") {
-          const index = events.findIndex((event) => event.messageId === decision.boundary);
-          if (index >= 0) request = { ...request, channelHistory: events.slice(Math.min(index, Math.max(0, events.length - 8))) };
-        }
+      if (decision && settings.context.enabled && !settings.context.shadow && decision.boundary !== "earlier") {
+        const index = events.findIndex((event) => event.messageId === decision.boundary);
+        if (index >= 0) request = { ...request, channelHistory: events.slice(Math.min(index, Math.max(0, events.length - 8))) };
       }
       turn.request = request;
-      const contribution = this.registry.applyDecision(turn, { decision, events, burst, optional, local, policy });
-      request = contribution.request; allowed = allowed && (participation?.reaction ? true : contribution.allowed);
+      request = this.registry.applyDecision(turn, { decision, events, burst, optional, local, policy }).request;
       if (optional) {
         const action = !allowed ? "ignore" : participation?.action === "reply" ? "reply" : participation?.reaction ? "reaction" : "ignore";
-        const rejectionReason = action === "ignore" ? textRejectionReason ?? (!contribution.allowed ? "module_rejected" : "no_action") : null;
+        const rejectionReason = action === "ignore" ? textRejectionReason ?? "no_action" : null;
         await this.evaluationStore?.record(request.guildId, "decision", {
           sourceMessageId: burst.at(-1)?.messageId ?? null, decisionStatus, proposedAction: action, rejectionReason,
-          recipient: local, recipientConfidence: decision?.recipientConfidence ?? null, targetConfidence: decision?.targetConfidence ?? null,
-          decisionConfidence: decision?.confidence ?? null, contributionMotivation: decision?.contribution.motivation ?? null,
-          target: decision?.target ?? null, thoughtCount: decision?.thoughts.length ?? 0, recipientEvidence: decision?.recipientEvidence ?? [],
-          contributionLabel: decision?.contribution.label ?? null, opening: decision?.opening ?? null, policy,
-          limits: resolveParticipation(profile.chat.participation, request.channelId).limits,
+          recipient: local, target: decision?.target ?? null, recipientEvidence: decision?.recipientEvidence ?? [],
+          confidence: decision?.confidence ?? null, contributionLabel: decision?.contribution.label ?? null,
           latencyMs: Date.now() - decisionStarted, shadow: request.characterShadow ?? false,
         });
         this.logger?.info({ guildId: request.guildId, channelId: request.channelId, sourceMessageId: burst.at(-1)?.messageId ?? null,
-          triggerMode: request.triggerMode, shadowMode: request.characterShadow ?? false, decisionStatus, action,
-          rejectionReason,
-          textRejectionReason, textAvailable: request.optionalActionsAvailable?.text ?? null,
-          reactionAvailable: request.optionalActionsAvailable?.reaction ?? null,
+          triggerMode: request.triggerMode, decisionStatus, action, rejectionReason, textRejectionReason,
+          textAvailable: request.optionalActionsAvailable?.text ?? null, reactionAvailable: request.optionalActionsAvailable?.reaction ?? null,
           recipientConfidence: decision?.recipientConfidence ?? null, targetConfidence: decision?.targetConfidence ?? null,
           decisionConfidence: decision?.confidence ?? null, contributionMotivation: decision?.contribution.motivation ?? null,
-          motivationThreshold: request.triggerMode === "spontaneous" ? policy.spontaneousThreshold : policy.continuationThreshold,
-          contributionLabel: decision?.contribution.label ?? null, opening: decision?.opening ?? null, recipient: local,
-        }, "Optional participation decision");
+          recovery: conversationDecision?.recovery, recipient: local }, "Optional participation decision");
       }
       if (settings.context.summary && settings.context.enabled && events.length >= settings.context.maxMessages) {
         const overflow = events.slice(0, Math.max(0, events.length - 8));
@@ -346,14 +333,10 @@ export class CharacterRuntime {
       text: `Serve only this accepted contribution; do not merely acknowledge, repeat or introduce unrelated help. Do not strengthen its factual claims. Untrusted candidate: ${JSON.stringify(acceptedContribution)}` }] };
     else if (!optional) request = { ...request, characterContext: [...(request.characterContext ?? []), { moduleId: "participation", text: "Answer explicit questions and tool requests normally. Keep acknowledgments brief; do not prolong a closing with another question or generic help." }] };
     turn.request = request;
-    return { turn, request, fingerprint, allowed, decisionStatus, acceptedContribution, exchangeId, targetMessageId, memoryContextSignature: JSON.stringify(context), participation, styleUserId, styleSignature, targetConfidence };
+    return { turn, request, fingerprint, allowed, decisionStatus, acceptedContribution, exchangeId, targetMessageId, memoryContextSignature: JSON.stringify(context), participation, styleUserId, styleSignature, targetConfidence, ...(conversationDecision ? { conversationDecision } : {}) };
   }
   public async process(reply: ChatResponse, prepared: CharacterPreparedTurn): Promise<ChatResponse> {
-    let processed = await this.registry.postProcess(reply, prepared.turn);
-    if (prepared.acceptedContribution && processed.outputOrigin !== "tool") {
-      if (!generatedContributionAllowed(processed.text, [...prepared.request.channelHistory, ...prepared.request.replyChain], prepared.request.botUserId))
-        processed = { ...processed, text: "", ambientAction: "ignore", reactionEmoji: null, historyReactions: [] };
-    }
+    const processed = await this.registry.postProcess(reply, prepared.turn);
     return { ...processed, ...(prepared.exchangeId ? { participationExchangeId: prepared.exchangeId } : {}), characterIsCurrent: () => this.stillEligible(prepared),
       characterCanDeliver: () => this.validatePrepared(prepared),
       ...(prepared.targetMessageId ? { replyTargetMessageId: prepared.targetMessageId,

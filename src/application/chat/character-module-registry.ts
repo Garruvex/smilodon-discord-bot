@@ -48,11 +48,12 @@ export class CharacterModuleRegistry {
     });
   }
   public applyDecision(turn: CharacterTurn, input: CharacterDecisionInput): { request: ChatRequest; allowed: boolean } {
-    let allowed = true;
     for (const module of this.active(turn)) if (module.onDecision) {
-      const result = module.onDecision(turn, input); turn.request = result.request; allowed = allowed && result.allowed;
+      // Character hooks contribute context/style; the decision engine owns
+      // admission. Legacy `allowed` flags cannot silently veto its result.
+      const result = module.onDecision(turn, input); turn.request = result.request;
     }
-    return { request: turn.request, allowed };
+    return { request: turn.request, allowed: true };
   }
   public reset(guildId?: string): void { for (const module of this.modules.values()) module.reset?.(guildId); }
   public async extractMemories(userMessage: string, reply: ChatResponse, turn: CharacterTurn): Promise<readonly PersonalMemoryExtractionAction[] | null> {

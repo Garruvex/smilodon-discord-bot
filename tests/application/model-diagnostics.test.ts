@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { instrumentModel } from "../../src/application/diagnostics/model-diagnostics.js";
+import { instrumentModel, modelGenerationHealth } from "../../src/application/diagnostics/model-diagnostics.js";
 import { withDiagnosticScope } from "../../src/application/diagnostics/chat-diagnostics.js";
 import { ChatProviderError } from "../../src/application/chat/chat-provider.js";
 import { ModelFallbackChain } from "../../src/infrastructure/chat/model-fallback-chain.js";
 import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 
 describe("model diagnostics", () => {
+  it("keeps generation health separate from decision/utility calls", async () => {
+    const { logger } = captureDiagnosticLogger();
+    const provider = instrumentModel({ reply: () => Promise.resolve("answer"), generateCharacterData: () => Promise.reject(new Error("decision down")) }, logger);
+    await provider.reply(); await expect(provider.generateCharacterData()).rejects.toThrow();
+    expect(modelGenerationHealth(logger)).toMatchObject({ completed: 1, failed: 0, lastFailureAt: null });
+  });
   it("retains failed primary attempts, successful fallback and cooldown without content", async () => {
     const { logger, records } = captureDiagnosticLogger();
     const chain = new ModelFallbackChain(["secret-model-a", "secret-model-b"]);

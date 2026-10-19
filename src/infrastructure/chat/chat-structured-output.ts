@@ -11,6 +11,8 @@ import {
 } from "../../application/chat/chat-provider.js";
 
 export const chatModelOutputSchema = z.object({
+  responseIntent: z.enum(["answer", "clarify", "social", "closing", "contribute", "abstain"]).nullable().optional(),
+  referentSourceIds: z.array(z.string()).max(8).optional(),
   participationReason: z.string().max(160).nullable().optional(),
   response: z.string(),
   userMemoryActions: z.array(z.object({
@@ -58,8 +60,10 @@ export const chatModelOutputSchema = z.object({
 export const chatModelJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["response", "userMemoryActions", "guildKnowledgeCandidates", "ambientAction", "reactionEmoji", "historyReactions", "participationReason"],
+  required: ["response", "userMemoryActions", "guildKnowledgeCandidates", "ambientAction", "reactionEmoji", "historyReactions", "participationReason", "responseIntent", "referentSourceIds"],
   properties: {
+    responseIntent: { type: ["string", "null"], enum: ["answer", "clarify", "social", "closing", "contribute", "abstain", null] },
+    referentSourceIds: { type: "array", items: { type: "string" }, maxItems: 8 },
     participationReason: { type: ["string", "null"], maxLength: 160 },
     response: { type: "string" },
     ambientAction: { type: ["string", "null"], enum: ["reply", "ignore", null] },
@@ -422,9 +426,9 @@ export function buildChatInstructions(request: ChatRequest, safetyGuard: string)
     `Use <channel_history> (when present) to check whether the conversation has moved on since your ` +
     `original message — if the room is now on something else, especially something serious, a quiet emoji ` +
     `or nothing is better than pulling everyone back.`;
-  const ambientSection = request.triggerMode === "direct"
+  const ambientSection = request.triggerMode === "direct" || request.triggerMode === "ambient" && request.interactionMode === "name_address"
     ? request.allowSilentDirect
-      ? `\n\nThis is a bare or low-substance ping, with no substantive request. Choose reply, reaction-only, both, or silence in your voice. Use ambientAction="ignore" with an empty response for silence or reaction-only, and reactionEmoji=null when no reaction fits. Do not execute tools or invent a question.`
+      ? `\n\nYou were explicitly addressed. Interpret the current turn together with the supplied authorized context. A bare ping can refer to an earlier unanswered request by this speaker; answer or clarify that request normally, including authorized tools when needed. Only when this is purely social attention or a closing, with no contextual request, may you choose playful acknowledgment, teasing, reaction-only, or silence in your voice. Silence/reaction-only requires responseIntent="social" or "closing", ambientAction="ignore", and response="". Never use silence as a failure fallback. Do not act on another person's request as though the current speaker authorized it.`
       : `\n\nYou were directly addressed (mentioned or replied to). Set ambientAction to "reply" and answer the eligible request dependably. For a bare ping with no question, use a brief acknowledgment in your voice informed by the available context; do not recite an invitation to ask a question.`
     : request.triggerMode === "reaction"
       ? reactionTriggerText
@@ -466,7 +470,8 @@ export function buildChatInstructions(request: ChatRequest, safetyGuard: string)
     toolsSection +
     capabilitySection +
     `\n\nGive participationReason as a brief action-selection summary (or null), with no private details or ` +
-    `quotes. Action examples: an incidental mention → ignore with no emoji; a laugh ending an exchange → ` +
+    `quotes. Set responseIntent to answer, clarify, social, closing, contribute, or abstain. Determine intent from the whole authorized conversation, not the length of the latest message. A final @mention after this speaker's earlier unanswered question normally asks you to answer that question. Keep the current speaker as addressee even when discussing another person's message. List only supplied message IDs in referentSourceIds; use [] when no message reference is needed. ` +
+    `Action examples: an incidental mention → ignore with no emoji; a laugh ending an exchange → ` +
     `ignore; a small acknowledgment → ignore plus one reaction; a useful new answer → reply; a warm, useful ` +
     `continuation may reply plus one reaction. These teach action selection; use the configured voice for text.\n` +
     causalChainsSection +
@@ -597,6 +602,8 @@ export function buildChatContext(request: ChatRequest): string {
 }
 
 export function parseChatModelOutput(text: string): {
+  responseIntent?: "answer" | "clarify" | "social" | "closing" | "contribute" | "abstain" | null | undefined;
+  referentSourceIds?: string[] | undefined;
   participationReason?: string | null | undefined;
   response: string;
   userMemoryActions: GroundedProposedMemoryAction[];

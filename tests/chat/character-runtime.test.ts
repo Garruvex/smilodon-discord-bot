@@ -8,6 +8,7 @@ import { CharacterRuntime } from "../../src/application/chat/character-runtime.j
 import { CharacterMemory } from "../../src/application/chat/character-memory.js";
 import { CharacterCallbacks, CallbackKnownFailure, callbackState, callbackDateUnresolved } from "../../src/application/chat/character-callbacks.js";
 import { ChatConversationService } from "../../src/application/chat/chat-conversation-service.js";
+import { ChatToolRegistry } from "../../src/application/chat/tools/chat-tool-registry.js";
 import { SqliteChatStateStore } from "../../src/infrastructure/persistence/sqlite-chat-state-store.js";
 import { CharacterModuleRegistry } from "../../src/application/chat/character-module-registry.js";
 import { ThoughtsModule } from "../../src/application/chat/character-modules/thoughts.js";
@@ -44,6 +45,28 @@ function setup(clock: () => number = () => Date.now(), logger: Pick<Logger, "inf
   return { connection, repository, profiles, provider, runtime };
 }
 describe("character module integration", () => {
+  it("recovers a proven continuation without exposing tools, search or image generation", async () => {
+    const { runtime, provider, profiles, repository, connection } = setup(() => 4000);
+    await profiles.update(guildId, { chatParticipation: { continuationEnabled: true, continuationFailureMode: "grounded_fallback" } });
+    vi.mocked(provider.generateCharacterData!).mockRejectedValue(new Error("decision provider unavailable"));
+    vi.spyOn(provider, "reply").mockImplementation((request) => {
+      expect(request.enabledTools).toEqual([]); expect(request.webSearchMode).toBe("off"); expect(request.imageGenerationEnabled).toBe(false);
+      return Promise.resolve(response("The second option is cheaper"));
+    });
+    const execute = vi.fn(() => Promise.resolve({ content: "must not run" }));
+    const tools = new ChatToolRegistry([{ name: "action", description: "An action", parameters: {}, execute }]);
+    const service = new ChatConversationService(provider, new SqliteChatStateStore(connection.database), new DefaultMemoryEngine(repository), undefined, undefined, undefined, null, null, tools, null, null, null, null, null, runtime, () => 4000);
+    const human = { messageId: "human", timestampMs: 1000, authorId: actorUserId, authorDisplayName: "Alice", content: "Which option is cheaper?", imageCount: 0 };
+    const bot = { messageId: "confirmed", timestampMs: 2000, authorId: "bot", authorDisplayName: "Bot", content: "It depends on duration", imageCount: 0, replyToMessageId: "human", replyToAuthorId: actorUserId };
+    const current = { ...human, messageId: "current", timestampMs: 3000, content: "And for a week?" };
+    const deliver = vi.fn((reply: ChatResponse) => Promise.resolve(reply.text));
+    try {
+      const result = await service.run({ ...request(), examplePool: [], loreChunks: [], toolsEnabled: true, webSearchMode: "auto", imageGenerationEnabled: true,
+        triggerMode: "continuation", sourceMessageId: "current", channelHistory: [human, bot], currentBurst: [current] }, deliver);
+      expect(result.conversationDecision).toMatchObject({ status: "failed", recovery: "grounded_reply", decision: { action: "reply" } });
+      expect(deliver).toHaveBeenCalledOnce(); expect(execute).not.toHaveBeenCalled();
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
   it("explains whether age or a quiet gap removed otherwise available context", async () => {
     const { logger, records } = captureDiagnosticLogger();
     const { runtime, profiles } = setup(() => 20 * 60_000, logger);
@@ -75,7 +98,7 @@ describe("character module integration", () => {
     await profiles.update(guildId, { character: { context: { ...profiles.current().character!.context, enabled: true } } });
     await runtime.prepare(request()); expect(generate).not.toHaveBeenCalled();
     await profiles.update(guildId, { character: { context: { ...profiles.current().character!.context, shadow: false } } });
-    await runtime.prepare(request()); expect(generate).toHaveBeenCalledTimes(1);
+    await runtime.prepare(request()); expect(generate).not.toHaveBeenCalled();
   });
   it("does not re-read character context for solicited tool/delivery checks after background learning", async () => {
     const { runtime, profiles, repository } = setup(() => 3000);

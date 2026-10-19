@@ -1,5 +1,6 @@
 import type { ChatTool } from "./tools/chat-tool.js";
 import type { ConversationInteraction } from "./conversation-trigger.js";
+import type { ConversationDecisionResult, ConversationIntent } from "./conversation-decision-engine.js";
 import type { ExampleExchange } from "./example-exchange.js";
 import type { PlaybackActor } from "../music/playback-service.js";
 import type { ChannelMessageSummarizer } from "../context/channel-message-summarizer.js";
@@ -22,6 +23,8 @@ export interface ChatRequest {
   aliasCandidates?: readonly { alias: string; subjectIds: readonly string[] }[];
   functionalToolExecuted?: boolean;
   onModelAttempt?: () => void;
+  // Style permission only. Silence requires validated contextual social/closing
+  // intent; the current message's length cannot grant it or disable tools.
   allowSilentDirect?: boolean;
   currentEvent?: ConversationEvent;
   botUserId?: string | null;
@@ -140,8 +143,9 @@ export interface ChatRequest {
   historyReactionsEnabled?: boolean;
 }
 
+export interface StructuredCallOptions { signal?: AbortSignal; maxAttempts?: number }
 export interface StructuredCharacterProvider {
-  generateCharacterData(prompt: string, schema: Record<string, unknown>): Promise<unknown>;
+  generateCharacterData(prompt: string, schema: Record<string, unknown>, options?: StructuredCallOptions): Promise<unknown>;
 }
 
 export interface PersonaLoreEntry {
@@ -360,6 +364,9 @@ export interface GeneratedChatImage {
 }
 
 export interface ChatResponse {
+  responseIntent?: ConversationIntent;
+  referentSourceIds?: readonly string[];
+  conversationDecision?: ConversationDecisionResult;
   participationExchangeId?: string;
   characterDeliveryProof?: readonly { messageId: string; content: string }[];
   characterMessages?: readonly string[];

@@ -90,6 +90,7 @@ export const zhTWCommandDescriptions = {
   "wolfy:text": "要轉換成狗叫聲的句子", // The sentence to translate.
   "diagnostic": "顯示僅限機器人擁有者查看的執行狀態診斷資訊", // Displays owner-only runtime diagnostics.
   "diagnostic:message": "查看此頻道內訊息 ID 或連結的處理紀錄",
+  "diagnostic:decision": "執行有快取的合成決策服務健康檢查",
   "memory-eval": "檢視抽樣的記憶檢索結果，以校準相關性", // Review sampled memory retrievals for relevance calibration.
   "memory-eval/pending": "顯示最新尚未審核的檢索樣本", // Shows the newest unreviewed retrieval sample.
   "memory-eval/label": "標記本應被檢索到的候選項目", // Marks the candidates that should have been retrieved.

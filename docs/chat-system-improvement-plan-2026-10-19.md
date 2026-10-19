@@ -1,10 +1,14 @@
 # Chat triggers, context, and behavior improvement plan
 
-Status: Phase 1 diagnostics implemented and verified locally. Phases 2–5 and the privacy gateway remain pending; no deployment performed. Prepared 2026-10-19.
+Status: Phase 1 diagnostics complete locally; Phase 2 routing/decision implementation in progress. Phases 3–5 and the privacy gateway remain pending; no deployment performed. Prepared 2026-10-19.
 
 ### Implementation progress — 2026-10-19
 
 Phase 2 routing checkpoint: added the shared seven-interaction trigger contract, separate response/discussion identities, explicit mention precedence over a human reply target, and one-hop same-channel ping-disabled reply resolution with a 1.5-second bound. Uncached target fetch requires the existing feature/user/channel/game gates; fetched content is not forwarded by routing. Explicit/name-address turns retain scheduler priority regardless of bare-ping silence preferences. Verified with 53 trigger/routing/addressing regression tests, typecheck, and changed-file lint. Decision ownership and contextual response migration remain in progress.
+
+Phase 2 engine checkpoint: `ConversationDecisionEngine` now owns participation admission and generated action validation. Character hooks no longer veto accepted decisions. Generation metadata distinguishes contextual answer/clarification from purely social/closing silence; short text no longer removes capabilities or permits silent failure. Clear name addresses share explicit-request priority/error handling, and incidental mentions remain optional. Repeated social pings are suppressed after contextual interpretation, so a new substantive request is not hidden by its final ping. Decision calls have a 12-second overall / 6-second per-endpoint bound, one configured repair/fallback, abort propagation, and a three-failure/30-second circuit cooldown. `continuationFailureMode` defaults to `strict`; opt-in `grounded_fallback` requires a current same-person proven branch, retains failure status, disables tools/search/images, and is revalidated before delivery. Provider health and cached synthetic checks are separate from reply-generation health. Focused engine/conversation/runtime tests pass; final regression/acceptance review follows.
+
+Engine checkpoint validation: full suite **4,522 passed / 7 skipped**, TypeScript typecheck and changed-file ESLint passed. Includes real runtime/conversation fallback integration, contextual ping capabilities, invalid evidence, bounded stalled attempts/circuit recovery, transport budget propagation, owner-only synthetic diagnostics, and explicit-name error handling.
 
 Implemented locally:
 
