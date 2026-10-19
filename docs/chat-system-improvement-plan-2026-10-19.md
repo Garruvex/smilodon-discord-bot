@@ -1,8 +1,12 @@
 # Chat triggers, context, and behavior improvement plan
 
-Status: Phases 1 and 2 implemented and verified locally. Phase 3 is in progress with opt-in eligible history and dependency metadata checkpoints. Phases 4–5 and the privacy gateway remain pending; no deployment performed. Prepared 2026-10-19.
+Status: Phases 1–3 implemented and verified locally. Phase 3 provides an opt-in guarded text path; unavailable source classes are excluded and reported. Phases 4–5 and universal privacy-gateway enforcement remain pending; no deployment performed. Prepared 2026-10-19.
 
 ### Implementation progress — 2026-10-19
+
+Phase 3 completion: all seven interactions share a registered guarded context lease for current text, reply ancestry, compatible fragments, count-first eligible history, verified new bot text, same-owner sessions, and eligible reactions. Fresh access/source checks, persistent forget cutoffs, complete text provenance, bounded backward retrieval and work deadlines protect each activated source. Provider retries, decision fallback, attribution repair, reactions, and delivery parts revalidate the lease. Memory, summaries, learned character state, images, and tools remain excluded and reported; universal gateway migration is separate. The default remains `legacy`; the localized settings choice exposes opt-in `eligible_count` with context enabled. See [Phase 3 acceptance](phase-3-context-acceptance-2026-10-19.md) for the source inventory, seven-mode matrix, bounds, invalidation lifecycle, exclusions, and rollout limits.
+
+Final Phase 3 validation: **4,607 passed / 7 skipped**, TypeScript typecheck, changed/new-file ESLint, migration portability, and whitespace checks passed. Repository-wide ESLint has existing failures outside this change. SQLite acceptance includes cross-owner cleanup with guild isolation, reactor/audience dependencies, empty sessions, and primary cleanup despite context invalidation failure. Live PostgreSQL, provider quality, Discord pilot, deployment, and Phase 4–5 remain pending. Earlier Phase 3 checkpoint descriptions below are historical and superseded by this completion entry.
 
 Phase 2 routing checkpoint: added the shared seven-interaction trigger contract, separate response/discussion identities, explicit mention precedence over a human reply target, and one-hop same-channel ping-disabled reply resolution with a 1.5-second bound. Uncached target fetch requires the existing feature/user/channel/game gates; fetched content is not forwarded by routing. Explicit/name-address turns retain scheduler priority regardless of bare-ping silence preferences. Verified with 53 trigger/routing/addressing regression tests, typecheck, and changed-file lint. Decision ownership and contextual response migration remain in progress.
 
@@ -49,7 +53,7 @@ Scheduler diagnostics checkpoint verification: full suite passed with 4,426 test
 
 Retention/lookup checkpoint verification: full suite passed with 4,456 tests and seven environment-dependent skips. A final bounded-flush regression and related suites passed with 125 tests after tightening snapshot coalescing. Type checking, changed-file ESLint, and whitespace checks passed. Coverage includes exact lookup scope, current viewer/bot permissions, restart/expiry, capacity and byte caps, safe corrupt-file handling, write failure/retry, old-snapshot deletion races, late callback invalidation, independent instance sinks, and preserving primary cleanup on diagnostic disk failure. Traditional Chinese and Japanese descriptions were added for the new slash-command option. Source-edit invalidation updates memory immediately and uses debounced snapshots; explicit forgetting waits for its snapshot revision to be persisted.
 
-### Phase 3 checkpoint: eligible channel history (in progress)
+### Phase 3 historical checkpoint: eligible channel history
 
 The shared channel-history collector now supports count-first retrieval: at most three pages / 300 raw messages, exclusions do not consume X, and selected messages retain chronological order. All seven interactions reach this collector through the mention, ambient/optional, and reaction adapters. The new mode does not discard messages because of their age, a quiet gap, or a model-proposed topic boundary. Count and prompt budgets are separate; all candidates remain verbatim when they fit, otherwise content is fairly truncated with an explicit prompt marker while retaining identity/time/reply metadata.
 
@@ -63,14 +67,14 @@ Content-free events now report raw fetched/examined/eligible counts, pages, sele
 
 Checkpoint verification: full suite **4,549 passed / 7 skipped**, TypeScript typecheck, changed-file ESLint, and whitespace checks passed. Synthetic tests cover paging past unreadable authors, count/size separation, old timestamps, oversized/escaped content, guard absence, warm/cold origin resolution, scope/unknown-origin rejection, and suppressing delivery after source access changes. No live-provider or deployed Discord validation is claimed.
 
-Remaining Phase 3 work:
+Work outstanding at this historical checkpoint (resolved for activated text sources by the completion entry above; other sources are explicitly excluded):
 
 1. Known dependency metadata now persists for confirmed bot output and session exchanges, but complete source coverage is not yet certified. Implement guarded assembly, derived-source revalidation, and invalidation after deletion/forgetting/access changes. Audit memory/summary/character/tool sources before enabling their expanded reuse.
 2. Unify reply ancestry/overflow and current burst under the same guarded assembly, including current-member resolution, source-specific omission reports, and coverage parity across all seven interactions.
 3. Add a request-wide historical deadline and efficient revalidation, bounded targeted backward expansion, shared decision/answer grounding projections, and source-priority budgeting.
 4. Exercise the complete warm/cold-cache, long-gap, contextual bare-ping/personality, reaction, and permission-change matrix; then decide migration defaults and settings presentation. Full gateway enforcement remains tracked separately in the privacy-gateway plan.
 
-### Phase 3 checkpoint: derived-source dependency metadata
+### Phase 3 historical checkpoint: derived-source dependency metadata
 
 New chat replies capture a bounded, versioned manifest of known message dependencies (IDs, source scope, author IDs, timestamps and hashes of the supplied text representation). The manifest contains no message bodies, display names, prompts or reply text. Disabled/session-only channels do not create durable manifests. Every capture is explicitly **partial**, with unresolved assembly coverage; it does not assert that session, memory, summary, image, tool or character inputs are fully covered. Missing scope, conflicting observations and the 128-dependency cap are recorded. The runtime schema also caps serialized metadata at 48,000 characters and rejects malformed/unknown fields. These manifests are persistent source metadata, not diagnostic log payloads.
 
@@ -82,7 +86,7 @@ Dependency metadata is budgeted separately from transcript text, so adding sourc
 
 Verification: full suite **4,564 passed / 7 skipped**; TypeScript typecheck, changed-file ESLint, migration portability check, and whitespace checks passed. Synthetic cases cover provider-proof replacement, dependency dedup/conflicts/caps, no raw-content capture, audience mismatch, binding individual delivery parts and stored prefixes, malformed metadata, session prompt exclusion, restart/schema upgrade, and disabled/session-only retention. Live PostgreSQL/provider/Discord behavior has not been evaluated.
 
-Next: assemble all prompt sources behind one guard and certify a complete dependency closure before restoring bot/session reuse. Dependency invalidation, reply/overflow/burst parity, deadlines, source-priority budgets, and the complete seven-interaction acceptance matrix remain unfinished. The new retrieval mode stays off by default.
+At this checkpoint, guarded assembly and complete source closure remained unfinished. The completion entry and acceptance document above now supersede that status: verified text bot/session reuse is restored; unverified overflow summaries and other unavailable classes remain excluded. The new retrieval mode stays off by default.
 
 ## 1. Objective and evidence
 
@@ -613,4 +617,4 @@ Use independent flags for continuation fallback, targeted retrieval, name-addres
 
 Requested context design: shared interpretation across trigger modes using last X eligible channel messages plus reply ancestry, independent of elapsed-time gaps, with bounded retrieval and transparent compaction. Response substance follows the contextual request, not the length or label of the trigger. Recommended accompanying choices: reliable replies to clear direct intent; grounded fallback only for proven same-person continuation; conservative spontaneous participation; safe administrator explanations for every unexpected silence.
 
-Not yet implemented: the requested count-first context design or the other proposed behavior changes. Exact X, scan limits, and token/latency budgets remain tuning proposals. Changed read scopes, new production models, and live channel activation are outside this planning change. Implementation should start with diagnostics and establish the actual decision failure before tuning providers.
+Implemented locally through Phase 3: diagnostics, routing/decision contracts, and opt-in guarded count-first text context. The Phase 3 acceptance document records the current X, scan limits, and work/prompt bounds. These limits still require measured tuning. Remaining source migrations, effective-policy UI, real-model quality evaluation, new production models, and live channel activation remain future work; no live read scope or deployment changed.
