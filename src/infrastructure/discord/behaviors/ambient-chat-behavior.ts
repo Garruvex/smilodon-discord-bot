@@ -12,7 +12,7 @@ import { ChatAccessService } from "../../../application/access/chat-access-servi
 import { BehaviorEvent, BehaviorResult, type BotBehavior } from "../../../application/behaviors/behavior.js";
 import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
 import type { ChannelHistoryMessage, ReplyChainMessage } from "../../../application/chat/chat-provider.js";
-import type { ChatConversationService } from "../../../application/chat/chat-conversation-service.js";
+import { ChatStateCommitError, type ChatConversationService } from "../../../application/chat/chat-conversation-service.js";
 import type { PersonaSource } from "../../../application/chat/persona-source.js";
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
@@ -294,6 +294,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       }, `Ambient chat: ${outcome}`);
     } catch (error) {
       if (error instanceof SocialOutputSuppressed) return BehaviorResult.Continue;
+      if (textDelivered || error instanceof ChatStateCommitError) return trigger === "ambient" ? BehaviorResult.StopPropagation : BehaviorResult.Continue;
       this.logger.error(
         { error, guildId: message.guildId, channelId: message.channelId, messageId: message.id, userId: message.author.id },
         "Ambient chat request failed",

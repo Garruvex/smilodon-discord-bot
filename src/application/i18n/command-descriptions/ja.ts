@@ -87,6 +87,8 @@ export const jaCommandDescriptions = {
   "wolfy": "文章を犬の鳴き声に変換します。", // Turns a sentence into dog noises.
   "wolfy:text": "犬の鳴き声に変換する文章。", // The sentence to translate.
   "diagnostic": "オーナー専用の実行時診断情報を表示します。", // Displays owner-only runtime diagnostics.
+  "explain-message": "自分または管理対象のメッセージの処理結果を確認します。",
+  "explain-message:message": "このチャンネルのメッセージIDまたはリンク。",
   "diagnostic:message": "このチャンネル内のメッセージIDまたはリンクの処理履歴を確認します。",
   "diagnostic:decision": "キャッシュ付きの合成データによる判断サービスのヘルスチェックを実行します。",
   "memory-eval": "関連性の調整のため、サンプリングされた記憶検索結果を確認します。", // Review sampled memory retrievals for relevance calibration.

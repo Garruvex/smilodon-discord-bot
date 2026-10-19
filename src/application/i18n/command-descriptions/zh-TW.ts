@@ -89,6 +89,8 @@ export const zhTWCommandDescriptions = {
   "wolfy": "把句子變成狗叫聲", // Turns a sentence into dog noises.
   "wolfy:text": "要轉換成狗叫聲的句子", // The sentence to translate.
   "diagnostic": "顯示僅限機器人擁有者查看的執行狀態診斷資訊", // Displays owner-only runtime diagnostics.
+  "explain-message": "說明自己或你管理的此頻道訊息之處理結果",
+  "explain-message:message": "此頻道的訊息 ID 或連結",
   "diagnostic:message": "查看此頻道內訊息 ID 或連結的處理紀錄",
   "diagnostic:decision": "執行有快取的合成決策服務健康檢查",
   "memory-eval": "檢視抽樣的記憶檢索結果，以校準相關性", // Review sampled memory retrievals for relevance calibration.

@@ -83,6 +83,7 @@ export class Application {
   public async stop(reason: string): Promise<void> {
     this.logger.info({ reason }, "Stopping application");
     this.controlChannelService.stop();
+    this.adminPanelService.stop();
     this.musicPresenceService.stop();
     this.birthdayAnnouncer.stop();
     this.dependencies.channelSummaryScheduler?.stop();
@@ -104,6 +105,7 @@ export class Application {
     // having waited for it — see ChatConversationService.drain.
     await this.client.destroy();
     await Promise.all([
+      this.adminPanelService.drain(),
       this.dependencies.chatConversationService?.drain(),
       // .stop() above only clears the interval — a tick already in flight
       // (now potentially long, see ChannelSummaryScheduler.drain's own

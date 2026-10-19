@@ -16,6 +16,7 @@ import type { Logger } from "pino";
 
 import type { AuditLogService } from "../../../../application/audit/audit-log-service.js";
 import { KeyedSerialQueue } from "../../../../application/concurrency/keyed-serial-queue.js";
+import { ChannelEditScheduler, type ChannelEditSlot } from "../../../../application/concurrency/channel-edit-scheduler.js";
 import { settingsText } from "../../../../application/i18n/settings/index.js";
 import { texts } from "../../../../application/i18n/texts.js";
 import type { AdminPanelHealth, AdminPanelIssue } from "../../../../application/settings/admin-panel-health.js";
@@ -54,6 +55,7 @@ const requiredPermissions: readonly PermissionsString[] = ["ViewChannel", "SendM
 const healDelayMs = 5_000;
 const healWindowMs = 10 * 60_000;
 const maxHealsPerWindow = 3;
+const policySignature = (profile: GuildConfiguration | null): string => JSON.stringify(profile, (_key, value: unknown) => value instanceof Set ? [...value].sort() : value);
 
 // The admin panel: a header plus one message per settings section in the
 // guild's channels.adminPanel, kept in sync with the config. It's a surface
@@ -65,6 +67,9 @@ const maxHealsPerWindow = 3;
 // can't post in the channel, a deleted channel turns the panel off, and
 // what it can't fix is kept in AdminPanelHealth for /status.
 export class AdminPanelService {
+  private stopped = false;
+  private readonly activeEdits = new Set<ChannelEditSlot>();
+  private readonly refreshes = new Set<Promise<void>>();
   private readonly ids = controlIds(adminPanelPrefix);
   private readonly controls: SettingsControlHandler;
   private readonly queue = new KeyedSerialQueue();
@@ -88,6 +93,7 @@ export class AdminPanelService {
     private readonly health: AdminPanelHealth,
     private readonly auditLogService: AuditLogService | null,
     private readonly logger: Logger,
+    private readonly edits: ChannelEditScheduler = new ChannelEditScheduler(),
   ) {
     this.controls = new SettingsControlHandler(engine, profiles, this.ids, { kind: "panel" });
     // Not awaited: a slow redraw mustn't hold up the reply to the change.
@@ -108,19 +114,33 @@ export class AdminPanelService {
   // messages even when unchanged (resetting a select a refused change left
   // showing the admin's pick).
   public refresh(guildId: string, force: ((key: string) => boolean) | "all" = () => false): Promise<void> {
-    return this.queue.run(guildId, async () => {
+    if (this.stopped) return Promise.resolve();
+    const pending = this.queue.run(guildId, async () => {
       try {
         await this.writePanel(guildId, force);
       } catch (error) {
         this.logger.error({ err: error, guildId }, "Admin panel refresh failed");
       }
     });
+    this.refreshes.add(pending);
+    void pending.finally(() => this.refreshes.delete(pending)).catch(() => undefined);
+    return pending;
   }
+
+  public stop(): void {
+    this.stopped = true;
+    for (const timer of this.healTimers.values()) clearTimeout(timer);
+    this.healTimers.clear();
+    for (const slot of this.activeEdits) slot.unregister();
+    this.activeEdits.clear();
+  }
+
+  public async drain(): Promise<void> { await Promise.allSettled([...this.refreshes]); }
 
   // Takes the whole panel down and posts it again in order, and resumes
   // reposting deleted messages. False when there's no panel channel.
   public async repair(guildId: string): Promise<boolean> {
-    if (!this.profiles.find(guildId)?.channels.adminPanel) return false;
+    if (this.stopped || !this.profiles.find(guildId)?.channels.adminPanel) return false;
     this.healingPaused.delete(guildId);
     this.heals.delete(guildId);
     await this.queue.run(guildId, async () => {
@@ -215,6 +235,7 @@ export class AdminPanelService {
   }
 
   private scheduleHeal(guildId: string): void {
+    if (this.stopped) return;
     if (this.healingPaused.has(guildId)) return;
     clearTimeout(this.healTimers.get(guildId));
     const timer = setTimeout(() => {
@@ -240,7 +261,9 @@ export class AdminPanelService {
   }
 
   private async writePanel(guildId: string, force: ((key: string) => boolean) | "all"): Promise<void> {
+    if (this.stopped) return;
     const profile = this.profiles.find(guildId);
+    const version = policySignature(profile);
     const state = this.store.find(guildId);
     const channelId = profile?.channels.adminPanel ?? null;
 
@@ -278,9 +301,10 @@ export class AdminPanelService {
     const paused = this.healingPaused.has(guildId);
     let reposting = false;
     for (const [index, entry] of desired.entries()) {
+      if (this.stopped || policySignature(this.profiles.find(guildId)) !== version) return;
       const existing = !reposting && messages[entry.key] ? await this.fetchMessage(channel, messages[entry.key]!) : null;
       if (existing) {
-        await this.write(existing, entry, forced(entry.key));
+        await this.write(existing, entry, forced(entry.key), guildId, channelId, version);
         continue;
       }
       if (paused) continue;
@@ -303,16 +327,24 @@ export class AdminPanelService {
     // The header's contents link to the sections, which may only just have
     // been posted.
     const header = messages[headerKey] ? await this.fetchMessage(channel, messages[headerKey]) : null;
-    if (header) await this.write(header, this.renderHeader(profile, channel, messages), false);
+    if (header) await this.write(header, this.renderHeader(profile, channel, messages), false, guildId, channelId, version);
 
+    if (this.stopped || policySignature(this.profiles.find(guildId)) !== version) return;
     await this.store.save({ guildId, channelId, messages });
     await this.report(guildId, issues);
   }
 
-  private async write(message: Message, entry: PanelMessage, force: boolean): Promise<void> {
+  private async write(message: Message, entry: PanelMessage, force: boolean, guildId: string, channelId: string, version: string): Promise<void> {
     const json = this.json(entry);
-    if (force || this.written.get(message.id) !== json) await message.edit(entry.payload);
-    this.written.set(message.id, json);
+    if (!force && this.written.get(message.id) === json) return;
+    const slot = this.edits.register({ channelId, key: `admin:${guildId}:${message.id}`, priority: 1, caller: "control_panel" });
+    this.activeEdits.add(slot);
+    try { await slot.schedule(async () => {
+      if (this.stopped || policySignature(this.profiles.find(guildId)) !== version || !force && this.written.get(message.id) === json) return false;
+      await message.edit(entry.payload);
+      this.written.set(message.id, json);
+      return true;
+    }); } finally { slot.unregister(); this.activeEdits.delete(slot); }
   }
 
   private json(entry: PanelMessage): string {

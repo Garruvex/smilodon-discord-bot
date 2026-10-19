@@ -51,6 +51,7 @@ import { FurryReactionCommand } from "../infrastructure/discord/commands/image/f
 import { BooruSearchCommand } from "../infrastructure/discord/commands/image/booru-search-command.js";
 import { FursuitFurtrackCommand } from "../infrastructure/discord/commands/image/fursuit-furtrack-command.js";
 import { DiagnosticCommand } from "../infrastructure/discord/commands/diagnostics/diagnostic-command.js";
+import { ExplainMessageCommand } from "../infrastructure/discord/commands/diagnostics/explain-message-command.js";
 import { diagnosticStore } from "../application/diagnostics/chat-diagnostics.js";
 import { PauseCommand } from "../infrastructure/discord/commands/music/pause-command.js";
 import { PlayCommand } from "../infrastructure/discord/commands/music/play-command.js";
@@ -351,6 +352,7 @@ export function registerCommands(
   commandRegistry.register(new QuoteContextCommand());
   commandRegistry.register(new DiagnosticCommand(diagnosticStore(logger), configuration.ownerUserIds, () => diagnosticPipelineStatus(logger), null,
     (guildId) => guildId ? guildConfigurationProvider.find(guildId)?.language ?? "en" : "en"));
+  commandRegistry.register(new ExplainMessageCommand(diagnosticStore(logger), guildConfigurationProvider));
   const setupCommand = new SetupCommand(guildSetupService);
   commandRegistry.register(setupCommand);
   const adminPanelHealth = new AdminPanelHealth();
@@ -624,6 +626,7 @@ export function createDependencies(
     logger.child({ component: "components" }),
   );
   const behaviorRegistry = new BehaviorRegistry();
+  const channelEditScheduler = new ChannelEditScheduler();
   const isGameChannel = (guildId: string, channelIds: readonly string[]): Promise<boolean> => campaign.isGameChannel(guildId, channelIds);
   const socialEligibility = new SocialChatEligibility(configuration, guildConfigurationProvider, messageOriginStore, isGameChannel);
   socialEligibility.bindGuardedForgetPolicy((message) => memoryRepository.isSourceForgotten({ guildId: message.guildId!,
@@ -799,7 +802,7 @@ export function createDependencies(
     logger.child({ component: "chat" }),
     messageReactionWatchStore,
     isGameChannel,
-    socialEligibility, messageOriginStore,
+    socialEligibility, messageOriginStore, channelEditScheduler,
   ));
   const ambientChatBehavior = new AmbientChatBehavior(
     () => discordClient.user?.id ?? null,
@@ -856,7 +859,7 @@ export function createDependencies(
     adminPanelHealth,
     channelSummaryScheduler,
     reactionReplyScheduler,
-    channelEditScheduler: new ChannelEditScheduler(),
+    channelEditScheduler,
     reminderScheduler,
     applicationEmojiCatalog,
     memoryEngine,

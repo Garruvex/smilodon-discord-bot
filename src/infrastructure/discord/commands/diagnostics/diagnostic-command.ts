@@ -8,12 +8,7 @@ import type { GenerationHealth } from "../../../../application/diagnostics/model
 import { explainChatTrace } from "../../../../application/diagnostics/chat-explanation.js";
 import { renderChatExplanation } from "../../../../application/i18n/chat-explanation.js";
 import type { Language } from "../../../../application/i18n/language.js";
-
-function messageInChannel(value: string, guildId: string, channelId: string): string | null {
-  if (/^\d{17,20}$/u.test(value)) return value;
-  const link = /^https:\/\/(?:(?:canary|ptb)\.)?discord\.com\/channels\/(\d{17,20})\/(\d{17,20})\/(\d{17,20})\/?$/u.exec(value);
-  return link && link[1] === guildId && link[2] === channelId ? link[3]! : null;
-}
+import { messageInChannel } from "./message-reference.js";
 
 function timeline(trace: RetainedChatTrace, groups: number): string {
   const lines = trace.records.slice(-16).map((record) => {

@@ -56,3 +56,11 @@ export function renderChatExplanation(explanation: ChatExplanation, language: La
     ...(explanation.modelFailures ? [`${t.failures}: ${explanation.modelFailures}${explanation.fallbackObserved ? `; ${t.fallback}` : ""}.`] : explanation.fallbackObserved ? [t.fallback] : []),
   ].join("\n");
 }
+
+// Public/self-service views deliberately project only the outcome. They never
+// expose source IDs, another member's restrictions, raw reason codes or traces.
+export function renderSafeChatExplanation(explanation: ChatExplanation, language: Language = "en"): string {
+  const t = copy[language];
+  const outcome = explanation.outcome === "access_denied" || explanation.outcome === "feature_disabled" ? "suppressed" : explanation.outcome;
+  return [t[outcome], ...(explanation.partialEvidence ? [t.partial] : []), ...(explanation.earlierDeliveryObserved ? [t.earlier] : [])].join("\n");
+}

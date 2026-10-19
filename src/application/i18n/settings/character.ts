@@ -56,7 +56,7 @@ const fieldDescriptions: Record<string, LocalizedText> = {
   "max-delay": ["Total added delay between parts, in ms.", "分段訊息增加的總等待時間，單位毫秒。", "返信の間に加える待機時間の合計（ミリ秒）。"],
   "include-others": ["Include other recent participants.", "也判斷其他近期參與者的訊息是否在對機器人說話。", "他の最近の参加者の呼びかけも判断します。"],
   minutes: ["Legacy mode: minutes of chat to include.", "舊版模式要參考最近幾分鐘的對話。", "従来方式で参照する会話の分数。"],
-  gap: ["Minutes of silence before a new segment.", "沉默超過幾分鐘後，視為新的一段對話。", "この分数の無言時間で新しい会話として区切ります。"],
+  gap: ["Legacy silence gap in minutes.", "僅舊版：分段靜默分鐘。", "従来方式の無言間隔（分）。"],
   messages: ["Recent-message target; keep short exchanges.", "最近訊息的目標上限；短對話會盡量完整保留。", "履歴の目標件数。短い会話は保ちます。"],
   summary: ["Legacy summaries only.", "僅舊版摘要。", "従来の要約のみ。"],
   "decision-messages": ["Messages used to judge timing and targets.", "用最近幾則訊息判斷接話時機與回覆對象。", "発言と返信先の判断に使う履歴の件数。"],

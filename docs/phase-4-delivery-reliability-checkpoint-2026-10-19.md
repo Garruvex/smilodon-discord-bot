@@ -2,6 +2,8 @@
 
 Status: implemented and verified locally. Phase 4 remains in progress; no deployment, live Discord test, or settings change was performed.
 
+Historical checkpoint: [Phase 4 final acceptance](phase-4-settings-delivery-acceptance-2026-10-20.md) now supersedes the remaining-work status below, including admin/self-service access and the remaining repeated edit paths.
+
 ## Reply retries and confirmed delivery
 
 Every planned reply part now receives a random 24-character nonce and `enforceNonce=true`. The same payload and nonce survive all application retries of that part. Mention, ambient/continuation/group, and reaction adapters forward them on message creation. Editing an existing preview keeps its message ID and omits create-only nonce fields. Different parts and new logical replies receive independent nonces.

@@ -1,5 +1,8 @@
 import type { Message, User } from "discord.js";
 import { chatDeliveryText } from "../../../application/i18n/chat-delivery.js";
+import { randomBytes } from "node:crypto";
+import { ChannelEditScheduler } from "../../../application/concurrency/channel-edit-scheduler.js";
+import { ScheduledChatPreview } from "./scheduled-chat-preview.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from "discord.js";
 import type { Logger } from "pino";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
@@ -58,6 +61,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     private readonly isGameChannel: IsGameChannel | null = null,
     eligibility: SocialChatEligibility | null = null,
     private readonly origins: MessageOriginStore | null = null,
+    private readonly edits: ChannelEditScheduler = new ChannelEditScheduler(),
   ) {
     this.chatAccess = new ChatAccessService(configuration);
     this.turnSupport = new ChatTurnSupport(logger, eligibility, origins, (message) => {
@@ -175,6 +179,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       preview: null,
       delivered: null,
     };
+    const previewState: { current: ScheduledChatPreview | null; closed: boolean } = { current: null, closed: false };
     try {
       const { images, droppedFailed } = await this.turnSupport.loadImages(imageAttachments);
       const droppedImageCount = droppedUnsupported + droppedOverLimit + droppedFailed;
@@ -283,12 +288,11 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           sourceMessage: message, origin: deliveredResponse.outputOrigin ?? "chat",
           sender: {
             first: async (payload) => {
-              sentMessages.delivered = sentMessages.preview
-                ? await sentMessages.preview.edit({
-                    content: payload.content,
-                    files: [...payload.files],
-                    attachments: [],
-                    allowedMentions: { repliedUser: false, parse: [] },
+              sentMessages.delivered = previewState.current
+                ? await previewState.current.finish(payload, async () => {
+                    if (deliveredResponse.characterIsCurrent && !deliveredResponse.characterIsCurrent() ||
+                      deliveredResponse.characterCanDeliver && !await deliveredResponse.characterCanDeliver() ||
+                      deliveredResponse.contextLease && !await deliveredResponse.contextLease.validate()) throw new SocialOutputSuppressed();
                   })
                 : await message.reply({
                     nonce: payload.nonce, enforceNonce: payload.enforceNonce,
@@ -334,17 +338,10 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         return deliveredText;
       }, {
         onImagePreview: async (image) => {
-          await this.turnSupport.assertEligible(message);
-          const payload = {
-            content: "Generating your image…",
-            files: [{ attachment: image.data, name: image.filename }],
-            allowedMentions: { repliedUser: false, parse: [] as never[] },
-          };
-          if (sentMessages.preview) {
-            await withDiscordCaller("chat_text", () => sentMessages.preview!.edit({ ...payload, attachments: [] }));
-          } else {
-            sentMessages.preview = await withDiscordCaller("chat_text", () => message.reply(payload));
-          }
+          if (previewState.closed) return;
+          previewState.current ??= new ScheduledChatPreview(message, this.edits, () => this.turnSupport.assertEligible(message), chatDeliveryText[profile.language].preview);
+          await previewState.current.preview(image);
+          sentMessages.preview = previewState.current.message;
         },
       });
       this.logger.info({
@@ -403,12 +400,15 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       // If an image-generation preview was already posted, replace it with the
       // error instead of leaving "Generating your image…" stuck forever while
       // also posting a separate error reply.
-      if (sentMessages.preview) {
-        await sentMessages.preview.edit({ content, files: [], attachments: [] }).catch(() => undefined);
+      if (sentMessages.delivered) return BehaviorResult.StopPropagation;
+      if (previewState.current?.message) {
+        await previewState.current.finish({ content, files: [], nonce: randomBytes(12).toString("hex"), enforceNonce: true }).catch(() => undefined);
       } else {
         await message.reply({ content, allowedMentions: { repliedUser: false } });
       }
     } finally {
+      previewState.closed = true;
+      previewState.current?.close();
       stopTyping();
     }
     return BehaviorResult.StopPropagation;

@@ -2,6 +2,8 @@
 
 Status: effective-policy and protected message-explanation views implemented locally. Phase 4 remains in progress. No live settings, command registration, read scope, or deployment changed.
 
+Historical checkpoint: Phase 4 is now complete locally; see [the final acceptance record](phase-4-settings-delivery-acceptance-2026-10-20.md) for the finished access contract and delivery/edit review.
+
 Subsequent work: [the delivery reliability checkpoint](phase-4-delivery-reliability-checkpoint-2026-10-19.md) now covers stable reply retry identity, confirmed partial text, and shared edit budget/backoff fixes. Its remaining-work list supersedes the delivery status at the end of this historical checkpoint.
 
 ## Effective policy

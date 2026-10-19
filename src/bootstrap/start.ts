@@ -100,6 +100,7 @@ const adminPanelService = new AdminPanelService(
   dependencies.adminPanelHealth,
   auditLogService,
   logger.child({ component: "admin-panel" }),
+  dependencies.channelEditScheduler,
 );
 dependencies.componentRegistry.register(new AdminPanelComponentHandler(adminPanelService));
 const commandDeploymentService = new DiscordGuildCommandDeploymentService(
