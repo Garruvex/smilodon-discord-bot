@@ -22,6 +22,7 @@
 
 import { withDiscordCaller, type DiscordCaller } from "../diagnostics/discord-diagnostics.js";
 import { bindDiagnosticTask } from "../diagnostics/chat-diagnostics.js";
+import { retryAfterMs } from "./retry-after.js";
 
 export interface ChannelEditSlotOptions {
   caller?: DiscordCaller;
@@ -67,6 +68,7 @@ interface SlotState {
 }
 
 interface ChannelState {
+  blockedUntil: number;
   slots: Map<string, SlotState>;
   sentAt: number[];
   running: boolean;
@@ -89,9 +91,13 @@ export class ChannelEditScheduler {
   }
 
   public register(options: ChannelEditSlotOptions): ChannelEditSlot {
+    if (this.stopped) return { schedule: () => Promise.resolve(), unregister: () => undefined };
     if (this.keys.has(options.key)) throw new Error(`Channel edit slot "${options.key}" is already registered.`);
     this.keys.add(options.key);
     const channel = this.channel(options.channelId);
+    // A slot replacement retains the channel's budget, but must not inherit
+    // an idle cleanup timer as an unnecessary scheduling delay.
+    if (channel.slots.size === 0 && channel.timer) { clearTimeout(channel.timer); channel.timer = null; }
     const slot: SlotState = { options, pending: null };
     channel.slots.set(options.key, slot);
     let registered = true;
@@ -116,10 +122,7 @@ export class ChannelEditScheduler {
         for (const waiter of slot.pending?.waiters ?? []) waiter.resolve();
         slot.pending = null;
         channel.slots.delete(options.key);
-        if (channel.slots.size === 0 && !channel.running) {
-          if (channel.timer) clearTimeout(channel.timer);
-          this.channels.delete(options.channelId);
-        }
+        this.retire(options.channelId, channel);
       },
     };
   }
@@ -135,12 +138,25 @@ export class ChannelEditScheduler {
         slot.pending = null;
       }
     }
+    this.channels.clear(); this.keys.clear();
+  }
+
+  private retire(channelId: string, channel: ChannelState): void {
+    if (channel.slots.size || channel.running || this.stopped) return;
+    if (channel.timer) clearTimeout(channel.timer);
+    channel.timer = null;
+    const now = this.now();
+    channel.sentAt = channel.sentAt.filter((at) => now - at < this.windowMs);
+    if (!channel.sentAt.length && channel.blockedUntil <= now) { this.channels.delete(channelId); return; }
+    const delay = Math.max(1, channel.blockedUntil - now, (channel.sentAt[0] ?? now) + this.windowMs - now);
+    channel.timer = setTimeout(() => { channel.timer = null; this.retire(channelId, channel); }, Math.min(delay, 2_147_483_647));
+    channel.timer.unref?.();
   }
 
   private channel(channelId: string): ChannelState {
     let channel = this.channels.get(channelId);
     if (!channel) {
-      channel = { slots: new Map(), sentAt: [], running: false, timer: null };
+      channel = { slots: new Map(), sentAt: [], running: false, timer: null, blockedUntil: 0 };
       this.channels.set(channelId, channel);
     }
     return channel;
@@ -155,12 +171,12 @@ export class ChannelEditScheduler {
 
     const now = this.now();
     channel.sentAt = channel.sentAt.filter((at) => now - at < this.windowMs);
-    if (channel.sentAt.length >= this.maxEdits) {
-      const waitMs = (channel.sentAt[0] ?? now) + this.windowMs - now;
+    if (channel.sentAt.length >= this.maxEdits || channel.blockedUntil > now) {
+      const waitMs = Math.max(channel.blockedUntil - now, channel.sentAt.length >= this.maxEdits ? (channel.sentAt[0] ?? now) + this.windowMs - now : 0);
       channel.timer = setTimeout(() => {
         channel.timer = null;
         this.drain(channelId);
-      }, Math.max(0, waitMs));
+      }, Math.min(2_147_483_647, Math.max(1, waitMs)));
       channel.timer.unref?.();
       return;
     }
@@ -177,10 +193,12 @@ export class ChannelEditScheduler {
         for (const waiter of pending.waiters) waiter.resolve();
       } catch (error) {
         channel.sentAt.push(startedAt);
+        const delay = retryAfterMs(error);
+        if (delay !== null) channel.blockedUntil = Math.max(channel.blockedUntil, this.now() + delay);
         for (const waiter of pending.waiters) waiter.reject(error);
       } finally {
         channel.running = false;
-        if (channel.slots.size === 0) this.channels.delete(channelId);
+        if (channel.slots.size === 0) this.retire(channelId, channel);
         else this.drain(channelId);
       }
     })();

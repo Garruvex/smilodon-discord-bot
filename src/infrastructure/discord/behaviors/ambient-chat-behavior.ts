@@ -1,4 +1,5 @@
 import type { Message } from "discord.js";
+import { chatDeliveryText } from "../../../application/i18n/chat-delivery.js";
 import type { Logger } from "pino";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
 import { SocialOutputSuppressed, type MessageOriginStore } from "../../../application/chat/message-origin-store.js";
@@ -225,12 +226,14 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           ...(deliveredResponse.contextLease ? { contextLease: deliveredResponse.contextLease } : {}),
           sourceMessage: target, trigger, origin: deliveredResponse.outputOrigin ?? "chat",
           sender: {
-            first: (payload) => trigger !== "ambient" && target.id === message.id ? message.channel.send({ content: payload.content, files: [...payload.files], allowedMentions: { parse: [] } }) : target.reply({
+            first: (payload) => trigger !== "ambient" && target.id === message.id ? message.channel.send({ nonce: payload.nonce, enforceNonce: payload.enforceNonce, content: payload.content, files: [...payload.files], allowedMentions: { parse: [] } }) : target.reply({
+              nonce: payload.nonce, enforceNonce: payload.enforceNonce,
               content: payload.content,
               files: [...payload.files],
               allowedMentions: { repliedUser: false, parse: [] },
             }),
             rest: (payload) => message.channel.send({
+              nonce: payload.nonce, enforceNonce: payload.enforceNonce,
               content: payload.content,
               files: [...payload.files],
               allowedMentions: { repliedUser: false, parse: [] },
@@ -243,6 +246,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           sources: deliveredResponse.sources,
           images: deliveredResponse.generatedImages,
           emptyFallbackContent,
+          partialDeliveryNotice: chatDeliveryText[profile.language].partial,
           maxImageAggregateBytes: this.configuration.chatDelivery.maxGeneratedImageAggregateBytes,
         });
         textDelivered = true;

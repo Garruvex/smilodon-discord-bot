@@ -1,3 +1,6 @@
+import { randomBytes } from "node:crypto";
+import { retryAfterMs } from "../../../application/concurrency/retry-after.js";
+import { chatDeliveryText } from "../../../application/i18n/chat-delivery.js";
 import type { GuardedConversationContext, GuardedContextPort, GuardedContextSource } from "../../../application/chat/guarded-conversation-context.js";
 import { bindProvenanceOutput, type ContextProvenance } from "../../../application/chat/context-provenance.js";
 import type { Attachment, Message, User, GuildMember } from "discord.js";
@@ -22,6 +25,9 @@ const allowedDiscordImageHosts = new Set(["cdn.discordapp.com", "media.discordap
 const maximumImageBytes = 8 * 1024 * 1024;
 
 export interface ChatDeliveryPayload {
+  // Reuse for every create attempt of this part. Message edits omit these.
+  nonce: string;
+  enforceNonce: true;
   content: string;
   files: readonly { attachment: Buffer; name: string }[];
 }
@@ -29,9 +35,8 @@ export interface ChatDeliveryPayload {
 export interface ChatDeliverySender {
   // Sends the very first message of the reply — usually message.reply(...),
   // or editing an existing "thinking…"/image-generation-preview placeholder.
-  // A failure here (after retries) propagates to the caller: nothing was
-  // delivered at all, so the caller's normal top-level error handling is
-  // the correct response.
+  // A failure propagates after bounded retries; a transport failure can leave
+  // acceptance unknown. Every create attempt must forward the supplied nonce.
   first(payload: ChatDeliveryPayload): Promise<Message>;
   // Sends every subsequent message — usually message.channel.send(...). A
   // failure here (after retries) is handled internally by
@@ -46,12 +51,16 @@ const deliveryRetryAttempts = 3;
 const deliveryRetryDelayMs = 500;
 
 async function sendWithRetry<T>(send: () => Promise<T>): Promise<T> {
+  const started = Date.now();
   let lastError: unknown;
   for (let attempt = 1; attempt <= deliveryRetryAttempts; attempt++) {
+    if (attempt > 1 && Date.now() - started >= 60_000) throw lastError;
     try {
       return await send();
     } catch (error) {
       if (error instanceof SocialOutputSuppressed) throw error;
+      const status = safeFailure(error, "operation_error").httpStatus;
+      if (retryAfterMs(error) !== null || status === 429 || status !== undefined && status >= 400 && status < 500 && status !== 408 || Date.now() - started >= 60_000) throw error;
       lastError = error;
       if (attempt < deliveryRetryAttempts) {
         await new Promise((resolve) => setTimeout(resolve, deliveryRetryDelayMs * attempt));
@@ -598,6 +607,7 @@ export class ChatTurnSupport {
     sources: readonly ChatSource[];
     images: readonly GeneratedChatImage[];
     emptyFallbackContent: string;
+    partialDeliveryNotice?: string;
     maxImageAggregateBytes: number;
     sourceMessage?: Message;
     trigger?: SocialTrigger;
@@ -656,33 +666,37 @@ export class ChatTurnSupport {
       sends[0]!.content = params.emptyFallbackContent;
     }
 
+    const payloads: ChatDeliveryPayload[] = sends.map((send) => ({ ...send, nonce: randomBytes(12).toString("hex"), enforceNonce: true }));
     const confirmedText: string[] = [];
     let deliveredParts = 0;
     let partial = false;
-    const sendAndRecord = async (send: () => Promise<Message>, expectedContent: string): Promise<Message> => {
+    const assertCurrent = async (): Promise<void> => {
       if (params.contextLease && !await params.contextLease.validate()) throw new SocialOutputSuppressed();
       if (params.characterIsCurrent && !params.characterIsCurrent()) throw new SocialOutputSuppressed();
       if (params.characterCanDeliver && !await params.characterCanDeliver()) throw new SocialOutputSuppressed();
       if (params.sourceMessage) await this.assertEligible(params.sourceMessage, params.trigger ?? "direct");
-      const sent = await withDiscordCaller("chat_text", send);
+    };
+    const sendAndRecord = async (send: () => Promise<Message>, expectedContent: string): Promise<Message> => {
+      const sent = await sendWithRetry(async () => { await assertCurrent(); return withDiscordCaller("chat_text", send); });
       deliveredParts++; confirmedText.push(sent.content ?? expectedContent);
       emitChatDiagnostic(this.logger, { event: "chat.delivery.part", deliveredMessageId: sent.id, part: deliveredParts });
-      params.recordDelivery?.(sent);
+      try { params.recordDelivery?.(sent); }
+      catch (error) { emitChatDiagnostic(this.logger, { event: "chat.delivery.bookkeeping_failed", stage: "proof", ...safeFailure(error, "operation_error") }); }
       if (this.origins && params.sourceMessage?.guildId) {
-        await this.origins.record({
+        try { await this.origins.record({
           guildId: params.sourceMessage.guildId, channelId: params.sourceMessage.channelId, messageId: sent.id,
           origin: params.origin ?? "chat", sourceMessageId: params.sourceMessage.id, createdAt: Date.now(),
           contextProvenance: params.contextLease ? params.contextLease.provenance(sent.content) : bindProvenanceOutput(params.contextProvenance, sent.content, {
             guildId: params.sourceMessage.guildId, channelId: params.sourceMessage.channelId,
           }),
-        }).catch((error: unknown) => this.logger.warn({ error, messageId: sent.id }, "Failed to record output origin; unknown output stays excluded"));
+        }); } catch (error) { emitChatDiagnostic(this.logger, { event: "chat.delivery.bookkeeping_failed", stage: "origin", ...safeFailure(error, "operation_error") }); }
       }
       return sent;
     };
-    const [firstSend, ...restSends] = sends;
+    const [firstSend, ...restSends] = payloads;
     let firstMessage: Message;
     try {
-      firstMessage = await sendWithRetry(() => sendAndRecord(() => params.sender.first(firstSend!), firstSend!.content));
+      firstMessage = await sendAndRecord(() => params.sender.first(firstSend!), firstSend!.content);
     } catch (error) {
       emitChatDiagnostic(this.logger, { event: "chat.delivery.completed", plannedParts: sends.length, deliveredParts,
         status: error instanceof SocialOutputSuppressed ? "suppressed" : "failed", ...(error instanceof SocialOutputSuppressed ? {} : safeFailure(error)) });
@@ -691,15 +705,17 @@ export class ChatTurnSupport {
     for (const send of restSends) {
       try {
         if (params.characterDelayMs) await new Promise((resolve) => setTimeout(resolve, params.characterDelayMs! / Math.max(1, restSends.length)));
-        await sendWithRetry(() => sendAndRecord(() => params.sender.rest(send), send.content));
+        await sendAndRecord(() => params.sender.rest(send), send.content);
       } catch (error) {
         partial = true;
         if (error instanceof SocialOutputSuppressed) break;
         this.logger.warn({ error }, "Chat reply delivery failed partway through a multi-message response");
-        await params.sender.rest({
-          content: "(The rest of that reply couldn't be delivered — please try again.)",
-          files: [],
-        }).catch(() => undefined);
+        const status = safeFailure(error, "operation_error").httpStatus;
+        if (retryAfterMs(error) === null && (status === undefined || status >= 500)) {
+          try { await assertCurrent(); await withDiscordCaller("chat_text", () => params.sender.rest({
+            content: params.partialDeliveryNotice ?? chatDeliveryText.en.partial, files: [], nonce: randomBytes(12).toString("hex"), enforceNonce: true,
+          })); } catch { /* A notice cannot cause another delivery attempt. */ }
+        }
         break;
       }
     }
@@ -711,7 +727,7 @@ export class ChatTurnSupport {
         messageId: params.sourceMessage.id, origin: params.origin, sourceMessageId: null, createdAt: Date.now(),
       }).catch((error: unknown) => this.logger.warn({ error }, "Failed to persist functional interaction origin"));
     }
-    return { deliveredText: params.contextLease && partial ? confirmedText.join("\n\n") : params.text, firstMessageId: firstMessage.id };
+    return { deliveredText: partial ? confirmedText.join("\n\n") : params.text, firstMessageId: firstMessage.id };
   }
 
   // Applies the model's spontaneous reactions on OTHER channel messages (see

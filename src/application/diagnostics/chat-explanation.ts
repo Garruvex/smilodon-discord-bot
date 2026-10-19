@@ -13,6 +13,7 @@ export interface ChatExplanation {
   context: { selected: number; requested: number | null; status: string | null } | null;
   modelFailures: number;
   fallbackObserved: boolean;
+  bookkeepingFailures: number;
   unavailable: Extract<ChatDiagnosticEvent, { event: "context.guard.sources" }>["unavailable"];
 }
 
@@ -25,12 +26,13 @@ const confirmed = (event: ChatDiagnosticEvent): boolean => event.event === "chat
 export function explainChatTrace(traces: readonly RetainedChatTrace[]): ChatExplanation {
   const trace = [...traces].sort((a, b) => newestAt(a) - newestAt(b)).at(-1) ?? null;
   const result: ChatExplanation = { outcome: "no_record", trace, reason: null, partialEvidence: false,
-    earlierDeliveryObserved: false, context: null, modelFailures: 0, fallbackObserved: false, unavailable: [] };
+    earlierDeliveryObserved: false, context: null, modelFailures: 0, fallbackObserved: false, bookkeepingFailures: 0, unavailable: [] };
   if (!trace) return result;
   const events = [...trace.records].sort((a, b) => a.timestampMs - b.timestampMs || a.eventSequence - b.eventSequence).map((record) => record.data);
   result.partialEvidence = trace.truncated;
   result.earlierDeliveryObserved = traces.some((other) => other !== trace && other.records.some((record) => confirmed(record.data)));
   for (const event of events) {
+    if (event.event === "chat.delivery.bookkeeping_failed") result.bookkeepingFailures++;
     if (event.event === "context.guard.sources") result.unavailable = event.unavailable;
     if (event.event === "context.guard.coverage") result.context = { selected: event.selected, requested: event.requested, status: event.status };
     else if (event.event === "context.history.coverage") result.context = { selected: event.selectedIds.length, requested: event.requested, status: event.status };

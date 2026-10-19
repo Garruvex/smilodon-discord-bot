@@ -1,4 +1,5 @@
 import type { Message, User } from "discord.js";
+import { chatDeliveryText } from "../../../application/i18n/chat-delivery.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from "discord.js";
 import type { Logger } from "pino";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
@@ -290,6 +291,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
                     allowedMentions: { repliedUser: false, parse: [] },
                   })
                 : await message.reply({
+                    nonce: payload.nonce, enforceNonce: payload.enforceNonce,
                     content: payload.content,
                     files: [...payload.files],
                     allowedMentions: { repliedUser: false, parse: [] },
@@ -297,6 +299,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
               return sentMessages.delivered;
             },
             rest: (payload) => message.channel.send({
+              nonce: payload.nonce, enforceNonce: payload.enforceNonce,
               content: payload.content,
               files: [...payload.files],
               allowedMentions: { repliedUser: false, parse: [] },
@@ -309,6 +312,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           sources: deliveredResponse.sources,
           images: deliveredResponse.generatedImages,
           emptyFallbackContent,
+          partialDeliveryNotice: chatDeliveryText[profile.language].partial,
           maxImageAggregateBytes: this.configuration.chatDelivery.maxGeneratedImageAggregateBytes,
         });
         if (deliveredResponse.outputOrigin !== "tool" && botId && profile.chat.channelMemoryModes[message.channelId] !== "disabled") this.conversation!.observe(message.guildId, message.channelId, {

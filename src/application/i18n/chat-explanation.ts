@@ -3,6 +3,7 @@ import type { Language } from "./language.js";
 
 const copy = {
   en: {
+    bookkeeping: "Delivery metadata could not be saved; affected output may be unavailable as future context.",
     unavailable: "Excluded context", legacy_derived: "unverified legacy text", memory: "memory", summaries: "summaries", learned_character: "learned state", images: "images", context_tools: "tools", profile_fields: "profile fields",
     no_record: "No retained record for this message in this channel. Records expire after 24 hours or capacity eviction; this does not prove the bot never received it.",
     delivered: "A text reply was confirmed delivered.", delivery_observed: "At least one text part was delivered; completion is not established by the retained records.",
@@ -16,6 +17,7 @@ const copy = {
     context: "History selected/target", unknown: "unknown", failures: "Failed model-event records", fallback: "fallback observed", reason: "Recorded code",
   },
   "zh-TW": {
+    bookkeeping: "無法儲存傳送中繼資料；受影響的回覆可能無法作為之後的上下文。",
     unavailable: "排除的上下文", legacy_derived: "未驗證舊文字", memory: "記憶", summaries: "摘要", learned_character: "學習狀態", images: "圖片", context_tools: "工具", profile_fields: "個人資料",
     no_record: "此頻道沒有保留這則訊息的紀錄。紀錄會在 24 小時後或容量不足時移除；這不代表機器人從未收到訊息。",
     delivered: "已確認送出文字回覆。", delivery_observed: "至少一段文字已送出；保留紀錄無法確認是否全部完成。",
@@ -29,6 +31,7 @@ const copy = {
     context: "歷史選取／目標", unknown: "未知", failures: "模型失敗事件紀錄數", fallback: "曾使用備援", reason: "紀錄代碼",
   },
   ja: {
+    bookkeeping: "送信情報を保存できませんでした。該当する返信を今後の履歴に使えない場合があります。",
     unavailable: "除外した履歴", legacy_derived: "未検証の過去の文字", memory: "記憶", summaries: "要約", learned_character: "学習状態", images: "画像", context_tools: "ツール", profile_fields: "プロフィール",
     no_record: "このチャンネルには該当メッセージの保存記録がありません。記録は24時間後や容量超過時に削除されます。ボットが受信しなかった証拠ではありません。",
     delivered: "文字による返信の送信を確認しました。", delivery_observed: "少なくとも一部の文字は送信済みです。全体の完了は確認できません。",
@@ -41,11 +44,12 @@ const copy = {
     partial: "省略または削除されたイベントがあり、記録は不完全です。", earlier: "このメッセージの別の保存記録で文字の送信を確認しました。",
     context: "履歴の選択数・目標", unknown: "不明", failures: "モデル失敗イベント数", fallback: "代替処理の記録あり", reason: "記録コード",
   },
-} satisfies Record<Language, Record<ChatExplanation["outcome"] | ChatExplanation["unavailable"][number] | "unavailable" | "partial" | "earlier" | "context" | "unknown" | "failures" | "fallback" | "reason", string>>;
+} satisfies Record<Language, Record<ChatExplanation["outcome"] | ChatExplanation["unavailable"][number] | "bookkeeping" | "unavailable" | "partial" | "earlier" | "context" | "unknown" | "failures" | "fallback" | "reason", string>>;
 
 export function renderChatExplanation(explanation: ChatExplanation, language: Language = "en"): string {
   const t = copy[language];
   return [t[explanation.outcome], ...(explanation.reason ? [`${t.reason}: ${explanation.reason}`] : []),
+    ...(explanation.bookkeepingFailures ? [t.bookkeeping] : []),
     ...(explanation.partialEvidence ? [t.partial] : []), ...(explanation.earlierDeliveryObserved ? [t.earlier] : []),
     ...(explanation.context ? [`${t.context}: ${explanation.context.selected}/${explanation.context.requested ?? t.unknown}${explanation.context.status ? ` (${explanation.context.status})` : ""}`] : []),
     ...(explanation.unavailable.length ? [`${t.unavailable}: ${explanation.unavailable.map((source) => t[source]).join(", ")}.`] : []),

@@ -1,5 +1,6 @@
 import type { Client, GuildTextBasedChannel, Message } from "discord.js";
 import type { Logger } from "pino";
+import { chatDeliveryText } from "../../../application/i18n/chat-delivery.js";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
 import { characterSettings } from "../../../application/chat/character-settings.js";
 
@@ -448,10 +449,12 @@ export class ReactionReplyScheduler {
           sourceMessage: selectedTarget, trigger: "reaction",
           sender: {
             first: async (payload) => { await ensureDelivery(); return selectedTarget.reply({
+              nonce: payload.nonce, enforceNonce: payload.enforceNonce,
               content: payload.content, files: [...payload.files],
               allowedMentions: reactorMentions,
             }); },
             rest: async (payload) => { await ensureDelivery(); return channel.send({
+              nonce: payload.nonce, enforceNonce: payload.enforceNonce,
               content: payload.content, files: [...payload.files],
               allowedMentions: reactorMentions,
             }); },
@@ -463,6 +466,7 @@ export class ReactionReplyScheduler {
           sources: deliveredResponse.sources,
           images: deliveredResponse.generatedImages,
           emptyFallbackContent: "I ran out of words. Very premium of me.",
+          partialDeliveryNotice: chatDeliveryText[profile.language].partial,
           maxImageAggregateBytes: 8 * 1024 * 1024,
         });
         return deliveredText;

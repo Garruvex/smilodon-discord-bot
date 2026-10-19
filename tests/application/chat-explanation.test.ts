@@ -68,4 +68,10 @@ describe("recorded chat explanations", () => {
     const result = explainChatTrace([trace([{ ...turn("text_delivered"), textDeliveryConfirmed: false } as ChatDiagnosticEvent])]);
     expect(result.outcome).toBe("incomplete");
   });
+
+  it("keeps confirmed delivery separate from failed metadata recording", () => {
+    const result = explainChatTrace([trace([{ event: "chat.delivery.bookkeeping_failed", stage: "origin", failure: "operation_error" }, turn("text_delivered")])]);
+    expect(result.outcome).toBe("delivered"); expect(result.bookkeepingFailures).toBe(1);
+    expect(renderChatExplanation(result)).toContain("may be unavailable as future context");
+  });
 });

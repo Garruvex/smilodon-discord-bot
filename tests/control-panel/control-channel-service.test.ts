@@ -188,6 +188,21 @@ function mentionMessage(): Message<true> {
 }
 
 describe("ControlChannelService", () => {
+  it("passes edit retry metadata to the shared scheduler before resolving a best-effort panel refresh", async () => {
+    vi.useFakeTimers();
+    const { service } = createService(false);
+    const edit = vi.fn().mockRejectedValueOnce(Object.assign(new Error("rate limited"), { retryAfter: 20000 })).mockResolvedValue(undefined);
+    const message = { id: "queue", content: "old", embeds: [], components: [], attachments: { size: 0 }, edit };
+    const messages = { channel: { id: controlPanelChannelId }, queue: message };
+    const internals = service as unknown as { writeQueueMessage: (messages: unknown, profile: GuildConfiguration, id: string) => Promise<void> };
+    await internals.writeQueueMessage(messages, guildConfiguration(false), guildId);
+    expect(edit).toHaveBeenCalledOnce();
+    const pending = internals.writeQueueMessage(messages, guildConfiguration(false), guildId);
+    await vi.advanceTimersByTimeAsync(19999); expect(edit).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1); await pending; expect(edit).toHaveBeenCalledTimes(2);
+    service.stop();
+  });
+
   it("acknowledges successful controls silently and refreshes the panel", async () => {
     const { service } = createService(false);
     const toggleTwentyFourSeven = vi.fn().mockResolvedValue(true);
@@ -1266,6 +1281,24 @@ describe("ControlChannelService", () => {
     await flush();
     expect(first.delete).toHaveBeenCalledTimes(2);
     expect(second.delete).not.toHaveBeenCalled();
+  });
+
+  it("keeps a rate-limited vote message instead of deleting or reposting it", async () => {
+    vi.useFakeTimers(); const { service, getSnapshot } = createService(false);
+    const failure = Object.assign(new Error("rate limited"), { retryAfter: 20000 });
+    const voteMessage = { id: "vote", content: "", embeds: [], components: [], attachments: { size: 0 },
+      edit: vi.fn().mockRejectedValueOnce(failure).mockResolvedValue(undefined), delete: vi.fn().mockResolvedValue(undefined) };
+    const send = vi.fn().mockResolvedValue(voteMessage);
+    const messages = { channel: { id: "control-channel", send }, nowPlaying: {}, queue: {} };
+    const internals = service as unknown as { writeVoteMessage: (messages: unknown, profile: unknown, id: string) => Promise<void> };
+    getSnapshot.mockReturnValue({ paused: false, currentTrack: { title: "Song", author: "Artist", uri: "https://example.com/song", durationMs: 180000, positionMs: 0, isStream: false },
+      autoQueueVote: { status: "ready", leadingIndex: 0, options: [{ title: "A", author: "Artist", uri: "", votes: 1 }, { title: "B", author: "Artist", uri: "", votes: 0 }] } });
+    const write = (): Promise<void> => internals.writeVoteMessage(messages, guildConfiguration(false), guildId);
+    await write(); await write(); // Create, then a rate-limited edit.
+    expect(send).toHaveBeenCalledOnce(); expect(voteMessage.delete).not.toHaveBeenCalled();
+    const pending = write(); await vi.advanceTimersByTimeAsync(19999); expect(voteMessage.edit).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1); await pending;
+    expect(voteMessage.edit).toHaveBeenCalledTimes(2); expect(send).toHaveBeenCalledOnce(); expect(voteMessage.delete).not.toHaveBeenCalled(); service.stop();
   });
 
   it("doesn't create a lyrics message while nothing is playing, and cleans up a leftover one once playback stops", async () => {
