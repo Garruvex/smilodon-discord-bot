@@ -1,6 +1,6 @@
 # Chat triggers, context, and behavior improvement plan
 
-Status: Phase 1 diagnostics complete locally; Phase 2 routing/decision implementation in progress. Phases 3–5 and the privacy gateway remain pending; no deployment performed. Prepared 2026-10-19.
+Status: Phases 1 and 2 implemented and verified locally. Phases 3–5 and the privacy gateway remain pending; no deployment performed. Prepared 2026-10-19.
 
 ### Implementation progress — 2026-10-19
 
@@ -9,6 +9,10 @@ Phase 2 routing checkpoint: added the shared seven-interaction trigger contract,
 Phase 2 engine checkpoint: `ConversationDecisionEngine` now owns participation admission and generated action validation. Character hooks no longer veto accepted decisions. Generation metadata distinguishes contextual answer/clarification from purely social/closing silence; short text no longer removes capabilities or permits silent failure. Clear name addresses share explicit-request priority/error handling, and incidental mentions remain optional. Repeated social pings are suppressed after contextual interpretation, so a new substantive request is not hidden by its final ping. Decision calls have a 12-second overall / 6-second per-endpoint bound, one configured repair/fallback, abort propagation, and a three-failure/30-second circuit cooldown. `continuationFailureMode` defaults to `strict`; opt-in `grounded_fallback` requires a current same-person proven branch, retains failure status, disables tools/search/images, and is revalidated before delivery. Provider health and cached synthetic checks are separate from reply-generation health. Focused engine/conversation/runtime tests pass; final regression/acceptance review follows.
 
 Engine checkpoint validation: full suite **4,522 passed / 7 skipped**, TypeScript typecheck and changed-file ESLint passed. Includes real runtime/conversation fallback integration, contextual ping capabilities, invalid evidence, bounded stalled attempts/circuit recovery, transport budget propagation, owner-only synthetic diagnostics, and explicit-name error handling.
+
+Phase 2 acceptance review: source/target/recipient grounding is shared between proposal validation and the engine, so labelling an ungrounded proposal “valid” cannot authorize group output. Final admission follows character postprocessing, and the legacy participation view consumes the engine's result. Gate ownership, all seven interactions, settings migration, failure recovery, synthetic health checks, rollout limits, and rollback are documented in [Phase 2 acceptance](phase-2-routing-decision-acceptance-2026-10-19.md). Phase 2 is complete locally; real-provider evaluation/deployment remain pending, and older-message retrieval/context parity remain Phase 3 work.
+
+Final Phase 2 validation: full suite **4,529 passed / 7 skipped**, TypeScript typecheck, changed-file ESLint, and whitespace checks passed. Final grounding/recovery cases additionally prove that unapproved targets/evidence/recipients cannot authorize spontaneous output and grounded recovery cannot become social/closing/contribution output instead of an answer or clarification.
 
 Implemented locally:
 

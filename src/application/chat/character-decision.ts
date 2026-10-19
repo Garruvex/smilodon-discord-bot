@@ -35,6 +35,20 @@ export interface DecisionAttempt {
   httpStatus?: number;
 }
 export type DecisionOutcome = ({ status: "unavailable" | "failed"; decision: null } | { status: "valid"; decision: CharacterDecision }) & { attempts: readonly DecisionAttempt[] };
+export function decisionSourceFailure(result: CharacterDecision, events: readonly ChannelHistoryMessage[], botId: string, fixedTarget: string | null = null): FailureCategory | null {
+  const humans = events.filter((event) => event.authorId !== botId && event.author?.kind !== "bot");
+  const ids = new Set(events.map((event) => event.messageId));
+  const humanIds = new Set(humans.map((event) => event.messageId));
+  const recipients = new Set(["group", ...humans.map((event) => event.authorId)]);
+  const target = humans.find((event) => event.messageId === result.target);
+  const validCandidate = (candidate: ContributionCandidate): boolean => humanIds.has(candidate.sourceMessageId) && recipients.has(candidate.recipientId);
+  return !target || events.some((event) => event.authorId === botId && event.replyToMessageId === result.target) && fixedTarget !== result.target ? "invalid_target"
+    : fixedTarget && result.target !== fixedTarget ? "fixed_target_mismatch"
+    : result.recipientEvidence.some((id) => !ids.has(id)) ? "invalid_evidence"
+    : !validCandidate(result.contribution) || result.contribution.sourceMessageId !== result.target ? "invalid_contribution"
+    : result.thoughts.some((thought) => !validCandidate(thought)) ? "invalid_thought"
+    : result.contribution.recipientId !== "group" && result.contribution.recipientId !== target.authorId ? "recipient_mismatch" : null;
+}
 export function contextBoundaries(events: readonly ChannelHistoryMessage[], gapMs: number): readonly string[] {
   return ["earlier", ...events.filter((event, index) => !index || event.timestampMs - events[index - 1]!.timestampMs > gapMs || event.authorId !== events[index - 1]!.authorId).map((event) => event.messageId)];
 }
@@ -187,8 +201,7 @@ export class CharacterDecisionService {
     const now = Math.min(input.now ?? latestTime, latestTime);
     const events = [...new Map([...input.events, ...input.burst].filter((event) => event.timestampMs <= now).map((event) => [event.messageId, event])).values()];
     const humans = events.filter((event) => event.authorId !== input.botId && event.author?.kind !== "bot");
-    const ids = new Set(events.map((event) => event.messageId)); const humanIds = new Set(humans.map((event) => event.messageId));
-    const recipients = new Set(["group", ...humans.map((event) => event.authorId)]);
+    const humanIds = new Set(humans.map((event) => event.messageId));
     const targets = humans.filter((event) => !events.some((reply) => reply.authorId === input.botId && reply.replyToMessageId === event.messageId)).map((event) => event.messageId);
     if (input.fixedTarget && humanIds.has(input.fixedTarget) && !targets.includes(input.fixedTarget)) targets.push(input.fixedTarget);
     const boundaries = contextBoundaries(input.events.filter((event) => event.timestampMs <= now), input.gapMs);
@@ -201,7 +214,6 @@ Contribution labels are mandatory: acknowledgment-only, repetition, generic-advi
 Opening clear means room to speak without interrupting and still relevant; otherwise closed or unclear. Usually stay silent on narration, thanks, lol, okay, simple updates and closings. A shared interest alone does not justify interrupting other people.
 ${input.thoughts ? "Return zero to three optional candidate thoughts with the same fields and labels. Zero is common." : "Return no thoughts; the baseline contribution assessment is still required."}
 A reaction is one ordinary emoji or null. It may acknowledge a human-to-human message when appropriate, without a text contribution. Choose silence when neither action adds anything. Only propose actions marked available. Data: ${JSON.stringify({ ...input, events, burst: input.burst.filter((event) => event.timestampMs <= now), targets, boundaries }).replaceAll("<", "\\u003c")}`;
-    const validCandidate = (candidate: ContributionCandidate): boolean => humanIds.has(candidate.sourceMessageId) && recipients.has(candidate.recipientId);
     for (const provider of [...new Set([this.provider, this.fallback].filter((item): item is StructuredCharacterProvider => item !== null))]) {
       const providerRole = provider === this.provider ? "primary" : "fallback";
       const attempt = attempts.length + 1;
@@ -217,14 +229,7 @@ A reaction is one ordinary emoji or null. It may acknowledge a human-to-human me
         const result = decisionSchema.parse(await Promise.race([provider.generateCharacterData(prompt, decisionJsonSchema, { signal: controller.signal, maxAttempts: 1 }), new Promise<never>((_resolve, reject) => {
           timeout = setTimeout(() => { controller.abort(); reject(new DOMException("Decision deadline exceeded", "TimeoutError")); }, Math.min(decisionCallLimits.attemptMs, remaining));
         })]));
-        const target = humans.find((event) => event.messageId === result.target);
-        const failure: FailureCategory | null = !targets.includes(result.target) ? "invalid_target"
-          : input.fixedTarget && result.target !== input.fixedTarget ? "fixed_target_mismatch"
-          : !boundaries.includes(result.boundary) ? "invalid_boundary"
-          : result.recipientEvidence.some((id) => !ids.has(id)) ? "invalid_evidence"
-          : !validCandidate(result.contribution) || result.contribution.sourceMessageId !== result.target ? "invalid_contribution"
-          : result.thoughts.some((thought) => !validCandidate(thought)) ? "invalid_thought"
-          : result.contribution.recipientId !== "group" && result.contribution.recipientId !== target?.authorId ? "recipient_mismatch" : null;
+        const failure = decisionSourceFailure(result, events, input.botId, input.fixedTarget) ?? (!boundaries.includes(result.boundary) ? "invalid_boundary" : null);
         if (failure) {
           record({ providerRole, attempt, status: "failed", failure, durationMs: diagnosticElapsed(started) });
           continue;

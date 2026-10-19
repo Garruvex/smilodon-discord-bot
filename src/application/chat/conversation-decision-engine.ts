@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { addressedElsewhere, exchangeBranch, generatedContributionAllowed, localAddressing, optionalParticipationRejection, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
+import { addressedElsewhere, decisionSourceFailure, exchangeBranch, generatedContributionAllowed, localAddressing, optionalParticipationRejection, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
 import { resolveConversationTrigger, type TriggerResolution } from "./conversation-trigger.js";
 import type { ChatRequest, ChatResponse } from "./chat-provider.js";
 import { emitChatDiagnostic, type DiagnosticLogger } from "../diagnostics/chat-diagnostics.js";
@@ -66,6 +66,10 @@ export class ConversationDecisionEngine {
       result: this.result(request, trigger, now, policyVersion, reason, status, "silent", "abstain") });
     if (!admissible) return denied("scope_or_disabled");
     if (trigger.explicit) return { ...base, result: this.result(request, trigger, now, policyVersion, "explicit_request", "ready", "reply", "answer") };
+    if (proposal) {
+      const failure = decisionSourceFailure(proposal, events.filter((event) => event.timestampMs <= now), botId, request.triggerMode === "continuation" ? current?.messageId ?? null : null);
+      if (failure) return denied(failure, "failed");
+    }
     if (!proposal) {
       // Fallback is opt-in and skips ONLY a broken decision call. The
       // confirmed same-person branch must still exist when delivery occurs.
@@ -98,19 +102,21 @@ export class ConversationDecisionEngine {
     if (references.some((id) => !ids.has(id))) return this.result(request, trigger, now, policyVersion, "invalid_evidence", "failed", "silent", "abstain", [], trigger.explicit ? "error_reply" : "none");
     if (prior && prior.decision.action === "silent") return prior;
     let reply = trigger.explicit || response.ambientAction === "reply";
-    const intent = response.responseIntent ?? (trigger.explicit ? "answer" : "contribute");
+    const intent = response.responseIntent ?? (trigger.explicit || prior?.recovery === "grounded_reply" ? "answer" : "contribute");
     if (trigger.explicit && response.ambientAction === "ignore" && request.allowSilentDirect && (intent === "social" || intent === "closing")) reply = false;
     if (prior?.recovery === "grounded_reply") reply = true;
+    if (prior?.recovery === "grounded_reply" && intent !== "answer" && intent !== "clarify") return this.result(request, trigger, now, policyVersion, "fallback_requires_answer_or_clarification", "failed", "silent", "abstain");
     if (reply && !response.text.trim() && !response.generatedImages.length) return this.result(request, trigger, now, policyVersion, "empty_generated_reply", "failed", "silent", "abstain", [], trigger.explicit ? "error_reply" : "none");
     const rejectedContribution = prior?.decision.action === "reply" && !trigger.explicit && prior.recovery !== "grounded_reply" &&
       !generatedContributionAllowed(response.text, [...request.channelHistory, ...request.replyChain], request.botUserId);
     if (rejectedContribution) reply = false;
     const react = response.reactionEmoji !== null || response.historyReactions.length > 0;
     const result = this.result(request, trigger, now, policyVersion, reply ? trigger.explicit ? "explicit_request" : "accepted_contribution" : rejectedContribution ? "generated_contribution_rejected" : "contextual_abstention",
-      "ready", reply ? react ? "reply_and_react" : "reply" : react ? "react" : "silent", intent, references);
+      "ready", reply ? react ? "reply_and_react" : "reply" : react ? "react" : "silent", reply || intent === "social" || intent === "closing" ? intent : "abstain", references);
     if (prior) { result.status = prior.status; result.recovery = prior.recovery; result.decision.decisionId = prior.decision.decisionId;
       if (!trigger.explicit) result.decision.recipientIds = prior.decision.recipientIds;
-      result.decision.expiresAt = prior.decision.expiresAt; if (reply || prior.decision.action !== "reply") result.decision.reasonCode = prior.decision.reasonCode; }
+      if (!trigger.explicit) result.decision.expiresAt = prior.decision.expiresAt;
+      if (reply || prior.decision.action !== "reply") result.decision.reasonCode = prior.decision.reasonCode; }
     return result;
   }
 }

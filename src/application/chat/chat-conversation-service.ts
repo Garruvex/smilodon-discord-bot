@@ -1,4 +1,4 @@
-import { isRecipientCorrection, generatedContributionAllowed } from "./character-decision.js";
+import { isRecipientCorrection } from "./character-decision.js";
 import type { Logger } from "pino";
 import { performance } from "node:perf_hooks";
 import { currentDiagnosticTraceSequence, diagnosticElapsed, diagnosticStore, emitChatDiagnostic, safeFailure, withDiagnosticScope } from "../diagnostics/chat-diagnostics.js";
@@ -1304,9 +1304,6 @@ export class ChatConversationService {
       const mayIgnore = decisionResult.decision.action === "silent" || decisionResult.decision.action === "react";
       if (mayIgnore) { validatedResponse.ambientAction = "ignore"; validatedResponse.text = ""; }
       else validatedResponse.ambientAction = "reply";
-      if (input.shadowMode && characterPrepared?.acceptedContribution && !generatedContributionAllowed(validatedResponse.text, [...request.channelHistory, ...request.replyChain], request.botUserId)) {
-        validatedResponse.text = ""; validatedResponse.ambientAction = "ignore"; validatedResponse.reactionEmoji = null; validatedResponse.historyReactions = [];
-      }
       if (mayIgnore && validatedResponse.ambientAction !== "reply") {
         reportConversationDecision(this.logger, decisionResult, "generation", resolveConversationTrigger(input).interaction);
         if (validatedResponse.reactionEmoji && proposals.length > 0) {
@@ -1341,9 +1338,6 @@ export class ChatConversationService {
           if (corrected !== validatedResponse.text) { delete validatedResponse.characterMessages; delete validatedResponse.characterDelayMs; }
           validatedResponse.text = corrected;
         }
-      }
-      if (input.shadowMode && characterPrepared?.acceptedContribution && !generatedContributionAllowed(validatedResponse.text, [...request.channelHistory, ...request.replyChain], request.botUserId)) {
-        validatedResponse.text = ""; validatedResponse.ambientAction = "ignore"; validatedResponse.reactionEmoji = null; validatedResponse.historyReactions = [];
       }
       const finalDecision = this.decisionEngine.finalize(request, validatedResponse, this.now(), characterPrepared?.fingerprint, decisionResult);
       validatedResponse.conversationDecision = finalDecision;

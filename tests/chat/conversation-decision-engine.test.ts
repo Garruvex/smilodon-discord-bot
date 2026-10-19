@@ -30,6 +30,11 @@ describe("conversation decision authority", () => {
     expect(engine.assess(decisionRequest(), failed, { ...fallback, continuationFailureMode: "strict" }, true, 4000, "policy").result.decision.action).toBe("silent");
     expect(engine.finalize(decisionRequest(), decisionResponse(), 5000, "policy", result.result).decision.decisionId).toBe(result.result.decision.decisionId);
   });
+  it.each(["social", "closing", "abstain", "contribute"] as const)("does not turn grounded recovery into %s output", (responseIntent) => {
+    const prior = engine.assess(decisionRequest(), failed, fallback, true, 4000, "policy").result;
+    const result = engine.finalize(decisionRequest(), decisionResponse({ responseIntent }), 5000, "policy", prior);
+    expect(result).toMatchObject({ status: "failed", recovery: "none", decision: { action: "silent", reasonCode: "fallback_requires_answer_or_clarification" } });
+  });
   it.each(["new_speaker", "interleaved", "closing", "other_recipient", "expired", "no_proof", "quota", "scope", "spontaneous", "reaction"])("refuses continuation recovery: %s", (reason) => {
     const request = decisionRequest(); let now = 4000;
     if (reason === "new_speaker") { request.currentUser = { ...request.currentUser, id: "bob" }; request.currentBurst = [{ ...branchCurrent, authorId: "bob" }]; }
@@ -47,6 +52,14 @@ describe("conversation decision authority", () => {
   it("rejects unknown evidence in generated output without authorizing a reaction", () => {
     const result = engine.finalize(decisionRequest({ triggerMode: "reaction" }), decisionResponse({ referentSourceIds: ["private-unknown"], reactionEmoji: "😂" }), 4000);
     expect(result).toMatchObject({ status: "failed", recovery: "none", decision: { action: "silent", reasonCode: "invalid_evidence" } });
+  });
+  it.each(["target", "evidence", "recipient"])("rejects an ungrounded %s even if a caller labels the proposal valid", (kind) => {
+    const proposal = decisionProposal({ addressing: "others" });
+    if (kind === "target") proposal.target = "unapproved";
+    if (kind === "evidence") proposal.recipientEvidence = ["unapproved"];
+    if (kind === "recipient") proposal.contribution.recipientId = "unapproved";
+    const result = engine.assess(decisionRequest({ triggerMode: "spontaneous" }), { status: "valid", decision: proposal, attempts: [] }, fallback, true, 4000, "policy").result;
+    expect(result.status).toBe("failed"); expect(result.decision.action).toBe("silent"); expect(result.recovery).toBe("none");
   });
   it("preserves functional confirmations independently of playful silence", () => {
     expect(engine.finalize(decisionRequest({ triggerMode: "direct", allowSilentDirect: true, functionalToolExecuted: true }), decisionResponse({ ambientAction: "ignore", responseIntent: "social" }), 4000).decision).toMatchObject({ action: "reply", reasonCode: "functional_confirmation" });
