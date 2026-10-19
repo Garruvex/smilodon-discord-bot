@@ -1,6 +1,6 @@
 # Chat triggers, context, and behavior improvement plan
 
-Status: Phases 1 and 2 implemented and verified locally. Phase 3 is in progress with an opt-in eligible-history collector checkpoint. Phases 4–5 and the privacy gateway remain pending; no deployment performed. Prepared 2026-10-19.
+Status: Phases 1 and 2 implemented and verified locally. Phase 3 is in progress with opt-in eligible history and dependency metadata checkpoints. Phases 4–5 and the privacy gateway remain pending; no deployment performed. Prepared 2026-10-19.
 
 ### Implementation progress — 2026-10-19
 
@@ -65,10 +65,24 @@ Checkpoint verification: full suite **4,549 passed / 7 skipped**, TypeScript typ
 
 Remaining Phase 3 work:
 
-1. Carry source dependencies for confirmed bot output and session exchanges; revalidate derived sources and invalidate after deletion/forgetting/access changes. Audit memory/summary/character/tool sources before enabling their expanded reuse.
+1. Known dependency metadata now persists for confirmed bot output and session exchanges, but complete source coverage is not yet certified. Implement guarded assembly, derived-source revalidation, and invalidation after deletion/forgetting/access changes. Audit memory/summary/character/tool sources before enabling their expanded reuse.
 2. Unify reply ancestry/overflow and current burst under the same guarded assembly, including current-member resolution, source-specific omission reports, and coverage parity across all seven interactions.
 3. Add a request-wide historical deadline and efficient revalidation, bounded targeted backward expansion, shared decision/answer grounding projections, and source-priority budgeting.
 4. Exercise the complete warm/cold-cache, long-gap, contextual bare-ping/personality, reaction, and permission-change matrix; then decide migration defaults and settings presentation. Full gateway enforcement remains tracked separately in the privacy-gateway plan.
+
+### Phase 3 checkpoint: derived-source dependency metadata
+
+New chat replies capture a bounded, versioned manifest of known message dependencies (IDs, source scope, author IDs, timestamps and hashes of the supplied text representation). The manifest contains no message bodies, display names, prompts or reply text. Disabled/session-only channels do not create durable manifests. Every capture is explicitly **partial**, with unresolved assembly coverage; it does not assert that session, memory, summary, image, tool or character inputs are fully covered. Missing scope, conflicting observations and the 128-dependency cap are recorded. The runtime schema also caps serialized metadata at 48,000 characters and rejects malformed/unknown fields. These manifests are persistent source metadata, not diagnostic log payloads.
+
+The application assigns manifests after generation/postprocessing and overwrites any provider-supplied provenance. Confirmed Discord delivery parts bind the manifest to their actual content hash independently. Session exchanges preserve delivery IDs and bind the manifest to the actual stored assistant prefix, with current guild/channel/user audience checks. Bot origin stores preserve guild/channel scope. Complete proofs cannot be rebound to different output. Both persistence backends preserve optional dependency metadata; invalid metadata normalizes to null, and existing rows remain unverified. Additive PostgreSQL/SQLite migrations introduce the nullable origin column; no active database was migrated or deployed by this work. SQLite fresh-start/restart and upgrade-from-the-previous-schema cases pass locally.
+
+The eligible-count path now excludes session exchanges before prompt selection, memory recall context, and persona selectors, with a content-free `context.derived.excluded` count/reason. All stored session text remains excluded on that path until a guarded source validator exists, even if metadata happens to parse. Bot-authored historical output remains excluded too. Legacy mode retains its existing session behavior. Merely recording dependencies does not grant permission to read or disclose them.
+
+Dependency metadata is budgeted separately from transcript text, so adding source manifests does not silently reduce the existing eight stored / four prompted exchange limits. Session metadata remains bounded by eight exchanges times the per-manifest cap; delivery ID lists are separately bounded to 32 unique IDs. Summarizers receive their existing text projections rather than the dependency manifests.
+
+Verification: full suite **4,564 passed / 7 skipped**; TypeScript typecheck, changed-file ESLint, migration portability check, and whitespace checks passed. Synthetic cases cover provider-proof replacement, dependency dedup/conflicts/caps, no raw-content capture, audience mismatch, binding individual delivery parts and stored prefixes, malformed metadata, session prompt exclusion, restart/schema upgrade, and disabled/session-only retention. Live PostgreSQL/provider/Discord behavior has not been evaluated.
+
+Next: assemble all prompt sources behind one guard and certify a complete dependency closure before restoring bot/session reuse. Dependency invalidation, reply/overflow/burst parity, deadlines, source-priority budgets, and the complete seven-interaction acceptance matrix remain unfinished. The new retrieval mode stays off by default.
 
 ## 1. Objective and evidence
 

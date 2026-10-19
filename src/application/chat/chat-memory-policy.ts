@@ -40,6 +40,7 @@ export const chatMemoryLimits = {
   maxExchanges: 8,
   maxUserMessageChars: 1_000,
   maxAssistantMessageChars: 2_000,
+  // Transcript JSON only; dependency manifests have their own schema cap.
   maxSessionSerializedChars: 16_000,
   sessionTtlMs: 48 * 60 * 60 * 1_000,
   // Budget for the subset of stored memories actually injected into a given

@@ -1,3 +1,4 @@
+import { bindProvenanceOutput, type ContextProvenance } from "../../../application/chat/context-provenance.js";
 import type { Attachment, Message, User, GuildMember } from "discord.js";
 import type { ChatUser, ConversationEvent } from "../../../application/chat/chat-provider.js";
 import type { Logger } from "pino";
@@ -546,6 +547,7 @@ export class ChatTurnSupport {
     sourceMessage?: Message;
     trigger?: SocialTrigger;
     origin?: MessageOrigin;
+    contextProvenance?: ContextProvenance | null;
     characterMessages?: readonly string[] | undefined;
     characterDelayMs?: number | undefined;
     characterIsCurrent?: (() => boolean) | undefined;
@@ -612,6 +614,9 @@ export class ChatTurnSupport {
         await this.origins.record({
           guildId: params.sourceMessage.guildId, channelId: params.sourceMessage.channelId, messageId: sent.id,
           origin: params.origin ?? "chat", sourceMessageId: params.sourceMessage.id, createdAt: Date.now(),
+          contextProvenance: bindProvenanceOutput(params.contextProvenance, sent.content, {
+            guildId: params.sourceMessage.guildId, channelId: params.sourceMessage.channelId,
+          }),
         }).catch((error: unknown) => this.logger.warn({ error, messageId: sent.id }, "Failed to record output origin; unknown output stays excluded"));
       }
       return sent;

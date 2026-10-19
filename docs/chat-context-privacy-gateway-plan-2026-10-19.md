@@ -1,6 +1,8 @@
 # Chat context privacy guard and model gateway plan
 
-Status: proposed design, not implemented or deployed. Prepared 2026-10-19. Split out of `chat-system-improvement-plan-2026-10-19.md` so diagnostics and isolated routing fixes can ship independently, while context expansion observes explicit source-specific privacy dependencies.
+Status: mandatory gateway remains a proposed design, not implemented or deployed. Phase 3 has an incomplete dependency-metadata foundation; this is not gateway enforcement. Prepared 2026-10-19. Split out of `chat-system-improvement-plan-2026-10-19.md` so diagnostics and isolated routing fixes can ship independently, while context expansion observes explicit source-specific privacy dependencies.
+
+Implementation checkpoint: chat output origins and session exchanges now persist bounded, versioned, content-free known-source manifests. The application only emits partial coverage, replaces provider-supplied provenance, and binds actual delivery parts/stored output to hashes within their destination scope. Existing records remain unverified. Eligible-count retrieval excludes legacy bot output and session text rather than treating these manifests as authorization. Complete guarded assembly, source revalidation/invalidation, and migration of raw model/tool paths are still required; see the Phase 3 checkpoint ledger in the chat plan for validation and limits.
 
 ## 1. Scope and relationship to the chat plan
 

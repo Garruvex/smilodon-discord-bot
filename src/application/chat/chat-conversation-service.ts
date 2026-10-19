@@ -1,3 +1,4 @@
+import { captureIncompleteTurnProvenance } from "./context-provenance.js";
 import { isRecipientCorrection } from "./character-decision.js";
 import type { Logger } from "pino";
 import { performance } from "node:perf_hooks";
@@ -1050,7 +1051,13 @@ export class ChatConversationService {
       // (private memory reads go through memoryEngine.recall below).
       const state = input.triggerMode === "reaction" ? { exchanges: [], memories: [] }
         : await this.stateStore.load(input.guildId, input.currentUser.id, input.channelId, now);
-      const recentHistory = this.promptHistorySelector.select(state.exchanges);
+      // A legacy session can quote any number of other people. Its owner
+      // alone is not sufficient authorization for expanded-context reuse.
+      const sessionExchanges = input.refreshHistoricalContext ? [] : state.exchanges;
+      if (input.refreshHistoricalContext && state.exchanges.length) emitChatDiagnostic(this.logger, {
+        event: "context.derived.excluded", source: "session", count: state.exchanges.length, reason: "unverified_provenance",
+      });
+      const recentHistory = this.promptHistorySelector.select(sessionExchanges);
       const replyToContent = input.replyChain.at(-1)?.content;
       // Never rejects (failures resolve to null), so lore selection can
       // chain on it without risking the whole Promise.all.
@@ -1286,6 +1293,7 @@ export class ChatConversationService {
         validatedResponse.ambientAction = "reply";
         validatedResponse.reactionEmoji = null;
         validatedResponse.historyReactions = [];
+        validatedResponse.contextProvenance = allowsDurableWrites(channelMode) ? captureIncompleteTurnProvenance(request, validatedResponse.text) : null;
         await deliver(validatedResponse);
         return validatedResponse;
       }
@@ -1375,6 +1383,7 @@ export class ChatConversationService {
         return validatedResponse;
       }
       if (!await canContinue()) throw new SocialOutputSuppressed();
+      validatedResponse.contextProvenance = allowsDurableWrites(channelMode) ? captureIncompleteTurnProvenance(request, validatedResponse.text) : null;
       const deliveredAssistantMessage = await deliver(validatedResponse);
       if (input.shadowMode) return validatedResponse;
       if (input.triggerMode === "reaction") return validatedResponse;
@@ -1396,6 +1405,8 @@ export class ChatConversationService {
           channelId: input.channelId,
           userMessage: input.message.slice(0, chatMemoryLimits.maxUserMessageChars),
           assistantMessage: deliveredAssistantMessage.slice(0, chatMemoryLimits.maxAssistantMessageChars),
+          contextProvenance: validatedResponse.contextProvenance ?? null,
+          assistantMessageIds: (validatedResponse.characterDeliveryProof ?? []).map((part) => part.messageId).slice(0, 32),
           sourceMessageId: input.sourceMessageId ?? null, channelMemoryMode: channelMode,
           ...(input.currentEvent?.type === "message" ? { sourceTimestampMs: input.currentEvent.timestampMs } : {}),
           actions: [],

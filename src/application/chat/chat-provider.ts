@@ -1,3 +1,4 @@
+import type { ContextProvenance } from "./context-provenance.js";
 import type { ChatTool } from "./tools/chat-tool.js";
 import type { ConversationInteraction } from "./conversation-trigger.js";
 import type { ConversationDecisionResult, ConversationIntent } from "./conversation-decision-engine.js";
@@ -366,6 +367,8 @@ export interface GeneratedChatImage {
 }
 
 export interface ChatResponse {
+  // Assigned by application assembly, never accepted as a provider proof.
+  contextProvenance?: ContextProvenance | null;
   responseIntent?: ConversationIntent;
   referentSourceIds?: readonly string[];
   conversationDecision?: ConversationDecisionResult;

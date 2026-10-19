@@ -442,6 +442,7 @@ export class ReactionReplyScheduler {
         const selectedTarget = deliveredResponse.replyTargetMessageId ? await channel.messages.fetch(deliveredResponse.replyTargetMessageId).catch(() => null) : message;
         if (!selectedTarget || !await this.turnSupport.isEligible(selectedTarget, "reaction")) throw new SocialOutputSuppressed();
         const { deliveredText } = await this.turnSupport.deliverChatResponse({
+          contextProvenance: deliveredResponse.contextProvenance ?? null,
           sourceMessage: selectedTarget, trigger: "reaction",
           sender: {
             first: async (payload) => { await ensureDelivery(); return selectedTarget.reply({

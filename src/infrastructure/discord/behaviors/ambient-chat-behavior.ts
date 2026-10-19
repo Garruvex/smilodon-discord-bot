@@ -221,6 +221,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           ? "Here you go!"
           : "I ran out of words. Very premium of me.";
         const { deliveredText, firstMessageId } = await this.turnSupport.deliverChatResponse({
+          contextProvenance: deliveredResponse.contextProvenance ?? null,
           sourceMessage: target, trigger, origin: deliveredResponse.outputOrigin ?? "chat",
           sender: {
             first: (payload) => trigger !== "ambient" && target.id === message.id ? message.channel.send({ content: payload.content, files: [...payload.files], allowedMentions: { parse: [] } }) : target.reply({

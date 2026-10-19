@@ -1,6 +1,6 @@
 import { chatMemoryLimits } from "./chat-memory-policy.js";
 import type { ChatHistoryMessage } from "./chat-provider.js";
-import type { ChatSessionExchange } from "./chat-state-store.js";
+import { sessionTranscriptChars, type ChatSessionExchange } from "./chat-state-store.js";
 
 // Deliberately smaller than chatMemoryLimits (the session storage bound), since
 // not every stored exchange needs to fit in every request's prompt. Derived
@@ -20,7 +20,7 @@ export class RecentPromptHistorySelector implements PromptHistorySelector {
     const selected: ChatSessionExchange[] = [];
     for (const exchange of exchanges.slice(-promptHistoryLimits.maxExchanges).reverse()) {
       const candidate = [exchange, ...selected];
-      if (JSON.stringify(candidate).length > promptHistoryLimits.maxSerializedChars) break;
+      if (sessionTranscriptChars(candidate) > promptHistoryLimits.maxSerializedChars) break;
       selected.unshift(exchange);
     }
     return selected.flatMap((exchange) => [

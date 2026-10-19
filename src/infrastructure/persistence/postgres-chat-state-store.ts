@@ -2,18 +2,13 @@ import { randomUUID } from "node:crypto";
 
 import { and, asc, eq } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { z } from "zod";
+import { boundedDeliveryMessageIds, chatSessionExchangesSchema as exchangesSchema } from "../../application/chat/chat-session-schema.js";
+import { bindProvenanceOutput } from "../../application/chat/context-provenance.js";
 
 import { chatMemoryLimits } from "../../application/chat/chat-memory-policy.js";
 import { boundSessionExchanges, type ChatSessionExchange, type ChatStateSnapshot, type ChatStateStore } from "../../application/chat/chat-state-store.js";
 import * as schema from "../database/schema.js";
 import type { GuildMemberRegistry } from "./guild-member-registry.js";
-
-const exchangesSchema = z.array(z.object({
-  user: z.object({ content: z.string(), createdAt: z.number(), sourceMessageId: z.string().nullable().optional(),
-    channelMemoryMode: z.enum(["shared", "isolated", "session_only", "disabled"]).optional() }),
-  assistant: z.object({ content: z.string(), createdAt: z.number() }),
-}));
 
 type PgTransaction = Parameters<Parameters<PostgresJsDatabase<typeof schema>["transaction"]>[0]>[0];
 
@@ -130,7 +125,9 @@ export class PostgresChatStateStore implements ChatStateStore {
         user: { content: input.userMessage, createdAt: input.sourceTimestampMs ?? input.now,
           ...(input.sourceMessageId !== undefined ? { sourceMessageId: input.sourceMessageId } : {}),
           ...(input.channelMemoryMode !== undefined ? { channelMemoryMode: input.channelMemoryMode } : {}) },
-        assistant: { content: input.assistantMessage, createdAt: input.now },
+        assistant: { content: input.assistantMessage, createdAt: input.now,
+          ...(input.assistantMessageIds ? { messageIds: boundedDeliveryMessageIds(input.assistantMessageIds) } : {}) },
+        ...(input.contextProvenance !== undefined ? { contextProvenance: bindProvenanceOutput(input.contextProvenance, input.assistantMessage, { guildId: input.guildId, channelId: input.channelId, userId: input.userId }) } : {}),
       }]);
       dropped = bounded.dropped;
       await transaction.insert(schema.chatSessions).values({

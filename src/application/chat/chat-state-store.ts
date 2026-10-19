@@ -1,10 +1,13 @@
+import type { ContextProvenance } from "./context-provenance.js";
+
 import type { ChatMemoryRecord, ProposedMemoryAction } from "./chat-provider.js";
 import type { ChannelMemoryMode } from "../memory/memory-channel-policy.js";
 import { chatMemoryLimits } from "./chat-memory-policy.js";
 
 export interface ChatSessionExchange {
   user: { content: string; createdAt: number; sourceMessageId?: string | null | undefined; channelMemoryMode?: ChannelMemoryMode | undefined };
-  assistant: { content: string; createdAt: number };
+  assistant: { content: string; createdAt: number; messageIds?: readonly string[] | undefined };
+  contextProvenance?: ContextProvenance | null | undefined;
 }
 
 // What the store actually persists per action — the statement's embedding,
@@ -33,6 +36,8 @@ export interface UserChatStateStore {
   commitSuccessfulExchange(input: {
     sourceMessageId?: string | null;
     sourceTimestampMs?: number;
+    contextProvenance?: ContextProvenance | null;
+    assistantMessageIds?: readonly string[];
     channelMemoryMode?: ChannelMemoryMode;
     guildId: string;
     userId: string;
@@ -71,6 +76,14 @@ export interface UserChatStateStore {
 // Transitional alias for adapters compiled against the first memory iteration.
 export type ChatStateStore = UserChatStateStore;
 
+// Dependency metadata has its own bounded schema; it is not model-visible
+// transcript text and must not evict useful exchanges from the prompt budget.
+export function sessionTranscriptChars(exchanges: readonly ChatSessionExchange[]): number {
+  return JSON.stringify(exchanges.map(({ user, assistant }) => ({ user,
+    assistant: { content: assistant.content, createdAt: assistant.createdAt },
+  }))).length;
+}
+
 // Reports what got evicted (both the count-cap slice and the char-budget
 // shift) alongside what's kept, so a caller can consolidate the dropped
 // exchanges into durable knowledge instead of losing them silently.
@@ -82,7 +95,7 @@ export function boundSessionExchanges(
   const dropped = all.slice(0, all.length - kept.length);
   while (
     kept.length > 1 &&
-    JSON.stringify(kept).length > chatMemoryLimits.maxSessionSerializedChars
+    sessionTranscriptChars(kept) > chatMemoryLimits.maxSessionSerializedChars
   ) {
     dropped.push(kept.shift()!);
   }

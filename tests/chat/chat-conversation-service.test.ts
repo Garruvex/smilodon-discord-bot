@@ -21,6 +21,8 @@ import { DefaultMemoryEngine } from "../../src/application/memory/memory-engine.
 import type { MemoryEngine, MemoryRepository } from "../../src/application/memory/memory.js";
 import type { EmbeddingsClient } from "../../src/application/chat/embeddings-client.js";
 import { PersonaDriftStore } from "../../src/application/chat/persona-drift-store.js";
+import { captureIncompleteTurnProvenance } from "../../src/application/chat/context-provenance.js";
+import { decisionRequest } from "../helpers/conversation-decision-fixtures.js";
 
 function response(
   text: string,
@@ -85,6 +87,53 @@ function baseStore(overrides: Partial<ChatStateStore> = {}): ChatStateStore {
 }
 
 describe("ChatConversationService", () => {
+  it.each(["disabled", "session_only"] as const)("does not create durable provenance in %s channels", async (mode) => {
+    const commit = vi.fn(() => Promise.resolve({ droppedExchanges: [] }));
+    const service = new ChatConversationService({ reply: (): Promise<ChatResponse> => Promise.resolve(response("answer")) },
+      baseStore({ commitSuccessfulExchange: commit }), testMemoryEngine().engine);
+    try {
+      await service.run({ ...input("question"), channelMemoryModes: { channel: mode } }, (output) => {
+        expect(output.contextProvenance).toBeNull(); return Promise.resolve(output.text);
+      });
+      expect(commit).toHaveBeenCalledWith(expect.objectContaining({ contextProvenance: null }));
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+  it("excludes legacy session quotations from every expanded prompt input and reports a safe count", async () => {
+    const { logger, records } = captureDiagnosticLogger();
+    const reply = vi.fn((request: ChatRequest) => {
+      expect(request.recentHistory).toEqual([]); expect(buildChatContext(request)).not.toContain("PROTECTED_SESSION_QUOTATION");
+      return Promise.resolve(response("answer"));
+    });
+    const state = baseStore({ load: () => Promise.resolve({ memories: [], exchanges: [{
+      user: { content: "earlier question", createdAt: 1 }, assistant: { content: "PROTECTED_SESSION_QUOTATION", createdAt: 2 },
+    }] }) });
+    const service = new ChatConversationService({ reply }, state, testMemoryEngine().engine, undefined, undefined, undefined, null, null, null, logger);
+    try {
+      await service.run({ ...input("question"), refreshHistoricalContext: () => Promise.resolve([]) }, (result) => Promise.resolve(result.text));
+      expect(reply).toHaveBeenCalledOnce();
+      expect(records.find((record) => record.event === "context.derived.excluded")).toMatchObject({ source: "session", count: 1, reason: "unverified_provenance" });
+      expect(JSON.stringify(records)).not.toContain("PROTECTED_SESSION");
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+
+  it("overwrites provider-supplied provenance and records known dependencies and confirmed delivery IDs", async () => {
+    const forged = captureIncompleteTurnProvenance(decisionRequest({ currentBurst: [], channelHistory: [],
+      currentEvent: { type: "message", messageId: "forged-source", channelId: "channel", authorId: "alice", timestampMs: 1, replyToMessageId: null, mentionedUserIds: [] },
+    }), "answer")!;
+    const commit = vi.fn(() => Promise.resolve({ droppedExchanges: [] }));
+    const service = new ChatConversationService({ reply: (): Promise<ChatResponse> => Promise.resolve({ ...response("answer"),
+      contextProvenance: { ...forged, coverage: "complete", unresolved: [] } }) }, baseStore({ commitSuccessfulExchange: commit }), testMemoryEngine().engine);
+    try {
+      const result = await service.run({ ...input("question"), sourceMessageId: "current",
+        currentEvent: { type: "message", messageId: "current", channelId: "channel", authorId: "user", timestampMs: 1, replyToMessageId: null, mentionedUserIds: [] },
+      }, (output) => {
+        expect(output.contextProvenance).toMatchObject({ coverage: "partial", unresolved: ["unguarded_prompt_sources"] });
+        output.characterDeliveryProof = [{ messageId: "confirmed", content: output.text }]; return Promise.resolve(output.text);
+      });
+      expect(result.contextProvenance?.dependencies).toMatchObject([{ messageId: "current", authorId: "user" }]);
+      expect(commit).toHaveBeenCalledWith(expect.objectContaining({ assistantMessageIds: ["confirmed"], contextProvenance: result.contextProvenance }));
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
   it("refreshes expanded history before use and suppresses delivery after a source becomes unreadable", async () => {
     const old = { messageId: "old", channelId: "channel", timestampMs: 0, authorId: "user", authorDisplayName: "User", content: "earlier question", imageCount: 0 };
     let readable = true;

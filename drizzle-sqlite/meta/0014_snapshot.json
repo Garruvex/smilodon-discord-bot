@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "23953dcc-97fd-40c5-9f83-1fda746b0713",
-  "prevId": "51ab3834-848b-44e5-b931-e8cfa9cc7632",
+  "id": "662c0b83-5b3f-453c-8a75-2dae274eb551",
+  "prevId": "23953dcc-97fd-40c5-9f83-1fda746b0713",
   "tables": {
     "channel_summary_checkpoints": {
       "name": "channel_summary_checkpoints",
@@ -1088,6 +1088,13 @@
         },
         "source_message_id": {
           "name": "source_message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "context_provenance": {
+          "name": "context_provenance",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

@@ -5,6 +5,10 @@ import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 
 import { ChatTurnSupport, type ChatDeliveryPayload } from "../../src/infrastructure/discord/behaviors/chat-turn-support.js";
 import type { GeneratedChatImage } from "../../src/application/chat/chat-provider.js";
+import { captureIncompleteTurnProvenance } from "../../src/application/chat/context-provenance.js";
+import { hashContent } from "../../src/application/assets/content-hash.js";
+import { decisionRequest } from "../helpers/conversation-decision-fixtures.js";
+import type { MessageOriginRecord } from "../../src/application/chat/message-origin-store.js";
 
 function logger(): Logger {
   return { warn: vi.fn() } as unknown as Logger;
@@ -21,6 +25,22 @@ function image(bytes: number, filename = "image.png"): GeneratedChatImage {
 const oneMiB = 1024 * 1024;
 
 describe("ChatTurnSupport.deliverChatResponse", () => {
+  it("binds dependencies separately to each confirmed delivery part", async () => {
+    const recorded: MessageOriginRecord[] = [];
+    const support = new ChatTurnSupport(logger(), null, { record: (record): Promise<void> => { recorded.push(record); return Promise.resolve(); }, find: (): Promise<null> => Promise.resolve(null) });
+    const text = "word ".repeat(500);
+    const proof = captureIncompleteTurnProvenance(decisionRequest(), text)!;
+    const contents: string[] = [];
+    const send = (payload: ChatDeliveryPayload): Promise<Message> => {
+      contents.push(payload.content); return Promise.resolve({ id: `part-${contents.length}`, content: payload.content } as Message);
+    };
+    await support.deliverChatResponse({ sender: { first: send, rest: send }, text, sources: [], images: [], emptyFallbackContent: "empty",
+      sourceMessage: { id: "trigger", guildId: "guild", channelId: "channel", author: { bot: false } } as Message,
+      contextProvenance: proof, maxImageAggregateBytes: oneMiB });
+    expect(recorded.length).toBeGreaterThan(1);
+    expect(recorded.map((record) => record.contextProvenance?.outputHash)).toEqual(contents.map(hashContent));
+    expect(recorded.every((record) => record.contextProvenance?.coverage === "partial")).toBe(true);
+  });
   it("falls back to safe Discord chunks when character-shaped paragraphs exceed the message limit", async () => {
     const support = new ChatTurnSupport(logger()); const payloads: ChatDeliveryPayload[] = [];
     const send = (payload: ChatDeliveryPayload): Promise<Message> => { payloads.push(payload); return Promise.resolve(fakeMessage(String(payloads.length))); };

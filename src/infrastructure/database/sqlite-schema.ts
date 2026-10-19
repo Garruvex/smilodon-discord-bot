@@ -1,3 +1,4 @@
+import type { ContextProvenance } from "../../application/chat/context-provenance.js";
 import { sql } from "drizzle-orm";
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import type { MessageOrigin } from "../../application/chat/message-origin-store.js";
@@ -22,6 +23,7 @@ export const messageOrigins = sqliteTable("message_origins", {
   channelId: text("channel_id").notNull(),
   origin: text("origin").$type<MessageOrigin>().notNull(),
   sourceMessageId: text("source_message_id"),
+  contextProvenance: text("context_provenance", { mode: "json" }).$type<ContextProvenance>(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 }, (table) => [index("message_origins_scope_idx").on(table.guildId, table.channelId)]);
 

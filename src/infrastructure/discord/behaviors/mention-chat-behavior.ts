@@ -277,6 +277,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           ? "Here you go!"
           : "I ran out of words. Very premium of me.";
         const { deliveredText, firstMessageId } = await this.turnSupport.deliverChatResponse({
+          contextProvenance: deliveredResponse.contextProvenance ?? null,
           sourceMessage: message, origin: deliveredResponse.outputOrigin ?? "chat",
           sender: {
             first: async (payload) => {
