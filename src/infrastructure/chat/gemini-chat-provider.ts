@@ -147,7 +147,8 @@ export class GeminiChatProvider implements ChatProvider {
     }];
 
     for (let roundTrip = 0; ; roundTrip++) {
-      const response = await this.modelChain.run((model) => {
+      const response = await this.modelChain.run(async (model) => {
+        await request.beforeModelAttempt?.();
         request.onModelAttempt?.();
         return this.generateContent(model, buildChatInstructions(request, chatSafetyGuard), contents, this.buildTools(request, customTools));
       });
@@ -165,7 +166,8 @@ export class GeminiChatProvider implements ChatProvider {
           this.modelTurn(response),
           this.functionResponseTurn(functionCalls, functionCalls.map(() => ({ content: toolBudgetExhaustedMessage }))),
         ];
-        const finalizeResponse = await this.modelChain.run((model) => {
+        const finalizeResponse = await this.modelChain.run(async (model) => {
+          await request.beforeModelAttempt?.();
           request.onModelAttempt?.();
           return this.generateContent(model, buildChatInstructions(request, chatSafetyGuard), contents, undefined);
         });
@@ -469,12 +471,12 @@ export class GeminiChatProvider implements ChatProvider {
     draftResponse: string,
     context: readonly { authorId: string; authorDisplayName: string; content: string }[],
     currentMessage: string,
+    beforeAttempt?: () => Promise<void>,
   ): Promise<{ needsCorrection: boolean; correctionNotes: string | null }> {
-    const response = await this.summaryModelChain.run((model) => this.generateStructured(
-      model,
-      buildAttributionVerificationPrompt(draftResponse, context, currentMessage),
-      attributionVerificationJsonSchema,
-    ));
+    const response = await this.summaryModelChain.run(async (model) => {
+      await beforeAttempt?.();
+      return this.generateStructured(model, buildAttributionVerificationPrompt(draftResponse, context, currentMessage), attributionVerificationJsonSchema);
+    });
     return parseAttributionVerificationOutput((response.text ?? "").trim());
   }
 

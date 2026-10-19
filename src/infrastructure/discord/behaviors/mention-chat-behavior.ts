@@ -123,14 +123,14 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     const participation = resolveParticipation(profile.chat.participation, message.channelId);
     const lowSubstance = isLowSubstancePing(prompt, Boolean(message.reference?.messageId), message.attachments.size > 0);
     // Oldest ancestor first, ending just before `message` itself.
-    const { kept: replyChainMessages, overflow: replyChainOverflowMessages } = await this.turnSupport.resolveReplyChain(message);
+    const { kept: replyChainMessages, overflow: replyChainOverflowMessages } = (characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count" ? { kept: [], overflow: [] } : await this.turnSupport.resolveReplyChain(message));
     const ancestors = this.turnSupport.toChannelHistoryMessages([...replyChainOverflowMessages, ...replyChainMessages]);
     const replyChain: ReplyChainMessage[] = ancestors.slice(replyChainOverflowMessages.length);
     // Older ancestors are summarized without attaching their images. Preserve
     // their original authors/addressees even when another human joins a reply.
     const replyChainOverflow: ReplyChainMessage[] = ancestors.slice(0, replyChainOverflowMessages.length)
       .map((hop) => ({ ...hop, imageCount: 0 }));
-    const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory
+    const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory && !(characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count")
       ? this.turnSupport.toChannelHistoryMessages(await this.turnSupport.resolveChannelHistory(
           message,
           characterSettings(profile).context.enabled ? characterSettings(profile).context.maxMessages : profile.chat.channelHistoryLimit,
@@ -139,7 +139,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count",
         ))
       : [];
-    const { selected: imageAttachments, droppedUnsupported, droppedOverLimit } = profile.chat.imageInputEnabled
+    const { selected: imageAttachments, droppedUnsupported, droppedOverLimit } = profile.chat.imageInputEnabled && !(characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count")
       ? this.turnSupport.selectImageAttachments(
           [...message.attachments.values()],
           // Nearest-to-current hop first, so recency wins once truncated to the limit.
@@ -220,8 +220,8 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         activityLimits: participation.limits,
         resolveActivityLimits: () => resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits,
         resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(message.guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
-        ...(characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count" ? { refreshHistoricalContext:
-          this.turnSupport.createHistoricalContextRefresh(message) } : {}),
+        ...(characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count" ? { guardedContextPort: this.turnSupport.createContextPort(message, false),
+          guardedContextPolicy: { count: characterSettings(profile).context.maxMessages, budget: characterSettings(profile).context.budget } } : {}),
         refreshContextMessage: (event) => this.turnSupport.refreshHistoryEvent(message, event),
         allowSilentDirect: participation.barePingMode === "personality",
         afterDecision: async (result) => {
@@ -278,6 +278,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           : "I ran out of words. Very premium of me.";
         const { deliveredText, firstMessageId } = await this.turnSupport.deliverChatResponse({
           contextProvenance: deliveredResponse.contextProvenance ?? null,
+          ...(deliveredResponse.contextLease ? { contextLease: deliveredResponse.contextLease } : {}),
           sourceMessage: message, origin: deliveredResponse.outputOrigin ?? "chat",
           sender: {
             first: async (payload) => {

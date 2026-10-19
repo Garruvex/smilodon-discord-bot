@@ -17,6 +17,7 @@ export const contextProvenanceSchema = z.object({
     // captured every field or the full original Discord message.
     representationHash: digest,
   }).strict()).max(contextProvenanceLimits.dependencies),
+  actors: z.array(z.object({ userId: id, representationHash: digest }).strict()).max(100).optional(),
   unresolved: z.array(z.enum(["unguarded_prompt_sources", "missing_current_event", "missing_source_scope", "conflicting_source", "dependency_cap"])).max(5),
 }).strict().superRefine((value, context) => {
   if (value.coverage === "complete" && (value.unresolved.length > 0 || value.dependencies.length === 0))

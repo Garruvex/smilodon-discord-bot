@@ -7,6 +7,31 @@ import { OpenAiCompatibleChatProvider } from "../../src/infrastructure/chat/open
 const input = { personality: "synthetic", events: [], burst: [branchCurrent], botId: "bot", fixedTarget: "current", gapMs: 1000, speakingShare: 0, thoughts: false };
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe("bounded decision recovery", () => {
+  it("stops a decision fallback when its source guard is no longer current", async () => {
+    let allowed = true;
+    const primary = { generateCharacterData: vi.fn(() => { allowed = false; return Promise.reject(new Error("first endpoint failed")); }) };
+    const fallback = { generateCharacterData: vi.fn(() => Promise.resolve(decisionProposal())) };
+    const service = new CharacterDecisionService(primary, fallback);
+    expect((await service.evaluate({ ...input, canUseContext: () => Promise.resolve(allowed) })).status).toBe("failed");
+    expect(primary.generateCharacterData).toHaveBeenCalledOnce(); expect(fallback.generateCharacterData).not.toHaveBeenCalled();
+  });
+  it.each(["responses", "compatible"])("blocks every %s reply transport while a guard rejects it", async (kind) => {
+    const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+    const provider = kind === "responses" ? new OpenAiResponsesChatProvider("https://example.test", "secret", ["first", "second"], { reasoningEffort: "low", verbosity: "low", maxOutputTokens: 100 })
+      : new OpenAiCompatibleChatProvider("https://example.test", "secret", ["first", "second"], null);
+    const { decisionRequest } = await import("../helpers/conversation-decision-fixtures.js");
+    const beforeModelAttempt = vi.fn(() => Promise.reject(new Error("source invalidated")));
+    await expect(provider.reply(decisionRequest({ beforeModelAttempt }))).rejects.toBeDefined();
+    expect(beforeModelAttempt).toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  });
+  it("guards standalone attribution retries before sending source text", async () => {
+    const fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ error: { code: "rate_limit" } }), { status: 429 })));
+    vi.stubGlobal("fetch", fetch);
+    const provider = new OpenAiResponsesChatProvider("https://example.test", "secret", ["first", "second"], { reasoningEffort: "low", verbosity: "low", maxOutputTokens: 100 });
+    const beforeAttempt = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValue(new Error("source invalidated"));
+    await expect(provider.verifyAttribution("synthetic", [], "current", beforeAttempt)).rejects.toBeDefined();
+    expect(fetch).toHaveBeenCalledOnce(); expect(beforeAttempt.mock.calls.length).toBeGreaterThan(1);
+  });
   it.each(["responses", "compatible"])("passes cancellation and a one-model budget into %s transport", async (kind) => {
     const fetch = vi.fn((_url: unknown, request?: RequestInit) => {
       expect(request?.signal).toBe(controller.signal);

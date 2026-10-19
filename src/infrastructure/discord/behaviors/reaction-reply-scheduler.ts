@@ -340,7 +340,8 @@ export class ReactionReplyScheduler {
     const eligibleIds = new Set<string>();
     for (const id of rawIds) {
       const member = await message.guild?.members.fetch(id).catch(() => null) ?? null;
-      if (this.chatAccess.canUseMentionChat(profile, member, id, channelId)) eligibleIds.add(id);
+      if (characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count"
+        ? this.chatAccess.canObserve(profile, member) : this.chatAccess.canUseMentionChat(profile, member, id, channelId)) eligibleIds.add(id);
     }
     const reactions = rawReactions
       .map((reaction) => ({ ...reaction, userIds: reaction.userIds.filter((id) => eligibleIds.has(id)) }))
@@ -366,7 +367,7 @@ export class ReactionReplyScheduler {
     // "before message.id", since this turn is evaluated minutes after
     // `message` was sent and needs to see whatever was said in between
     // (see ChatTurnSupport.resolveChannelHistory's own doc comment).
-    const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory
+    const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory && !(characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count")
       ? this.turnSupport.toChannelHistoryMessages(await this.turnSupport.resolveChannelHistory(
           message, characterSettings(profile).context.enabled ? characterSettings(profile).context.maxMessages : profile.chat.channelHistoryLimit, new Set([message.id]), null,
           characterSettings(profile).context.enabled ? characterSettings(profile).context.budget : chatMemoryLimits.maxChannelHistoryChars,
@@ -394,15 +395,15 @@ export class ReactionReplyScheduler {
     };
 
     try {
-      const { kept, overflow } = await this.turnSupport.resolveReplyChain(message);
+      const { kept, overflow } = (characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count" ? { kept: [], overflow: [] } : await this.turnSupport.resolveReplyChain(message));
       const response = await this.conversation.run({
         guildId, channelId: message.channelId, sourceMessageId: message.id,
         canExecute: () => this.turnSupport.isEligible(message, "reaction"),
         activityLimits: resolveParticipation(profile.chat.participation, message.channelId).limits,
         resolveActivityLimits: () => resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).limits,
         resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
-        ...(characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count" ? { refreshHistoricalContext:
-          this.turnSupport.createHistoricalContextRefresh(message) } : {}),
+        ...(characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count" ? { guardedContextPort: this.turnSupport.createContextPort(message, true),
+          guardedContextPolicy: { count: characterSettings(profile).context.maxMessages, budget: characterSettings(profile).context.budget, minReactors: profile.chat.reactionReplyMinReactors } } : {}),
         refreshContextMessage: (event) => this.turnSupport.refreshHistoryEvent(message, event),
         shouldDeliver: () => !resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).shadowMode,
         shadowMode: resolveParticipation(profile.chat.participation, message.channelId).shadowMode,
@@ -443,6 +444,7 @@ export class ReactionReplyScheduler {
         if (!selectedTarget || !await this.turnSupport.isEligible(selectedTarget, "reaction")) throw new SocialOutputSuppressed();
         const { deliveredText } = await this.turnSupport.deliverChatResponse({
           contextProvenance: deliveredResponse.contextProvenance ?? null,
+          ...(deliveredResponse.contextLease ? { contextLease: deliveredResponse.contextLease } : {}),
           sourceMessage: selectedTarget, trigger: "reaction",
           sender: {
             first: async (payload) => { await ensureDelivery(); return selectedTarget.reply({

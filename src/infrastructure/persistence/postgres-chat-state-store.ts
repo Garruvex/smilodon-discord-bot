@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { boundedDeliveryMessageIds, chatSessionExchangesSchema as exchangesSchema } from "../../application/chat/chat-session-schema.js";
 import { bindProvenanceOutput } from "../../application/chat/context-provenance.js";
@@ -84,6 +84,14 @@ export class PostgresChatStateStore implements ChatStateStore {
         eq(schema.chatMemories.guildId, guildId), eq(schema.chatMemories.assertedByUserId, userId),
       ));
     });
+  }
+  public async invalidateContextSubject(guildId: string, userId: string): Promise<void> {
+    await this.database.execute(sql`UPDATE ${schema.chatSessions} SET exchanges = coalesce((
+      SELECT jsonb_agg(exchange) FROM jsonb_array_elements(${schema.chatSessions.exchanges}) AS exchange
+      WHERE NOT (coalesce(exchange->'contextProvenance'->'audience'->>'userId' = ${userId}, false)
+        OR EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(exchange->'contextProvenance'->'dependencies', '[]'::jsonb)) AS dependency WHERE dependency->>'authorId' = ${userId})
+        OR EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(exchange->'contextProvenance'->'actors', '[]'::jsonb)) AS actor WHERE actor->>'userId' = ${userId}))
+      ), '[]'::jsonb) WHERE ${schema.chatSessions.guildId} = ${guildId}`);
   }
   public async clearRecentHistory(guildId: string, userId: string): Promise<void> {
     await this.database.delete(schema.chatSessions).where(and(eq(schema.chatSessions.guildId, guildId), eq(schema.chatSessions.userId, userId)));

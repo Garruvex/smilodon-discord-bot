@@ -1,3 +1,4 @@
+import type { GuardedConversationContext, GuardedContextPort, GuardedContextSource } from "../../../application/chat/guarded-conversation-context.js";
 import { bindProvenanceOutput, type ContextProvenance } from "../../../application/chat/context-provenance.js";
 import type { Attachment, Message, User, GuildMember } from "discord.js";
 import type { ChatUser, ConversationEvent } from "../../../application/chat/chat-provider.js";
@@ -88,6 +89,60 @@ export class ChatTurnSupport {
       timestampMs: message.createdTimestamp, authorId: message.author.id,
       replyToMessageId: message.reference?.messageId ?? null,
       mentionedUserIds: [...message.mentions.users.keys()].filter((id) => id !== message.client.user?.id),
+    };
+  }
+
+  public createContextPort(source: Message, reaction = false): GuardedContextPort {
+    const eligibility = this.eligibility;
+    const version = eligibility?.contextPolicyVersion(source);
+    const passes = new WeakMap<AbortSignal, { messages: Map<string, Message>; members: Map<string, Promise<GuildMember | null>> }>();
+    const state = (signal: AbortSignal): { messages: Map<string, Message>; members: Map<string, Promise<GuildMember | null>> } => {
+      let value = passes.get(signal); if (!value) { value = { messages: new Map(), members: new Map() }; passes.set(signal, value); } return value;
+    };
+    const member = async (id: string, signal: AbortSignal): Promise<GuildMember | null> => {
+      if (signal.aborted) return null;
+      const cache = state(signal).members;
+      if (!cache.has(id)) cache.set(id, source.guild?.members.fetch({ user: id, force: true }).catch(() => null) ?? Promise.resolve(null));
+      return cache.get(id)!;
+    };
+    return {
+      guildId: source.guildId!, channelId: source.channelId, sourceMessageId: source.id, actorId: reaction ? null : source.author.id, persist: eligibility?.canPersistContext(source) ?? false,
+      coverage: (report) => emitChatDiagnostic(this.logger, { event: "context.guard.coverage", ...report }),
+      validation: (status, reads) => emitChatDiagnostic(this.logger, { event: "context.guard.validation", status, reads }),
+      policyCurrent: () => !!eligibility && eligibility.contextPolicyVersion(source) === version,
+      read: async (id, signal): Promise<GuardedContextSource | null> => {
+        if (!eligibility || signal.aborted) return null;
+        const messages = state(signal).messages;
+        const message = messages.get(id) ?? await source.channel.messages.fetch({ message: id, force: true }).catch(() => null);
+        if (!message || signal.aborted || message.guildId !== source.guildId || message.channelId !== source.channelId) return null;
+        messages.set(id, message);
+        if (message.author.bot && message.author.id !== source.client.user?.id) return null;
+        const actor = message.author.bot ? null : await member(message.author.id, signal);
+        const access = await eligibility.checkGuardedSource(message, actor, id === source.id);
+        if (!access.eligible) {
+          const reason = eligibilityReason.safeParse(access.reason);
+          if (reason.success) emitChatDiagnostic(this.logger, { event: "context.eligibility.denied", sourceMessageId: id, purpose: "guarded_current", reason: reason.data });
+          return null;
+        }
+        const origin = message.author.bot ? await this.origins?.find(source.guildId!, source.channelId, id).catch(() => null) : null;
+        if (message.author.bot && origin?.origin !== "chat") return null;
+        const user = this.toChatUser(message.author, actor);
+        const event = { ...this.toChannelHistoryMessages([message])[0]!, author: { ...user, roleNames: [...user.roleNames].sort() }, content: message.content, imageCount: 0, replyToAuthorId: null, replyToAuthorDisplayName: null };
+        return { event, origin: message.author.bot ? "chat" : "human", provenance: origin?.contextProvenance ?? null };
+      },
+      page: async (before, signal): Promise<readonly string[]> => {
+        if (!eligibility || signal.aborted || !await eligibility.canReadHistory(source, source.author.bot ? null : await member(source.author.id, signal))) return [];
+        const fetched = await source.channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
+        if (signal.aborted) return [];
+        for (const message of fetched.values()) state(signal).messages.set(message.id, message);
+        return [...fetched.keys()];
+      },
+      actor: async (id, signal): Promise<ChatUser | null> => {
+        const actor = await member(id, signal); if (!actor || actor.user.bot || !eligibility) return null;
+        // Use the same author rule without importing any of the member's messages.
+        const allowed = await eligibility.checkGuardedActor(source, actor);
+        return allowed ? this.toChatUser(actor.user, actor) : null;
+      },
     };
   }
 
@@ -548,6 +603,7 @@ export class ChatTurnSupport {
     trigger?: SocialTrigger;
     origin?: MessageOrigin;
     contextProvenance?: ContextProvenance | null;
+    contextLease?: GuardedConversationContext;
     characterMessages?: readonly string[] | undefined;
     characterDelayMs?: number | undefined;
     characterIsCurrent?: (() => boolean) | undefined;
@@ -600,21 +656,23 @@ export class ChatTurnSupport {
       sends[0]!.content = params.emptyFallbackContent;
     }
 
+    const confirmedText: string[] = [];
     let deliveredParts = 0;
     let partial = false;
-    const sendAndRecord = async (send: () => Promise<Message>): Promise<Message> => {
+    const sendAndRecord = async (send: () => Promise<Message>, expectedContent: string): Promise<Message> => {
+      if (params.contextLease && !await params.contextLease.validate()) throw new SocialOutputSuppressed();
       if (params.characterIsCurrent && !params.characterIsCurrent()) throw new SocialOutputSuppressed();
       if (params.characterCanDeliver && !await params.characterCanDeliver()) throw new SocialOutputSuppressed();
       if (params.sourceMessage) await this.assertEligible(params.sourceMessage, params.trigger ?? "direct");
       const sent = await withDiscordCaller("chat_text", send);
-      deliveredParts++;
+      deliveredParts++; confirmedText.push(sent.content ?? expectedContent);
       emitChatDiagnostic(this.logger, { event: "chat.delivery.part", deliveredMessageId: sent.id, part: deliveredParts });
       params.recordDelivery?.(sent);
       if (this.origins && params.sourceMessage?.guildId) {
         await this.origins.record({
           guildId: params.sourceMessage.guildId, channelId: params.sourceMessage.channelId, messageId: sent.id,
           origin: params.origin ?? "chat", sourceMessageId: params.sourceMessage.id, createdAt: Date.now(),
-          contextProvenance: bindProvenanceOutput(params.contextProvenance, sent.content, {
+          contextProvenance: params.contextLease ? params.contextLease.provenance(sent.content) : bindProvenanceOutput(params.contextProvenance, sent.content, {
             guildId: params.sourceMessage.guildId, channelId: params.sourceMessage.channelId,
           }),
         }).catch((error: unknown) => this.logger.warn({ error, messageId: sent.id }, "Failed to record output origin; unknown output stays excluded"));
@@ -624,7 +682,7 @@ export class ChatTurnSupport {
     const [firstSend, ...restSends] = sends;
     let firstMessage: Message;
     try {
-      firstMessage = await sendWithRetry(() => sendAndRecord(() => params.sender.first(firstSend!)));
+      firstMessage = await sendWithRetry(() => sendAndRecord(() => params.sender.first(firstSend!), firstSend!.content));
     } catch (error) {
       emitChatDiagnostic(this.logger, { event: "chat.delivery.completed", plannedParts: sends.length, deliveredParts,
         status: error instanceof SocialOutputSuppressed ? "suppressed" : "failed", ...(error instanceof SocialOutputSuppressed ? {} : safeFailure(error)) });
@@ -633,7 +691,7 @@ export class ChatTurnSupport {
     for (const send of restSends) {
       try {
         if (params.characterDelayMs) await new Promise((resolve) => setTimeout(resolve, params.characterDelayMs! / Math.max(1, restSends.length)));
-        await sendWithRetry(() => sendAndRecord(() => params.sender.rest(send)));
+        await sendWithRetry(() => sendAndRecord(() => params.sender.rest(send), send.content));
       } catch (error) {
         partial = true;
         if (error instanceof SocialOutputSuppressed) break;
@@ -653,7 +711,7 @@ export class ChatTurnSupport {
         messageId: params.sourceMessage.id, origin: params.origin, sourceMessageId: null, createdAt: Date.now(),
       }).catch((error: unknown) => this.logger.warn({ error }, "Failed to persist functional interaction origin"));
     }
-    return { deliveredText: params.text, firstMessageId: firstMessage.id };
+    return { deliveredText: params.contextLease && partial ? confirmedText.join("\n\n") : params.text, firstMessageId: firstMessage.id };
   }
 
   // Applies the model's spontaneous reactions on OTHER channel messages (see

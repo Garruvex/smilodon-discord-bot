@@ -26,6 +26,7 @@ export interface ChatStateSnapshot {
 
 export interface UserChatStateStore {
   initialize(): Promise<void>;
+  invalidateContextSubject?(guildId: string, userId: string): Promise<void>;
   // `channelId` scopes the recent-exchange transcript to this channel — a
   // user's short-term "what did we just say" history doesn't bleed across
   // channels. `chat_memories` (long-term, cross-channel) is unaffected.

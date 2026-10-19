@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { boundedDeliveryMessageIds, chatSessionExchangesSchema as exchangesSchema } from "../../application/chat/chat-session-schema.js";
 import { bindProvenanceOutput } from "../../application/chat/context-provenance.js";
@@ -75,6 +75,15 @@ export class SqliteChatStateStore implements ChatStateStore {
         eq(schema.chatMemories.guildId, guildId), eq(schema.chatMemories.assertedByUserId, userId),
       )).run();
     });
+    return Promise.resolve();
+  }
+  public invalidateContextSubject(guildId: string, userId: string): Promise<void> {
+    this.database.run(sql`UPDATE ${schema.chatSessions} SET exchanges = (
+      SELECT json_group_array(json(exchange.value)) FROM json_each(${schema.chatSessions.exchanges}) AS exchange
+      WHERE NOT (coalesce(json_extract(exchange.value, '$.contextProvenance.audience.userId') = ${userId}, 0)
+        OR EXISTS (SELECT 1 FROM json_each(exchange.value, '$.contextProvenance.dependencies') AS dependency WHERE json_extract(dependency.value, '$.authorId') = ${userId})
+        OR EXISTS (SELECT 1 FROM json_each(exchange.value, '$.contextProvenance.actors') AS actor WHERE json_extract(actor.value, '$.userId') = ${userId}))
+      ) WHERE ${schema.chatSessions.guildId} = ${guildId}`);
     return Promise.resolve();
   }
   public clearRecentHistory(guildId: string, userId: string): Promise<void> {

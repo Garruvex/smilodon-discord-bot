@@ -1,3 +1,4 @@
+import { isGuardedContext, projectDecisionContext } from "./guarded-conversation-context.js";
 import { z } from "zod";
 import { budgetEligibleHistory } from "./eligible-channel-history.js";
 import type { Logger } from "pino";
@@ -152,7 +153,7 @@ export class CharacterRuntime {
     // Solicited replies use a stable snapshot. Ordinary background learning
     // and mood expiry must not silence a mention. Explicit forgetting/access
     // changes still use conversation privacy versions and eligibility.
-    if (prepared.request.triggerMode === "direct" || prepared.request.triggerMode === "ambient") return this.stillEligible(prepared);
+    if (isGuardedContext(prepared.request.contextLease) || prepared.request.triggerMode === "direct" || prepared.request.triggerMode === "ambient") return this.stillEligible(prepared);
     const current = await this.registry.contribute({ ...prepared.turn, validationNow: this.now() });
     return this.stillEligible(prepared) && JSON.stringify(current) === prepared.memoryContextSignature;
   }
@@ -230,7 +231,8 @@ export class CharacterRuntime {
     const privacyVersion = this.privacyVersions.get(request.guildId) ?? 0;
     const turn: CharacterTurn = { request, settings, capabilities, now: this.now() };
     const enabled = (id: CharacterModuleId): boolean => this.registry.has(id) && !characterInactiveReason(settings, id, request.channelId, capabilities);
-    const events = request.channelHistory;
+    const guarded = isGuardedContext(request.contextLease);
+    const events = guarded ? [...request.replyChain, ...request.channelHistory] : request.channelHistory;
     const burst = request.currentBurst?.length ? request.currentBurst : request.currentEvent?.type === "message" ? [{
       messageId: request.currentEvent.messageId, timestampMs: request.currentEvent.timestampMs, authorId: request.currentUser.id,
       authorDisplayName: request.currentUser.displayName, content: request.message, imageCount: request.images.length,
@@ -260,14 +262,14 @@ export class CharacterRuntime {
         targetMessageId, memoryContextSignature: "[]", participation: { action: "ignore", reaction: null }, styleUserId, styleSignature, targetConfidence };
     }
     if (!request.characterEvaluation && capabilities.context && (optional || settings.context.enabled || enabled("addressing") || enabled("thoughts"))) {
-      const decisionEvents = events.slice(-settings.context.decisionMessages);
+      const decisionEvents = guarded ? projectDecisionContext(request, settings.context.decisionMessages) : events.slice(-settings.context.decisionMessages);
       const fixedTarget = request.triggerMode === "continuation" ? burst.at(-1)?.messageId ?? null : optional || request.triggerMode === "reaction" ? null : request.currentEvent?.type === "message" ? request.currentEvent.messageId : null;
       const shouldDecide = optional || request.triggerMode === "reaction";
       const decisionStarted = Date.now();
       const outcome = shouldDecide ? await this.decisions.evaluate({ personality: request.personality, events: decisionEvents, burst, botId: request.botUserId ?? "bot",
         fixedTarget, gapMs: settings.context.segmentGapMinutes * 60_000,
         speakingShare: decisionEvents.length ? decisionEvents.filter((event) => event.authorId === request.botUserId).length / decisionEvents.length : 0,
-        thoughts: optional && enabled("thoughts"), availableActions: request.optionalActionsAvailable, now: turn.now }) : { status: "skipped" as const, decision: null };
+        canUseContext: guarded ? (): Promise<boolean> => request.contextLease!.validate() : undefined, thoughts: !guarded && optional && enabled("thoughts"), availableActions: request.optionalActionsAvailable, now: turn.now }) : { status: "skipped" as const, decision: null };
       const decision = outcome.decision; decisionStatus = outcome.status;
       const liveProfile = this.profiles.find(request.guildId);
       if (!liveProfile || this.fingerprint(liveProfile, request.channelId) !== fingerprint || (this.privacyVersions.get(request.guildId) ?? 0) !== privacyVersion) {
@@ -294,7 +296,7 @@ export class CharacterRuntime {
         if (index >= 0) request = { ...request, channelHistory: events.slice(Math.min(index, Math.max(0, events.length - 8))) };
       }
       turn.request = request;
-      request = this.registry.applyDecision(turn, { decision, events, burst, optional, local, policy }).request;
+      if (!guarded) request = this.registry.applyDecision(turn, { decision, events, burst, optional, local, policy }).request;
       if (optional) {
         const action = !allowed ? "ignore" : participation?.action === "reply" ? "reply" : participation?.reaction ? "reaction" : "ignore";
         const rejectionReason = action === "ignore" ? textRejectionReason ?? "no_action" : null;
@@ -325,13 +327,13 @@ export class CharacterRuntime {
       }
     }
     turn.request = request;
-    if (!request.characterEvaluation && !request.characterShadow && burst.at(-1)) await this.registry.observe(burst.at(-1)!, turn);
-    const context = await this.registry.contribute(turn);
+    if (!guarded && !request.characterEvaluation && !request.characterShadow && burst.at(-1)) await this.registry.observe(burst.at(-1)!, turn);
+    const context = guarded ? [] : await this.registry.contribute(turn);
     request = { ...request, characterContext: [...(request.characterContext ?? []), ...context] };
     if (targetMessageId) {
       const target = [...events, ...burst].find((event) => event.messageId === targetMessageId);
       if (target) {
-        const preferences = target.authorId !== request.currentUser.id ? await this.targetPreferences?.(request.guildId, target.authorId) : null;
+        const preferences = !guarded && target.authorId !== request.currentUser.id ? await this.targetPreferences?.(request.guildId, target.authorId) : null;
         if (preferences) { styleUserId = target.authorId; styleSignature = JSON.stringify(preferences); }
         if (target.authorId !== request.currentUser.id) request = { ...request, userCustomization: null, birthday: null };
         request.characterContext = [...(request.characterContext ?? []), { moduleId: "conversation-context", text:
@@ -346,7 +348,7 @@ export class CharacterRuntime {
     return { turn, request, fingerprint, allowed, decisionStatus, acceptedContribution, exchangeId, targetMessageId, memoryContextSignature: JSON.stringify(context), participation, styleUserId, styleSignature, targetConfidence, ...(conversationDecision ? { conversationDecision } : {}) };
   }
   public async process(reply: ChatResponse, prepared: CharacterPreparedTurn): Promise<ChatResponse> {
-    const processed = await this.registry.postProcess(reply, prepared.turn);
+    const processed = isGuardedContext(prepared.request.contextLease) ? reply : await this.registry.postProcess(reply, prepared.turn);
     return { ...processed, ...(prepared.exchangeId ? { participationExchangeId: prepared.exchangeId } : {}), characterIsCurrent: () => this.stillEligible(prepared),
       characterCanDeliver: () => this.validatePrepared(prepared),
       ...(prepared.targetMessageId ? { replyTargetMessageId: prepared.targetMessageId,

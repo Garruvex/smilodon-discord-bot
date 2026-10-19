@@ -37,6 +37,8 @@ function moduleSetting(id: CharacterModuleId): SettingNode {
 export const character = group("character", [
   setting("controls", { enabled: toggle({ read: (p) => characterSettings(p).enabled, write: (v) => ({ character: { enabled: v } }) }) }),
   setting("context", {
+    "retrieval-mode": choice({ choices: ["legacy", "eligible_count"] as const, read: (p) => characterSettings(p).context.retrievalMode,
+      write: (v, p) => ({ character: { context: { ...characterSettings(p).context, retrievalMode: v } } }) }),
     enabled: toggle({ read: (p) => characterSettings(p).context.enabled && p.features.channelHistory, write: (v, p) => ({ channelHistory: v, character: { context: { ...characterSettings(p).context, enabled: v } } }) }),
     minutes: integer({ min: 1, max: 20, read: (p) => characterSettings(p).context.windowMinutes, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, windowMinutes: v } } }) }),
     gap: integer({ min: 1, max: 20, read: (p) => characterSettings(p).context.segmentGapMinutes, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, segmentGapMinutes: v } } }) }),

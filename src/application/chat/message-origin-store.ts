@@ -13,6 +13,7 @@ export interface MessageOriginRecord {
 }
 
 export interface MessageOriginStore {
+  invalidateContextSubject?(guildId: string, userId: string): Promise<void>;
   record(input: MessageOriginRecord): Promise<void>;
   find(guildId: string, channelId: string, messageId: string): Promise<MessageOriginRecord | null>;
 }

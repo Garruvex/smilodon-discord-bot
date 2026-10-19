@@ -287,7 +287,8 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     stream: boolean,
     observer?: ChatResponseObserver,
   ): Promise<unknown> {
-    request.onModelAttempt?.();
+    await request.beforeModelAttempt?.();
+      request.onModelAttempt?.();
     const response = await fetch(`${this.baseUrl}/responses`, {
       method: "POST",
       headers: {
@@ -393,9 +394,10 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     instructions: string,
     schemaName: string,
     jsonSchema: object,
-    options?: { maxOutputTokens?: number; timeoutMs?: number; signal?: AbortSignal; maxAttempts?: number },
+    options?: { maxOutputTokens?: number; timeoutMs?: number; signal?: AbortSignal; maxAttempts?: number; beforeAttempt?: () => Promise<void> },
   ): Promise<string> {
     const body = await this.summaryModelChain.run(async (model) => {
+      await options?.beforeAttempt?.();
       const response = await fetch(`${this.baseUrl}/responses`, {
         method: "POST",
         headers: {
@@ -497,11 +499,13 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     draftResponse: string,
     context: readonly { authorId: string; authorDisplayName: string; content: string }[],
     currentMessage: string,
+    beforeAttempt?: () => Promise<void>,
   ): Promise<{ needsCorrection: boolean; correctionNotes: string | null }> {
     const text = await this.callStructuredOutput(
       buildAttributionVerificationPrompt(draftResponse, context, currentMessage),
       "attribution_verification",
       attributionVerificationJsonSchema,
+      ...(beforeAttempt ? [{ beforeAttempt }] : []),
     );
     return parseAttributionVerificationOutput(text);
   }

@@ -9,6 +9,8 @@ import { captureIncompleteTurnProvenance } from "../../src/application/chat/cont
 import { hashContent } from "../../src/application/assets/content-hash.js";
 import { decisionRequest } from "../helpers/conversation-decision-fixtures.js";
 import type { MessageOriginRecord } from "../../src/application/chat/message-origin-store.js";
+import { GuardedConversationContext } from "../../src/application/chat/guarded-conversation-context.js";
+import { guardedFixture } from "../helpers/guarded-context-fixture.js";
 
 function logger(): Logger {
   return { warn: vi.fn() } as unknown as Logger;
@@ -25,6 +27,21 @@ function image(bytes: number, filename = "image.png"): GeneratedChatImage {
 const oneMiB = 1024 * 1024;
 
 describe("ChatTurnSupport.deliverChatResponse", () => {
+  it("revalidates every guarded part and returns only text actually sent after revocation", async () => {
+    const fixture = guardedFixture();
+    const lease = await GuardedConversationContext.open(fixture.port, { count: 40, budget: 12000, burstIds: [] });
+    const support = new ChatTurnSupport(logger()); const text = "word ".repeat(900);
+    let confirmed = "";
+    const first = vi.fn((payload: ChatDeliveryPayload) => {
+      confirmed = payload.content; fixture.denied.add("current");
+      return Promise.resolve({ id: "first", content: confirmed } as Message);
+    });
+    const rest = vi.fn(() => Promise.resolve(fakeMessage("never")));
+    const result = await support.deliverChatResponse({ sender: { first, rest }, text, sources: [], images: [],
+      emptyFallbackContent: "empty", maxImageAggregateBytes: oneMiB, contextLease: lease });
+    expect(first).toHaveBeenCalledOnce(); expect(rest).not.toHaveBeenCalled();
+    expect(result.deliveredText).toBe(confirmed); expect(result.deliveredText.length).toBeLessThan(text.length);
+  });
   it("binds dependencies separately to each confirmed delivery part", async () => {
     const recorded: MessageOriginRecord[] = [];
     const support = new ChatTurnSupport(logger(), null, { record: (record): Promise<void> => { recorded.push(record); return Promise.resolve(); }, find: (): Promise<null> => Promise.resolve(null) });

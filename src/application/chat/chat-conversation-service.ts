@@ -1,3 +1,5 @@
+import { runGuardedChatTurn } from "./guarded-chat-turn.js";
+import type { GuardedContextPort } from "./guarded-conversation-context.js";
 import { captureIncompleteTurnProvenance } from "./context-provenance.js";
 import { isRecipientCorrection } from "./character-decision.js";
 import type { Logger } from "pino";
@@ -179,6 +181,8 @@ export interface ChatConversationInput
   resolveActivityLimits?: () => ChatActivityLimits;
   resolveMemoryMode?: () => ChannelMemoryMode;
   shouldDeliver?: () => boolean;
+  guardedContextPort?: GuardedContextPort;
+  guardedContextPolicy?: { count: number; budget: number; minReactors?: number };
   refreshHistoricalContext?: (events: readonly ChannelHistoryMessage[]) => Promise<ChannelHistoryMessage[]>;
   refreshContextMessage?: (event: ChannelHistoryMessage) => Promise<ChannelHistoryMessage | null>;
   afterDecision?: (response: ChatResponse) => Promise<void>;
@@ -508,7 +512,8 @@ export class ChatConversationService {
         ...replyChain.map((hop) => ({ authorId: hop.authorId, authorDisplayName: hop.authorDisplayName, content: hop.content })),
         ...channelHistory.map((hop) => ({ authorId: hop.authorId, authorDisplayName: hop.authorDisplayName, content: hop.content })),
       ];
-      const result = await verifier.verifyAttribution(draftResponse, context, currentMessage);
+      const result = request.beforeModelAttempt ? await verifier.verifyAttribution(draftResponse, context, currentMessage, request.beforeModelAttempt)
+        : await verifier.verifyAttribution(draftResponse, context, currentMessage);
       if (!result.needsCorrection) return draftResponse;
       const notes = result.correctionNotes?.trim();
       if (!notes) return draftResponse;
@@ -763,6 +768,17 @@ export class ChatConversationService {
     });
   }
 
+  private admitSocialPing(input: ChatConversationInput): boolean {
+    if (!input.sourceMessageId) return true;
+    const key = `${input.guildId}:${input.channelId}:${input.currentUser.id}`;
+    const previous = this.recentPings.get(key);
+    if (previous && previous.messageId !== input.sourceMessageId && this.now() - previous.at < 10000) {
+      emitChatDiagnostic(this.logger, { event: "chat.turn.skipped", reason: "duplicate_ping" }); return false;
+    }
+    if (this.recentPings.size >= 1024) this.recentPings.delete(this.recentPings.keys().next().value!);
+    this.recentPings.set(key, { at: this.now(), messageId: input.sourceMessageId }); return true;
+  }
+
   private runScheduled(
     input: ChatConversationInput,
     deliver: (response: ChatResponse) => Promise<string>,
@@ -786,7 +802,7 @@ export class ChatConversationService {
         emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "execution_ineligible" });
         throw new SocialOutputSuppressed();
       }
-      if (!input.refreshHistoricalContext && input.channelHistoryEnabled && this.episodeStore && (input.resolveMemoryMode?.() ?? resolveChannelMemoryMode(input.channelMemoryModes ?? {}, input.channelId)) !== "disabled") {
+      if (!input.guardedContextPort && !input.refreshHistoricalContext && input.channelHistoryEnabled && this.episodeStore && (input.resolveMemoryMode?.() ?? resolveChannelMemoryMode(input.channelMemoryModes ?? {}, input.channelId)) !== "disabled") {
         const persisted = await this.episodeStore.load(input.guildId, input.channelId, this.now());
         persisted.forEach((event) => this.episodes.observe(key, event, this.now(), (this.characterRuntime?.contextWindow(input.guildId, input.channelId) ?? 15) * 60_000));
       }
@@ -798,7 +814,7 @@ export class ChatConversationService {
         input.currentEvent?.type === "message" ? input.currentEvent.replyToMessageId : null, this.now()) : [];
       // The expanded path is rebuilt from Discord and refreshed as one batch;
       // legacy derived bot episode text has no complete provenance.
-      if (input.refreshHistoricalContext) snapshot = [];
+      if (input.guardedContextPort || input.refreshHistoricalContext) snapshot = [];
       if (input.refreshContextMessage) snapshot = (await Promise.all(snapshot.map((event) => input.refreshContextMessage!(event))))
         .filter((event): event is ChannelHistoryMessage => event !== null);
       const ids = new Set(input.replyChain.map((message) => message.messageId));
@@ -828,7 +844,11 @@ export class ChatConversationService {
       emitChatDiagnostic(this.logger, { event: "context.selection.completed", fetchedHistory: input.channelHistory.length,
         episodeCandidates: snapshot.length, burstCandidates: input.currentBurst?.length ?? 0, merged, selected: history.length,
         replyChain: input.replyChain.length, chars: history.reduce((total, message) => total + message.content.length, 0) });
-      const response = await this.runTurn({ ...input, channelHistory: history,
+      const runTurn = input.guardedContextPort ? (turn: ChatConversationInput, send: (response: ChatResponse) => Promise<string>, observe?: ChatResponseObserver): Promise<ChatResponse> =>
+        this.queue.run(`${turn.guildId}:${turn.currentUser.id}`, () => runGuardedChatTurn(turn, { state: this.stateStore, runtime: this.characterRuntime,
+          logger: this.logger, now: this.now, reply: (request, observer) => this.replyWithDiagnostics(request, observer),
+          repair: (text, request) => this.verifyAttribution(text, request), admitSocialPing: () => this.admitSocialPing(turn) }, send, observe)) : this.runTurn.bind(this);
+      const response = await runTurn({ ...input, channelHistory: history,
         ...((input.triggerMode === "spontaneous" || input.triggerMode === "continuation") ? { optionalActionsAvailable: {
           text: this.scheduler.outputAvailable(key, "text", limits),
           reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits),
@@ -872,7 +892,7 @@ export class ChatConversationService {
       response.participationDecision = participationDecision(response, input.sourceMessageId ?? null, expiresAt);
       if (!input.shadowMode && (!optional || this.now() < expiresAt!) &&
           (response.ambientAction === "reply" || (input.triggerMode !== "continuation" && input.triggerMode !== "spontaneous") || this.episodes.version(key) === contextVersion) &&
-          (!input.shouldDeliver || input.shouldDeliver()) && (!input.canExecute || await input.canExecute())) await input.afterDecision?.(response);
+          (!input.shouldDeliver || input.shouldDeliver()) && (!input.canExecute || await input.canExecute()) && (!response.contextLease || await response.contextLease.validate()) && (!response.characterCanDeliver || await response.characterCanDeliver())) await input.afterDecision?.(response);
       return response;
     }, expiresAt ?? Infinity).then((result) => result ?? silent);
   }
@@ -887,6 +907,9 @@ export class ChatConversationService {
       this.logger?.warn({ error, guildId, channelId }, "Failed to persist short-lived conversation episode")));
   }
 
+  private recordContextForget: ((guildId: string, userId: string, cutoff: number) => Promise<void>) | null = null;
+  public bindContextForgetRecorder(record: (guildId: string, userId: string, cutoff: number) => Promise<void>): void { this.recordContextForget = record; }
+
   public async forgetConversation(guildId: string, userId: string): Promise<void> {
     for (const key of this.opportunityVersions.keys()) if (key.startsWith(`${guildId}:`)) this.cancelOptionalOpportunity(guildId, key.slice(guildId.length + 1), "privacy_changed");
     this.characterRuntime?.forget(guildId, userId);
@@ -894,6 +917,7 @@ export class ChatConversationService {
     this.forgottenBefore.set(`${guildId}:${userId}`, this.now());
     this.privacyVersions.set(guildId, (this.privacyVersions.get(guildId) ?? 0) + 1);
     this.episodes.forget(guildId, userId);
+    const contextCleanup = Promise.resolve().then(() => this.recordContextForget?.(guildId, userId, this.now())).then(() => true, () => false);
     // Traces can reference multiple participants. Drop this guild's bounded
     // diagnostic cache and reject late events from pre-forget scopes.
     const diagnosticCleanup = diagnosticStore(this.logger)?.forgetGuild(guildId, currentDiagnosticTraceSequence()).then(() => true, () => false) ?? Promise.resolve(true);
@@ -901,6 +925,7 @@ export class ChatConversationService {
     await this.episodeStore?.forgetUser(guildId, userId);
     if (this.stateStore.clearRecentHistory) await this.stateStore.clearRecentHistory(guildId, userId);
     else await this.stateStore.purgeUser(guildId, userId);
+    if (!await contextCleanup) throw new Error("Conversation data was cleared, but durable context invalidation failed");
     if (!await diagnosticCleanup) throw new Error("Conversation data was cleared, but diagnostic retention cleanup failed");
   }
 

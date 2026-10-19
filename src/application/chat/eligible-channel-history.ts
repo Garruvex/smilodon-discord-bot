@@ -69,10 +69,10 @@ export function budgetEligibleHistory(events: readonly ChannelHistoryMessage[], 
   for (const event of [...candidates].reverse()) {
     const metadataSize = JSON.stringify({ ...event, content: "", contentTruncated: true }).length;
     if (metadataSize > remaining) continue;
-    const allowance = Math.max(0, Math.min(remaining - metadataSize, Math.max(0, share - metadataSize)));
+    const allowance = Math.max(0, Math.min(remaining - metadataSize, Math.max(128, share - metadataSize)));
     // JSON escaping can cost more than one character; bound serialized size.
     let content = event.content.slice(0, allowance);
-    while (content && JSON.stringify({ ...event, content, contentTruncated: true }).length > Math.min(remaining, Math.max(share, metadataSize))) content = content.slice(0, Math.floor(content.length * 0.9));
+    while (content && JSON.stringify({ ...event, content, contentTruncated: true }).length > Math.min(remaining, Math.max(share, metadataSize + 128))) content = content.slice(0, Math.floor(content.length * 0.9));
     if (event.content && !content) continue;
     const message = { ...event, content, ...(content !== event.content ? { contentTruncated: true } : {}) };
     if (content !== event.content) truncated++;

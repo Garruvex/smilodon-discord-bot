@@ -624,6 +624,8 @@ export function createDependencies(
   const behaviorRegistry = new BehaviorRegistry();
   const isGameChannel = (guildId: string, channelIds: readonly string[]): Promise<boolean> => campaign.isGameChannel(guildId, channelIds);
   const socialEligibility = new SocialChatEligibility(configuration, guildConfigurationProvider, messageOriginStore, isGameChannel);
+  socialEligibility.bindGuardedForgetPolicy((message) => memoryRepository.isSourceForgotten({ guildId: message.guildId!,
+    subjectId: message.author.id, topic: "*", slot: `source:${message.id}`, channelId: message.channelId, sourceTimestampMs: message.createdTimestamp }));
 
   // Prefers the cheaper utility model when configured, same preference as
   // ChatConversationService's own consolidation call. Null when no chat
@@ -706,6 +708,13 @@ export function createDependencies(
         characterRuntime,
       )
     : null;
+  chatConversationService?.bindContextForgetRecorder(async (guildId, userId, cutoff) => {
+    // The durable cutoff blocks late writes and read-time reuse first. Other
+    // members' derived session text is removed when its footprint names this subject.
+    await memoryRepository.recordForgetCutoff({ guildId, subjectId: userId, topic: "*", slot: "*", scopeKey: "*", cutoff });
+    const results = await Promise.allSettled([messageOriginStore.invalidateContextSubject?.(guildId, userId), chatStateStore.invalidateContextSubject?.(guildId, userId)]);
+    if (results.some((result) => result.status === "rejected")) throw new Error("Context source invalidation was incomplete");
+  });
   const personaSource = new FilePersonaSource(
     configuration.runtimeDataDirectory,
     logger.child({ component: "persona-source" }),

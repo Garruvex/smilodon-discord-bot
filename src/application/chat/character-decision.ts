@@ -160,7 +160,7 @@ export function generatedContributionAllowed(text: string, events: readonly Chan
   const draft = normalize(text);
   return !!draft && !closesExchange(text) && !events.some((event) => event.authorId === botId && normalize(event.content) === draft);
 }
-interface DecisionInput { personality: string; events: readonly ChannelHistoryMessage[]; burst: readonly ChannelHistoryMessage[]; botId: string; fixedTarget: string | null; gapMs: number; speakingShare: number; thoughts: boolean; availableActions?: { text: boolean; reaction: boolean } | undefined; now?: number }
+interface DecisionInput { canUseContext?: (() => Promise<boolean>) | undefined; personality: string; events: readonly ChannelHistoryMessage[]; burst: readonly ChannelHistoryMessage[]; botId: string; fixedTarget: string | null; gapMs: number; speakingShare: number; thoughts: boolean; availableActions?: { text: boolean; reaction: boolean } | undefined; now?: number }
 export const decisionCallLimits = { totalMs: 12_000, attemptMs: 6_000, failuresBeforeCooldown: 3, cooldownMs: 30_000, probeCacheMs: 60_000 } as const;
 export interface DecisionHealth { configured: boolean; coolingDownProviders: number; lastSuccessAt: number | null; lastFailureAt: number | null }
 export class CharacterDecisionService {
@@ -221,6 +221,7 @@ A reaction is one ordinary emoji or null. It may acknowledge a human-to-human me
       if ((this.health.get(provider)?.until ?? 0) > Date.now()) {
         record({ providerRole, attempt, status: "failed", failure: "provider_cooldown", durationMs: 0 }); continue;
       }
+      if (input.canUseContext && !await input.canUseContext()) return { status: "failed", decision: null, attempts };
       const remaining = deadline - Date.now();
       if (remaining <= 0) { record({ providerRole, attempt, status: "failed", failure: "timeout", durationMs: 0 }); break; }
       let timeout: ReturnType<typeof setTimeout> | undefined;

@@ -88,6 +88,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
         }
       : { role: "user", content: userContent };
     const body = await this.modelChain.run(async (model) => {
+      await request.beforeModelAttempt?.();
       request.onModelAttempt?.();
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",

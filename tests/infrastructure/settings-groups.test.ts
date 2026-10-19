@@ -22,6 +22,15 @@ function asInput(name: string, option: SettingOption, value: unknown): Parameter
 }
 
 describe("settings registry", () => {
+  it("persists an explicit eligible-text mode and can roll back without changing the history target", async () => {
+    const fixture = engineFixture(); const setting = fixture.engine.find("character.context")!;
+    const run = (mode: string): ReturnType<typeof fixture.engine.run> => fixture.engine.run(setting,
+      { guildId, guild: null, actorUserId, language: "en", values: slashValues({ "retrieval-mode": mode }) }, { kind: "panel" });
+    expect(fixture.profiles.current().character?.context.retrievalMode).toBe("legacy");
+    expect((await run("eligible_count")).kind).toBe("updated");
+    expect(fixture.profiles.current().character?.context).toMatchObject({ retrievalMode: "eligible_count", maxMessages: 40 });
+    await run("legacy"); expect(fixture.profiles.current().character?.context.retrievalMode).toBe("legacy");
+  });
   it("requires an accessible explicit thread and keeps scope selection separate from global enablement", async () => {
     const fixture = engineFixture(); const threadId = "600000000000000001";
     const fetch = vi.fn(() => Promise.resolve({ isThread: () => true, guildId }));

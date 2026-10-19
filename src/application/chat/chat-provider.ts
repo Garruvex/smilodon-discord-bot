@@ -1,3 +1,4 @@
+import type { GuardedConversationContext } from "./guarded-conversation-context.js";
 import type { ContextProvenance } from "./context-provenance.js";
 import type { ChatTool } from "./tools/chat-tool.js";
 import type { ConversationInteraction } from "./conversation-trigger.js";
@@ -10,6 +11,7 @@ import type { ChannelMemoryMode } from "../memory/memory-channel-policy.js";
 import type { ParticipationDecision } from "./participation-decision.js";
 
 export interface ChatRequest {
+  contextLease?: GuardedConversationContext;
   interactionMode?: ConversationInteraction;
   characterGuardEnabled?: boolean;
   characterShadow?: boolean;
@@ -24,6 +26,7 @@ export interface ChatRequest {
   aliasCandidates?: readonly { alias: string; subjectIds: readonly string[] }[];
   functionalToolExecuted?: boolean;
   onModelAttempt?: () => void;
+  beforeModelAttempt?: () => Promise<void>;
   // Style permission only. Silence requires validated contextual social/closing
   // intent; the current message's length cannot grant it or disable tools.
   allowSilentDirect?: boolean;
@@ -367,6 +370,7 @@ export interface GeneratedChatImage {
 }
 
 export interface ChatResponse {
+  contextLease?: GuardedConversationContext;
   // Assigned by application assembly, never accepted as a provider proof.
   contextProvenance?: ContextProvenance | null;
   responseIntent?: ConversationIntent;
@@ -605,6 +609,7 @@ export interface AttributionVerifier {
     draftResponse: string,
     context: readonly { authorId: string; authorDisplayName: string; content: string }[],
     currentMessage: string,
+    beforeAttempt?: () => Promise<void>,
   ): Promise<{ needsCorrection: boolean; correctionNotes: string | null }>;
 }
 
