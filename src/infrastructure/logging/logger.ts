@@ -1,7 +1,8 @@
 import pino, { type Logger } from "pino";
 
 import type { ApplicationConfiguration } from "../../config/configuration.js";
-import { diagnosticFields, diagnosticProcessRunId } from "../../application/diagnostics/chat-diagnostics.js";
+import { diagnosticFields, diagnosticProcessRunId, safeFailure } from "../../application/diagnostics/chat-diagnostics.js";
+import { diagnosticBuildVersion } from "../../application/diagnostics/gateway-diagnostics.js";
 
 export function createLogger(configuration: ApplicationConfiguration): Logger {
   const prettyTransport = configuration.environment === "production"
@@ -20,14 +21,15 @@ export function createLogger(configuration: ApplicationConfiguration): Logger {
       environment: configuration.environment,
       instanceName: configuration.instanceName ?? "default",
       processRunId: diagnosticProcessRunId,
+      buildVersion: diagnosticBuildVersion(),
     },
     redact: {
       paths: ["token", "apiKey", "authorization", "req.headers.authorization"],
       censor: "[REDACTED]",
     },
     serializers: {
-      error: pino.stdSerializers.err,
-      err: pino.stdSerializers.err,
+      error: (error: unknown) => safeFailure(error, "operation_error"),
+      err: (error: unknown) => safeFailure(error, "operation_error"),
     },
     ...prettyTransport,
   });

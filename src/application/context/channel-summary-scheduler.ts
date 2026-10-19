@@ -1,4 +1,5 @@
 import type { Logger } from "pino";
+import { withDiagnosticScope } from "../diagnostics/chat-diagnostics.js";
 
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
@@ -234,7 +235,7 @@ export class ChannelSummaryScheduler {
           const channelIds = new Set([...profile.chat.contextScanChannelIds, ...profile.chat.contextDailyChannelIds]);
           for (const channelId of channelIds) {
             try {
-              await this.processChannel(profile, channelId, nowMs);
+              await withDiagnosticScope({ operation: "model", guildId: profile.guildId, channelId }, () => this.processChannel(profile, channelId, nowMs));
             } catch (error) {
               this.logger.error({ error, guildId: profile.guildId, channelId }, "Channel summary check failed");
             }
@@ -617,7 +618,7 @@ export class ChannelSummaryScheduler {
     // cleared, currentTick resolved) while real work was still happening
     // underneath it, meaning drain() no longer actually covers it and a new
     // tick could start concurrently with the old one's leftover workers.
-    await mapWithConcurrency(jobs, extractionConcurrency, async (job) => {
+    await mapWithConcurrency(jobs, extractionConcurrency, (job) => withDiagnosticScope({ operation: "model", guildId: job.guildId, channelId: job.channelId, sourceMessageId: job.batchId }, async () => {
       await this.extractionQueue.runForSubject(job.guildId, job.subjectId, async () => {
         try {
         const stillExists = (): Promise<boolean> => this.extractionQueue.exists(
@@ -692,7 +693,7 @@ export class ChannelSummaryScheduler {
           );
         }
       });
-    });
+    }));
     // Run after workers release their subject locks: reflection uses the
     // same mutation boundary as forgetting and must not nest that lock.
     for (const job of jobs) await this.characterConsolidation?.(job.guildId, job.channelId, [job.subjectId])

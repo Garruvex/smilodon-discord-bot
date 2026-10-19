@@ -1,4 +1,7 @@
 import { ChatProviderError } from "../../application/chat/chat-provider.js";
+import { performance } from "node:perf_hooks";
+import { diagnosticElapsed, emitChatDiagnostic, safeFailure } from "../../application/diagnostics/chat-diagnostics.js";
+import { modelDiagnosticLogger } from "../../application/diagnostics/model-diagnostics.js";
 
 export class ChatModelFallbackExhaustedError extends ChatProviderError {
   public constructor() {
@@ -25,6 +28,8 @@ export class ModelFallbackChain {
 
   public async run<T>(attempt: (model: string) => Promise<T>): Promise<T> {
     const now = Date.now();
+    for (const [modelIndex, model] of this.models.entries()) if ((this.cooldownUntil.get(model) ?? 0) > now)
+      emitChatDiagnostic(modelDiagnosticLogger(), { event: "model.provider.attempt", modelIndex, attempt: 0, status: "cooldown", durationMs: 0 });
     const candidates = this.models.filter((model) => (this.cooldownUntil.get(model) ?? 0) <= now);
     if (candidates.length === 0) throw new ChatModelFallbackExhaustedError();
 
@@ -55,11 +60,23 @@ export class ModelFallbackChain {
   // once on the same model before falling into the normal (non-retrying)
   // error path above.
   private async attemptWithStreamRetry<T>(attempt: (model: string) => Promise<T>, model: string): Promise<T> {
+    let ordinal = 0;
+    const traced = async (): Promise<T> => {
+      const started = performance.now(); const number = ++ordinal;
+      try {
+        const result = await attempt(model);
+        emitChatDiagnostic(modelDiagnosticLogger(), { event: "model.provider.attempt", modelIndex: this.models.indexOf(model), attempt: number, status: "completed", durationMs: diagnosticElapsed(started) });
+        return result;
+      } catch (error) {
+        emitChatDiagnostic(modelDiagnosticLogger(), { event: "model.provider.attempt", modelIndex: this.models.indexOf(model), attempt: number, status: "failed", durationMs: diagnosticElapsed(started), ...safeFailure(error) });
+        throw error;
+      }
+    };
     try {
-      return await attempt(model);
+      return await traced();
     } catch (error) {
       if (error instanceof ChatProviderError && error.code === "incomplete_stream") {
-        return await attempt(model);
+        return await traced();
       }
       throw error;
     }

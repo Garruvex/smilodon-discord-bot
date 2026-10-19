@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { performance } from "node:perf_hooks";
+import { diagnosticElapsed, emitChatDiagnostic, safeFailure } from "../../application/diagnostics/chat-diagnostics.js";
+import { modelDiagnosticLogger } from "../../application/diagnostics/model-diagnostics.js";
 
 import {
   ChatProviderError,
@@ -340,12 +343,17 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     tools: readonly ChatTool[],
     ctx: ChatToolContext,
   ): Promise<ChatToolResult> {
+    const started = performance.now();
     const tool = tools.find((candidate) => candidate.name === call.name);
-    if (!tool) return { content: `Unknown tool "${call.name}".` };
+    if (!tool) {
+      emitChatDiagnostic(modelDiagnosticLogger(), { event: "chat.tool.completed", status: "unknown_tool", durationMs: diagnosticElapsed(started) });
+      return { content: `Unknown tool "${call.name}".` };
+    }
     let args: unknown;
     try {
       args = JSON.parse(call.arguments);
     } catch {
+      emitChatDiagnostic(modelDiagnosticLogger(), { event: "chat.tool.completed", status: "invalid_arguments", durationMs: diagnosticElapsed(started) });
       return { content: "Invalid tool arguments — could not parse as JSON." };
     }
     // Racing a timer can't actually cancel tool.execute() — the loser keeps
@@ -355,13 +363,16 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     const timeoutController = new AbortController();
     const timer = setTimeout(() => timeoutController.abort(), toolExecutionTimeoutMs);
     try {
-      return await Promise.race([
+      const result = await Promise.race([
         tool.execute(args, { ...ctx, signal: timeoutController.signal }),
         new Promise<ChatToolResult>((_, reject) => {
           timeoutController.signal.addEventListener("abort", () => reject(new Error("tool_timeout")));
         }),
       ]);
-    } catch {
+      emitChatDiagnostic(modelDiagnosticLogger(), { event: "chat.tool.completed", status: "completed", durationMs: diagnosticElapsed(started) });
+      return result;
+    } catch (error) {
+      emitChatDiagnostic(modelDiagnosticLogger(), { event: "chat.tool.completed", status: timeoutController.signal.aborted ? "timeout" : "failed", durationMs: diagnosticElapsed(started), ...safeFailure(error, "operation_error") });
       return { content: "That tool failed to run right now — treat it as unavailable for this reply." };
     } finally {
       clearTimeout(timer);

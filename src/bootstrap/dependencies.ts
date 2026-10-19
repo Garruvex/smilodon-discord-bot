@@ -1,4 +1,5 @@
 import { defaultLanguage } from "../application/i18n/language.js";
+import { instrumentModel } from "../application/diagnostics/model-diagnostics.js";
 import { catalogIssues } from "../application/i18n/texts.js";
 import type { Logger } from "pino";
 import type { MessageOriginStore } from "../application/chat/message-origin-store.js";
@@ -187,6 +188,10 @@ type ProviderConfig =
 // from. summaryModels defaults to the provider's own `models` when omitted
 // (utilityChat never sets it — it IS the summary/utility model already).
 export function createChatProviderFromConfig(config: ProviderConfig, logger: Logger): ChatProvider {
+  return instrumentModel(createRawChatProviderFromConfig(config, logger), logger);
+}
+
+function createRawChatProviderFromConfig(config: ProviderConfig, logger: Logger): ChatProvider {
   const summaryModels = config.summaryModels ?? config.models;
   if (config.provider === "openai-responses") {
     return new OpenAiResponsesChatProvider(
@@ -361,13 +366,13 @@ export function registerCommands(
   commandRegistry.register(new VoteCommand(pollService));
   const embeddingsClient = configuration.embeddings
     ? new CachingEmbeddingsClient(
-        configuration.embeddings.provider === "gemini"
+        instrumentModel(configuration.embeddings.provider === "gemini"
           ? new GeminiEmbeddingsClient(configuration.embeddings.apiKey, configuration.embeddings.model, embeddingDimensions)
           : new OpenAiEmbeddingsClient(
               configuration.embeddings.baseUrl,
               configuration.embeddings.apiKey,
               configuration.embeddings.model,
-            ),
+            ), logger),
       )
     : null;
   commandRegistry.register(new BirthdayCommand(birthdayStore, guildConfigurationProvider));
@@ -674,7 +679,7 @@ export function createDependencies(
   settingsEngine.bindChatToolRegistry(chatToolRegistry);
   const characterRuntime = chatProvider ? new CharacterRuntime(guildConfigurationProvider, memoryRepository,
     utilityProvider?.generateCharacterData ? { generateCharacterData: utilityProvider.generateCharacterData.bind(utilityProvider) } : null,
-    chatProvider, configuration.decision ? new HttpDecisionProvider(configuration.decision)
+    chatProvider, configuration.decision ? instrumentModel(new HttpDecisionProvider(configuration.decision), logger)
       : utilityProvider?.generateCharacterData ? { generateCharacterData: utilityProvider.generateCharacterData.bind(utilityProvider) } : null, personalMemoryExtractionQueueStore, undefined, logger.child({ component: "character" })) : null;
   if (characterRuntime) settingsEngine.bindCharacterRuntime(characterRuntime);
   characterRuntime?.bindTargetPreferences(async (guildId, userId) => ({ customization: await userCustomizationStore.load(guildId, userId) }));
