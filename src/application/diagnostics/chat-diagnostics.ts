@@ -27,6 +27,8 @@ export type FailureCategory = z.infer<typeof failureCategory>;
 // Allow-list every serialized field. Runtime stripping also protects callers
 // compiled without TypeScript, and prevents raw provider/Discord objects leaking.
 const eventSchema = z.discriminatedUnion("event", [
+  z.object({ event: z.literal("chat.gateway.received"), kind: z.enum(["message_created", "reaction_added"]), buildVersion: identifier, policyVersion: identifier }),
+  z.object({ event: z.literal("chat.gateway.completed"), outcome: z.enum(["startup_gate", "control_channel", "dispatched", "out_of_scope", "failed"]), durationMs: duration, failure: failureCategory.optional() }),
   z.object({ event: z.literal("chat.ingress.received"), kind: z.enum(["message_created", "reaction_added", "voice_state_updated"]) }),
   z.object({ event: z.literal("chat.route.matched"), behaviorId: identifier }),
   z.object({ event: z.literal("chat.dispatch.completed"), result: z.enum(["continue", "handled", "stop_propagation", "failed"]), behaviorId: identifier.optional(), stage: z.enum(["matches", "execute"]).optional(), durationMs: duration, failure: failureCategory.optional() }),
@@ -57,7 +59,7 @@ export type ChatDiagnosticEvent = z.infer<typeof eventSchema>;
 export type DiagnosticLogger = Pick<Logger, "info" | "warn">;
 
 export interface DiagnosticScopeInput {
-  operation: "dispatch" | "chat_turn";
+  operation: "gateway" | "dispatch" | "chat_turn";
   guildId?: string | undefined;
   channelId?: string | undefined;
   sourceMessageId?: string | undefined;
@@ -69,7 +71,7 @@ interface DiagnosticScope extends DiagnosticScopeInput {
   traceSequence: number;
 }
 const scopes = new AsyncLocalStorage<DiagnosticScope | undefined>();
-const scopeInputSchema = z.object({ operation: z.enum(["dispatch", "chat_turn"]), guildId: identifier.optional(), channelId: identifier.optional(), sourceMessageId: identifier.optional() });
+const scopeInputSchema = z.object({ operation: z.enum(["gateway", "dispatch", "chat_turn"]), guildId: identifier.optional(), channelId: identifier.optional(), sourceMessageId: identifier.optional() });
 export const chatDiagnosticRecordSchema = z.object({
   schemaVersion: z.literal(1), processRunId: identifier, timestampMs: count, eventSequence: count,
   scope: scopeInputSchema.extend({ traceId: identifier, spanId: identifier, parentSpanId: identifier.optional(), traceSequence: count }),

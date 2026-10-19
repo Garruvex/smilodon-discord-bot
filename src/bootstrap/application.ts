@@ -11,6 +11,7 @@ import type { BirthdayAnnouncer } from "../application/birthdays/birthday-announ
 import type { MemberDepartureService } from "../application/members/member-departure-service.js";
 import type { MemberWelcomeService } from "../application/members/member-welcome-service.js";
 import type { BoostTrackingService } from "../application/members/boost-tracking-service.js";
+import { diagnosticPolicyVersion, traceGateway } from "../application/diagnostics/gateway-diagnostics.js";
 
 export class Application {
   // Flips true once Lavalink and the control-panel (emoji catalog +
@@ -260,17 +261,13 @@ export class Application {
     });
 
     this.client.on(Events.MessageCreate, (message) => {
-      if (!this.ready) {
-        void this.replyStartingUpIfControlChannelMessage(message).catch((error: unknown) => {
-          this.logger.error({ error }, "Failed to reply during startup gate");
-        });
-        return;
-      }
-
-      void (async (): Promise<void> => {
-        if (await this.controlChannelService.handleMessage(message)) return;
+      void traceGateway(this.logger, { guildId: message.guildId ?? undefined, channelId: message.channelId,
+        sourceMessageId: message.id, kind: "message_created", policyVersion: diagnosticPolicyVersion(message.guildId ? this.dependencies.guildConfigurationProvider.find(message.guildId) : null) }, async () => {
+        if (!this.ready) { await this.replyStartingUpIfControlChannelMessage(message); return "startup_gate"; }
+        if (await this.controlChannelService.handleMessage(message)) return "control_channel";
         await this.dependencies.behaviorDispatcher.dispatch(BehaviorEvent.MessageCreated, message);
-      })().catch((error: unknown) => {
+        return "dispatched";
+      }).catch((error: unknown) => {
         this.logger.error({ error }, "Message behavior dispatch failed");
       });
     });
@@ -293,14 +290,17 @@ export class Application {
     });
 
     this.client.on(Events.MessageReactionAdd, (reaction, user) => {
-      if (!this.ready) return;
-      void (async (): Promise<void> => {
+      const message = reaction.message;
+      void traceGateway(this.logger, { guildId: message.guildId ?? undefined, channelId: message.channelId,
+        sourceMessageId: message.id, kind: "reaction_added", policyVersion: diagnosticPolicyVersion(message.guildId ? this.dependencies.guildConfigurationProvider.find(message.guildId) : null) }, async () => {
+        if (!this.ready) return "startup_gate";
         const fullReaction = reaction.partial ? await reaction.fetch() : reaction;
         if (fullReaction.message.partial) await fullReaction.message.fetch();
         const fullUser = user.partial ? await user.fetch() : user;
-        if (!fullReaction.message.guildId) return; // DM reactions are out of scope
+        if (!fullReaction.message.guildId) return "out_of_scope";
         await this.dependencies.behaviorDispatcher.dispatch(BehaviorEvent.ReactionAdded, { reaction: fullReaction, user: fullUser });
-      })().catch((error: unknown) => {
+        return "dispatched";
+      }).catch((error: unknown) => {
         this.logger.error({ error }, "Reaction behavior dispatch failed");
       });
     });

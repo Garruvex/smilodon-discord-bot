@@ -82,7 +82,7 @@ export class BoundedChatTraceBuffer {
     if (!trace) {
       trace = { traceId: record.scope.traceId, processRunId: record.processRunId, guildId, channelId, sourceMessageId,
         records: [], sizes: [], bytes: 0, lastAt: record.timestampMs,
-        truncated: record.data.event !== "chat.ingress.received" && record.data.event !== "chat.turn.started" };
+        truncated: record.data.event !== "chat.gateway.received" && record.data.event !== "chat.ingress.received" && record.data.event !== "chat.turn.started" };
       this.traces.set(key, trace);
     }
     trace.records.push(record); trace.sizes.push(size); trace.bytes += size;
