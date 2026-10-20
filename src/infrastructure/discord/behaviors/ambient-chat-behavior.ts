@@ -6,6 +6,7 @@ import { SocialOutputSuppressed, type MessageOriginStore } from "../../../applic
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
 import { resolveParticipation } from "../../../application/chat/participation-policy.js";
 import { characterSettings } from "../../../application/chat/character-settings.js";
+import { contextualFlow } from "../../../application/chat/contextual-flow.js";
 import { resolveChannelMemoryMode } from "../../../application/memory/memory-channel-policy.js";
 
 import { ChatAccessService } from "../../../application/access/chat-access-service.js";
@@ -150,6 +151,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         guildId: message.guildId,
         channelId: message.channelId,
         sourceMessageId: message.id,
+        contextualCandidate: trigger !== "ambient" && contextualFlow(profile, message.channelId),
         channelHistoryEnabled: profile.features.channelHistory,
         currentEvent: this.turnSupport.toMessageEvent(message), botUserId: this.clientUserId(),
         canExecute: async () => (opportunityVersion == null || this.conversation?.optionalOpportunityVersion(message.guildId, message.channelId) === opportunityVersion) && await this.turnSupport.isEligible(message, trigger),

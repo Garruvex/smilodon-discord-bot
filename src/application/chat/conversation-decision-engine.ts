@@ -4,13 +4,14 @@ import { isGuardedContext } from "./guarded-conversation-context.js";
 import { resolveConversationTrigger, type TriggerResolution } from "./conversation-trigger.js";
 import type { ChatRequest, ChatResponse } from "./chat-provider.js";
 import { emitChatDiagnostic, type DiagnosticLogger } from "../diagnostics/chat-diagnostics.js";
-import { contributionPolicy, type ParticipationSettings } from "./participation-policy.js";
+import { contributionPolicy, resolveParticipation, type ParticipationSettings } from "./participation-policy.js";
 
 export type ConversationIntent = "answer" | "clarify" | "social" | "closing" | "contribute" | "abstain";
 export interface ValidatedConversationDecision {
   decisionId: string; action: "reply" | "react" | "reply_and_react" | "silent"; intent: ConversationIntent;
   responseToEventId: string | null; referentSourceIds: readonly string[]; recipientIds: readonly string[];
   reasonCode: string; contextVersion: string; policyVersion: string; expiresAt: number;
+  participationKind?: "continuation" | "spontaneous";
 }
 export interface ConversationDecisionResult {
   status: "ready" | "denied" | "failed";
@@ -68,6 +69,34 @@ export class ConversationDecisionEngine {
     if (!admissible) return denied("scope_or_disabled");
     if (trigger.explicit) return { ...base, result: this.result(request, trigger, now, policyVersion, "explicit_request", "ready", "reply", "answer") };
     if (proposal?.contextual?.action === "silent") return { ...base, result: this.result(request, trigger, now, policyVersion, "contextual_abstention", "ready", "silent", proposal.contextual.intent) };
+    if (proposal?.contextual && isGuardedContext(request.contextLease)) {
+      const failure = decisionSourceFailure(proposal, events.filter((event) => event.timestampMs <= now), botId,
+        request.contextualCandidate || request.triggerMode === "continuation" ? current?.messageId ?? null : null);
+      if (failure) return denied(failure, "failed");
+      const interpretation = proposal.contextual;
+      const kind = interpretation.relationship === "followup" ? "continuation" : "spontaneous";
+      const policy = resolveParticipation(settings, request.channelId);
+      if (interpretation.relationship === "unclear") return denied("recipient_unclear");
+      if (interpretation.relationship === "elsewhere" || elsewhere) return denied("addressed_elsewhere");
+      if (!(kind === "continuation" ? policy.continuationEnabled : policy.spontaneousEnabled)) return denied(kind === "continuation" ? "continuation_disabled" : "spontaneous_disabled");
+      if (kind === "continuation" && (!current || !proposal.recipientEvidence.includes(current.messageId) ||
+          !(local === "continuing" || local === "bot" || groundedContextContinuation(events, current, botId, proposal)))) return denied("recipient_unclear");
+      const availability = request.contextualActionAvailability?.[kind] ?? request.optionalActionsAvailable;
+      const substantive = interpretation.intent === "answer" || interpretation.intent === "clarify";
+      const reaction = interpretation.action === "react" && !substantive && availability?.reaction !== false &&
+        proposal.confidence >= 0.7 && proposal.recipientConfidence >= 0.7 && proposal.opening === "clear" ? proposal.reaction : null;
+      if (interpretation.action === "react" && !reaction) return denied(substantive ? "substantive_requires_text" : "reaction_unavailable");
+      const rejection = interpretation.action === "reply" ? optionalParticipationRejection(kind,
+        kind === "continuation" ? "continuing" : "others", proposal, false, contributionPolicy(settings)) : null;
+      if (rejection) return denied(rejection);
+      if (interpretation.action === "reply" && availability?.text === false) return denied("text_unavailable");
+      const result = this.result(request, trigger, now, policyVersion, reaction ? "reaction_only" : "accepted_contribution", "ready", reaction ? "react" : "reply", interpretation.intent, proposal.recipientEvidence);
+      result.decision.participationKind = kind;
+      result.decision.responseToEventId = proposal.target;
+      result.decision.recipientIds = [events.find((event) => event.messageId === proposal.target)!.authorId];
+      return { ...base, local: kind === "continuation" ? "continuing" : local, result, contribution: reaction ? null : proposal.contribution,
+        targetMessageId: proposal.target, targetConfidence: proposal.targetConfidence, reaction };
+    }
     if (proposal) {
       const failure = decisionSourceFailure(proposal, events.filter((event) => event.timestampMs <= now), botId, request.triggerMode === "continuation" ? current?.messageId ?? null : null);
       if (failure) return denied(failure, "failed");
@@ -109,7 +138,7 @@ export class ConversationDecisionEngine {
     if (trigger.responseToEventId) ids.add(trigger.responseToEventId);
     if (references.some((id) => !ids.has(id))) return this.result(request, trigger, now, policyVersion, "invalid_evidence", "failed", "silent", "abstain", [], trigger.explicit ? "error_reply" : "none");
     if (prior && prior.decision.action === "silent") return prior;
-    let reply = trigger.explicit || response.ambientAction === "reply";
+    let reply = prior?.decision.action !== "react" && (trigger.explicit || response.ambientAction === "reply");
     const intent = response.responseIntent ?? (trigger.explicit || prior?.recovery === "grounded_reply" ? "answer" : "contribute");
     if (trigger.explicit && response.ambientAction === "ignore" && request.allowSilentDirect && (intent === "social" || intent === "closing")) reply = false;
     if (prior?.recovery === "grounded_reply") reply = true;
@@ -123,6 +152,7 @@ export class ConversationDecisionEngine {
       "ready", reply ? react ? "reply_and_react" : "reply" : react ? "react" : "silent", reply || intent === "social" || intent === "closing" ? intent : "abstain", references);
     if (prior) { result.status = prior.status; result.recovery = prior.recovery; result.decision.decisionId = prior.decision.decisionId;
       if (!trigger.explicit) result.decision.recipientIds = prior.decision.recipientIds;
+      if (prior.decision.participationKind) result.decision.participationKind = prior.decision.participationKind;
       if (!trigger.explicit) result.decision.expiresAt = prior.decision.expiresAt;
       if (reply || prior.decision.action !== "reply") result.decision.reasonCode = prior.decision.reasonCode; }
     return result;

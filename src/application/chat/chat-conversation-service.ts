@@ -848,9 +848,14 @@ export class ChatConversationService {
         this.queue.run(`${turn.guildId}:${turn.currentUser.id}`, () => runGuardedChatTurn(turn, { state: this.stateStore, runtime: this.characterRuntime,
           logger: this.logger, now: this.now, reply: (request, observer) => this.replyWithDiagnostics(request, observer),
           repair: (text, request) => this.verifyAttribution(text, request), admitSocialPing: () => this.admitSocialPing(turn) }, send, observe)) : this.runTurn.bind(this);
+      const contextualAvailability = input.contextualCandidate ? {
+        continuation: { text: this.scheduler.outputAvailable(key, "text", { ...limits, continuation: true }), reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits) },
+        spontaneous: { text: this.scheduler.outputAvailable(key, "text", { ...limits, continuation: false }), reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits) },
+      } : null;
       const response = await runTurn({ ...input, channelHistory: history,
+        ...(contextualAvailability ? { contextualActionAvailability: contextualAvailability } : {}),
         ...((input.triggerMode === "spontaneous" || input.triggerMode === "continuation") ? { optionalActionsAvailable: {
-          text: this.scheduler.outputAvailable(key, "text", limits),
+          text: contextualAvailability ? contextualAvailability.continuation.text || contextualAvailability.spontaneous.text : this.scheduler.outputAvailable(key, "text", limits),
           reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits),
         } } : {}),
         canExecute: async () => (this.privacyVersions.get(input.guildId) ?? 0) === privacyVersion && (!input.canExecute || await input.canExecute()) && await expandedStillCurrent(),
@@ -881,7 +886,9 @@ export class ChatConversationService {
           emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "delivery_cancelled" });
           throw new SocialOutputSuppressed();
         }
-        const release = this.scheduler.reserveOutput(key, "text", { ...(input.resolveActivityLimits?.() ?? limits), continuation: input.triggerMode === "continuation", exchangeId: result.participationExchangeId }, optional);
+        const release = this.scheduler.reserveOutput(key, "text", { ...(input.resolveActivityLimits?.() ?? limits),
+          continuation: result.conversationDecision?.decision.participationKind ? result.conversationDecision.decision.participationKind === "continuation" : input.triggerMode === "continuation",
+          exchangeId: result.participationExchangeId }, optional);
         if (!release) {
           emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "output_capacity" });
           await this.characterRuntime?.recordDelivery(input.guildId, input.sourceMessageId ?? null, false, false); throw new SocialOutputSuppressed();

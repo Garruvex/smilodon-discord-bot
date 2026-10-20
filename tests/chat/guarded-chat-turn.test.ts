@@ -16,23 +16,25 @@ import { guardedEvent, guardedFixture } from "../helpers/guarded-context-fixture
 import { freshDocument, guildId, memoryProvider } from "../helpers/settings-fixtures.js";
 import { decisionProposal, decisionResponse } from "../helpers/conversation-decision-fixtures.js";
 import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
+import { contextualProposal } from "../helpers/contextual-decision-fixtures.js";
 
 const channelId = "500000000000000001";
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
-async function setup(now = 5000, originalAuthor = "alice"): Promise<{
+async function setup(now = 5000, originalAuthor = "alice", contextual = false): Promise<{
   service: ChatConversationService; fixture: ReturnType<typeof guardedFixture>; input: ChatConversationInput;
   reply: ReturnType<typeof vi.fn<(request: ChatRequest) => Promise<ChatResponse>>>;
   engine: DefaultMemoryEngine; runtime: CharacterRuntime; state: SqliteChatStateStore;
   decision: { generateCharacterData: ReturnType<typeof vi.fn> };
   records: Record<string, unknown>[];
+  profiles: ReturnType<typeof memoryProvider>;
 }> {
   const connection = createSqliteDatabaseConnection(mkdtempSync(join(tmpdir(), "guarded-turn-")));
   const repository = new SqliteMemoryRepository(connection.database); const state = new SqliteChatStateStore(connection.database);
   const document = freshDocument(); document.features.chatbot = true; document.features.channelHistory = true; document.channels.chatbot = [channelId];
   const profiles = memoryProvider(document);
   await profiles.update(guildId, { character: { context: { ...profiles.current().character!.context, enabled: true, retrievalMode: "eligible_count" } },
-    chatParticipation: { continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    chatParticipation: { flowVersion: contextual ? "contextual_v1" : "legacy", continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
   const reply = vi.fn((_request: ChatRequest) => Promise.resolve(decisionResponse({ text: "The carburetor needs a richer mixture at full throttle.", ambientAction: "reply", responseIntent: "answer" })));
   const decision = { generateCharacterData: vi.fn(() => Promise.resolve(decisionProposal({
     recipientEvidence: ["current"], target: "current", boundary: "earlier",
@@ -53,10 +55,38 @@ async function setup(now = 5000, originalAuthor = "alice"): Promise<{
     message: "UNTRUSTED_SYNTHETIC_INPUT", replyChain: [], channelHistory: [], images: [], includeSources: false,
     webSearchMode: "auto", imageGenerationEnabled: true, toolsEnabled: true, triggerMode: "direct", botUserId: "bot",
     guardedContextPort: fixture.port, guardedContextPolicy: { count: 40, budget: 12000 }, channelHistoryEnabled: true };
-  return { service, fixture, input, reply, engine, runtime, state, decision, records };
+  return { service, fixture, input, reply, engine, runtime, state, decision, records, profiles };
 }
 
 describe("guarded turn acceptance", () => {
+  it.each(["followup", "group"] as const)("keeps continuation-only policy after contextual classification: %s", async (relationship) => {
+    const { service, fixture, input, reply, decision, profiles } = await setup(5000, "alice", true);
+    await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: false } });
+    fixture.add(guardedEvent("current", 4000, "然後呢"));
+    decision.generateCharacterData.mockResolvedValue(contextualProposal({ relationship, recipientEvidence: ["question", "answer", "current"] }));
+    const result = await service.run({ ...input, triggerMode: "continuation", contextualCandidate: true }, (response) => Promise.resolve(response.text));
+    expect(reply).toHaveBeenCalledTimes(relationship === "followup" ? 1 : 0);
+    if (relationship === "group") expect(result.conversationDecision?.decision.reasonCode).toBe("spontaneous_disabled");
+  });
+  it.each(["followup", "group", "social_reaction", "substantive_reaction", "silence", "elsewhere", "unclear", "low_confidence"] as const)("applies contextual policy after neutral admission: %s", async (scenario) => {
+    const { service, fixture, input, reply, decision, records } = await setup(5000, "alice", true);
+    fixture.add(guardedEvent("current", 4000, "好了嗎"));
+    const proposal = contextualProposal({ recipientEvidence: ["question", "answer", "current"] });
+    if (scenario === "group") proposal.relationship = "group";
+    if (scenario === "social_reaction") { proposal.action = "react"; proposal.intent = "social"; proposal.reaction = "👍"; proposal.contribution = null; }
+    if (scenario === "substantive_reaction") { proposal.action = "react"; proposal.reaction = "👍"; }
+    if (scenario === "silence") { proposal.action = "silent"; proposal.contribution = null; proposal.recipientEvidence = []; }
+    if (scenario === "elsewhere" || scenario === "unclear") proposal.relationship = scenario;
+    if (scenario === "low_confidence") proposal.recipientConfidence = 0.2;
+    decision.generateCharacterData.mockResolvedValue(proposal);
+    const result = await service.run({ ...input, triggerMode: "spontaneous", contextualCandidate: true, historyReactionsEnabled: true }, (response) => Promise.resolve(response.text));
+    expect(reply).toHaveBeenCalledTimes(scenario === "followup" || scenario === "group" ? 1 : 0);
+    if (scenario === "social_reaction") expect(result.reactionEmoji).toBe("👍");
+    if (scenario === "followup" || scenario === "group") expect(records).toContainEqual(expect.objectContaining({
+      event: "chat.output.reservation", status: "committed", continuation: scenario === "followup",
+    }));
+    expect(records.filter((record) => record.event === "chat.turn.completed")).toHaveLength(1);
+  });
   it.each(["accepted", "inactive_boundary", "cross_participant", "missing_evidence", "other_recipient", "private_source", "low_confidence", "decision_failed"] as const)("handles a sixteen-minute correction with guarded evidence: %s", async (scenario) => {
     const { service, fixture, input, reply, runtime, decision, records } = await setup(963000, scenario === "cross_participant" ? "bob" : "alice");
     const correction = guardedEvent("current", 962000, "我是在修你ㄟ 你剛剛壞掉了不回他\n跟大番薯沒關西");

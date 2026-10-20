@@ -198,6 +198,14 @@ export class ChatScheduler {
 
   public outputAvailable(key: string, kind: "text" | "reaction", limits: ChatActivityLimits): boolean {
     const state = this.state(key);
+    if (kind === "text" && limits.continuation) {
+      this.prune(state.continuation);
+      const exchange = this.exchanges.get(`${key}:${limits.exchangeId ?? "channel"}`);
+      const replies = exchange && this.now() - exchange.lastRelevantAt <= 120000 ? exchange.replies : 0;
+      return !state.reservedContinuation && state.reservedText === 0 && !exchange?.reserved &&
+        replies < (limits.continuationPerExchange ?? 10) && state.continuation.length < (limits.continuationPerWindow ?? 30) &&
+        this.now() - Math.max(state.continuation.at(-1) ?? -Infinity, state.text.at(-1) ?? -Infinity) >= (limits.continuationIntervalMs ?? 15000);
+    }
     const values = state[kind]; this.prune(values);
     if (kind === "text" && (state.reservedContinuation || this.now() - (state.continuation.at(-1) ?? -Infinity) < limits.textCooldownMs)) return false;
     return (kind === "text" ? state.reservedText : state.reservedReaction) === 0 &&

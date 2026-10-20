@@ -3,11 +3,7 @@ import Ajv from "ajv";
 import { contextualDecisionContract } from "../../src/application/chat/contextual-decision-contract.js";
 import { CharacterDecisionService } from "../../src/application/chat/character-decision.js";
 import { branchHuman, branchBot, branchCurrent } from "../helpers/conversation-decision-fixtures.js";
-
-export function contextualProposal(extra: Record<string, unknown> = {}): Record<string, unknown> {
-  return { relationship: "followup", intent: "answer", action: "reply", recipientEvidence: ["current"], recipientConfidence: 0.95,
-    confidence: 0.95, opening: "clear", contribution: { text: "A specific answer", adds: "New information", label: "answer", motivation: 0.95 }, reaction: null, ...extra };
-}
+import { contextualProposal } from "../helpers/contextual-decision-fixtures.js";
 const events = [branchHuman, branchBot, branchCurrent];
 describe("contextual decision binding", () => {
   it("owns the current destination and recipient with no corresponding wire fields", () => {

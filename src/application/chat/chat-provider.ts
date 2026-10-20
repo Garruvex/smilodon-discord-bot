@@ -20,6 +20,8 @@ export interface ChatRequest {
   characterEvaluation?: boolean;
   currentBurst?: readonly ChannelHistoryMessage[];
   optionalActionsAvailable?: { text: boolean; reaction: boolean };
+  contextualCandidate?: boolean;
+  contextualActionAvailability?: { continuation: { text: boolean; reaction: boolean }; spontaneous: { text: boolean; reaction: boolean } };
   characterContext?: readonly { moduleId: string; text: string }[];
   participationOnly?: boolean;
   capabilityToolNames?: readonly string[];

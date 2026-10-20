@@ -61,6 +61,8 @@ export async function runGuardedChatTurn(input: ChatConversationInput, dependenc
     ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
     allowSilentDirect: input.allowSilentDirect ?? false, characterShadow: input.shadowMode ?? false,
     ...(input.optionalActionsAvailable ? { optionalActionsAvailable: input.optionalActionsAvailable } : {}),
+    ...(input.contextualCandidate ? { contextualCandidate: true } : {}),
+    ...(input.contextualActionAvailability ? { contextualActionAvailability: input.contextualActionAvailability } : {}),
     contextLease: lease, beforeModelAttempt: check, ...(input.onModelAttempt ? { onModelAttempt: input.onModelAttempt } : {}),
     enabledTools: [], historyReactionsEnabled: input.historyReactionsEnabled ?? false,
     characterContext: [{ moduleId: "conversation-context", text:
@@ -69,6 +71,11 @@ export async function runGuardedChatTurn(input: ChatConversationInput, dependenc
   if (dependencies.runtime && input.triggerMode !== "reaction") {
     prepared = await dependencies.runtime.prepare(request);
     if (prepared) { request = prepared.request; if (!prepared.allowed) return { ...silent(), ...(prepared.conversationDecision ? { conversationDecision: prepared.conversationDecision } : {}) }; }
+    if (prepared?.conversationDecision?.decision.action === "react") {
+      await check();
+      return { ...silent(), reactionEmoji: prepared.participation?.reaction ?? null, conversationDecision: prepared.conversationDecision,
+        contextLease: lease, replyTargetMessageId: prepared.targetMessageId ?? lease.current.messageId };
+    }
   }
   await check();
   let response = await dependencies.reply(request, observer);
