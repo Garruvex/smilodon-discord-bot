@@ -101,17 +101,33 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       return BehaviorResult.Continue;
     }
 
-    if (!this.chatAccess.canUseMentionChat(profile, message.member, message.author.id, message.channelId)) {
-      emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "access_denied" });
-      await message.reply({
-        content: profile.chat.deniedMessage,
-        components: profile.chat.deniedLinkUrl
-          ? [createChatAccessDeniedLinkButton(profile.chat.deniedLinkUrl, profile.chat.deniedLinkLabel)]
-          : [],
-        flags: MessageFlags.SuppressEmbeds,
-        allowedMentions: { repliedUser: false },
-      });
-      return BehaviorResult.StopPropagation;
+    let accessReason = this.chatAccess.mentionChatAccessReason(profile, message.member, message.author.id, message.channelId);
+    if (accessReason !== "allowed") {
+      const cachedReason = accessReason;
+      // MESSAGE_CREATE/cache state may predate a role grant. Confirm a denial
+      // against Discord rather than treating a missing/stale member as proof.
+      const member = await message.guild.members.fetch({ user: message.author.id, force: true }).catch(() => null);
+      const currentProfile = this.profiles.find(message.guildId);
+      if (!currentProfile?.features.chatbot) return BehaviorResult.StopPropagation;
+      accessReason = this.chatAccess.mentionChatAccessReason(currentProfile, member, message.author.id, message.channelId);
+      emitChatDiagnostic(this.logger, { event: "chat.access.refreshed", cachedReason, currentReason: accessReason });
+      if (!member) {
+        emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "access_denied", accessReason, memberRefresh: "unavailable" });
+        await this.sendNote(message.guildId, message.author, "I couldn't verify your current server membership. Please try again shortly.");
+        return BehaviorResult.StopPropagation;
+      }
+      if (accessReason !== "allowed") {
+        emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "access_denied", accessReason, memberRefresh: "current" });
+        await message.reply({
+          content: currentProfile.chat.deniedMessage,
+          components: currentProfile.chat.deniedLinkUrl
+            ? [createChatAccessDeniedLinkButton(currentProfile.chat.deniedLinkUrl, currentProfile.chat.deniedLinkLabel)]
+            : [],
+          flags: MessageFlags.SuppressEmbeds,
+          allowedMentions: { repliedUser: false },
+        });
+        return BehaviorResult.StopPropagation;
+      }
     }
     if (!this.conversation) {
       emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "provider_unconfigured" });

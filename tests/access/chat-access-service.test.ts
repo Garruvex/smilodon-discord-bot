@@ -130,6 +130,24 @@ function member(roleIds: readonly string[]): GuildMember {
 }
 
 describe("ChatAccessService", () => {
+  it("recognizes implicit @everyone for direct chat and context even when absent from the role cache", () => {
+    const service = new ChatAccessService(configuration());
+    const everyone = profile(); everyone.roles.chatbot = new Set([everyone.guildId]);
+    expect(service.canUseMentionChat(everyone, member([]), "human", chatChannelId)).toBe(true);
+    expect(service.canObserve(everyone, member([]))).toBe(true);
+    expect(service.canUseMentionChat(everyone, null, "human", chatChannelId)).toBe(false);
+    expect(service.canObserve(everyone, null)).toBe(false);
+    expect(service.canUseMentionChat(everyone, member([restrictedRoleId]), "human", chatChannelId)).toBe(false);
+    expect(service.canObserve(everyone, member([restrictedRoleId]))).toBe(false);
+    expect(service.canUseMentionChat(everyone, member([]), "human", "elsewhere")).toBe(false);
+  });
+
+  it("applies an implicit @everyone restriction before grants", () => {
+    const service = new ChatAccessService(configuration());
+    const restricted = profile(); restricted.roles.restricted = new Set([restricted.guildId]);
+    expect(service.mentionChatAccessReason(restricted, member([chatbotRoleId]), "human", chatChannelId)).toBe("restricted_role");
+    expect(service.canObserve(restricted, member([chatbotRoleId]))).toBe(false);
+  });
   it("allows configured chatbot members in allowed channels", () => {
     const service = new ChatAccessService(configuration());
 

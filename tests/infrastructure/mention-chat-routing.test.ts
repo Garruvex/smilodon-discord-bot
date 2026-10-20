@@ -18,6 +18,45 @@ function setup(origins: MessageOriginStore | null = null): { behavior: MentionCh
   return { behavior, message, fetch };
 }
 describe("explicit reply routing bypasses optional accumulation", () => {
+  it.each(["stale", "missing"] as const)("refreshes a %s member before refusing an authorized direct question", async (cacheState) => {
+    const { logger, records } = captureDiagnosticLogger();
+    const document = freshDocument(); document.features.chatbot = true;
+    document.chat.deniedMessage = "CUSTOM_DENIAL";
+    const { message } = setup();
+    const member = { roles: { cache: new Map([[document.roles.botAdministrator[0]!, {}]]) } };
+    const memberFetch = vi.fn().mockResolvedValue(member);
+    const reply = vi.fn().mockResolvedValue(undefined);
+    Object.assign(message, { id: "question", content: "<@bot> 大番薯生日要做什麼",
+      member: cacheState === "missing" ? null : { roles: { cache: new Map() } }, guild: { members: { fetch: memberFetch } }, reply });
+    const behavior = new MentionChatBehavior(() => "bot", { ownerUserIds: new Set() } as unknown as ApplicationConfiguration,
+      memoryProvider(document), null, {} as PersonaSource, logger);
+    await behavior.execute(message);
+    expect(memberFetch).toHaveBeenCalledExactlyOnceWith({ user: "human", force: true });
+    expect(records.some((record) => record.reason === "access_denied")).toBe(false);
+    expect(records.some((record) => record.reason === "provider_unconfigured")).toBe(true);
+    expect(JSON.stringify(reply.mock.calls)).not.toContain("CUSTOM_DENIAL");
+  });
+
+  it.each(["missing_chat_role", "restricted_role", "channel_denied", "member_unavailable"] as const)("retains access restrictions and records %s without changing custom copy", async (reason) => {
+    const { logger, records } = captureDiagnosticLogger();
+    const document = freshDocument(); document.features.chatbot = true;
+    document.chat.deniedMessage = "CUSTOM_DENIAL";
+    const roles = new Map([[document.roles.botAdministrator[0]!, {}]]);
+    if (reason === "missing_chat_role") roles.clear();
+    if (reason === "restricted_role") { document.roles.restricted = ["restricted"]; roles.set("restricted", {}); }
+    if (reason === "channel_denied") document.channels.chatbot = ["elsewhere"];
+    const { message } = setup();
+    const memberFetch = reason === "member_unavailable" ? vi.fn().mockRejectedValue(new Error("Discord unavailable")) : vi.fn().mockResolvedValue({ roles: { cache: roles } });
+    const reply = vi.fn().mockResolvedValue(undefined);
+    Object.assign(message, { id: "question", member: null, guild: { members: { fetch: memberFetch } }, reply });
+    const behavior = new MentionChatBehavior(() => "bot", { ownerUserIds: new Set() } as unknown as ApplicationConfiguration,
+      memoryProvider(document), null, {} as PersonaSource, logger);
+    await behavior.execute(message);
+    expect(records).toEqual(expect.arrayContaining([expect.objectContaining({ reason: "access_denied", accessReason: reason,
+      memberRefresh: reason === "member_unavailable" ? "unavailable" : "current" })]));
+    if (reason === "member_unavailable") expect(reply).not.toHaveBeenCalled();
+    else expect(reply).toHaveBeenCalledWith(expect.objectContaining({ content: "CUSTOM_DENIAL" }));
+  });
   it("explains unknown reply targets and disabled direct chat without reading history", async () => {
     const { logger, records } = captureDiagnosticLogger();
     const document = freshDocument(); document.features.chatbot = false;

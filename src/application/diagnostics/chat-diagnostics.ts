@@ -37,6 +37,7 @@ export type FailureCategory = z.infer<typeof failureCategory>;
 // Allow-list every serialized field. Runtime stripping also protects callers
 // compiled without TypeScript, and prevents raw provider/Discord objects leaking.
 const eventSchema = z.discriminatedUnion("event", [
+  z.object({ event: z.literal("chat.access.refreshed"), cachedReason: z.enum(["member_unavailable", "restricted_role", "channel_denied", "missing_chat_role"]), currentReason: z.enum(["allowed", "member_unavailable", "restricted_role", "channel_denied", "missing_chat_role"]) }),
   z.object({ event: z.literal("chat.delivery.bookkeeping_failed"), stage: z.enum(["proof", "origin"]), failure: failureCategory, httpStatus: z.number().int().min(100).max(599).optional() }),
   z.object({ event: z.literal("context.guard.validation"), status: z.enum(["current", "changed", "deadline", "bounded"]), reads: count }),
   z.object({ event: z.literal("context.guard.coverage"), replyChain: count, replyBounded: z.boolean(), burst: count, eligibleReactors: count, omittedReactors: count, requested: count, fetched: count, examined: count, duplicates: count, unverifiedBot: count, invalidatedDerived: count,
@@ -59,7 +60,7 @@ const eventSchema = z.discriminatedUnion("event", [
   z.object({ event: z.literal("chat.gateway.completed"), outcome: z.enum(["startup_gate", "control_channel", "dispatched", "out_of_scope", "failed"]), durationMs: duration, failure: failureCategory.optional() }),
   z.object({ event: z.literal("chat.ingress.received"), kind: z.enum(["message_created", "reaction_added", "voice_state_updated"]) }),
   z.object({ event: z.literal("chat.route.matched"), behaviorId: identifier }),
-  z.object({ event: z.literal("chat.route.skipped"), behaviorId: identifier, reason: z.enum(["not_guild", "chat_disabled", "duplicate", "game_channel", "access_denied", "provider_unconfigured", "unresolved_reply_origin"]) }),
+  z.object({ event: z.literal("chat.route.skipped"), behaviorId: identifier, reason: z.enum(["not_guild", "chat_disabled", "duplicate", "game_channel", "access_denied", "provider_unconfigured", "unresolved_reply_origin"]), accessReason: z.enum(["member_unavailable", "restricted_role", "channel_denied", "missing_chat_role"]).optional(), memberRefresh: z.enum(["current", "unavailable"]).optional() }),
   z.object({ event: z.literal("chat.dispatch.completed"), result: z.enum(["continue", "handled", "stop_propagation", "failed"]), behaviorId: identifier.optional(), stage: z.enum(["matches", "execute"]).optional(), durationMs: duration, failure: failureCategory.optional() }),
   z.object({ event: z.literal("context.eligibility.denied"), sourceMessageId: identifier, purpose: z.enum(["direct", "ambient", "continuation", "spontaneous", "reaction", "observation", "background_observation", "history_reaction", "history", "guarded_current"]), reason: eligibilityReason }),
   z.object({ event: z.literal("context.source.selected"), source: z.enum(["reply_chain", "channel_history"]), fetched: count, selected: count, omitted: count, status: z.enum(["complete", "ineligible", "fetch_failed", "bounded"]), chars: count }),
