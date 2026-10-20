@@ -9,6 +9,7 @@ import { characterSettings } from "../../../application/chat/character-settings.
 import { addressesBotName } from "../../../domain/chat/name-mention.js";
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
 import type { AmbientChatBehavior } from "./ambient-chat-behavior.js";
+import { emitChatDiagnostic } from "../../../application/diagnostics/chat-diagnostics.js";
 
 type OptionalTrigger = "continuation" | "spontaneous";
 interface MessageBatch { messages: Message[]; seen: Set<string>; fingerprint: string; version: number; trigger: OptionalTrigger; participantId: string | null; timer?: ReturnType<typeof setTimeout>; firstAt: number }
@@ -24,6 +25,9 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
     private readonly profiles: GuildConfigurationProvider, private readonly conversation: ChatConversationService,
     private readonly eligibility: SocialChatEligibility, private readonly ambient: AmbientChatBehavior, private readonly logger: Logger) {}
 
+  private report(batch: MessageBatch, reason: "batch_threshold" | "pause_or_cooldown" | "continuation_candidate" | "submitted" | "invalidated", delayMs = 0): void {
+    emitChatDiagnostic(this.logger, { event: "chat.admission.buffered", triggerMode: batch.trigger, reason, messages: batch.messages.length, delayMs });
+  }
   private fingerprint(profile: GuildConfiguration, channelId: string): string {
     return JSON.stringify([profile.chat.participation, profile.features.chatbot, profile.features.channelHistory, profile.character,
       profile.chat.channelMemoryModes[channelId], [...profile.channels.chatbot], [...profile.roles.chatbot], [...profile.roles.botAdministrator], [...profile.roles.restricted]]);
@@ -85,12 +89,22 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
       const turns = batch.messages.reduce((count, item, index, items) => count + (index === 0 || item.author.id !== items[index - 1]!.author.id ? 1 : 0), 0);
       const substantive = batch.messages.some((item) => item.content.trim().length >= 40);
       if (batch.timer) clearTimeout(batch.timer);
-      if (turns < Math.min(3, maximum) && batch.messages.length < maximum && !substantive) return BehaviorResult.Continue;
+      if (turns < Math.min(3, maximum) && batch.messages.length < maximum && !substantive) {
+        this.report(batch, "batch_threshold"); return BehaviorResult.Continue;
+      }
       const pause = turns >= maximum || batch.messages.length >= maximum ? 0 : Math.min(turns >= 3 ? pauseMs : singleMessagePauseMs, Math.max(0, batch.firstAt + maxWaitMs - Date.now()));
       const delay = Math.max(pause, this.conversation.optionalEvaluationDelayMs?.(message.guildId!, message.channelId, resolveParticipation(profile.chat.participation, message.channelId).limits) ?? 0);
+      this.report(batch, "pause_or_cooldown", delay);
       batch.timer = setTimeout(() => this.schedule(message, batch), delay);
       batch.timer.unref?.();
-    } else this.schedule(message, batch);
+    } else {
+      const delay = this.conversation.optionalEvaluationDelayMs?.(message.guildId!, message.channelId, resolveParticipation(profile.chat.participation, message.channelId).limits) ?? 0;
+      this.report(batch, "continuation_candidate", delay);
+      if (batch.timer) clearTimeout(batch.timer);
+      if (delay > 0) {
+        batch.timer = setTimeout(() => this.schedule(message, batch), delay); batch.timer.unref?.();
+      } else this.schedule(message, batch);
+    }
     return BehaviorResult.Continue;
   }
   private schedule(message: Message, batch: MessageBatch): void {
@@ -100,7 +114,7 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
   }
   private async flush(source: Message, batch: MessageBatch): Promise<void> {
     const profile = this.profiles.find(source.guildId!);
-    if (!profile || this.pending(source, profile) !== batch) return;
+    if (!profile || this.pending(source, profile) !== batch) { this.report(batch, "invalidated"); return; }
     const snapshot = [...batch.messages];
     const burst = (await Promise.all(snapshot.map(async (message) => {
       const trigger = this.trigger(message);
@@ -109,7 +123,8 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
     const current = this.profiles.find(source.guildId!);
     if (!current || this.pending(source, current) !== batch || batch.messages.at(-1)?.id !== snapshot.at(-1)?.id) return;
     batch.messages = burst;
-    if (!burst.length) return;
+    if (!burst.length) { this.report(batch, "invalidated"); return; }
+    this.report(batch, "submitted");
     const latest = burst.at(-1)!; const trigger = this.trigger(latest); batch.messages = [];
     batch.firstAt = Date.now();
     if (trigger) await this.ambient.execute(latest, trigger, burst);

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { addressedElsewhere, decisionSourceFailure, exchangeBranch, generatedContributionAllowed, localAddressing, optionalParticipationRejection, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
+import { addressedElsewhere, decisionSourceFailure, exchangeBranch, generatedContributionAllowed, groundedContextContinuation, localAddressing, optionalParticipationRejection, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
+import { isGuardedContext } from "./guarded-conversation-context.js";
 import { resolveConversationTrigger, type TriggerResolution } from "./conversation-trigger.js";
 import type { ChatRequest, ChatResponse } from "./chat-provider.js";
 import { emitChatDiagnostic, type DiagnosticLogger } from "../diagnostics/chat-diagnostics.js";
@@ -58,7 +59,7 @@ export class ConversationDecisionEngine {
       messageId: request.currentEvent.messageId, timestampMs: request.currentEvent.timestampMs, authorId: request.currentUser.id,
       authorDisplayName: request.currentUser.displayName, content: request.message, imageCount: request.images.length,
       replyToMessageId: request.currentEvent.replyToMessageId } : undefined);
-    const local = current ? localAddressing(events, current, botId, true, 120_000, request.aliasCandidates) : "unclear";
+    let local = current ? localAddressing(events, current, botId, true, 120_000, request.aliasCandidates) : "unclear";
     const elsewhere = !!current && addressedElsewhere(current, events, botId, request.aliasCandidates);
     const proposal = outcome.decision;
     const base = { contribution: null, targetMessageId: null, targetConfidence: 0, reaction: null, exchangeId: current ? exchangeBranch(events, current, botId) : null, local };
@@ -69,6 +70,12 @@ export class ConversationDecisionEngine {
     if (proposal) {
       const failure = decisionSourceFailure(proposal, events.filter((event) => event.timestampMs <= now), botId, request.triggerMode === "continuation" ? current?.messageId ?? null : null);
       if (failure) return denied(failure, "failed");
+      // Only guarded evidence and a successful model decision can resolve an
+      // older or cross-participant exchange. Failure fallback stays recent-only.
+      if (current && !elsewhere && isGuardedContext(request.contextLease) &&
+          groundedContextContinuation(events.filter((event) => event.timestampMs <= now), current, botId, proposal)) {
+        local = "continuing"; base.local = local;
+      }
     }
     if (!proposal) {
       // Fallback is opt-in and skips ONLY a broken decision call. The

@@ -70,6 +70,7 @@ const eventSchema = z.discriminatedUnion("event", [
   z.object({ event: z.literal("model.decision.attempt"), providerRole: z.enum(["primary", "fallback"]), attempt: count, status: z.enum(["valid", "failed"]), durationMs: duration, failure: failureCategory.optional(), httpStatus: z.number().int().min(100).max(599).optional() }),
   z.object({ event: z.literal("chat.model.completed"), purpose: z.enum(["reply", "participation", "repair"]), status: z.enum(["valid", "failed"]), durationMs: duration, failure: failureCategory.optional(), httpStatus: z.number().int().min(100).max(599).optional() }),
   z.object({ event: z.literal("chat.turn.started"), triggerMode: trigger }),
+  z.object({ event: z.literal("chat.admission.buffered"), triggerMode: trigger, reason: z.enum(["batch_threshold", "pause_or_cooldown", "continuation_candidate", "submitted", "invalidated"]), messages: count, delayMs: duration }),
   z.object({ event: z.literal("chat.turn.skipped"), reason: z.enum(["decision_unavailable", "duplicate_ping"]) }),
   z.object({ event: z.literal("chat.output.suppressed"), reason: z.enum(["execution_ineligible", "privacy_changed", "shadow", "opportunity_expired", "context_changed", "delivery_cancelled", "output_capacity"]) }),
   z.object({ event: z.literal("chat.queue.changed"), jobId: identifier, action: z.enum(["enqueued", "admitted", "skipped", "cancelled", "completed", "failed"]),

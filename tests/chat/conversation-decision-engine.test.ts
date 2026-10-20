@@ -7,6 +7,12 @@ const engine = new ConversationDecisionEngine();
 const failed = { status: "failed" as const, decision: null, attempts: [] };
 const fallback = { ...defaultParticipation, continuationEnabled: true, continuationFailureMode: "grounded_fallback" as const };
 describe("conversation decision authority", () => {
+  it("does not use unguarded older exchanges to override recipient ambiguity", () => {
+    const current = { ...branchCurrent, timestampMs: 962000, content: "I was fixing you, not the birthday" };
+    const proposal = decisionProposal({ recipientEvidence: ["original", "confirmed-reply", "current"] });
+    const result = engine.assess(decisionRequest({ currentBurst: [current] }), { status: "valid", decision: proposal, attempts: [] }, fallback, true, 963000, "policy");
+    expect(result.result.decision.action).toBe("silent");
+  });
   it.each(["direct_mention", "explicit_reply", "bare_ping", "name_address"] as const)("preserves %s without optional scoring", (interactionMode) => {
     const request = decisionRequest({ triggerMode: interactionMode === "name_address" ? "ambient" : "direct", interactionMode });
     const result = engine.assess(request, failed, defaultParticipation, true, 4000, "policy");

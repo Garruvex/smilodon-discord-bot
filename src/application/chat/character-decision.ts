@@ -60,6 +60,19 @@ export function closesExchange(text: string): boolean {
     isRecipientCorrection(text);
 }
 export interface RecipientAliases { alias: string; subjectIds: readonly string[] }
+// Admission hint only; a guarded decision still has to resolve the recipient.
+export function possiblePersonalFollowup(text: string): boolean {
+  return !closesExchange(text) && /(?:你|妳|您|あなた|君|きみ|お前|\b(?:you|your|yours)\b)/iu.test(text);
+}
+export function groundedContextContinuation(events: readonly ChannelHistoryMessage[], current: ChannelHistoryMessage, botId: string, proposal: CharacterDecision): boolean {
+  if (!["bot", "continuing"].includes(proposal.addressing) || proposal.target !== current.messageId ||
+      proposal.contribution.recipientId !== current.authorId || closesExchange(current.content) ||
+      !proposal.recipientEvidence.includes(current.messageId)) return false;
+  const cited = new Set(proposal.recipientEvidence);
+  return events.some((bot) => bot.authorId === botId && bot.timestampMs < current.timestampMs && cited.has(bot.messageId) &&
+    events.some((human) => human.messageId === bot.replyToMessageId && human.authorId === bot.replyToAuthorId &&
+      human.authorId !== botId && human.author?.kind !== "bot" && human.timestampMs < bot.timestampMs && cited.has(human.messageId)));
+}
 // Bare personal addresses need a resolved recipient. Their wording is not
 // evidence that the bot owns the human's possessions, plans or experiences.
 function unresolvedPersonalAddress(text: string): boolean {
@@ -210,6 +223,7 @@ Separate recipient evidence, contribution and opening. A question, pronoun, topi
 Track the speaker and the person being discussed separately from the most recent respondent. Giving advice about a human's motorcycle, possessions or plans does not transfer those facts or plans to the bot. A later "you too?" may address that human; do not answer it as the bot without supplied recipient evidence. An old bot reply or a shared topic is not evidence of a current address. Without an explicit reply/mention/name or a recent uninterrupted same-person bot exchange, do not label a message bot/continuing; unresolved personal addresses must be unclear. Genuine open group contributions can be others, but must not impersonate their human recipient.
 Continuation belongs to the engaged human account, not the channel or topic. If the bot answered human A, a new message by human B does not inherit A's conversation with the bot, even a second later. B needs independent recipient evidence, such as explicitly replying to or addressing the bot. Do not treat B's comment to A as B addressing the bot.
 Return recipientEvidence as supplied message IDs, recipientConfidence separately from targetConfidence. Target must be an unanswered supplied human message. Respect fixedTarget.
+Elapsed time alone does not make an earlier exchange irrelevant. A human can correct or follow up on a bot reply to another participant. For such continuations, cite the current human message, the relevant bot reply, and the human message that reply answered in recipientEvidence. Resolve meaning from the supplied conversation; second-person wording alone does not prove the bot is the recipient. If that relationship is ambiguous, use addressing unclear.
 Contribution labels are mandatory: acknowledgment-only, repetition, generic-advice, speculative-help, topic-hijack, stale-information and none are ALWAYS rejected regardless of motivation. Answer, relevant-joke, specific-opinion, personal-reaction and useful-observation can qualify when specific and relevant. Describe what the contribution adds and its recipientId (supplied human author ID or group). Do not manufacture a candidate; use label none and empty text/adds when nothing qualifies. Motivation is a ranking judgment, not a measured probability.
 Opening clear means room to speak without interrupting and still relevant; otherwise closed or unclear. Usually stay silent on narration, thanks, lol, okay, simple updates and closings. A shared interest alone does not justify interrupting other people.
 ${input.thoughts ? "Return zero to three optional candidate thoughts with the same fields and labels. Zero is common." : "Return no thoughts; the baseline contribution assessment is still required."}

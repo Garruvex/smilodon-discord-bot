@@ -12,7 +12,7 @@ import { resolveChannelMemoryMode } from "../memory/memory-channel-policy.js";
 import { characterSettings, characterInactiveReason, type CharacterModuleId, type CharacterCapabilities } from "./character-settings.js";
 import { CharacterModuleRegistry, type CharacterTurn } from "./character-module-registry.js";
 import { CharacterMemory } from "./character-memory.js";
-import { CharacterDecisionService, localAddressing, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
+import { addressedElsewhere, CharacterDecisionService, localAddressing, possiblePersonalFollowup, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
 import { createCharacterModules } from "./character-modules/index.js";
 import { hash, personaFingerprint, serious } from "./character-modules/shared.js";
 import { resolveParticipation, contributionPolicy, passiveChannelAllowed } from "./participation-policy.js";
@@ -96,7 +96,9 @@ export class CharacterRuntime {
     const settings = characterSettings(profile);
     const live = this.registry.has("addressing") && !characterInactiveReason(settings, "addressing", channelId, this.capabilities(profile, channelId)) && !settings.modules.addressing.shadow;
     const addressing = localAddressing(history, event, botId, live && settings.modules.addressing.includeOtherParticipants);
-    return addressing === "bot" || addressing === "continuing";
+    return addressing === "bot" || addressing === "continuing" ||
+      this.decisionAvailable && settings.context.enabled && settings.context.retrievalMode === "eligible_count" &&
+      possiblePersonalFollowup(event.content) && !addressedElsewhere(event, history, botId);
   }
   public selectContext(guildId: string, channelId: string, events: readonly ChannelHistoryMessage[], now = this.now()): ChannelHistoryMessage[] {
     const profile = this.profiles.find(guildId); if (!profile) return [...events];

@@ -12,7 +12,7 @@ function message(id: string, content: string, authorId = "human"): Message {
   return { id, content, guildId, channelId, createdTimestamp: Date.now(), author: { id: authorId, bot: false, displayName: authorId },
     inGuild: () => true, mentions: { users: { has: () => false } } } as unknown as Message;
 }
-function setup(messagesPerDecision = 5): { behavior: ProactiveChatBehavior; profiles: ReturnType<typeof memoryProvider>; opportunities: (() => void)[]; execute: ReturnType<typeof vi.fn>; setContinuation: (active: boolean) => void; setEvaluationDelay: (ms: number) => void; check: ReturnType<typeof vi.fn> } {
+function setup(messagesPerDecision = 5): { behavior: ProactiveChatBehavior; profiles: ReturnType<typeof memoryProvider>; opportunities: (() => void)[]; execute: ReturnType<typeof vi.fn>; setContinuation: (active: boolean) => void; setEvaluationDelay: (ms: number) => void; check: ReturnType<typeof vi.fn>; info: ReturnType<typeof vi.fn> } {
   const document = freshDocument(); document.features.channelHistory = true; document.features.chatbot = true;
   document.chat.participation.spontaneousEnabled = true; document.chat.participation.messagesPerDecision = messagesPerDecision;
   document.chat.participation.continuationEnabled = true; document.chat.participation.spontaneousChannelIds = [channelId];
@@ -23,11 +23,12 @@ function setup(messagesPerDecision = 5): { behavior: ProactiveChatBehavior; prof
     bufferOpportunity: (_guild: string, _channel: string, work: () => void) => { opportunities.push(work); } } as unknown as ChatConversationService;
   const execute = vi.fn(() => Promise.resolve());
   const check = vi.fn(() => Promise.resolve({ eligible: true }));
+  const info = vi.fn();
   const behavior = new ProactiveChatBehavior(() => "bot", profiles, conversation,
     { check } as unknown as SocialChatEligibility,
-    { execute } as unknown as AmbientChatBehavior, { warn: vi.fn() } as unknown as Logger);
+    { execute } as unknown as AmbientChatBehavior, { warn: vi.fn(), info } as unknown as Logger);
   return { behavior, profiles, opportunities, execute, setContinuation: (active): void => { continuation = active; },
-    setEvaluationDelay: (ms): void => { evaluationDelay = ms; }, check };
+    setEvaluationDelay: (ms): void => { evaluationDelay = ms; }, check, info };
 }
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(1_000); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
@@ -36,6 +37,14 @@ async function evaluate(opportunities: (() => void)[]): Promise<void> {
 }
 
 describe("spontaneous opportunities", () => {
+  it("logs the short-message threshold without including message content", async () => {
+    const { behavior, info } = setup();
+    await behavior.execute(message("short", "private fragment"));
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({
+      event: "chat.admission.buffered", triggerMode: "spontaneous", reason: "batch_threshold", messages: 1, delayMs: 0,
+    }), "chat.admission.buffered");
+    expect(JSON.stringify(info.mock.calls)).not.toContain("private fragment");
+  });
   it("evaluates five short fragments once", async () => {
     const { behavior, opportunities, execute } = setup();
     for (let i = 1; i <= 5; i++) await behavior.execute(message(String(i), "short fragment"));
@@ -94,6 +103,17 @@ describe("spontaneous opportunities", () => {
     const followup = message("followup", "why?"); await behavior.execute(followup);
     await evaluate(opportunities);
     expect(execute).toHaveBeenCalledExactlyOnceWith(followup, "continuation", [followup]);
+  });
+  it("evaluates a short correction after the evaluation cooldown without more messages", async () => {
+    const { behavior, opportunities, execute, setContinuation, setEvaluationDelay, info } = setup();
+    setContinuation(true); setEvaluationDelay(25_000);
+    const correction = message("correction", "我是在修你ㄟ 你剛剛壞掉了不回他\n跟大番薯沒關西");
+    await behavior.execute(correction);
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({ reason: "continuation_candidate", delayMs: 25000 }), "chat.admission.buffered");
+    await vi.advanceTimersByTimeAsync(24_999); expect(opportunities).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1); await evaluate(opportunities);
+    expect(execute).toHaveBeenCalledExactlyOnceWith(correction, "continuation", [correction]);
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({ reason: "submitted" }), "chat.admission.buffered");
   });
   it("invalidates a scheduled decision when settings or eligibility change", async () => {
     const { behavior, profiles, opportunities, execute, check } = setup(1);
