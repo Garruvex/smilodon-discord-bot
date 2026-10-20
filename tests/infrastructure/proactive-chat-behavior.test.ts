@@ -37,6 +37,43 @@ async function evaluate(opportunities: (() => void)[]): Promise<void> {
 }
 
 describe("spontaneous opportunities", () => {
+  async function contextual(continuationOnly = false): Promise<ReturnType<typeof setup>> {
+    const result = setup();
+    await result.profiles.update(guildId, { character: { context: { ...result.profiles.current().character!.context, enabled: true, retrievalMode: "eligible_count" } },
+      chatParticipation: { flowVersion: "contextual_v1", spontaneousEnabled: !continuationOnly } });
+    return result;
+  }
+  it.each(["好了嗎", "然後呢", "可以回我嗎"])("evaluates one short contextual candidate without a wording prerequisite: %s", async (content) => {
+    const { behavior, opportunities, execute, info } = await contextual();
+    await behavior.execute(message("single", content));
+    await vi.advanceTimersByTimeAsync(4999); expect(opportunities).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1); await evaluate(opportunities);
+    expect(execute).toHaveBeenCalledOnce();
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({ event: "chat.candidate.changed", action: "submitted" }), "chat.candidate.changed");
+  });
+  it("admits a neutral candidate in continuation-only scope", async () => {
+    const { behavior, opportunities, execute } = await contextual(true);
+    expect(await behavior.matches(message("one", "好了嗎"))).toBe(true);
+    await behavior.execute(message("one", "好了嗎"));
+    await vi.advanceTimersByTimeAsync(5000); await evaluate(opportunities);
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ id: "one" }), "continuation", expect.any(Array));
+  });
+  it("retains the original maximum wait during continuous fragments", async () => {
+    const { behavior, opportunities, execute, profiles } = await contextual();
+    await profiles.update(guildId, { chatParticipation: { messagesPerDecision: 20 } });
+    for (let index = 0; index < 4; index++) {
+      await behavior.execute(message(String(index), "short")); await vi.advanceTimersByTimeAsync(4000);
+    }
+    expect(opportunities).toHaveLength(1); await evaluate(opportunities);
+    expect(execute).toHaveBeenCalledOnce();
+  });
+  it("expires a candidate explicitly when cooldown exceeds its lifetime", async () => {
+    const { behavior, setEvaluationDelay, opportunities, info } = await contextual();
+    setEvaluationDelay(120000); await behavior.execute(message("one", "好了嗎"));
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(opportunities).toHaveLength(0);
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({ action: "expired", reason: "deadline" }), "chat.candidate.changed");
+  });
   it("logs the short-message threshold without including message content", async () => {
     const { behavior, info } = setup();
     await behavior.execute(message("short", "private fragment"));

@@ -4,6 +4,8 @@ Prepared 2026-10-21. Status: proposed implementation plan; no runtime or deploym
 
 Implementation progress: checkpoint 1 implemented locally. `flowVersion: contextual_v1` is an explicit opt-in under participation controls (legacy remains the default). It uses a strict wire contract without fixed destination IDs or legacy boundary fields, opaque selectable target keys, application-bound recipients, and valid target-free abstention. Contract/fallback/privacy tests plus settings metadata/registry tests: 58 passed; typecheck and changed-file lint passed. No live configuration changed; subsequent checkpoints and real-provider acceptance remain pending.
 
+Checkpoint 2 implemented locally: neutral admission in enabled guarded contextual flow, including continuation-only scope; five-second pause / fifteen-second maximum coalescing, sixty-second candidate lifetime, bounded message/channel capacity, explicit candidate lifecycle and expiry diagnostics. Tests cover wording-independent single messages, continuous fragments, continuation-only admission, and excessive cooldown expiry. Proactive suite: 17 passed; typecheck and changed-file lint passed. Post-context classification/policy migration follows in checkpoint 3; keep the flow disabled in production until that integration passes.
+
 ## Objective and non-negotiable rules
 
 An eligible short message should be interpreted using authorized context before deciding whether it is a follow-up, a group contribution, or irrelevant to the bot. A bare ping may refer to earlier substantive text. Time gaps do not remove reference relevance. Speaker, recipient, reply destination and discussed subject remain distinct.

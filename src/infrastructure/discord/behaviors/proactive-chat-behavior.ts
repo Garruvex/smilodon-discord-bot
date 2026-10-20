@@ -10,6 +10,8 @@ import { addressesBotName } from "../../../domain/chat/name-mention.js";
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
 import type { AmbientChatBehavior } from "./ambient-chat-behavior.js";
 import { emitChatDiagnostic } from "../../../application/diagnostics/chat-diagnostics.js";
+import { contextualFlow } from "../../../application/chat/contextual-flow.js";
+import { ContextualCandidateBuffer } from "./contextual-candidate-buffer.js";
 
 type OptionalTrigger = "continuation" | "spontaneous";
 interface MessageBatch { messages: Message[]; seen: Set<string>; fingerprint: string; version: number; trigger: OptionalTrigger; participantId: string | null; timer?: ReturnType<typeof setTimeout>; firstAt: number }
@@ -18,12 +20,23 @@ const singleMessagePauseMs = 12_000;
 const maxWaitMs = 15_000;
 export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageCreated> {
   private readonly bursts = new Map<string, MessageBatch>();
+  private readonly candidates: ContextualCandidateBuffer;
   public readonly id = "proactive-chat";
   public readonly event = BehaviorEvent.MessageCreated;
   public readonly priority = 80;
   public constructor(private readonly botId: () => string | null,
     private readonly profiles: GuildConfigurationProvider, private readonly conversation: ChatConversationService,
-    private readonly eligibility: SocialChatEligibility, private readonly ambient: AmbientChatBehavior, private readonly logger: Logger) {}
+    private readonly eligibility: SocialChatEligibility, private readonly ambient: AmbientChatBehavior, private readonly logger: Logger) {
+    this.candidates = new ContextualCandidateBuffer(logger, {
+      fingerprint: (message): string | null => { const profile = message.guildId ? profiles.find(message.guildId) : null; return profile && contextualFlow(profile, message.channelId)
+        ? this.fingerprint(profile, message.channelId) + conversation.optionalOpportunityVersion(message.guildId!, message.channelId) : null; },
+      delay: (message): number => conversation.optionalEvaluationDelayMs(message.guildId!, message.channelId, resolveParticipation(profiles.find(message.guildId!)?.chat.participation, message.channelId).limits),
+      threshold: (message): number => resolveParticipation(profiles.find(message.guildId!)?.chat.participation, message.channelId).messagesPerDecision,
+      eligible: async (message): Promise<boolean> => { const trigger = this.trigger(message); return trigger !== null && (await eligibility.check(message, trigger)).eligible; },
+      schedule: (message, work): void => conversation.bufferOpportunity(message.guildId!, message.channelId, work),
+      evaluate: async (message, burst): Promise<void> => { const trigger = this.trigger(message); if (trigger) await ambient.execute(message, trigger, burst); },
+    });
+  }
 
   private report(batch: MessageBatch, reason: "batch_threshold" | "pause_or_cooldown" | "continuation_candidate" | "submitted" | "invalidated", delayMs = 0): void {
     emitChatDiagnostic(this.logger, { event: "chat.admission.buffered", triggerMode: batch.trigger, reason, messages: batch.messages.length, delayMs });
@@ -49,6 +62,8 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
     if (addressesBotName(message.content, profile.displayName) || message.mentions.repliedUser?.id === botId ||
         message.reference?.messageId && message.channel?.messages?.cache?.get(message.reference.messageId)?.author.id === botId) return null;
     const policy = resolveParticipation(profile.chat.participation, message.channelId);
+    if (contextualFlow(profile, message.channelId) && this.conversation.optionalDecisionAvailable && (!!message.content.trim() || (message.attachments?.size ?? 0) > 0))
+      return policy.spontaneousEnabled ? "spontaneous" : policy.continuationEnabled ? "continuation" : null;
     if (policy.continuationEnabled && this.conversation.isImplicitlyAddressed(message.guildId, message.channelId, { messageId: message.id, timestampMs: message.createdTimestamp,
         authorId: message.author.id, authorDisplayName: message.author.displayName, content: message.content, imageCount: 0,
         replyToMessageId: message.reference?.messageId ?? null }, botId)) return "continuation";
@@ -59,6 +74,7 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
     const trigger = this.trigger(message);
     const eligible = trigger !== null && (await this.eligibility.check(message, trigger)).eligible;
     if (!eligible && trigger === null && message.guildId && !message.author.bot) {
+      this.candidates.cancel(message);
       const key = `${message.guildId}:${message.channelId}`;
       const batch = this.bursts.get(key); if (batch?.timer) clearTimeout(batch.timer);
       this.bursts.delete(key);
@@ -69,6 +85,7 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
     const trigger = this.trigger(message);
     if (!trigger || !(await this.eligibility.check(message, trigger)).eligible) return BehaviorResult.Continue;
     const profile = this.profiles.find(message.guildId!); if (!profile) return BehaviorResult.Continue;
+    if (contextualFlow(profile, message.channelId)) { this.candidates.add(message); return BehaviorResult.Continue; }
     const key = `${message.guildId}:${message.channelId}`;
     if (this.bursts.size >= 256 && !this.bursts.has(key)) {
       const oldest = this.bursts.keys().next().value!; const abandoned = this.bursts.get(oldest);
