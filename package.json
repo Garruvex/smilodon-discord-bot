@@ -61,7 +61,7 @@
     "stack:ps": "docker compose -f compose.yaml -f compose.tunnel.yaml ps",
     "stack:reset": "tsx src/scripts/reset-docker-postgres.ts",
     "stack:restart:bot": "tsx src/scripts/stack-bots.ts restart",
-    "stack:up": "docker compose -f compose.yaml -f compose.tunnel.yaml up --build -d --wait --remove-orphans",
+    "stack:up": "node scripts/stack-up.mjs",
     "start": "node dist/bootstrap/start.js",
     "test": "vitest run",
     "test:watch": "vitest",

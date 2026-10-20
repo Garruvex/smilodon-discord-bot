@@ -23,6 +23,8 @@ x-bot-service: &bot-service
   image: fntu-discord-bot-runtime:local
   build:
     context: .
+    args:
+      BUILD_SHA: ${BUILD_SHA:-unknown}
   command: node dist/scripts/start-docker-instance.js
   restart: unless-stopped
   depends_on:

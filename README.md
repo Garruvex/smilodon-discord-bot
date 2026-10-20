@@ -288,6 +288,14 @@ Discord commands, and then starts. Add another bot by copying one short bot
 service entry and changing its env file and data paths; no generated Compose
 overlay is involved.
 
+`stack:up` stamps Git HEAD into the image's `BUILD_SHA` environment variable and
+OCI revision label before starting containers without rebuilding them. Diagnostics
+then report that revision as `buildVersion`. Use a clean checkout for releases:
+the revision identifies the base commit, not any uncommitted edits. If Git metadata
+is unavailable, the command warns and records `unknown`. For a manual Docker build,
+pass `--build-arg BUILD_SHA=<commit-sha>`; plain `docker compose up --build` does
+not discover Git HEAD automatically.
+
 Docker startup registers commands automatically. To register them again without
 restarting the running bots:
 

@@ -18,6 +18,9 @@ RUN npm run build \
 
 FROM node:22-alpine AS runtime
 
+ARG BUILD_SHA=unknown
+ENV BUILD_SHA=${BUILD_SHA}
+LABEL org.opencontainers.image.revision=${BUILD_SHA}
 ENV NODE_ENV=production
 WORKDIR /app
 
