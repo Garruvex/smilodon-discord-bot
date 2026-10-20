@@ -8,6 +8,7 @@ import type { Logger } from "pino";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
 import { emitChatDiagnostic } from "../../../application/diagnostics/chat-diagnostics.js";
 import { mentionInteraction } from "../../../application/chat/conversation-trigger.js";
+import { MentionChatAccess } from "./mention-chat-access.js";
 import { resolvesReplyToBot } from "./direct-reply-resolver.js";
 import { characterSettings } from "../../../application/chat/character-settings.js";
 import { SocialOutputSuppressed, type MessageOriginStore } from "../../../application/chat/message-origin-store.js";
@@ -42,7 +43,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
   public readonly event = BehaviorEvent.MessageCreated;
   public readonly priority = 100;
   private readonly processedMessageIds = new Set<string>();
-  private readonly chatAccess: ChatAccessService;
+  private readonly chatAccess: MentionChatAccess;
   private readonly typing = new ChannelTypingManager();
   private readonly turnSupport: ChatTurnSupport;
 
@@ -63,7 +64,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     private readonly origins: MessageOriginStore | null = null,
     private readonly edits: ChannelEditScheduler = new ChannelEditScheduler(),
   ) {
-    this.chatAccess = new ChatAccessService(configuration);
+    this.chatAccess = new MentionChatAccess(new ChatAccessService(configuration), profiles, logger);
     this.turnSupport = new ChatTurnSupport(logger, eligibility, origins, (message) => {
       if (message.guildId) this.conversation?.excludeInteraction(message.guildId, message.channelId, message.id);
     });
@@ -74,9 +75,8 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     if (!botId || !message.inGuild() || message.author.bot) return false;
     if (message.mentions.users.has(botId)) return true;
     if (!message.reference?.messageId || message.reference.channelId && message.reference.channelId !== message.channelId) return false;
-    const profile = this.profiles.find(message.guildId);
-    const allowFetch = !!profile?.features.chatbot && this.chatAccess.canUseMentionChat(profile, message.member, message.author.id, message.channelId) && !await isInGameChannel(message, this.isGameChannel);
-    const resolved = await resolvesReplyToBot(message, botId, this.origins, 1500, allowFetch);
+    const allowFetch = async (): Promise<boolean> => !await isInGameChannel(message, this.isGameChannel) && (await this.chatAccess.resolve(message)).reason === "allowed";
+    const resolved = await resolvesReplyToBot(message, botId, this.origins, 4000, allowFetch);
     if (!resolved) emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "unresolved_reply_origin" });
     return resolved;
   }
@@ -86,7 +86,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "not_guild" });
       return BehaviorResult.Continue;
     }
-    const profile = this.profiles.find(message.guildId);
+    let profile = this.profiles.find(message.guildId);
     if (!profile?.features.chatbot) {
       emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "chat_disabled" });
       return BehaviorResult.Continue;
@@ -101,33 +101,24 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       return BehaviorResult.Continue;
     }
 
-    let accessReason = this.chatAccess.mentionChatAccessReason(profile, message.member, message.author.id, message.channelId);
-    if (accessReason !== "allowed") {
-      const cachedReason = accessReason;
-      // MESSAGE_CREATE/cache state may predate a role grant. Confirm a denial
-      // against Discord rather than treating a missing/stale member as proof.
-      const member = await message.guild.members.fetch({ user: message.author.id, force: true }).catch(() => null);
-      const currentProfile = this.profiles.find(message.guildId);
-      if (!currentProfile?.features.chatbot) return BehaviorResult.StopPropagation;
-      accessReason = this.chatAccess.mentionChatAccessReason(currentProfile, member, message.author.id, message.channelId);
-      emitChatDiagnostic(this.logger, { event: "chat.access.refreshed", cachedReason, currentReason: accessReason });
-      if (!member) {
-        emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "access_denied", accessReason: "member_unavailable", memberRefresh: "unavailable" });
-        await this.sendNote(message.guildId, message.author, "I couldn't verify your current server membership. Please try again shortly.");
-        return BehaviorResult.StopPropagation;
+    const access = await this.chatAccess.resolve(message);
+    if (!access.profile || access.reason === "chat_disabled") return BehaviorResult.StopPropagation;
+    profile = access.profile;
+    if (access.reason !== "allowed") {
+      const unavailable = access.reason === "member_unavailable";
+      emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id,
+        reason: unavailable ? "access_unavailable" : "access_denied", accessReason: access.reason,
+        memberRefresh: unavailable ? "unavailable" : "current" });
+      if (unavailable) {
+        const note = { en: "I couldn't verify your current server membership. Please try again shortly.",
+          "zh-TW": "暫時無法確認你目前的伺服器成員資料，請稍後再試。", ja: "現在のサーバーメンバー情報を確認できませんでした。少し待って再度お試しください。" };
+        await this.sendNote(message.guildId, message.author, note[profile.language]);
+      } else {
+        await message.reply({ content: profile.chat.deniedMessage,
+          components: profile.chat.deniedLinkUrl ? [createChatAccessDeniedLinkButton(profile.chat.deniedLinkUrl, profile.chat.deniedLinkLabel)] : [],
+          flags: MessageFlags.SuppressEmbeds, allowedMentions: { repliedUser: false } });
       }
-      if (accessReason !== "allowed") {
-        emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "access_denied", accessReason, memberRefresh: "current" });
-        await message.reply({
-          content: currentProfile.chat.deniedMessage,
-          components: currentProfile.chat.deniedLinkUrl
-            ? [createChatAccessDeniedLinkButton(currentProfile.chat.deniedLinkUrl, currentProfile.chat.deniedLinkLabel)]
-            : [],
-          flags: MessageFlags.SuppressEmbeds,
-          allowedMentions: { repliedUser: false },
-        });
-        return BehaviorResult.StopPropagation;
-      }
+      return BehaviorResult.StopPropagation;
     }
     if (!this.conversation) {
       emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "provider_unconfigured" });

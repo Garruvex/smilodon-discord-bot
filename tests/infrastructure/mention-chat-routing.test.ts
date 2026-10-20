@@ -18,6 +18,17 @@ function setup(origins: MessageOriginStore | null = null): { behavior: MentionCh
   return { behavior, message, fetch };
 }
 describe("explicit reply routing bypasses optional accumulation", () => {
+  it("refreshes stale access before fetching an uncached reply with pings disabled", async () => {
+    const { logger } = captureDiagnosticLogger(); const document = freshDocument(); document.features.chatbot = true;
+    const { message, fetch } = setup();
+    const memberFetch = vi.fn().mockResolvedValue({ roles: { cache: new Map([[document.roles.botAdministrator[0]!, {}]]) } });
+    Object.assign(message, { member: null, guild: { members: { fetch: memberFetch } } });
+    fetch.mockResolvedValue({ guildId, channelId: "channel", author: { id: "bot" } } as never);
+    const behavior = new MentionChatBehavior(() => "bot", { ownerUserIds: new Set() } as unknown as ApplicationConfiguration,
+      memoryProvider(document), null, {} as PersonaSource, logger);
+    expect(await behavior.matches(message)).toBe(true);
+    expect(memberFetch).toHaveBeenCalledOnce(); expect(fetch).toHaveBeenCalledExactlyOnceWith("bot-reply");
+  });
   it.each(["stale", "missing"] as const)("refreshes a %s member before refusing an authorized direct question", async (cacheState) => {
     const { logger, records } = captureDiagnosticLogger();
     const document = freshDocument(); document.features.chatbot = true;
@@ -52,7 +63,7 @@ describe("explicit reply routing bypasses optional accumulation", () => {
     const behavior = new MentionChatBehavior(() => "bot", { ownerUserIds: new Set() } as unknown as ApplicationConfiguration,
       memoryProvider(document), null, {} as PersonaSource, logger);
     await behavior.execute(message);
-    expect(records).toEqual(expect.arrayContaining([expect.objectContaining({ reason: "access_denied", accessReason: reason,
+    expect(records).toEqual(expect.arrayContaining([expect.objectContaining({ reason: reason === "member_unavailable" ? "access_unavailable" : "access_denied", accessReason: reason,
       memberRefresh: reason === "member_unavailable" ? "unavailable" : "current" })]));
     if (reason === "member_unavailable") expect(reply).not.toHaveBeenCalled();
     else expect(reply).toHaveBeenCalledWith(expect.objectContaining({ content: "CUSTOM_DENIAL" }));
