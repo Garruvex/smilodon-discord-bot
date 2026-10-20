@@ -7,6 +7,28 @@ import { OpenAiCompatibleChatProvider } from "../../src/infrastructure/chat/open
 const input = { personality: "synthetic", events: [], burst: [branchCurrent], botId: "bot", fixedTarget: "current", gapMs: 1000, speakingShare: 0, thoughts: false };
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe("bounded decision recovery", () => {
+  it("reserves model time independently of slow source validation", async () => {
+    vi.useFakeTimers();
+    const primary = { generateCharacterData: (): Promise<unknown> => new Promise(() => undefined) };
+    const fallback = { generateCharacterData: vi.fn(() => new Promise((resolve) => setTimeout(() => resolve(decisionProposal()), 5000))) };
+    const guard = vi.fn(() => new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 2000)));
+    const outcome = new CharacterDecisionService(primary, fallback).evaluate({ ...input, canUseContext: guard });
+    await vi.advanceTimersByTimeAsync(15000);
+    const result = await outcome;
+    expect(result.status).toBe("valid");
+    expect(guard).toHaveBeenCalledTimes(2);
+    expect(result.attempts).toEqual([expect.objectContaining({ failure: "timeout", timeoutMs: 6000 }), expect.objectContaining({ status: "valid", timeoutMs: 6000 })]);
+  });
+  it("bounds a stalled guard without calling or penalizing a provider", async () => {
+    vi.useFakeTimers();
+    const generateCharacterData = vi.fn();
+    const service = new CharacterDecisionService({ generateCharacterData });
+    const outcome = service.evaluate({ ...input, canUseContext: () => new Promise(() => undefined) });
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(await outcome).toMatchObject({ status: "failed", attempts: [{ stage: "context_validation", failure: "timeout" }] });
+    expect(generateCharacterData).not.toHaveBeenCalled();
+    expect(service.healthStatus().lastFailureAt).toBeNull();
+  });
   it("stops a decision fallback when its source guard is no longer current", async () => {
     let allowed = true;
     const primary = { generateCharacterData: vi.fn(() => { allowed = false; return Promise.reject(new Error("first endpoint failed")); }) };

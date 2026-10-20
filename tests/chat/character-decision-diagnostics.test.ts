@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { CharacterDecisionService, type CharacterDecision } from "../../src/application/chat/character-decision.js";
+import { CharacterDecisionService, decisionJsonSchema, decisionSchema, type CharacterDecision } from "../../src/application/chat/character-decision.js";
+import Ajv from "ajv";
+import { emitChatDiagnostic } from "../../src/application/diagnostics/chat-diagnostics.js";
 import { ChatProviderError } from "../../src/application/chat/chat-provider.js";
 
 const contribution = { text: "SECRET_CANDIDATE", adds: "Specific answer", label: "answer" as const,
@@ -10,6 +12,35 @@ const input = { personality: "SECRET_PERSONA", events: [], burst: [{ messageId: 
   content: "SECRET_MESSAGE", timestampMs: 100, imageCount: 0 }], botId: "bot", fixedTarget: null, gapMs: 1000, speakingShare: 0, thoughts: false };
 
 describe("decision attempt diagnostics", () => {
+  it.each([
+    decision,
+    { ...decision, contribution: { ...contribution, text: "😀".repeat(200) } },
+    { ...decision, contribution: { ...contribution, text: "😀".repeat(201) } },
+    { ...decision, contribution: { ...contribution, text: "x".repeat(201) } },
+    { ...decision, contribution: { ...contribution, adds: "x".repeat(201) } },
+    { ...decision, recipientEvidence: [] },
+    { ...decision, recipientEvidence: Array(9).fill("current") },
+    { ...decision, confidence: 1.1 },
+    { ...decision, recipientConfidence: -1 },
+    { ...decision, thoughts: Array(4).fill(contribution) },
+    { ...decision, unexpected: "SECRET" },
+  ])("keeps advertised and local schema acceptance aligned %#", (output) => {
+    const validate = new Ajv().compile(decisionJsonSchema);
+    expect(validate(output)).toBe(decisionSchema.safeParse(output).success);
+  });
+  it("reports bounded field codes without rejected values or unknown keys", async () => {
+    const output = { ...decision, contribution: { ...contribution, text: "SECRET".repeat(50), SECRET_KEY: "SECRET_VALUE" }, recipientConfidence: 9 };
+    const result = await new CharacterDecisionService({ generateCharacterData: (): Promise<unknown> => Promise.resolve(output) }).evaluate(input);
+    expect(result.attempts[0]?.validationIssues).toEqual(expect.arrayContaining([
+      { field: "contribution.text", code: "too_big" }, { field: "contribution", code: "unrecognized_keys" },
+      { field: "recipientConfidence", code: "too_big" },
+    ]));
+    expect(JSON.stringify(result.attempts)).not.toContain("SECRET");
+    const logger = { info: vi.fn(), warn: vi.fn() };
+    emitChatDiagnostic(logger, { event: "model.decision.attempt", ...result.attempts[0]! });
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ validationIssues: result.attempts[0]!.validationIssues, stage: "model", timeoutMs: 6000 }), "model.decision.attempt");
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain("SECRET");
+  });
   it("retains a failed primary attempt when a fallback succeeds, without recording content", async () => {
     const primary = { generateCharacterData: (): Promise<unknown> => Promise.reject(new ChatProviderError("SECRET_ERROR", 429, "SECRET_CODE")) };
     const fallback = { generateCharacterData: (): Promise<unknown> => Promise.resolve(decision) };

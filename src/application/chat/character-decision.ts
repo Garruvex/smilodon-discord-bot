@@ -1,31 +1,36 @@
 import { z } from "zod";
 import { performance } from "node:perf_hooks";
-import { diagnosticElapsed, safeFailure, type FailureCategory } from "../diagnostics/chat-diagnostics.js";
+import { diagnosticElapsed, safeFailure, type FailureCategory, type ChatDiagnosticEvent } from "../diagnostics/chat-diagnostics.js";
 import type { ChannelHistoryMessage, StructuredCharacterProvider } from "./chat-provider.js";
 import { contributionPolicy, type ContributionPolicy } from "./participation-policy.js";
 
 export const contributionLabels = ["answer", "relevant-joke", "specific-opinion", "personal-reaction", "useful-observation", "none", "acknowledgment-only", "repetition", "generic-advice", "speculative-help", "topic-hijack", "stale-information"] as const;
 const eligibleLabels = new Set<string>(contributionLabels.slice(0, 5));
-const candidateSchema = z.object({ text: z.string().max(200), adds: z.string().max(200), label: z.enum(contributionLabels),
-  motivation: z.number().min(0).max(1), sourceMessageId: z.string(), recipientId: z.string() });
+// JSON Schema maxLength counts Unicode code points, not UTF-16 code units.
+const candidateText = z.string().superRefine((value, context) => {
+  if ([...value].length > 200) context.addIssue({ code: "too_big", maximum: 200, type: "string", inclusive: true });
+});
+const candidateSchema = z.object({ text: candidateText, adds: candidateText, label: z.enum(contributionLabels),
+  motivation: z.number().min(0).max(1), sourceMessageId: z.string(), recipientId: z.string() }).strict();
 export type ContributionCandidate = z.infer<typeof candidateSchema>;
 export const decisionSchema = z.object({
   addressing: z.enum(["bot", "continuing", "others", "unclear"]), motivation: z.number().min(0).max(1),
   recipientEvidence: z.array(z.string()).min(1).max(8), recipientConfidence: z.number().min(0).max(1), targetConfidence: z.number().min(0).max(1),
   contribution: candidateSchema, opening: z.enum(["clear", "closed", "unclear"]),
   boundary: z.string(), target: z.string(), confidence: z.number().min(0).max(1), reaction: z.string().nullable(), thoughts: z.array(candidateSchema).max(3),
-});
+}).strict();
 export type CharacterDecision = z.infer<typeof decisionSchema>;
 const candidateJson = { type: "object", additionalProperties: false, required: ["text", "adds", "label", "motivation", "sourceMessageId", "recipientId"], properties: {
-  text: { type: "string" }, adds: { type: "string" }, label: { type: "string", enum: contributionLabels }, motivation: { type: "number" }, sourceMessageId: { type: "string" }, recipientId: { type: "string" },
+  text: { type: "string", maxLength: 200 }, adds: { type: "string", maxLength: 200 }, label: { type: "string", enum: contributionLabels }, motivation: { type: "number", minimum: 0, maximum: 1 }, sourceMessageId: { type: "string" }, recipientId: { type: "string" },
 } };
 export const decisionJsonSchema: Record<string, unknown> = { type: "object", additionalProperties: false,
   required: ["addressing", "motivation", "recipientEvidence", "recipientConfidence", "targetConfidence", "contribution", "opening", "boundary", "target", "confidence", "reaction", "thoughts"],
-  properties: { addressing: { type: "string", enum: ["bot", "continuing", "others", "unclear"] }, motivation: { type: "number" },
-    recipientEvidence: { type: "array", items: { type: "string" } }, recipientConfidence: { type: "number" }, targetConfidence: { type: "number" },
+  properties: { addressing: { type: "string", enum: ["bot", "continuing", "others", "unclear"] }, motivation: { type: "number", minimum: 0, maximum: 1 },
+    recipientEvidence: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 8 }, recipientConfidence: { type: "number", minimum: 0, maximum: 1 }, targetConfidence: { type: "number", minimum: 0, maximum: 1 },
     contribution: candidateJson, opening: { type: "string", enum: ["clear", "closed", "unclear"] }, boundary: { type: "string" }, target: { type: "string" },
-    confidence: { type: "number" }, reaction: { type: ["string", "null"] }, thoughts: { type: "array", items: candidateJson } },
+    confidence: { type: "number", minimum: 0, maximum: 1 }, reaction: { type: ["string", "null"] }, thoughts: { type: "array", items: candidateJson, maxItems: 3 } },
 };
+type ValidationIssue = NonNullable<Extract<ChatDiagnosticEvent, { event: "model.decision.attempt" }>["validationIssues"]>[number];
 export interface DecisionAttempt {
   providerRole: "primary" | "fallback";
   attempt: number;
@@ -33,6 +38,20 @@ export interface DecisionAttempt {
   durationMs: number;
   failure?: FailureCategory;
   httpStatus?: number;
+  stage?: "context_validation" | "model";
+  contextDurationMs?: number;
+  timeoutMs?: number;
+  validationIssues?: ValidationIssue[];
+}
+function validationIssues(error: unknown): ValidationIssue[] | undefined {
+  if (!(error instanceof z.ZodError)) return undefined;
+  const fields = new Set([...Object.keys(decisionSchema.shape), ...Object.keys(candidateSchema.shape)]);
+  const codes = z.enum(["invalid_type", "invalid_enum_value", "too_small", "too_big", "unrecognized_keys"]);
+  return error.issues.slice(0, 8).map((issue) => ({
+    field: issue.path.length && issue.path.every((part) => typeof part === "number" || fields.has(part))
+      ? issue.path.map((part) => typeof part === "number" ? "item" : part).join(".") : "root",
+    code: codes.safeParse(issue.code).data ?? "invalid",
+  }));
 }
 export type DecisionOutcome = ({ status: "unavailable" | "failed"; decision: null } | { status: "valid"; decision: CharacterDecision }) & { attempts: readonly DecisionAttempt[] };
 export function decisionSourceFailure(result: CharacterDecision, events: readonly ChannelHistoryMessage[], botId: string, fixedTarget: string | null = null): FailureCategory | null {
@@ -174,7 +193,7 @@ export function generatedContributionAllowed(text: string, events: readonly Chan
   return !!draft && !closesExchange(text) && !events.some((event) => event.authorId === botId && normalize(event.content) === draft);
 }
 interface DecisionInput { canUseContext?: (() => Promise<boolean>) | undefined; personality: string; events: readonly ChannelHistoryMessage[]; burst: readonly ChannelHistoryMessage[]; botId: string; fixedTarget: string | null; gapMs: number; speakingShare: number; thoughts: boolean; availableActions?: { text: boolean; reaction: boolean } | undefined; now?: number }
-export const decisionCallLimits = { totalMs: 12_000, attemptMs: 6_000, failuresBeforeCooldown: 3, cooldownMs: 30_000, probeCacheMs: 60_000 } as const;
+export const decisionCallLimits = { totalMs: 12_000, attemptMs: 6_000, contextMs: 8_000, failuresBeforeCooldown: 3, cooldownMs: 30_000, probeCacheMs: 60_000 } as const;
 export interface DecisionHealth { configured: boolean; coolingDownProviders: number; lastSuccessAt: number | null; lastFailureAt: number | null }
 export class CharacterDecisionService {
   private readonly health = new Map<StructuredCharacterProvider, { failures: number; until: number }>();
@@ -197,12 +216,12 @@ export class CharacterDecisionService {
   public async decide(input: DecisionInput): Promise<CharacterDecision | null> { return (await this.evaluate(input)).decision; }
   public async evaluate(input: DecisionInput): Promise<DecisionOutcome> {
     const attempts: DecisionAttempt[] = [];
-    const deadline = Date.now() + decisionCallLimits.totalMs;
+    let remainingModelMs: number = decisionCallLimits.totalMs;
     const record = (attempt: DecisionAttempt): void => {
       attempts.push(attempt);
       const provider = attempt.providerRole === "primary" ? this.provider : this.fallback;
       if (attempt.status === "valid") { this.lastSuccessAt = Date.now(); if (provider) this.health.delete(provider); }
-      else if (attempt.failure !== "provider_cooldown") {
+      else if (attempt.failure !== "provider_cooldown" && attempt.stage !== "context_validation") {
         this.lastFailureAt = Date.now();
         if (provider) { const failures = (this.health.get(provider)?.failures ?? 0) + 1;
           this.health.set(provider, { failures, until: failures >= decisionCallLimits.failuresBeforeCooldown ? Date.now() + decisionCallLimits.cooldownMs : 0 }); }
@@ -231,30 +250,45 @@ A reaction is one ordinary emoji or null. It may acknowledge a human-to-human me
     for (const provider of [...new Set([this.provider, this.fallback].filter((item): item is StructuredCharacterProvider => item !== null))]) {
       const providerRole = provider === this.provider ? "primary" : "fallback";
       const attempt = attempts.length + 1;
-      const started = performance.now();
       if ((this.health.get(provider)?.until ?? 0) > Date.now()) {
         record({ providerRole, attempt, status: "failed", failure: "provider_cooldown", durationMs: 0 }); continue;
       }
-      if (input.canUseContext && !await input.canUseContext()) return { status: "failed", decision: null, attempts };
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) { record({ providerRole, attempt, status: "failed", failure: "timeout", durationMs: 0 }); break; }
+      const contextStarted = performance.now();
+      let contextTimer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        if (input.canUseContext && !await Promise.race([input.canUseContext(), new Promise<never>((_resolve, reject) => {
+          contextTimer = setTimeout(() => reject(new DOMException("Context deadline exceeded", "TimeoutError")), decisionCallLimits.contextMs);
+        })])) throw new Error("Context unavailable");
+      } catch (error) {
+        record({ providerRole, attempt, status: "failed", stage: "context_validation", durationMs: 0,
+          contextDurationMs: diagnosticElapsed(contextStarted), ...safeFailure(error, "operation_error") });
+        return { status: "failed", decision: null, attempts };
+      } finally { if (contextTimer) clearTimeout(contextTimer); }
+      const contextDurationMs = input.canUseContext ? diagnosticElapsed(contextStarted) : 0;
+      const timeoutMs = Math.min(decisionCallLimits.attemptMs, remainingModelMs);
+      if (timeoutMs <= 0) break;
+      const started = performance.now();
+      const modelStarted = Date.now();
+      const timing = { stage: "model" as const, contextDurationMs, timeoutMs };
       let timeout: ReturnType<typeof setTimeout> | undefined;
       const controller = new AbortController();
       try {
         const result = decisionSchema.parse(await Promise.race([provider.generateCharacterData(prompt, decisionJsonSchema, { signal: controller.signal, maxAttempts: 1 }), new Promise<never>((_resolve, reject) => {
-          timeout = setTimeout(() => { controller.abort(); reject(new DOMException("Decision deadline exceeded", "TimeoutError")); }, Math.min(decisionCallLimits.attemptMs, remaining));
+          timeout = setTimeout(() => { controller.abort(); reject(new DOMException("Decision deadline exceeded", "TimeoutError")); }, timeoutMs);
         })]));
         const failure = decisionSourceFailure(result, events, input.botId, input.fixedTarget) ?? (!boundaries.includes(result.boundary) ? "invalid_boundary" : null);
         if (failure) {
-          record({ providerRole, attempt, status: "failed", failure, durationMs: diagnosticElapsed(started) });
+          record({ providerRole, attempt, status: "failed", failure, durationMs: diagnosticElapsed(started), ...timing });
           continue;
         }
         if (result.reaction && !/^\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*$/u.test(result.reaction)) result.reaction = null;
-        record({ providerRole, attempt, status: "valid", durationMs: diagnosticElapsed(started) });
+        record({ providerRole, attempt, status: "valid", durationMs: diagnosticElapsed(started), ...timing });
         return { status: "valid", decision: result, attempts };
       } catch (error) {
-        record({ providerRole, attempt, status: "failed", durationMs: diagnosticElapsed(started), ...safeFailure(error) });
-      } finally { if (timeout) clearTimeout(timeout); }
+        const issues = validationIssues(error);
+        record({ providerRole, attempt, status: "failed", durationMs: diagnosticElapsed(started), ...timing,
+          ...safeFailure(error), ...(issues ? { validationIssues: issues } : {}) });
+      } finally { if (timeout) clearTimeout(timeout); remainingModelMs -= Math.max(0, Date.now() - modelStarted); }
     }
     return { status: "failed", decision: null, attempts };
   }
