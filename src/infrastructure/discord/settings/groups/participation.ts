@@ -35,6 +35,7 @@ export const participation = group("participation", [
         write: (v, p) => v === resolveParticipation(p.chat.participation, "").limits.continuationPerWindow! ? {} : ({ chatParticipation: { advanced: { continuationPer10Minutes: v } } }) }),
     }),
     chatSetting("controls", {
+      "flow-version": choice({ choices: ["legacy", "contextual_v1"] as const, read: (p) => p.chat.participation?.flowVersion ?? "legacy", write: (v) => ({ chatParticipation: { flowVersion: v } }) }),
       "messages-per-decision": integer({ min: 1, max: 20, read: (p) => resolveParticipation(p.chat.participation, "").messagesPerDecision,
         write: (v, p) => v === resolveParticipation(p.chat.participation, "").messagesPerDecision ? {} : ({ chatParticipation: { messagesPerDecision: v } }) }),
       "spontaneous-threshold": integer({ min: 0, max: 100, read: (p) => contributionPolicy(p.chat.participation).spontaneousThreshold * 100,

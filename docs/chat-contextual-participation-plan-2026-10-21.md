@@ -2,6 +2,8 @@
 
 Prepared 2026-10-21. Status: proposed implementation plan; no runtime or deployment changes in this checkpoint. Based on the [full flow review](chat-flow-design-review-2026-10-21.md) and Pinecone deployment traces through `a2d0bdb1`. This is the execution plan for the remaining flow gaps, not a claim that the previous local tests were invalid or that all earlier work must be replaced.
 
+Implementation progress: checkpoint 1 implemented locally. `flowVersion: contextual_v1` is an explicit opt-in under participation controls (legacy remains the default). It uses a strict wire contract without fixed destination IDs or legacy boundary fields, opaque selectable target keys, application-bound recipients, and valid target-free abstention. Contract/fallback/privacy tests plus settings metadata/registry tests: 58 passed; typecheck and changed-file lint passed. No live configuration changed; subsequent checkpoints and real-provider acceptance remain pending.
+
 ## Objective and non-negotiable rules
 
 An eligible short message should be interpreted using authorized context before deciding whether it is a follow-up, a group contribution, or irrelevant to the bot. A bare ping may refer to earlier substantive text. Time gaps do not remove reference relevance. Speaker, recipient, reply destination and discussed subject remain distinct.

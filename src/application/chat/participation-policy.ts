@@ -7,6 +7,7 @@ export interface ParticipationOverride {
   activity?: "quiet" | "balanced" | "lively" | undefined;
 }
 export interface ParticipationSettings {
+  flowVersion?: "legacy" | "contextual_v1";
   continuationFailureMode?: "strict" | "grounded_fallback";
   messagesPerDecision?: number | undefined;
   spontaneousThreshold?: number | undefined;

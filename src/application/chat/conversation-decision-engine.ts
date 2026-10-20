@@ -67,6 +67,7 @@ export class ConversationDecisionEngine {
       result: this.result(request, trigger, now, policyVersion, reason, status, "silent", "abstain") });
     if (!admissible) return denied("scope_or_disabled");
     if (trigger.explicit) return { ...base, result: this.result(request, trigger, now, policyVersion, "explicit_request", "ready", "reply", "answer") };
+    if (proposal?.contextual?.action === "silent") return { ...base, result: this.result(request, trigger, now, policyVersion, "contextual_abstention", "ready", "silent", proposal.contextual.intent) };
     if (proposal) {
       const failure = decisionSourceFailure(proposal, events.filter((event) => event.timestampMs <= now), botId, request.triggerMode === "continuation" ? current?.messageId ?? null : null);
       if (failure) return denied(failure, "failed");

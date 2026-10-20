@@ -1,6 +1,7 @@
 import type { SettingsTextCatalog } from "../catalog.js";
 
 export const zhTWChat: SettingsTextCatalog = {
+  "participation.controls.flow-version": { label: "對話流程", description: "情境流程先閱讀允許的上下文，再判斷是否接話；需要啟用合格訊息數上下文。", choices: { legacy: "舊流程", contextual_v1: "情境流程（試行）" } },
   "participation.thread-scope": {"label": "討論串範圍", "description": "以 ID 個別選取討論串；選取上層頻道不會授予討論串存取權。", "messages": {"invalid": "請提供此伺服器內可存取的討論串 ID，並至少選擇一項範圍變更。", "needs-observation": "請先允許觀察此討論串，再開啟主動接話。", "done": "討論串範圍已更新；判斷服務、頻道歷史及參與控制仍然適用。"}},
   "participation.thread-scope.thread-id": {"label": "討論串 ID", "description": "此伺服器中機器人可存取的討論串 ID。"},
   "participation.thread-scope.observe": {"label": "觀察", "description": "允許在此討論串被動讀取及選用接續對話。"},

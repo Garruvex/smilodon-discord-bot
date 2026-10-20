@@ -1,6 +1,7 @@
 import type { SettingsTextCatalog } from "../catalog.js";
 
 export const jaChat: SettingsTextCatalog = {
+  "participation.controls.flow-version": { label: "会話フロー", description: "許可された文脈から参加を判断します。対象メッセージ数による文脈の有効化が必要です。", choices: { legacy: "従来", contextual_v1: "文脈フロー（試行）" } },
   "participation.thread-scope": {"label": "スレッドの範囲", "description": "スレッドをIDで個別に選択します。親チャンネルの設定は継承しません。", "messages": {"invalid": "参照可能なスレッドIDと、少なくとも一つの変更を指定してください。", "needs-observation": "自発的な発言を許可する前に、このスレッドの観察を有効にしてください。", "done": "スレッドの範囲を更新しました。判定サービス、会話履歴、参加設定も適用されます。"}},
   "participation.thread-scope.thread-id": {"label": "スレッドID", "description": "このサーバーでボットが参照できるスレッドのID。"},
   "participation.thread-scope.observe": {"label": "観察", "description": "このスレッドの受動的な読み取りと会話継続を許可します。"},

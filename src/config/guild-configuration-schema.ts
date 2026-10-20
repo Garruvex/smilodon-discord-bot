@@ -102,6 +102,7 @@ const guildChatSchema = z.preprocess((value) => {
   return { ...rest, webSearchMode: webSearchEnabled ? "auto" : "off" };
 }, z.object({
   participation: z.object({
+    flowVersion: z.enum(["legacy", "contextual_v1"]).default("legacy"),
     messagesPerDecision: z.number().int().min(1).max(20).optional(),
     spontaneousThreshold: z.number().min(0).max(1).optional(),
     continuationThreshold: z.number().min(0).max(1).optional(),
