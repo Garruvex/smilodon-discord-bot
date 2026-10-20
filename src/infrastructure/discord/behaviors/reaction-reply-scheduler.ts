@@ -3,6 +3,7 @@ import type { Logger } from "pino";
 import { chatDeliveryText } from "../../../application/i18n/chat-delivery.js";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
 import { characterSettings } from "../../../application/chat/character-settings.js";
+import { contextualFlow } from "../../../application/chat/contextual-flow.js";
 
 import { ChatAccessService } from "../../../application/access/chat-access-service.js";
 import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
@@ -405,6 +406,7 @@ export class ReactionReplyScheduler {
         resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
         ...(characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count" ? { guardedContextPort: this.turnSupport.createContextPort(message, true),
           guardedContextPolicy: { count: characterSettings(profile).context.maxMessages, budget: characterSettings(profile).context.budget, minReactors: profile.chat.reactionReplyMinReactors } } : {}),
+        ...(contextualFlow(profile, message.channelId) ? { participationFlowVersion: "contextual_v1" as const } : {}),
         refreshContextMessage: (event) => this.turnSupport.refreshHistoryEvent(message, event),
         shouldDeliver: () => !resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).shadowMode,
         shadowMode: resolveParticipation(profile.chat.participation, message.channelId).shadowMode,

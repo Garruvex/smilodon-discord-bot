@@ -60,6 +60,10 @@ export class Application {
               : {}),
           }
         : { configured: false },
+      decision: { primary: this.configuration.decision ? { provider: "openai-compatible", model: this.configuration.decision.model } :
+        (this.configuration.utilityChat ?? this.configuration.chat) ? { provider: (this.configuration.utilityChat ?? this.configuration.chat)!.provider, models: (this.configuration.utilityChat ?? this.configuration.chat)!.models } : null,
+        fallback: this.configuration.decision && (this.configuration.utilityChat ?? this.configuration.chat) ?
+          { provider: (this.configuration.utilityChat ?? this.configuration.chat)!.provider, models: (this.configuration.utilityChat ?? this.configuration.chat)!.models } : null },
       guilds: profiles.map((profile) => ({
         guildId: profile.guildId,
         guildName: profile.guildName,

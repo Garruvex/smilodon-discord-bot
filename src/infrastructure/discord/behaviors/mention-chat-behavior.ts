@@ -8,6 +8,7 @@ import type { Logger } from "pino";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
 import { emitChatDiagnostic } from "../../../application/diagnostics/chat-diagnostics.js";
 import { mentionInteraction } from "../../../application/chat/conversation-trigger.js";
+import { contextualFlow } from "../../../application/chat/contextual-flow.js";
 import { MentionChatAccess } from "./mention-chat-access.js";
 import { resolvesReplyToBot } from "./direct-reply-resolver.js";
 import { characterSettings } from "../../../application/chat/character-settings.js";
@@ -227,6 +228,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         guildId: message.guildId,
         channelId: message.channelId,
         sourceMessageId: message.id,
+        ...(contextualFlow(profile, message.channelId) ? { participationFlowVersion: "contextual_v1" as const } : {}),
         channelHistoryEnabled: profile.features.channelHistory,
         currentEvent: this.turnSupport.toMessageEvent(message), botUserId: this.clientUserId(),
         canExecute: () => this.turnSupport.isEligible(message),

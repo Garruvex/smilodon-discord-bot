@@ -152,6 +152,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         channelId: message.channelId,
         sourceMessageId: message.id,
         contextualCandidate: trigger !== "ambient" && contextualFlow(profile, message.channelId),
+        ...(contextualFlow(profile, message.channelId) ? { participationFlowVersion: "contextual_v1" as const } : {}),
         channelHistoryEnabled: profile.features.channelHistory,
         currentEvent: this.turnSupport.toMessageEvent(message), botUserId: this.clientUserId(),
         canExecute: async () => (opportunityVersion == null || this.conversation?.optionalOpportunityVersion(message.guildId, message.channelId) === opportunityVersion) && await this.turnSupport.isEligible(message, trigger),

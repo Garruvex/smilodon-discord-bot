@@ -20,7 +20,7 @@ import { contextualProposal } from "../helpers/contextual-decision-fixtures.js";
 
 const channelId = "500000000000000001";
 const cleanups: (() => Promise<void>)[] = [];
-afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
+afterEach(async () => { vi.useRealTimers(); for (const cleanup of cleanups.splice(0)) await cleanup(); });
 async function setup(now = 5000, originalAuthor = "alice", contextual = false): Promise<{
   service: ChatConversationService; fixture: ReturnType<typeof guardedFixture>; input: ChatConversationInput;
   reply: ReturnType<typeof vi.fn<(request: ChatRequest) => Promise<ChatResponse>>>;
@@ -59,6 +59,27 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false): 
 }
 
 describe("guarded turn acceptance", () => {
+  it.each(["state", "generation"] as const)("ends a stalled contextual %s phase and prevents late delivery", async (phase) => {
+    const { service, input, fixture, state, reply, decision, records } = await setup(5000, "alice", true);
+    fixture.add(guardedEvent("current", 4000, "好了嗎"));
+    decision.generateCharacterData.mockResolvedValue(contextualProposal({ recipientEvidence: ["question", "answer", "current"] }));
+    const savedState = await state.load(guildId, "alice", channelId, 5000);
+    let release = (): void => undefined;
+    const load = phase === "state" ? vi.spyOn(state, "load").mockImplementation(() => new Promise((resolve) => { release = (): void => resolve(savedState); })) : null;
+    if (phase === "generation") reply.mockImplementation(() => new Promise((resolve) => { release = (): void => resolve(decisionResponse()); }));
+    vi.useFakeTimers();
+    const send = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
+    const pending = service.run({ ...input, triggerMode: "spontaneous", contextualCandidate: true }, send);
+    const rejected = expect(pending).rejects.toMatchObject({ name: "TimeoutError" });
+    await vi.advanceTimersByTimeAsync(30001); await rejected;
+    expect(records.filter((record) => record.event === "chat.turn.completed")).toHaveLength(1);
+    expect(records).toContainEqual(expect.objectContaining({ event: "chat.turn.deadline" }));
+    release(); await vi.advanceTimersByTimeAsync(0);
+    expect(send).not.toHaveBeenCalled();
+    load?.mockRestore(); reply.mockImplementation(() => Promise.resolve(decisionResponse()));
+    await service.run(input, send);
+    expect(send).toHaveBeenCalledOnce();
+  });
   it.each(["followup", "group"] as const)("keeps continuation-only policy after contextual classification: %s", async (relationship) => {
     const { service, fixture, input, reply, decision, profiles } = await setup(5000, "alice", true);
     await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: false } });
@@ -70,7 +91,7 @@ describe("guarded turn acceptance", () => {
   });
   it.each(["followup", "group", "social_reaction", "substantive_reaction", "silence", "elsewhere", "unclear", "low_confidence"] as const)("applies contextual policy after neutral admission: %s", async (scenario) => {
     const { service, fixture, input, reply, decision, records } = await setup(5000, "alice", true);
-    fixture.add(guardedEvent("current", 4000, "好了嗎"));
+    fixture.add(guardedEvent("current", 4000, scenario === "social_reaction" ? "謝謝!" : "好了嗎"));
     const proposal = contextualProposal({ recipientEvidence: ["question", "answer", "current"] });
     if (scenario === "group") proposal.relationship = "group";
     if (scenario === "social_reaction") { proposal.action = "react"; proposal.intent = "social"; proposal.reaction = "👍"; proposal.contribution = null; }

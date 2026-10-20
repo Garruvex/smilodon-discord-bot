@@ -80,7 +80,8 @@ export class ConversationDecisionEngine {
       if (interpretation.relationship === "elsewhere" || elsewhere) return denied("addressed_elsewhere");
       if (!(kind === "continuation" ? policy.continuationEnabled : policy.spontaneousEnabled)) return denied(kind === "continuation" ? "continuation_disabled" : "spontaneous_disabled");
       if (kind === "continuation" && (!current || !proposal.recipientEvidence.includes(current.messageId) ||
-          !(local === "continuing" || local === "bot" || groundedContextContinuation(events, current, botId, proposal)))) return denied("recipient_unclear");
+          !(local === "continuing" || local === "bot" || groundedContextContinuation(events, current, botId, proposal,
+            interpretation.intent === "social" || interpretation.intent === "closing")))) return denied("recipient_unclear");
       const availability = request.contextualActionAvailability?.[kind] ?? request.optionalActionsAvailable;
       const substantive = interpretation.intent === "answer" || interpretation.intent === "clarify";
       const reaction = interpretation.action === "react" && !substantive && availability?.reaction !== false &&

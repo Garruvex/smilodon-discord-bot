@@ -51,12 +51,14 @@ export function explainChatTrace(traces: readonly RetainedChatTrace[]): ChatExpl
     event.sourceMessageId === trace.records[0]?.scope.sourceMessageId && !["history", "history_reaction", "observation", "background_observation"].includes(event.purpose));
   const route = last("chat.route.skipped");
   const gateway = last("chat.gateway.completed"); const queue = last("chat.queue.changed");
+  const candidate = last("chat.candidate.changed"); const deadline = last("chat.turn.deadline");
   const hasDelivery = events.some(confirmed);
   if (turn?.outcome === "delivered_state_unsaved") result.outcome = "delivered_unsaved";
   else if (delivery?.status === "partial" && delivery.deliveredParts > 0) result.outcome = "partial_delivery";
   else if (turn?.outcome === "text_delivered" && turn.textDeliveryConfirmed || delivery?.status === "complete" && delivery.deliveredParts > 0) result.outcome = "delivered";
   else if (hasDelivery) result.outcome = "delivery_observed";
   else if (delivery?.status === "failed") { result.outcome = "delivery_failed"; result.reason = delivery.failure ?? null; }
+  else if (deadline) { result.outcome = "suppressed"; result.reason = "turn_deadline"; }
   else if (turn?.outcome === "failed") { result.outcome = "failed"; result.reason = turn.failure ?? null; }
   else if (last("chat.trace.interrupted")) result.outcome = "interrupted_unknown";
   else if (validation?.status === "changed") { result.outcome = "source_invalidated"; result.reason = "context_changed"; }
@@ -72,10 +74,12 @@ export function explainChatTrace(traces: readonly RetainedChatTrace[]): ChatExpl
     result.outcome = "provider_failed"; result.reason = last("chat.model.completed")?.failure ?? null;
   }
   else if (events.some((event) => event.event === "chat.output.reservation" && event.kind === "reaction" && event.status === "committed")) result.outcome = "reacted";
-  else if (decision?.action === "silent") { result.outcome = decision.reason === "duplicate_ping" ? "duplicate" : "intentional_silence"; result.reason = decision.reason; }
+  else if (decision?.action === "silent") { result.outcome = decision.status === "denied" ? "suppressed" : decision.reason === "duplicate_ping" ? "duplicate" : "intentional_silence"; result.reason = decision.reason; }
   else if (route) { result.outcome = route.reason === "duplicate" ? "duplicate" : route.reason === "access_denied" ? "access_denied" : route.reason === "chat_disabled" ? "feature_disabled" : "suppressed"; result.reason = route.reason; }
   else if (gateway && gateway.outcome !== "dispatched") { result.outcome = gateway.outcome === "failed" ? "failed" : "suppressed"; result.reason = gateway.outcome; }
   else if (queue && ["skipped", "cancelled", "failed"].includes(queue.action)) { result.outcome = "suppressed"; result.reason = queue.reason; }
+  else if (candidate) { result.outcome = ["cancelled", "expired"].includes(candidate.action) ? "suppressed" : "incomplete";
+    result.reason = candidate.action === "expired" ? "candidate_expired" : candidate.reason === "cooldown" ? "candidate_cooldown" : `candidate_${candidate.action}`; }
   else result.outcome = "incomplete";
   // A valid generated silent decision followed by a recorded failure is not
   // intentional silence. A failed attempt later recovered is still visible.

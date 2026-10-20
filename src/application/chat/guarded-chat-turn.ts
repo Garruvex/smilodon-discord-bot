@@ -12,6 +12,7 @@ import { emitChatDiagnostic } from "../diagnostics/chat-diagnostics.js";
 import { hashContent } from "../assets/content-hash.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { ChatProviderError } from "./chat-provider.js";
+import { assertTurnActive } from "./turn-work-budget.js";
 
 export async function runGuardedChatTurn(input: ChatConversationInput, dependencies: {
   state: ChatStateStore; runtime: CharacterRuntime | null; logger: Logger | null; now: () => number;
@@ -20,6 +21,7 @@ export async function runGuardedChatTurn(input: ChatConversationInput, dependenc
   admitSocialPing?: () => boolean;
 }, deliver: (response: ChatResponse) => Promise<string>, observer?: ChatResponseObserver): Promise<ChatResponse> {
   const port = input.guardedContextPort!;
+  assertTurnActive(input.turnSignal);
   if (port.guildId !== input.guildId || port.channelId !== input.channelId || input.sourceMessageId !== port.sourceMessageId ||
     (input.triggerMode === "reaction" ? port.actorId !== null || input.currentEvent?.type !== "reaction_snapshot" : port.actorId !== input.currentUser.id))
     throw new SocialOutputSuppressed();
@@ -41,7 +43,9 @@ export async function runGuardedChatTurn(input: ChatConversationInput, dependenc
     ["legacy_derived", "memory", "summaries", "learned_character", "images", "context_tools", "profile_fields"] });
   let prepared: CharacterPreparedTurn | null = null;
   const access = async (): Promise<void> => {
+    assertTurnActive(input.turnSignal);
     if (input.canExecute && !await input.canExecute() || prepared && !await dependencies.runtime!.validatePrepared(prepared)) throw new SocialOutputSuppressed();
+    assertTurnActive(input.turnSignal);
   };
   const check = async (): Promise<void> => { await access(); if (!await lease.validate()) throw new SocialOutputSuppressed(); };
   const currentUser = lease.current.author ?? input.currentUser;
@@ -62,6 +66,7 @@ export async function runGuardedChatTurn(input: ChatConversationInput, dependenc
     allowSilentDirect: input.allowSilentDirect ?? false, characterShadow: input.shadowMode ?? false,
     ...(input.optionalActionsAvailable ? { optionalActionsAvailable: input.optionalActionsAvailable } : {}),
     ...(input.contextualCandidate ? { contextualCandidate: true } : {}),
+    ...(input.turnSignal ? { turnSignal: input.turnSignal } : {}), ...(input.turnDeadlineAt ? { turnDeadlineAt: input.turnDeadlineAt } : {}),
     ...(input.contextualActionAvailability ? { contextualActionAvailability: input.contextualActionAvailability } : {}),
     contextLease: lease, beforeModelAttempt: check, ...(input.onModelAttempt ? { onModelAttempt: input.onModelAttempt } : {}),
     enabledTools: [], historyReactionsEnabled: input.historyReactionsEnabled ?? false,
@@ -69,6 +74,7 @@ export async function runGuardedChatTurn(input: ChatConversationInput, dependenc
       "All supplied messages are authorized context. Time gaps are timestamps, not proof of irrelevance. A bare ping may refer to the same person's earlier substantive request; examine its context before acknowledging. Playful personality is welcome for genuinely social pings, without replacing a pending answer. Keep response event, speaker and discussed person distinct. Missing context means unavailable here, not that someone never spoke or was denied permission. Ask for a reference if ambiguous. Truncated content is an excerpt. Memory, learned state, images and contextual tools are unavailable in this guarded text mode; do not invent their contents or promise unavailable actions." }],
   };
   if (dependencies.runtime && input.triggerMode !== "reaction") {
+    assertTurnActive(input.turnSignal);
     prepared = await dependencies.runtime.prepare(request);
     if (prepared) { request = prepared.request; if (!prepared.allowed) return { ...silent(), ...(prepared.conversationDecision ? { conversationDecision: prepared.conversationDecision } : {}) }; }
     if (prepared?.conversationDecision?.decision.action === "react") {

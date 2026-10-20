@@ -685,10 +685,11 @@ export function createDependencies(
     ...commandToolBindings,
   ]);
   settingsEngine.bindChatToolRegistry(chatToolRegistry);
+  const structuredUtility = utilityProvider?.generateCharacterData ? { generateCharacterData: utilityProvider.generateCharacterData.bind(utilityProvider) } : null;
   const characterRuntime = chatProvider ? new CharacterRuntime(guildConfigurationProvider, memoryRepository,
-    utilityProvider?.generateCharacterData ? { generateCharacterData: utilityProvider.generateCharacterData.bind(utilityProvider) } : null,
+    structuredUtility,
     chatProvider, configuration.decision ? instrumentModel(new HttpDecisionProvider(configuration.decision), logger)
-      : utilityProvider?.generateCharacterData ? { generateCharacterData: utilityProvider.generateCharacterData.bind(utilityProvider) } : null, personalMemoryExtractionQueueStore, undefined, logger.child({ component: "character" })) : null;
+      : structuredUtility, personalMemoryExtractionQueueStore, undefined, logger.child({ component: "character" })) : null;
   if (characterRuntime) settingsEngine.bindCharacterRuntime(characterRuntime);
   const diagnosticCommand = commandRegistry.getAll().find((command): command is DiagnosticCommand => command instanceof DiagnosticCommand);
   diagnosticCommand?.bindProviderHealth({ decision: () => characterRuntime?.decisionHealth ?? null, generation: () => modelGenerationHealth(logger),

@@ -21,6 +21,9 @@ export interface ChatRequest {
   currentBurst?: readonly ChannelHistoryMessage[];
   optionalActionsAvailable?: { text: boolean; reaction: boolean };
   contextualCandidate?: boolean;
+  participationFlowVersion?: "contextual_v1";
+  turnSignal?: AbortSignal;
+  turnDeadlineAt?: number;
   contextualActionAvailability?: { continuation: { text: boolean; reaction: boolean }; spontaneous: { text: boolean; reaction: boolean } };
   characterContext?: readonly { moduleId: string; text: string }[];
   participationOnly?: boolean;

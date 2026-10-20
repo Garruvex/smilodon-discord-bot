@@ -15,6 +15,12 @@ function trace(events: ChatDiagnosticEvent[], overrides: Partial<RetainedChatTra
 }
 
 describe("recorded chat explanations", () => {
+  it("distinguishes pending cooldown and expiry from intentional silence", () => {
+    const candidate = { event: "chat.candidate.changed" as const, candidateId: "candidate", action: "scheduled" as const, reason: "cooldown" as const, messages: 1, delayMs: 25000 };
+    expect(explainChatTrace([trace([candidate])])).toMatchObject({ outcome: "incomplete", reason: "candidate_cooldown" });
+    expect(explainChatTrace([trace([{ ...candidate, action: "expired", reason: "deadline" }])])).toMatchObject({ outcome: "suppressed", reason: "candidate_expired" });
+    expect(explainChatTrace([trace([{ event: "chat.turn.deadline", budgetMs: 30000 }, { event: "chat.turn.completed", triggerMode: "spontaneous", outcome: "failed", textDeliveryConfirmed: false, durationMs: 30000, failure: "timeout" }])])).toMatchObject({ outcome: "suppressed", reason: "turn_deadline" });
+  });
   const cases: [string, ChatDiagnosticEvent[], ChatExplanationOutcome][] = [
     ["valid silence", [decision(), turn("no_text_delivery")], "intentional_silence"],
     ["failed decision must not look intentional", [decision("failed"), turn("no_text_delivery")], "provider_failed"],

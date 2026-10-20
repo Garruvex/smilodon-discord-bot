@@ -107,7 +107,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
             json_schema: { name: "persona_chat_response", strict: true, schema: chatModelJsonSchema },
           },
         }),
-        signal: AbortSignal.timeout(45_000),
+        signal: request.turnSignal ? AbortSignal.any([request.turnSignal, AbortSignal.timeout(45_000)]) : AbortSignal.timeout(45_000),
       });
       if (!response.ok) {
         const errorBody: unknown = await response.json().catch(() => null);

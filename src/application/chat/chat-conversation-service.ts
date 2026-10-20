@@ -1,4 +1,5 @@
 import { runGuardedChatTurn } from "./guarded-chat-turn.js";
+import { assertTurnActive, contextualTurnLimits, withTurnAbort } from "./turn-work-budget.js";
 import type { GuardedContextPort } from "./guarded-conversation-context.js";
 import { captureIncompleteTurnProvenance } from "./context-provenance.js";
 import { isRecipientCorrection } from "./character-decision.js";
@@ -749,13 +750,21 @@ export class ChatConversationService {
       sourceMessageId: input.sourceMessageId ?? undefined }, async () => {
       const started = performance.now();
       let textDeliveryConfirmed = false;
+      const controller = (input.contextualCandidate || input.participationFlowVersion === "contextual_v1") && input.guardedContextPort ? new AbortController() : null;
+      const timer = controller ? setTimeout(() => {
+        emitChatDiagnostic(this.logger, { event: "chat.turn.deadline", budgetMs: contextualTurnLimits.totalMs }); controller.abort();
+      }, contextualTurnLimits.totalMs) : null;
+      const activeInput = controller ? { ...input, turnSignal: controller.signal, turnDeadlineAt: Date.now() + contextualTurnLimits.totalMs,
+        canExecute: async (): Promise<boolean> => { assertTurnActive(controller.signal); const allowed = await withTurnAbort(controller.signal, () => input.canExecute?.() ?? Promise.resolve(true)); assertTurnActive(controller.signal); return allowed; },
+        shouldDeliver: (): boolean => !controller.signal.aborted && (!input.shouldDeliver || input.shouldDeliver()) } : input;
       emitChatDiagnostic(this.logger, { event: "chat.turn.started", triggerMode: input.triggerMode });
       try {
-        const response = await this.runScheduled(input, async (result) => {
+        const response = await withTurnAbort(controller?.signal, () => this.runScheduled(activeInput, async (result) => {
+          assertTurnActive(controller?.signal);
           const text = await deliver(result);
           textDeliveryConfirmed = true;
           return text;
-        }, observer);
+        }, observer));
         emitChatDiagnostic(this.logger, { event: "chat.turn.completed", triggerMode: input.triggerMode,
           outcome: textDeliveryConfirmed ? "text_delivered" : "no_text_delivery", textDeliveryConfirmed, durationMs: diagnosticElapsed(started) });
         return response;
@@ -764,7 +773,7 @@ export class ChatConversationService {
           outcome: error instanceof ChatStateCommitError ? "delivered_state_unsaved" : error instanceof SocialOutputSuppressed ? "suppressed" : "failed",
           textDeliveryConfirmed, durationMs: diagnosticElapsed(started), ...(error instanceof SocialOutputSuppressed ? {} : safeFailure(error)) });
         throw error;
-      }
+      } finally { if (timer) clearTimeout(timer); }
     });
   }
 
@@ -845,9 +854,9 @@ export class ChatConversationService {
         episodeCandidates: snapshot.length, burstCandidates: input.currentBurst?.length ?? 0, merged, selected: history.length,
         replyChain: input.replyChain.length, chars: history.reduce((total, message) => total + message.content.length, 0) });
       const runTurn = input.guardedContextPort ? (turn: ChatConversationInput, send: (response: ChatResponse) => Promise<string>, observe?: ChatResponseObserver): Promise<ChatResponse> =>
-        this.queue.run(`${turn.guildId}:${turn.currentUser.id}`, () => runGuardedChatTurn(turn, { state: this.stateStore, runtime: this.characterRuntime,
+        this.queue.run(`${turn.guildId}:${turn.currentUser.id}`, () => withTurnAbort(turn.turnSignal, () => runGuardedChatTurn(turn, { state: this.stateStore, runtime: this.characterRuntime,
           logger: this.logger, now: this.now, reply: (request, observer) => this.replyWithDiagnostics(request, observer),
-          repair: (text, request) => this.verifyAttribution(text, request), admitSocialPing: () => this.admitSocialPing(turn) }, send, observe)) : this.runTurn.bind(this);
+          repair: (text, request) => this.verifyAttribution(text, request), admitSocialPing: () => this.admitSocialPing(turn) }, send, observe))) : this.runTurn.bind(this);
       const contextualAvailability = input.contextualCandidate ? {
         continuation: { text: this.scheduler.outputAvailable(key, "text", { ...limits, continuation: true }), reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits) },
         spontaneous: { text: this.scheduler.outputAvailable(key, "text", { ...limits, continuation: false }), reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits) },

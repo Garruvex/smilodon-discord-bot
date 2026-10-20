@@ -150,7 +150,7 @@ export class GeminiChatProvider implements ChatProvider {
       const response = await this.modelChain.run(async (model) => {
         await request.beforeModelAttempt?.();
         request.onModelAttempt?.();
-        return this.generateContent(model, buildChatInstructions(request, chatSafetyGuard), contents, this.buildTools(request, customTools));
+        return this.generateContent(model, buildChatInstructions(request, chatSafetyGuard), contents, this.buildTools(request, customTools), request.turnSignal);
       });
       const functionCalls = response.functionCalls ?? [];
 
@@ -169,7 +169,7 @@ export class GeminiChatProvider implements ChatProvider {
         const finalizeResponse = await this.modelChain.run(async (model) => {
           await request.beforeModelAttempt?.();
           request.onModelAttempt?.();
-          return this.generateContent(model, buildChatInstructions(request, chatSafetyGuard), contents, undefined);
+          return this.generateContent(model, buildChatInstructions(request, chatSafetyGuard), contents, undefined, request.turnSignal);
         });
         return this.mergePendingImages(
           this.parseResponse(finalizeResponse, request),
@@ -228,13 +228,14 @@ export class GeminiChatProvider implements ChatProvider {
     systemInstruction: string,
     contents: Content[],
     tools: Tool[] | undefined,
+    turnSignal?: AbortSignal,
   ): Promise<GenerateContentResponse> {
     try {
       return await this.client.models.generateContent({
         model,
         contents,
         config: {
-          abortSignal: AbortSignal.timeout(60_000),
+          abortSignal: turnSignal ? AbortSignal.any([turnSignal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000),
           systemInstruction,
           maxOutputTokens: this.generation.maxOutputTokens,
           responseMimeType: "application/json",

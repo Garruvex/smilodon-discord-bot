@@ -4,6 +4,7 @@ import { diagnosticElapsed, safeFailure, type FailureCategory, type ChatDiagnost
 import type { ChannelHistoryMessage, StructuredCharacterProvider } from "./chat-provider.js";
 import { contextualDecisionContract, ContextualContractError, type ContextualInterpretation } from "./contextual-decision-contract.js";
 import { contributionPolicy, type ContributionPolicy } from "./participation-policy.js";
+import { assertTurnActive, contextualTurnLimits, withTurnAbort } from "./turn-work-budget.js";
 
 export const contributionLabels = ["answer", "relevant-joke", "specific-opinion", "personal-reaction", "useful-observation", "none", "acknowledgment-only", "repetition", "generic-advice", "speculative-help", "topic-hijack", "stale-information"] as const;
 const eligibleLabels = new Set<string>(contributionLabels.slice(0, 5));
@@ -87,9 +88,9 @@ export interface RecipientAliases { alias: string; subjectIds: readonly string[]
 export function possiblePersonalFollowup(text: string): boolean {
   return !closesExchange(text) && /(?:你|妳|您|あなた|君|きみ|お前|\b(?:you|your|yours)\b)/iu.test(text);
 }
-export function groundedContextContinuation(events: readonly ChannelHistoryMessage[], current: ChannelHistoryMessage, botId: string, proposal: CharacterDecision): boolean {
+export function groundedContextContinuation(events: readonly ChannelHistoryMessage[], current: ChannelHistoryMessage, botId: string, proposal: CharacterDecision, allowSocialClosing = false): boolean {
   if (!["bot", "continuing"].includes(proposal.addressing) || proposal.target !== current.messageId ||
-      proposal.contribution.recipientId !== current.authorId || closesExchange(current.content) ||
+      proposal.contribution.recipientId !== current.authorId || closesExchange(current.content) && (!allowSocialClosing || isRecipientCorrection(current.content)) ||
       !proposal.recipientEvidence.includes(current.messageId)) return false;
   const cited = new Set(proposal.recipientEvidence);
   return events.some((bot) => bot.authorId === botId && bot.timestampMs < current.timestampMs && cited.has(bot.messageId) &&
@@ -218,7 +219,7 @@ export class CharacterDecisionService {
     this.probe = { at: Date.now(), task }; return task;
   }
   public async decide(input: DecisionInput): Promise<CharacterDecision | null> { return (await this.evaluate(input)).decision; }
-  public async evaluate(input: DecisionInput & { contextual?: boolean }): Promise<DecisionOutcome> {
+  public async evaluate(input: DecisionInput & { contextual?: boolean; signal?: AbortSignal; deadlineAt?: number }): Promise<DecisionOutcome> {
     const attempts: DecisionAttempt[] = [];
     let remainingModelMs: number = decisionCallLimits.totalMs;
     const record = (attempt: DecisionAttempt): void => {
@@ -272,17 +273,23 @@ Data: ${JSON.stringify({ personality: input.personality, events, burst: input.bu
       const contextStarted = performance.now();
       let contextTimer: ReturnType<typeof setTimeout> | undefined;
       try {
-        if (input.canUseContext && !await Promise.race([input.canUseContext(), new Promise<never>((_resolve, reject) => {
-          contextTimer = setTimeout(() => reject(new DOMException("Context deadline exceeded", "TimeoutError")), decisionCallLimits.contextMs);
-        })])) throw new Error("Context unavailable");
+        assertTurnActive(input.signal);
+        const contextBudget = Math.min(decisionCallLimits.contextMs, input.deadlineAt === undefined ? Infinity : input.deadlineAt - Date.now() - contextualTurnLimits.generationReserveMs);
+        if (contextBudget < contextualTurnLimits.minimumAttemptMs) throw new DOMException("Decision reserve reached", "TimeoutError");
+        if (input.canUseContext && !await withTurnAbort(input.signal, () => Promise.race([input.canUseContext!(), new Promise<never>((_resolve, reject) => {
+          contextTimer = setTimeout(() => reject(new DOMException("Context deadline exceeded", "TimeoutError")), contextBudget);
+        })]))) throw new Error("Context unavailable");
       } catch (error) {
         record({ providerRole, attempt, status: "failed", stage: "context_validation", durationMs: 0,
           contextDurationMs: diagnosticElapsed(contextStarted), ...safeFailure(error, "operation_error") });
         return { status: "failed", decision: null, attempts };
       } finally { if (contextTimer) clearTimeout(contextTimer); }
       const contextDurationMs = input.canUseContext ? diagnosticElapsed(contextStarted) : 0;
-      const timeoutMs = Math.min(decisionCallLimits.attemptMs, remainingModelMs);
-      if (timeoutMs <= 0) break;
+      const timeoutMs = Math.min(decisionCallLimits.attemptMs, remainingModelMs,
+        input.deadlineAt === undefined ? Infinity : input.deadlineAt - Date.now() - contextualTurnLimits.generationReserveMs);
+      if (timeoutMs < contextualTurnLimits.minimumAttemptMs) {
+        record({ providerRole, attempt, status: "failed", stage: "context_validation", failure: "timeout", durationMs: 0, contextDurationMs }); break;
+      }
       const started = performance.now();
       const modelStarted = Date.now();
       const timing = { stage: "model" as const, contextDurationMs, timeoutMs, contractVersion: contract ? "contextual_v1" as const : "legacy" as const,
@@ -290,9 +297,9 @@ Data: ${JSON.stringify({ personality: input.personality, events, burst: input.bu
       let timeout: ReturnType<typeof setTimeout> | undefined;
       const controller = new AbortController();
       try {
-        const raw = await Promise.race([provider.generateCharacterData(prompt, schema, { signal: controller.signal, maxAttempts: 1 }), new Promise<never>((_resolve, reject) => {
+        const raw = await withTurnAbort(input.signal, () => Promise.race([provider.generateCharacterData(prompt, schema, { signal: input.signal ? AbortSignal.any([controller.signal, input.signal]) : controller.signal, maxAttempts: 1 }), new Promise<never>((_resolve, reject) => {
           timeout = setTimeout(() => { controller.abort(); reject(new DOMException("Decision deadline exceeded", "TimeoutError")); }, timeoutMs);
-        })]);
+        })]));
         const result: CharacterDecision = contract ? contract.parse(raw) : decisionSchema.parse(raw);
         // Count-based retrieval never consumes this legacy trimming hint. A
         // provider ignoring its constant enum must not veto an otherwise valid

@@ -75,6 +75,7 @@ const eventSchema = z.discriminatedUnion("event", [
       code: z.enum(["invalid_type", "invalid_enum_value", "too_small", "too_big", "unrecognized_keys", "invalid"]) })).max(8).optional() }),
   z.object({ event: z.literal("chat.model.completed"), purpose: z.enum(["reply", "participation", "repair"]), status: z.enum(["valid", "failed"]), durationMs: duration, failure: failureCategory.optional(), httpStatus: z.number().int().min(100).max(599).optional() }),
   z.object({ event: z.literal("chat.turn.started"), triggerMode: trigger }),
+  z.object({ event: z.literal("chat.turn.deadline"), budgetMs: duration }),
   z.object({ event: z.literal("chat.candidate.changed"), candidateId: identifier, action: z.enum(["buffered", "coalesced", "scheduled", "submitted", "cancelled", "expired"]), reason: z.enum(["accepted", "cooldown", "ready", "changed", "capacity", "ineligible", "deadline"]), messages: count, delayMs: duration }),
   z.object({ event: z.literal("chat.admission.buffered"), triggerMode: trigger, reason: z.enum(["batch_threshold", "pause_or_cooldown", "continuation_candidate", "submitted", "invalidated"]), messages: count, delayMs: duration }),
   z.object({ event: z.literal("chat.turn.skipped"), reason: z.enum(["decision_unavailable", "duplicate_ping"]) }),

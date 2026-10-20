@@ -7,6 +7,12 @@ import { OpenAiCompatibleChatProvider } from "../../src/infrastructure/chat/open
 const input = { personality: "synthetic", events: [], burst: [branchCurrent], botId: "bot", fixedTarget: "current", gapMs: 1000, speakingShare: 0, thoughts: false };
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe("bounded decision recovery", () => {
+  it("reserves generation time instead of starting a doomed decision attempt", async () => {
+    const generateCharacterData = vi.fn(() => Promise.resolve(decisionProposal()));
+    const result = await new CharacterDecisionService({ generateCharacterData }).evaluate({ ...input, contextual: true, deadlineAt: Date.now() + 10500 });
+    expect(result).toMatchObject({ status: "failed", attempts: [{ stage: "context_validation", failure: "timeout" }] });
+    expect(generateCharacterData).not.toHaveBeenCalled();
+  });
   it("reserves model time independently of slow source validation", async () => {
     vi.useFakeTimers();
     const primary = { generateCharacterData: (): Promise<unknown> => new Promise(() => undefined) };

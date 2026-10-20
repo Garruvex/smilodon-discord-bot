@@ -323,7 +323,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
           : undefined,
         stream: stream || undefined,
       }),
-      signal: AbortSignal.timeout(stream ? 180_000 : 60_000),
+      signal: request.turnSignal ? AbortSignal.any([request.turnSignal, AbortSignal.timeout(stream ? 180_000 : 60_000)]) : AbortSignal.timeout(stream ? 180_000 : 60_000),
     });
     if (!response.ok) {
       const errorBody: unknown = await response.json().catch(() => null);
