@@ -2,6 +2,8 @@
 
 Status: Phases 1–4 implemented and verified locally. Phase 5 offline policy comparison is recorded (38/38 expected labels); real-provider evaluation and live rollout remain pending. The guarded text path is opt-in and unavailable source classes are excluded and reported. Universal privacy-gateway enforcement remains separate; no deployment performed. Prepared 2026-10-19; completion review updated 2026-10-20.
 
+2026-10-21 design review: the above is historical local acceptance, not full end-to-end behavioral completion. Subsequent user-supplied deployment traces expose pre-context admission/batching gaps, provisional-trigger policy coupling, and decision reliability issues. See [the full flow review](chat-flow-design-review-2026-10-21.md) for current findings, the revised processing order, seven-trigger contract, source inventory, and required acceptance gates. Unified contextual evaluation remains incomplete; this review does not change live settings or claim universal gateway enforcement.
+
 ### Implementation progress — 2026-10-19
 
 Phase 5 offline evidence — 2026-10-20: recorded the existing synthetic continuation/spontaneous policy replay at Phase 4 checkpoint `41e23a8c`: 38/38 expected labels match versus 23/38 for the hypothetical former policy on the same curated fixtures. No network/provider calls or Discord sends occurred. The result is not a model-quality or production-shadow benchmark. [Release readiness](phase-5-release-readiness-2026-10-20.md) records evidence, reproduction, unmeasured live gates, exact-scope pilot requirements, and rollback limits. Phase 5 remains incomplete until the real-provider evaluation, live shadow comparison, and explicit channel pilot are verified.
