@@ -119,6 +119,22 @@ export class ChatTurnSupport {
       coverage: (report) => emitChatDiagnostic(this.logger, { event: "context.guard.coverage", ...report }),
       validation: (status, reads) => emitChatDiagnostic(this.logger, { event: "context.guard.validation", status, reads }),
       policyCurrent: () => !!eligibility && eligibility.contextPolicyVersion(source) === version,
+      prepareValidation: async (ids, signal): Promise<void> => {
+        if (!eligibility || signal.aborted || !ids.length) return;
+        if (!await eligibility.canReadHistory(source, source.author.bot ? null : await member(source.author.id, signal))) return;
+        // One fresh REST page replaces up to 100 individual message reads.
+        // Anchor at the newest dependency so newer chat cannot displace it.
+        // Older/unreturned dependencies still require a fresh individual read;
+        // absence from a page is never proof of deletion or authorization.
+        const snowflakes = ids.filter((id) => /^\d{1,20}$/u.test(id)).map((id) => BigInt(id));
+        if (!snowflakes.length || signal.aborted) return;
+        const newest = snowflakes.reduce((a, b) => a > b ? a : b);
+        const fetched = await source.channel.messages.fetch({ limit: 100, before: String(newest + 1n), cache: false });
+        if (signal.aborted) return;
+        for (const message of fetched.values()) {
+          if (message.guildId === source.guildId && message.channelId === source.channelId) state(signal).messages.set(message.id, message);
+        }
+      },
       read: async (id, signal): Promise<GuardedContextSource | null> => {
         if (!eligibility || signal.aborted) return null;
         const messages = state(signal).messages;

@@ -20,6 +20,9 @@ export interface GuardedContextPort {
   read: (messageId: string, signal: AbortSignal) => Promise<GuardedContextSource | null>;
   page: (before: string | null, signal: AbortSignal) => Promise<readonly string[]>;
   actor: (userId: string, signal: AbortSignal) => Promise<ChatUser | null>;
+  // Fresh transport data for this validation phase only. Every subsequent read
+  // still performs author, scope, forget and provenance checks.
+  prepareValidation?: (messageIds: readonly string[], signal: AbortSignal) => Promise<void>;
   policyCurrent(): boolean;
 }
 export interface GuardedContextReport {
@@ -250,6 +253,7 @@ export class GuardedConversationContext {
     if (++this.passes > guardedContextLimits.maxValidationPasses) { this.closed = true; this.port.validation?.("bounded", this.reads); return false; }
     try { const valid = await this.phase(async () => {
       const entries = [...this.evidence];
+      await this.port.prepareValidation?.(entries.map(([id]) => id), this.signal);
       for (let index = 0; index < entries.length; index += 4) {
         const results = await Promise.all(entries.slice(index, index + 4).map(async ([id, previous]) => {
           const source = await this.read(id); return !!source && same(previous, source.event);

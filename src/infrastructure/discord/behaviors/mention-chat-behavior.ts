@@ -112,7 +112,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       accessReason = this.chatAccess.mentionChatAccessReason(currentProfile, member, message.author.id, message.channelId);
       emitChatDiagnostic(this.logger, { event: "chat.access.refreshed", cachedReason, currentReason: accessReason });
       if (!member) {
-        emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "access_denied", accessReason, memberRefresh: "unavailable" });
+        emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "access_denied", accessReason: "member_unavailable", memberRefresh: "unavailable" });
         await this.sendNote(message.guildId, message.author, "I couldn't verify your current server membership. Please try again shortly.");
         return BehaviorResult.StopPropagation;
       }
