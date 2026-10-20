@@ -1,15 +1,17 @@
 import type { GuildMember, Message } from "discord.js";
-import { describe, expect, it, vi, type Mock } from "vitest";
-import { GuardedConversationContext } from "../../src/application/chat/guarded-conversation-context.js";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
+import { GuardedConversationContext, type GuardedContextPort } from "../../src/application/chat/guarded-conversation-context.js";
 import { ChatTurnSupport } from "../../src/infrastructure/discord/behaviors/chat-turn-support.js";
 import type { SocialChatEligibility } from "../../src/infrastructure/discord/behaviors/social-chat-eligibility.js";
 import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 
 type MessageFetch = (options: { message?: string; before?: string; limit?: number }) => Promise<Message | Map<string, Message> | null>;
+afterEach(() => vi.useRealTimers());
 
 async function fixture(): Promise<{
   lease: GuardedConversationContext; messages: Map<string, Message>;
   fetch: Mock<MessageFetch>; memberFetch: ReturnType<typeof vi.fn>; denied: Set<string>;
+  port: GuardedContextPort;
 }> {
   const messages = new Map<string, Message>(); const denied = new Set<string>();
   const member = { displayName: "Alice", roles: { cache: new Map() } } as unknown as GuildMember;
@@ -35,10 +37,42 @@ async function fixture(): Promise<{
   const port = new ChatTurnSupport(logger, eligibility).createContextPort(messages.get("41")!);
   const lease = await GuardedConversationContext.open(port, { count: 40, budget: 24000, burstIds: [] });
   fetch.mockClear(); memberFetch.mockClear();
-  return { lease, messages, fetch, memberFetch, denied };
+  return { lease, messages, fetch, memberFetch, denied, port };
 }
 
 describe("Discord guarded validation transport", () => {
+  it("batches distant dependency groups with simulated REST delay and multiple authors", async () => {
+    const { port, fetch, messages, memberFetch } = await fixture(); vi.useFakeTimers();
+    const template = messages.get("41")!;
+    for (let id = 1001; id <= 1100; id++) messages.set(String(id), { ...template, id: String(id),
+      author: { ...template.author, id: `author-${id % 3}` } } as Message);
+    const original = fetch.getMockImplementation()!;
+    fetch.mockImplementation(async (options) => { await new Promise((resolve) => setTimeout(resolve, 600)); return original(options); });
+    const signal = new AbortController().signal;
+    const ids = ["1100", "1099", "1098", "1097", "40", "39", "38", "37"];
+    const pending = port.prepareValidation!(ids, signal);
+    await vi.advanceTimersByTimeAsync(1200); await pending;
+    for (const id of ids) expect(await port.read(id, signal)).not.toBeNull();
+    expect(fetch.mock.calls.map(([options]) => options.before)).toEqual(["1101", "41"]);
+    expect(memberFetch).toHaveBeenCalledTimes(4);
+  });
+
+  it("uses individual reads for a tiny dependency set", async () => {
+    const { port, fetch } = await fixture(); const signal = new AbortController().signal;
+    await port.prepareValidation!(["1", "2"], signal); expect(fetch).not.toHaveBeenCalled();
+    expect(await port.read("1", signal)).not.toBeNull(); expect(await port.read("2", signal)).not.toBeNull();
+    expect(fetch.mock.calls.map(([options]) => options.message)).toEqual(["1", "2"]);
+  });
+
+  it("caps batch requests at three pages for widely scattered dependencies", async () => {
+    const { port, fetch, messages } = await fixture(); const template = messages.get("41")!;
+    const ids: string[] = [];
+    for (let group = 1; group <= 4; group++) {
+      for (let offset = 1; offset <= 100; offset++) { const id = String(group * 1000 + offset); messages.set(id, { ...template, id } as Message); if (offset > 96) ids.push(id); }
+    }
+    await port.prepareValidation!(ids, new AbortController().signal);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
   it("validates 40 history messages plus the current event with one fresh page per phase", async () => {
     const { lease, fetch, memberFetch } = await fixture();
     expect(lease.history).toHaveLength(40);

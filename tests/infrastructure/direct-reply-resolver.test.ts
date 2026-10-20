@@ -6,6 +6,13 @@ function source(fetch: ReturnType<typeof vi.fn>): Message {
   return { guildId: "guild", channelId: "channel", reference: { messageId: "target", channelId: "channel" }, mentions: {}, channel: { messages: { cache: new Map(), fetch } } } as unknown as Message;
 }
 describe("bounded direct reply resolution", () => {
+  it("does not start a target fetch when lazy authorization completes after the routing deadline", async () => {
+    vi.useFakeTimers(); let release!: (allowed: boolean) => void;
+    const fetch = vi.fn();
+    const result = resolvesReplyToBot(source(fetch), "bot", null, 50, () => new Promise((resolve) => { release = resolve; }));
+    await vi.advanceTimersByTimeAsync(50); expect(await result).toBe(false);
+    release(true); await Promise.resolve(); await Promise.resolve(); expect(fetch).not.toHaveBeenCalled();
+  });
   it("resolves exactly one same-channel target without forwarding its content", async () => {
     const fetch = vi.fn().mockResolvedValue({ guildId: "guild", channelId: "channel", author: { id: "bot" }, content: "PRIVATE", reference: { messageId: "ancestor" } });
     expect(await resolvesReplyToBot(source(fetch), "bot", null)).toBe(true);

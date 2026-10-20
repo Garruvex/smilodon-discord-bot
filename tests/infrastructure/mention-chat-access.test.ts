@@ -8,7 +8,7 @@ import { freshDocument, memoryProvider, guildId } from "../helpers/settings-fixt
 import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 
 afterEach(() => vi.useRealTimers());
-function fixture() {
+function fixture(): { access: MentionChatAccess; message: Message; fetch: ReturnType<typeof vi.fn<(options: unknown) => Promise<GuildMember | null>>>; member: GuildMember; profiles: ReturnType<typeof memoryProvider> } {
   const document = freshDocument(); document.features.chatbot = true;
   const profiles = memoryProvider(document);
   const { logger } = captureDiagnosticLogger();
@@ -44,9 +44,9 @@ describe("bounded mention access", () => {
   it("recognizes everyone with the real Discord.js role-cache getter without fetching", async () => {
     const { access, message, profiles, fetch } = fixture();
     await profiles.update(guildId, { chatbotRoleIds: [guildId] });
-    const getter = Object.getOwnPropertyDescriptor(GuildMemberRoleManager.prototype, "cache")!.get!;
     const manager = { guild: { id: guildId, roles: { everyone: undefined, cache: new Map() } }, member: { _roles: [] } };
-    Object.assign(message, { member: { roles: { get cache() { return getter.call(manager); } } } });
+    const cache = Reflect.get(GuildMemberRoleManager.prototype, "cache", manager);
+    Object.assign(message, { member: { roles: { cache } } });
     expect((await access.resolve(message)).reason).toBe("allowed"); expect(fetch).not.toHaveBeenCalled();
   });
 });

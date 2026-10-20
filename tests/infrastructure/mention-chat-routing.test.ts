@@ -23,7 +23,7 @@ describe("explicit reply routing bypasses optional accumulation", () => {
     const { message, fetch } = setup();
     const memberFetch = vi.fn().mockResolvedValue({ roles: { cache: new Map([[document.roles.botAdministrator[0]!, {}]]) } });
     Object.assign(message, { member: null, guild: { members: { fetch: memberFetch } } });
-    fetch.mockResolvedValue({ guildId, channelId: "channel", author: { id: "bot" } } as never);
+    fetch.mockResolvedValue({ guildId, channelId: "channel", author: { id: "bot" } });
     const behavior = new MentionChatBehavior(() => "bot", { ownerUserIds: new Set() } as unknown as ApplicationConfiguration,
       memoryProvider(document), null, {} as PersonaSource, logger);
     expect(await behavior.matches(message)).toBe(true);

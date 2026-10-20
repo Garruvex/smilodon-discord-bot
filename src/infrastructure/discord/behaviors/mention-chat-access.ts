@@ -1,6 +1,6 @@
 import type { GuildMember, Message } from "discord.js";
 import type { Logger } from "pino";
-import { ChatAccessService, type MentionChatAccessReason } from "../../../application/access/chat-access-service.js";
+import type { ChatAccessService, MentionChatAccessReason } from "../../../application/access/chat-access-service.js";
 import { emitChatDiagnostic } from "../../../application/diagnostics/chat-diagnostics.js";
 import type { GuildConfiguration } from "../../../config/guild-configuration.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
