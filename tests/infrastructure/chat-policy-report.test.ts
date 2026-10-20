@@ -84,6 +84,23 @@ describe("effective chat policy", () => {
 });
 
 describe("protected policy settings report", () => {
+  it("persists a pilot flow and shadow override without changing other channels", async () => {
+    const fixture = engineFixture();
+    await fixture.run("participation.participation-channel", slashValues({ channel: { id: channelId }, "flow-version": "contextual_v1", shadow: true }));
+    expect(fixture.profiles.current().chat.participation?.channelOverrides[channelId]).toMatchObject({ flowVersion: "contextual_v1", shadowMode: true });
+    expect(fixture.profiles.current().chat.participation?.flowVersion).toBe("legacy");
+    expect(fixture.profiles.current().chat.participation?.channelOverrides["500000000000000099"]).toBeUndefined();
+  });
+  it("requires explicit thread observation before selecting a contextual pilot", async () => {
+    const fixture = engineFixture(); const id = "500000000000000099";
+    const guild = { id: guildId, channels: { fetch: () => Promise.resolve({ guildId, isThread: () => true }) } } as unknown as Guild;
+    const setting = fixture.engine.find("participation.thread-scope")!;
+    await fixture.engine.run(setting, { guildId, guild, actorUserId, language: "en", values: slashValues({ "thread-id": id, "flow-version": "contextual_v1", shadow: true }) }, { kind: "panel" });
+    expect(fixture.profiles.current().chat.participation?.channelOverrides[id]).toBeUndefined();
+    await fixture.engine.run(setting, { guildId, guild, actorUserId, language: "en", values: slashValues({ "thread-id": id, observe: true, "flow-version": "contextual_v1", shadow: true }) }, { kind: "panel" });
+    expect(fixture.profiles.current().chat.participation?.observationChannelIds).toContain(id);
+    expect(fixture.profiles.current().chat.participation?.channelOverrides[id]).toMatchObject({ flowVersion: "contextual_v1", shadowMode: true });
+  });
   function fixture(allowed = true): { run: () => Promise<string>; fetch: ReturnType<typeof vi.fn> } {
     const { engine } = engineFixture({ deps: { chatProviderAvailable: true } });
     const fetch = vi.fn(() => Promise.resolve({ guildId, isTextBased: () => true, permissionsFor: (member: { id: string }): { has: () => boolean } => ({ has: () => member.id === "bot" || allowed }) }));

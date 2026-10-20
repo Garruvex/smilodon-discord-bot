@@ -4,6 +4,12 @@ import { guildConfigurationFileSchema } from "../../src/config/guild-configurati
 import { freshDocument } from "../helpers/settings-fixtures.js";
 
 describe("participation policy", () => {
+  it("scopes contextual flow and shadow mode to one explicit channel", () => {
+    const settings = { ...defaultParticipation, flowVersion: "legacy" as const, shadowMode: false,
+      channelOverrides: { pilot: { flowVersion: "contextual_v1" as const, shadowMode: true } } };
+    expect(resolveParticipation(settings, "pilot")).toMatchObject({ flowVersion: "contextual_v1", shadowMode: true });
+    expect(resolveParticipation(settings, "other")).toMatchObject({ flowVersion: "legacy", shadowMode: false });
+  });
   it("keeps new unsolicited triggers off on schema upgrade", () => {
     const document = freshDocument();
     const { participation: _unused, ...oldChat } = document.chat;

@@ -6,6 +6,8 @@ Status: Phases 1–4 implemented and verified locally. Phase 5 offline policy co
 
 Execution plan for these remaining gaps: [Contextual participation improvement plan](chat-contextual-participation-plan-2026-10-21.md). It includes the later invalid-target incident, application-owned response binding, finite candidate admission, post-context policy selection, evidence projection, deadline coordination, real-provider acceptance, and a separate universal-source migration track. Status: planned, not implemented by the documentation checkpoint.
 
+2026-10-21 implementation follow-up: contextual engineering checkpoints 1–5 and replay tooling are now implemented behind an opt-in flow version. The final synthetic provider replay reached 214/216 valid decisions; interpretation weaknesses remain, so no broad production activation or completed pilot is claimed. [Release evidence](contextual-participation-release-2026-10-21.md) records the scoped controls, real-provider results and remaining gates.
+
 ### Implementation progress — 2026-10-19
 
 Phase 5 offline evidence — 2026-10-20: recorded the existing synthetic continuation/spontaneous policy replay at Phase 4 checkpoint `41e23a8c`: 38/38 expected labels match versus 23/38 for the hypothetical former policy on the same curated fixtures. No network/provider calls or Discord sends occurred. The result is not a model-quality or production-shadow benchmark. [Release readiness](phase-5-release-readiness-2026-10-20.md) records evidence, reproduction, unmeasured live gates, exact-scope pilot requirements, and rollback limits. Phase 5 remains incomplete until the real-provider evaluation, live shadow comparison, and explicit channel pilot are verified.

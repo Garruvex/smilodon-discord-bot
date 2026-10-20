@@ -1,6 +1,10 @@
 import type { SettingsTextCatalog } from "../catalog.js";
 
 export const enChat: SettingsTextCatalog = {
+  "participation.thread-scope.flow-version": { label: "Conversation flow", description: "Choose this thread's flow; explicit observation access is required.", choices: { legacy: "Legacy", contextual_v1: "Contextual (pilot)" } },
+  "participation.thread-scope.shadow": { label: "Shadow evaluation", description: "Evaluate optional decisions without sending in this thread." },
+  "participation.participation-channel.flow-version": { label: "Conversation flow", description: "Choose the flow for this exact channel.", choices: { legacy: "Legacy", contextual_v1: "Contextual (pilot)" } },
+  "participation.participation-channel.shadow": { label: "Shadow evaluation", description: "Evaluate decisions without posting optional replies in this channel." },
   "participation.controls.flow-version": { label: "Conversation flow", description: "Choose contextual participation; requires enabled eligible-count context.", choices: { legacy: "Legacy", contextual_v1: "Contextual (pilot)" } },
   "participation.thread-scope": {"label": "Thread scope", "description": "Select a thread explicitly by ID; parent channels do not grant access.", "messages": {"invalid": "Choose a valid accessible thread in this server and at least one scope change.", "needs-observation": "Enable observation for this thread before allowing spontaneous replies.", "done": "Thread scope updated. Provider, history and participation controls still apply."}},
   "participation.thread-scope.thread-id": {"label": "Thread ID", "description": "ID of a thread the bot can access in this server."},

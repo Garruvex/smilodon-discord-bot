@@ -12,8 +12,10 @@ export interface ContextualInterpretation {
 // The wire contract has no Discord destination/author fields. Fixed bindings
 // have no target choice; group choices use opaque per-call keys.
 export function contextualDecisionContract(events: readonly ChannelHistoryMessage[], botId: string, fixedTarget: string | null): {
-  schema: Record<string, unknown>; targets: readonly { key: string; eventId: string }[]; parse: (raw: unknown) => CharacterDecision;
+  schema: Record<string, unknown>; targets: readonly { key: string; eventId: string }[];
+  evidenceSources: readonly { key: string; eventId: string }[]; parse: (raw: unknown) => CharacterDecision;
 } {
+  const evidenceSources = events.map((event, index) => ({ key: /^\d+$/u.test(event.messageId) ? `event_${index + 1}` : event.messageId, eventId: event.messageId }));
   const humans = events.filter((event) => event.authorId !== botId && event.author?.kind !== "bot");
   const candidates = fixedTarget ? humans.filter((event) => event.messageId === fixedTarget) : humans.filter((event) =>
     !events.some((reply) => reply.authorId === botId && reply.replyToMessageId === event.messageId));
@@ -35,7 +37,7 @@ export function contextualDecisionContract(events: readonly ChannelHistoryMessag
     relationship: { type: "string", enum: ["followup", "group", "elsewhere", "unclear"] },
     intent: { type: "string", enum: ["answer", "clarify", "social", "closing", "contribute", "abstain"] },
     action: { type: "string", enum: ["reply", "react", "silent"] },
-    recipientEvidence: { type: "array", items: { type: "string", enum: [...new Set(events.map((event) => event.messageId))] }, maxItems: 8 },
+    recipientEvidence: { type: "array", items: { type: "string", enum: [...new Set(evidenceSources.map((source) => source.key))] }, maxItems: 8 },
     recipientConfidence: probabilityJson, confidence: probabilityJson,
     opening: { type: "string", enum: ["clear", "closed", "unclear"] }, reaction: { type: ["string", "null"] },
     contribution: { anyOf: [{ type: "null" }, { type: "object", additionalProperties: false,
@@ -45,18 +47,19 @@ export function contextualDecisionContract(events: readonly ChannelHistoryMessag
       } }] },
     ...(!fixedTarget ? { targetKey: { type: ["string", "null"], enum: [null, ...targets.map((target) => target.key)] } } : {}),
   };
-  return { schema: { type: "object", additionalProperties: false, required: Object.keys(properties), properties }, targets,
+  return { schema: { type: "object", additionalProperties: false, required: Object.keys(properties), properties }, targets, evidenceSources,
     parse: (raw): CharacterDecision => {
       const result = validator.parse(raw);
-      if (result.recipientEvidence.some((id) => !events.some((event) => event.messageId === id))) throw new ContextualContractError("invalid_evidence");
+      const evidence = result.recipientEvidence.map((key) => evidenceSources.find((source) => source.key === key)?.eventId).filter((id): id is string => id !== undefined);
+      if (evidence.length !== result.recipientEvidence.length) throw new ContextualContractError("invalid_evidence");
       const targetId = fixedTarget ?? targets.find((target) => target.key === result.targetKey)?.eventId;
       const target = candidates.find((event) => event.messageId === targetId);
-      if (result.action !== "silent" && !target) throw new ContextualContractError("invalid_target");
+      if (!fixedTarget && result.targetKey !== null && !targets.some((item) => item.key === result.targetKey)) throw new ContextualContractError("invalid_target", "unknown_choice");
+      if (result.action !== "silent" && !target) throw new ContextualContractError("invalid_target", fixedTarget ? "binding_missing" : "choice_required");
       if (result.action === "reply" && !result.contribution) throw new ContextualContractError("invalid_contribution");
       if (result.action !== "silent" && !result.recipientEvidence.length) throw new ContextualContractError("invalid_evidence");
-      if (!fixedTarget && result.targetKey !== null && !targets.some((item) => item.key === result.targetKey)) throw new ContextualContractError("invalid_target");
       return { addressing: result.relationship === "followup" ? "continuing" : result.relationship === "group" || result.relationship === "elsewhere" ? "others" : "unclear",
-        motivation: result.contribution?.motivation ?? 0, recipientEvidence: result.recipientEvidence, recipientConfidence: result.recipientConfidence,
+        motivation: result.contribution?.motivation ?? 0, recipientEvidence: evidence, recipientConfidence: result.recipientConfidence,
         targetConfidence: result.confidence, confidence: result.confidence, opening: result.opening, boundary: "earlier", target: target?.messageId ?? "",
         contribution: { text: result.contribution?.text ?? "", adds: result.contribution?.adds ?? "", label: result.contribution?.label ?? "none",
           motivation: result.contribution?.motivation ?? 0, sourceMessageId: target?.messageId ?? "", recipientId: target?.authorId ?? "group" },
@@ -64,5 +67,6 @@ export function contextualDecisionContract(events: readonly ChannelHistoryMessag
     } };
 }
 export class ContextualContractError extends Error {
-  public constructor(public readonly failure: "invalid_target" | "invalid_evidence" | "invalid_contribution") { super("Invalid contextual decision"); }
+  public constructor(public readonly failure: "invalid_target" | "invalid_evidence" | "invalid_contribution",
+    public readonly targetFailure?: "binding_missing" | "choice_required" | "unknown_choice") { super("Invalid contextual decision"); }
 }

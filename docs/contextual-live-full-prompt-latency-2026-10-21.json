@@ -1,0 +1,60 @@
+{
+  "summary": {
+    "mode": "live_latency_probe",
+    "providerIdentity": {
+      "provider": "openai-responses",
+      "models": [
+        "gpt-5-nano"
+      ],
+      "reasoningEffort": "low"
+    },
+    "probeTimeoutMs": 15000,
+    "cases": 3,
+    "valid": 3,
+    "expectedMeaning": 3,
+    "p50Ms": 8549,
+    "p95Ms": 8739,
+    "validityGateMet": null,
+    "semanticReview": "Controlled expected-label checks; independent review and a scoped live pilot remain required.",
+    "tokenUsage": "unavailable",
+    "discordSends": 0
+  },
+  "results": [
+    {
+      "id": "zh-TW-answer-3000-same",
+      "language": "zh-TW",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 8549,
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-correction-3000-same",
+      "language": "zh-TW",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 8739,
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-repair-3000-same",
+      "language": "zh-TW",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 6688,
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "expectedMeaning": true,
+      "failures": []
+    }
+  ]
+}

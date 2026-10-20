@@ -89,11 +89,12 @@ describe("guarded turn acceptance", () => {
     expect(reply).toHaveBeenCalledTimes(relationship === "followup" ? 1 : 0);
     if (relationship === "group") expect(result.conversationDecision?.decision.reasonCode).toBe("spontaneous_disabled");
   });
-  it.each(["followup", "group", "social_reaction", "substantive_reaction", "silence", "elsewhere", "unclear", "low_confidence"] as const)("applies contextual policy after neutral admission: %s", async (scenario) => {
+  it.each(["followup", "group", "recipient_correction", "social_reaction", "substantive_reaction", "silence", "elsewhere", "unclear", "low_confidence"] as const)("applies contextual policy after neutral admission: %s", async (scenario) => {
     const { service, fixture, input, reply, decision, records } = await setup(5000, "alice", true);
-    fixture.add(guardedEvent("current", 4000, scenario === "social_reaction" ? "謝謝!" : "好了嗎"));
+    fixture.add(guardedEvent("current", 4000, scenario === "recipient_correction" ? "我不是在問你" : scenario === "social_reaction" ? "謝謝!" : "好了嗎"));
     const proposal = contextualProposal({ recipientEvidence: ["question", "answer", "current"] });
     if (scenario === "group") proposal.relationship = "group";
+    if (scenario === "recipient_correction") proposal.relationship = "group";
     if (scenario === "social_reaction") { proposal.action = "react"; proposal.intent = "social"; proposal.reaction = "👍"; proposal.contribution = null; }
     if (scenario === "substantive_reaction") { proposal.action = "react"; proposal.reaction = "👍"; }
     if (scenario === "silence") { proposal.action = "silent"; proposal.contribution = null; proposal.recipientEvidence = []; }
@@ -161,18 +162,20 @@ describe("guarded turn acceptance", () => {
     expect((await state.load(guildId, "alice", channelId, 5001)).exchanges).toEqual([]);
   });
 
-  it.each([
+  it.each(([
     ["direct_mention", "direct"], ["explicit_reply", "direct"], ["bare_ping", "direct"], ["name_address", "ambient"],
     ["implicit_followup", "continuation"], ["group_conversation", "spontaneous"], ["reaction", "reaction"],
-  ] as const)("retains the authorized conversation for %s", async (interactionMode, triggerMode) => {
-    const { service, fixture, input, reply } = await setup();
+  ] as const).flatMap(([interactionMode, triggerMode]) => [false, true].map((contextual) => ({ interactionMode, triggerMode, contextual }))))("retains the authorized conversation for $interactionMode ($triggerMode, contextual=$contextual)", async ({ interactionMode, triggerMode, contextual }) => {
+    const { service, fixture, input, reply, decision } = await setup(5000, "alice", contextual);
+    if (contextual && (triggerMode === "continuation" || triggerMode === "spontaneous")) decision.generateCharacterData.mockResolvedValue(contextualProposal({ recipientEvidence: ["question", "answer", "current"] }));
     if (triggerMode === "reaction") { fixture.port.sourceMessageId = "answer"; fixture.port.actorId = null;
       input.currentEvent = { type: "reaction_snapshot", channelId, targetMessageId: "answer", targetAuthorId: "bot", observedAt: 5000,
         complete: true, exactReactionTimes: "unknown", reactions: [{ emoji: "👍", emojiId: null, actorIds: ["alice"] }] };
       input.sourceMessageId = "answer";
     }
     const sent = vi.fn((response: ChatResponse) => { response.characterDeliveryProof = [{ messageId: "delivered", content: response.text }]; return Promise.resolve(response.text); });
-    const response = await service.run({ ...input, interactionMode, triggerMode }, sent);
+    const response = await service.run({ ...input, interactionMode, triggerMode, contextualCandidate: contextual && (triggerMode === "continuation" || triggerMode === "spontaneous"),
+      ...(contextual ? { participationFlowVersion: "contextual_v1" as const } : {}) }, sent);
     expect(reply).toHaveBeenCalledOnce(); expect(sent).toHaveBeenCalledOnce();
     const request = reply.mock.calls[0]![0];
     expect([...request.replyChain, ...request.channelHistory].map((event) => event.messageId)).toContain("question");

@@ -56,7 +56,14 @@ describe("spontaneous opportunities", () => {
     expect(await behavior.matches(message("one", "好了嗎"))).toBe(true);
     await behavior.execute(message("one", "好了嗎"));
     await vi.advanceTimersByTimeAsync(5000); await evaluate(opportunities);
-    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ id: "one" }), "continuation", expect.any(Array));
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ id: "one" }), "continuation", expect.any(Array), expect.any(String));
+  });
+  it("does not evaluate a duplicate source again after candidate submission", async () => {
+    const { behavior, opportunities, execute } = await contextual();
+    const source = message("one", "好了嗎");
+    await behavior.execute(source); await vi.advanceTimersByTimeAsync(5000); await evaluate(opportunities);
+    await behavior.execute(source); await vi.advanceTimersByTimeAsync(60000);
+    expect(opportunities).toHaveLength(1); expect(execute).toHaveBeenCalledOnce();
   });
   it("retains the original maximum wait during continuous fragments", async () => {
     const { behavior, opportunities, execute, profiles } = await contextual();

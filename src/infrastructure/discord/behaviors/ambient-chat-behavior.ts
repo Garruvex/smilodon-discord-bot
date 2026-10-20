@@ -96,7 +96,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     return true;
   }
 
-  public async execute(message: Message, trigger: "ambient" | "continuation" | "spontaneous" = "ambient", burst: readonly Message[] = []): Promise<BehaviorResult> {
+  public async execute(message: Message, trigger: "ambient" | "continuation" | "spontaneous" = "ambient", burst: readonly Message[] = [], candidateId?: string): Promise<BehaviorResult> {
     if (trigger === "ambient" && message.guildId) this.conversation?.cancelOptionalOpportunity?.(message.guildId, message.channelId, "addressed_request");
     const opportunityVersion = trigger === "ambient" || !message.guildId ? null : this.conversation?.optionalOpportunityVersion?.(message.guildId, message.channelId);
     if (!message.inGuild() || !this.conversation) return BehaviorResult.Continue;
@@ -151,6 +151,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         guildId: message.guildId,
         channelId: message.channelId,
         sourceMessageId: message.id,
+        ...(candidateId ? { candidateId } : {}),
         contextualCandidate: trigger !== "ambient" && contextualFlow(profile, message.channelId),
         ...(contextualFlow(profile, message.channelId) ? { participationFlowVersion: "contextual_v1" as const } : {}),
         channelHistoryEnabled: profile.features.channelHistory,

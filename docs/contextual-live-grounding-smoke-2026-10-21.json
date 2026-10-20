@@ -1,0 +1,120 @@
+{
+  "summary": {
+    "mode": "live_synthetic_decision_replay",
+    "providerIdentity": {
+      "provider": "openai-responses",
+      "models": [
+        "gpt-5-nano"
+      ],
+      "reasoningEffort": "low"
+    },
+    "probeTimeoutMs": null,
+    "cases": 8,
+    "valid": 8,
+    "expectedMeaning": 6,
+    "p50Ms": 5390,
+    "p95Ms": 7794,
+    "validityGateMet": false,
+    "semanticReview": "Controlled expected-label checks; independent review and a scoped live pilot remain required.",
+    "tokenUsage": "unavailable",
+    "discordSends": 0
+  },
+  "results": [
+    {
+      "id": "zh-TW-answer-3000-same",
+      "language": "zh-TW",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 4548,
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-closing-3000-same",
+      "language": "zh-TW",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 5390,
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-correction-3000-same",
+      "language": "zh-TW",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 6367,
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-elsewhere-3000-same",
+      "language": "zh-TW",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 4607,
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-group-3000-same",
+      "language": "zh-TW",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 4979,
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-repair-3000-same",
+      "language": "zh-TW",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 6316,
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-thanks-3000-same",
+      "language": "zh-TW",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 7794,
+      "relationship": "followup",
+      "intent": "social",
+      "action": "react",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-unknown-3000-same",
+      "language": "zh-TW",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 5055,
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "expectedMeaning": false,
+      "failures": []
+    }
+  ]
+}

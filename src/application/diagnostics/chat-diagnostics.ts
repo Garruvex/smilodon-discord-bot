@@ -24,6 +24,7 @@ const count = z.number().int().nonnegative();
 const duration = z.number().finite().nonnegative();
 const identifier = z.string().min(1).max(128).regex(/^[\w.:-]+$/u);
 const trigger = z.enum(["direct", "ambient", "continuation", "spontaneous", "reaction"]);
+export const decisionValidationFields: readonly string[] = ["root", "item", "addressing", "motivation", "recipientEvidence", "recipientConfidence", "targetConfidence", "contribution", "opening", "boundary", "target", "confidence", "reaction", "thoughts", "text", "adds", "label", "sourceMessageId", "recipientId", "relationship", "intent", "action", "targetKey"];
 export const eligibilityReason = z.enum(["not_guild", "chat_disabled", "needs_conversation_context", "background_scope_denied", "passive_scope_denied", "passive_access_denied", "game_channel", "continuation_disabled", "spontaneous_disabled", "history_reactions_disabled", "ambient_disabled", "reaction_disabled", "utility_or_unknown_bot_output", "channel_denied", "access_denied", "utility_interaction", "cyclic_reply_chain", "unknown_bot_output", "utility_reply", "cross_channel_reply", "unresolved_reply_origin", "reply_depth_limit", "unverifiable_bot_context", "origin_lookup_failed", "source_forgotten", "forget_policy_unavailable"]);
 
 export const failureCategory = z.enum([
@@ -71,10 +72,12 @@ const eventSchema = z.discriminatedUnion("event", [
   z.object({ event: z.literal("model.decision.attempt"), providerRole: z.enum(["primary", "fallback"]), attempt: count, status: z.enum(["valid", "failed"]), durationMs: duration, failure: failureCategory.optional(), httpStatus: z.number().int().min(100).max(599).optional(),
     stage: z.enum(["context_validation", "model"]).optional(), contextDurationMs: duration.optional(), timeoutMs: duration.optional(),
     contractVersion: z.enum(["legacy", "contextual_v1"]).optional(), targetMode: z.enum(["fixed", "selectable"]).optional(), targetCandidates: count.optional(),
-    validationIssues: z.array(z.object({ field: z.string().max(128).regex(/^(?:root|(?:addressing|motivation|recipientEvidence|recipientConfidence|targetConfidence|contribution|opening|boundary|target|confidence|reaction|thoughts|text|adds|label|sourceMessageId|recipientId|item)(?:\.(?:addressing|motivation|recipientEvidence|recipientConfidence|targetConfidence|contribution|opening|boundary|target|confidence|reaction|thoughts|text|adds|label|sourceMessageId|recipientId|item))*)$/u),
+    targetFailure: z.enum(["binding_missing", "choice_required", "unknown_choice"]).optional(),
+    validationIssues: z.array(z.object({ field: z.string().min(1).max(128).refine((field) => field.split(".").every((part) => decisionValidationFields.includes(part))),
       code: z.enum(["invalid_type", "invalid_enum_value", "too_small", "too_big", "unrecognized_keys", "invalid"]) })).max(8).optional() }),
   z.object({ event: z.literal("chat.model.completed"), purpose: z.enum(["reply", "participation", "repair"]), status: z.enum(["valid", "failed"]), durationMs: duration, failure: failureCategory.optional(), httpStatus: z.number().int().min(100).max(599).optional() }),
-  z.object({ event: z.literal("chat.turn.started"), triggerMode: trigger }),
+  z.object({ event: z.literal("chat.turn.started"), triggerMode: trigger, candidateId: identifier.optional() }),
+  z.object({ event: z.literal("chat.candidate.source"), candidateId: identifier, sourceMessageId: identifier }),
   z.object({ event: z.literal("chat.turn.deadline"), budgetMs: duration }),
   z.object({ event: z.literal("chat.candidate.changed"), candidateId: identifier, action: z.enum(["buffered", "coalesced", "scheduled", "submitted", "cancelled", "expired"]), reason: z.enum(["accepted", "cooldown", "ready", "changed", "capacity", "ineligible", "deadline"]), messages: count, delayMs: duration }),
   z.object({ event: z.literal("chat.admission.buffered"), triggerMode: trigger, reason: z.enum(["batch_threshold", "pause_or_cooldown", "continuation_candidate", "submitted", "invalidated"]), messages: count, delayMs: duration }),

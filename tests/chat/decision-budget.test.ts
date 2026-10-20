@@ -7,6 +7,14 @@ import { OpenAiCompatibleChatProvider } from "../../src/infrastructure/chat/open
 const input = { personality: "synthetic", events: [], burst: [branchCurrent], botId: "bot", fixedTarget: "current", gapMs: 1000, speakingShare: 0, thoughts: false };
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe("bounded decision recovery", () => {
+  it("allows the measured contextual latency while retaining the total model budget", async () => {
+    vi.useFakeTimers();
+    const { contextualProposal } = await import("../helpers/contextual-decision-fixtures.js");
+    const generateCharacterData = vi.fn(() => new Promise((resolve) => setTimeout(() => resolve(contextualProposal()), 8500)));
+    const pending = new CharacterDecisionService({ generateCharacterData }).evaluate({ ...input, contextual: true, useContextBoundary: false });
+    await vi.advanceTimersByTimeAsync(8500);
+    expect(await pending).toMatchObject({ status: "valid", attempts: [{ timeoutMs: 12000 }] });
+  });
   it("reserves generation time instead of starting a doomed decision attempt", async () => {
     const generateCharacterData = vi.fn(() => Promise.resolve(decisionProposal()));
     const result = await new CharacterDecisionService({ generateCharacterData }).evaluate({ ...input, contextual: true, deadlineAt: Date.now() + 10500 });

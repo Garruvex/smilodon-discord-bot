@@ -1,6 +1,10 @@
 import type { SettingsTextCatalog } from "../catalog.js";
 
 export const zhTWChat: SettingsTextCatalog = {
+  "participation.thread-scope.flow-version": { label: "對話流程", description: "選擇此討論串的流程，需要明確允許觀察。", choices: { legacy: "舊流程", contextual_v1: "情境流程（試行）" } },
+  "participation.thread-scope.shadow": { label: "影子評估", description: "此討論串只評估選擇性接話，不傳送回覆。" },
+  "participation.participation-channel.flow-version": { label: "對話流程", description: "選擇此頻道的對話流程。", choices: { legacy: "舊流程", contextual_v1: "情境流程（試行）" } },
+  "participation.participation-channel.shadow": { label: "影子評估", description: "此頻道只評估接話決策，不傳送選擇性回覆。" },
   "participation.controls.flow-version": { label: "對話流程", description: "情境流程先閱讀允許的上下文，再判斷是否接話；需要啟用合格訊息數上下文。", choices: { legacy: "舊流程", contextual_v1: "情境流程（試行）" } },
   "participation.thread-scope": {"label": "討論串範圍", "description": "以 ID 個別選取討論串；選取上層頻道不會授予討論串存取權。", "messages": {"invalid": "請提供此伺服器內可存取的討論串 ID，並至少選擇一項範圍變更。", "needs-observation": "請先允許觀察此討論串，再開啟主動接話。", "done": "討論串範圍已更新；判斷服務、頻道歷史及參與控制仍然適用。"}},
   "participation.thread-scope.thread-id": {"label": "討論串 ID", "description": "此伺服器中機器人可存取的討論串 ID。"},

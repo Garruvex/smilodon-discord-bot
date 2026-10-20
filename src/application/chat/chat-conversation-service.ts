@@ -757,7 +757,7 @@ export class ChatConversationService {
       const activeInput = controller ? { ...input, turnSignal: controller.signal, turnDeadlineAt: Date.now() + contextualTurnLimits.totalMs,
         canExecute: async (): Promise<boolean> => { assertTurnActive(controller.signal); const allowed = await withTurnAbort(controller.signal, () => input.canExecute?.() ?? Promise.resolve(true)); assertTurnActive(controller.signal); return allowed; },
         shouldDeliver: (): boolean => !controller.signal.aborted && (!input.shouldDeliver || input.shouldDeliver()) } : input;
-      emitChatDiagnostic(this.logger, { event: "chat.turn.started", triggerMode: input.triggerMode });
+      emitChatDiagnostic(this.logger, { event: "chat.turn.started", triggerMode: input.triggerMode, ...(input.candidateId ? { candidateId: input.candidateId } : {}) });
       try {
         const response = await withTurnAbort(controller?.signal, () => this.runScheduled(activeInput, async (result) => {
           assertTurnActive(controller?.signal);

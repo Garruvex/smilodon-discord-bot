@@ -1,6 +1,10 @@
 import type { SettingsTextCatalog } from "../catalog.js";
 
 export const jaChat: SettingsTextCatalog = {
+  "participation.thread-scope.flow-version": { label: "会話フロー", description: "このスレッドのフローを選択します。観察の明示的な許可が必要です。", choices: { legacy: "従来", contextual_v1: "文脈フロー（試行）" } },
+  "participation.thread-scope.shadow": { label: "シャドー評価", description: "このスレッドで任意の返信を送信せず判断を評価します。" },
+  "participation.participation-channel.flow-version": { label: "会話フロー", description: "このチャンネルの会話フローを選択します。", choices: { legacy: "従来", contextual_v1: "文脈フロー（試行）" } },
+  "participation.participation-channel.shadow": { label: "シャドー評価", description: "このチャンネルで任意の返信を送信せず判断を評価します。" },
   "participation.controls.flow-version": { label: "会話フロー", description: "許可された文脈から参加を判断します。対象メッセージ数による文脈の有効化が必要です。", choices: { legacy: "従来", contextual_v1: "文脈フロー（試行）" } },
   "participation.thread-scope": {"label": "スレッドの範囲", "description": "スレッドをIDで個別に選択します。親チャンネルの設定は継承しません。", "messages": {"invalid": "参照可能なスレッドIDと、少なくとも一つの変更を指定してください。", "needs-observation": "自発的な発言を許可する前に、このスレッドの観察を有効にしてください。", "done": "スレッドの範囲を更新しました。判定サービス、会話履歴、参加設定も適用されます。"}},
   "participation.thread-scope.thread-id": {"label": "スレッドID", "description": "このサーバーでボットが参照できるスレッドのID。"},

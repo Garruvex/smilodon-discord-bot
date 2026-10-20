@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { addressedElsewhere, decisionSourceFailure, exchangeBranch, generatedContributionAllowed, groundedContextContinuation, localAddressing, optionalParticipationRejection, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
+import { addressedElsewhere, decisionSourceFailure, exchangeBranch, generatedContributionAllowed, groundedContextContinuation, isRecipientCorrection, localAddressing, optionalParticipationRejection, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
 import { isGuardedContext } from "./guarded-conversation-context.js";
 import { resolveConversationTrigger, type TriggerResolution } from "./conversation-trigger.js";
 import type { ChatRequest, ChatResponse } from "./chat-provider.js";
@@ -74,6 +74,7 @@ export class ConversationDecisionEngine {
         request.contextualCandidate || request.triggerMode === "continuation" ? current?.messageId ?? null : null);
       if (failure) return denied(failure, "failed");
       const interpretation = proposal.contextual;
+      if (current && isRecipientCorrection(current.content)) return denied("addressed_elsewhere");
       const kind = interpretation.relationship === "followup" ? "continuation" : "spontaneous";
       const policy = resolveParticipation(settings, request.channelId);
       if (interpretation.relationship === "unclear") return denied("recipient_unclear");

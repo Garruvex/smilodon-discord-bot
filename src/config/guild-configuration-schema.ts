@@ -115,6 +115,7 @@ const guildChatSchema = z.preprocess((value) => {
     activity: z.enum(["quiet", "balanced", "lively"]).default("balanced"),
     shadowMode: z.boolean().default(false),
     channelOverrides: z.record(snowflake, z.object({
+      flowVersion: z.enum(["legacy", "contextual_v1"]).optional(), shadowMode: z.boolean().optional(),
       continuationEnabled: z.boolean().optional(), spontaneousEnabled: z.boolean().optional(),
       reactionsEnabled: z.boolean().optional(), activity: z.enum(["quiet", "balanced", "lively"]).optional(),
     })).default({}),

@@ -1,6 +1,8 @@
 import type { ChatActivityLimits } from "./chat-scheduler.js";
 
 export interface ParticipationOverride {
+  flowVersion?: "legacy" | "contextual_v1" | undefined;
+  shadowMode?: boolean | undefined;
   continuationEnabled?: boolean | undefined;
   spontaneousEnabled?: boolean | undefined;
   reactionsEnabled?: boolean | undefined;
@@ -58,6 +60,8 @@ export function resolveParticipation(settings: ParticipationSettings | undefined
   const advanced = configured.advanced;
   return {
     ...configured, ...override,
+    flowVersion: override.flowVersion ?? configured.flowVersion ?? "legacy",
+    shadowMode: override.shadowMode ?? configured.shadowMode,
     messagesPerDecision: configured.messagesPerDecision ?? 5,
     continuationEnabled: override.continuationEnabled ?? configured.continuationEnabled,
     activity: override.activity ?? configured.activity,

@@ -34,7 +34,7 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
       threshold: (message): number => resolveParticipation(profiles.find(message.guildId!)?.chat.participation, message.channelId).messagesPerDecision,
       eligible: async (message): Promise<boolean> => { const trigger = this.trigger(message); return trigger !== null && (await eligibility.check(message, trigger)).eligible; },
       schedule: (message, work): void => conversation.bufferOpportunity(message.guildId!, message.channelId, work),
-      evaluate: async (message, burst): Promise<void> => { const trigger = this.trigger(message); if (trigger) await ambient.execute(message, trigger, burst); },
+      evaluate: async (message, burst, candidateId): Promise<void> => { const trigger = this.trigger(message); if (trigger) await ambient.execute(message, trigger, burst, candidateId); },
     });
   }
 

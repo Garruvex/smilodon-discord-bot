@@ -6,6 +6,12 @@ import { branchHuman, branchBot, branchCurrent } from "../helpers/conversation-d
 import { contextualProposal } from "../helpers/contextual-decision-fixtures.js";
 const events = [branchHuman, branchBot, branchCurrent];
 describe("contextual decision binding", () => {
+  it("maps short evidence keys back to authorized numeric source IDs", () => {
+    const numericEvents = events.map((event, index) => ({ ...event, messageId: `100000000000000000${index}` }));
+    const contract = contextualDecisionContract(numericEvents, "bot", numericEvents.at(-1)!.messageId);
+    expect(contract.parse(contextualProposal({ recipientEvidence: ["event_1", "event_3"] })).recipientEvidence).toEqual([numericEvents[0]!.messageId, numericEvents[2]!.messageId]);
+    expect(() => contract.parse(contextualProposal({ recipientEvidence: ["private_event"] }))).toThrow();
+  });
   it("owns the current destination and recipient with no corresponding wire fields", () => {
     const contract = contextualDecisionContract(events, "bot", "current");
     expect(new Ajv().compile(contract.schema)(contextualProposal())).toBe(true);

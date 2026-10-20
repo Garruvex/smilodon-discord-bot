@@ -1,5 +1,6 @@
 import { isGuardedContext, projectDecisionContext } from "./guarded-conversation-context.js";
 import { selectDecisionContext } from "./decision-context-selection.js";
+import { contextualFlow } from "./contextual-flow.js";
 import { z } from "zod";
 import { budgetEligibleHistory } from "./eligible-channel-history.js";
 import type { Logger } from "pino";
@@ -265,14 +266,14 @@ export class CharacterRuntime {
         targetMessageId, memoryContextSignature: "[]", participation: { action: "ignore", reaction: null }, styleUserId, styleSignature, targetConfidence };
     }
     if (!request.characterEvaluation && capabilities.context && (optional || settings.context.enabled || enabled("addressing") || enabled("thoughts"))) {
-      const contextualProjection = guarded && profile.chat.participation?.flowVersion === "contextual_v1" ? selectDecisionContext(request, settings.context.decisionMessages) : null;
+      const contextualProjection = guarded && contextualFlow(profile, request.channelId) ? selectDecisionContext(request, settings.context.decisionMessages) : null;
       const decisionEvents = contextualProjection?.events ?? (guarded ? projectDecisionContext(request, settings.context.decisionMessages) : events.slice(-settings.context.decisionMessages));
       if (contextualProjection) emitChatDiagnostic(this.logger, { event: "context.decision.coverage", ...contextualProjection.coverage });
       const fixedTarget = request.contextualCandidate || request.triggerMode === "continuation" ? burst.at(-1)?.messageId ?? null : optional || request.triggerMode === "reaction" ? null : request.currentEvent?.type === "message" ? request.currentEvent.messageId : null;
       const shouldDecide = optional || request.triggerMode === "reaction";
       const decisionStarted = Date.now();
       const outcome = shouldDecide ? await this.decisions.evaluate({ personality: request.personality, events: decisionEvents, burst, botId: request.botUserId ?? "bot",
-        fixedTarget, contextual: guarded && profile.chat.participation?.flowVersion === "contextual_v1", useContextBoundary: !guarded && settings.context.retrievalMode !== "eligible_count", gapMs: settings.context.segmentGapMinutes * 60_000,
+        fixedTarget, contextual: guarded && contextualFlow(profile, request.channelId), useContextBoundary: !guarded && settings.context.retrievalMode !== "eligible_count", gapMs: settings.context.segmentGapMinutes * 60_000,
         ...(request.turnSignal ? { signal: request.turnSignal } : {}), ...(request.turnDeadlineAt ? { deadlineAt: request.turnDeadlineAt } : {}),
         speakingShare: decisionEvents.length ? decisionEvents.filter((event) => event.authorId === request.botUserId).length / decisionEvents.length : 0,
         canUseContext: guarded ? (): Promise<boolean> => request.contextLease!.validate() : undefined, thoughts: !guarded && optional && enabled("thoughts"), availableActions: request.optionalActionsAvailable, now: turn.now }) : { status: "skipped" as const, decision: null };
