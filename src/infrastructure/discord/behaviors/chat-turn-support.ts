@@ -117,6 +117,7 @@ export class ChatTurnSupport {
     return {
       guildId: source.guildId!, channelId: source.channelId, sourceMessageId: source.id, actorId: reaction ? null : source.author.id, persist: eligibility?.canPersistContext(source) ?? false,
       coverage: (report) => emitChatDiagnostic(this.logger, { event: "context.guard.coverage", ...report }),
+      work: (phase, status, durationMs) => emitChatDiagnostic(this.logger, { event: "context.guard.work", phase, status, durationMs }),
       validation: (status, reads) => emitChatDiagnostic(this.logger, { event: "context.guard.validation", status, reads }),
       policyCurrent: () => !!eligibility && eligibility.contextPolicyVersion(source) === version,
       prepareValidation: async (ids, signal): Promise<void> => {

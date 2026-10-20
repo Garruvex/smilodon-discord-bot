@@ -63,7 +63,9 @@ describe("guarded conversation context", () => {
       assistant: { content: "specific answer", createdAt: 2000, messageIds: ["answer"] }, contextProvenance: proof };
     const context = await GuardedConversationContext.open(fixture.port, policy);
     expect(context.history.map((event) => event.messageId)).toContain("answer");
+    const prepareValidation = vi.fn(() => Promise.resolve()); fixture.port.prepareValidation = prepareValidation;
     expect(await context.sessions([session])).toEqual([session]);
+    expect(prepareValidation).toHaveBeenCalledExactlyOnceWith(expect.arrayContaining(["current", "question", "answer"]), expect.any(AbortSignal));
     fixture.sources.delete("question");
     expect(await context.validate()).toBe(false);
     const later = await GuardedConversationContext.open(fixture.port, policy);
@@ -105,5 +107,18 @@ describe("guarded conversation context", () => {
     await vi.advanceTimersByTimeAsync(8000); await assertion;
     expect(report).toHaveBeenCalledWith(expect.objectContaining({ status: "deadline" }));
     expect(fixture.port.page).not.toHaveBeenCalled();
+  });
+
+  it("identifies a stalled session phase and cancels within its existing deadline", async () => {
+    vi.useFakeTimers(); const fixture = guardedFixture();
+    const context = await GuardedConversationContext.open(fixture.port, policy);
+    const work = vi.fn(); fixture.port.work = work;
+    fixture.port.prepareValidation = (): Promise<void> => new Promise(() => {});
+    const pending = context.sessions([{ user: { content: context.current.content, createdAt: 4000, sourceMessageId: "current" },
+      assistant: { content: "answer", createdAt: 4500, messageIds: ["delivered"] }, contextProvenance: context.provenance("answer") }]);
+    const assertion = expect(pending).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    await vi.advanceTimersByTimeAsync(8000); await assertion;
+    expect(work).toHaveBeenCalledExactlyOnceWith("sessions", "deadline", 8000);
+    expect(context.provenance("reply")).toBeNull();
   });
 });

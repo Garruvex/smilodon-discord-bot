@@ -32,10 +32,11 @@ export async function runGuardedChatTurn(input: ChatConversationInput, dependenc
   const mode = input.resolveMemoryMode?.() ?? input.channelMemoryModes?.[input.channelId] ?? "shared";
   const state = input.triggerMode === "reaction" ? { exchanges: [] }
     : await dependencies.state.load(input.guildId, input.currentUser.id, input.channelId, dependencies.now());
-  const selectedSessions = await lease.sessions(state.exchanges);
   const known = new Set([...lease.history, ...lease.replyChain].map((event) => event.messageId));
-  const sessions = selectedSessions.filter((exchange) => !known.has(exchange.user.sourceMessageId ?? "") ||
-    !exchange.assistant.messageIds?.every((id) => known.has(id)));
+  // Saved copies already represented by fresh guarded history never enter the
+  // prompt. Avoid re-fetching their complete provenance only to discard them.
+  const sessions = await lease.sessions(state.exchanges.slice(-4).filter((exchange) => !known.has(exchange.user.sourceMessageId ?? "") ||
+    !exchange.assistant.messageIds?.length || !exchange.assistant.messageIds.every((id) => known.has(id))));
   emitChatDiagnostic(dependencies.logger, { event: "context.guard.sources", sessions: sessions.length, unavailable:
     ["legacy_derived", "memory", "summaries", "learned_character", "images", "context_tools", "profile_fields"] });
   let prepared: CharacterPreparedTurn | null = null;

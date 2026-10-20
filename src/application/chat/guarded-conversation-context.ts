@@ -13,6 +13,7 @@ export interface GuardedContextSource {
   provenance: ContextProvenance | null;
 }
 export interface GuardedContextPort {
+  work?: (phase: "assembly" | "sessions" | "validation", status: "completed" | "deadline" | "failed", durationMs: number) => void;
   persist?: boolean;
   coverage?: (report: GuardedContextReport) => void;
   validation?: (status: "current" | "changed" | "deadline" | "bounded", reads: number) => void;
@@ -67,16 +68,22 @@ export class GuardedConversationContext {
   private reactionActors = new Map<string, ChatUser>();
   private constructor(private readonly port: GuardedContextPort) { registered.add(this); }
 
-  private async phase<T>(operation: () => Promise<T>): Promise<T> {
+  private async phase<T>(operation: () => Promise<T>, phase: "assembly" | "sessions" | "validation" = "assembly"): Promise<T> {
     if (this.closed || !this.port.policyCurrent() || this.remainingMs <= 0) throw new SocialOutputSuppressed();
     const controller = new AbortController(); this.signal = controller.signal; this.cache = new Map();
     const started = Date.now(); let timer: ReturnType<typeof setTimeout> | undefined;
+    let status: "completed" | "deadline" | "failed" = "failed";
     try {
-      return await Promise.race([operation(), new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => { this.closed = true; controller.abort(); this.report.status = "deadline"; reject(new SocialOutputSuppressed()); },
+      const result = await Promise.race([operation(), new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => { status = "deadline"; this.closed = true; controller.abort(); this.report.status = "deadline"; reject(new SocialOutputSuppressed()); },
           Math.min(this.remainingMs, guardedContextLimits.phaseMs));
       })]);
-    } finally { if (timer) clearTimeout(timer); this.remainingMs -= Date.now() - started; }
+      status = "completed"; return result;
+    } finally {
+      if (timer) clearTimeout(timer);
+      const durationMs = Date.now() - started; this.remainingMs -= durationMs;
+      this.port.work?.(phase, status, durationMs);
+    }
   }
 
   private async read(id: string, path = new Set<string>()): Promise<GuardedContextSource | null> {
@@ -225,11 +232,19 @@ export class GuardedConversationContext {
     return this.phase(async () => {
       const selected: ChatSessionExchange[] = [];
       if (!this.port.actorId || this.currentEvent?.type === "reaction_snapshot") return selected;
-      for (const exchange of exchanges.slice(-4)) {
-        const proof = parseScopedContextProvenance(exchange.contextProvenance, { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.actorId });
+      const actorId = this.port.actorId;
+      const candidates = exchanges.slice(-4).flatMap((exchange) => {
+        const proof = parseScopedContextProvenance(exchange.contextProvenance, { guildId: this.port.guildId, channelId: this.port.channelId, userId: actorId });
+        const sourceId = exchange.user.sourceMessageId; const deliveryIds = exchange.assistant.messageIds;
         if (!proof || proof.coverage !== "complete" || proof.outputHash !== hashContent(exchange.assistant.content) ||
-          !exchange.user.sourceMessageId || !exchange.assistant.messageIds?.length) continue;
-        const human = await this.read(exchange.user.sourceMessageId);
+          !sourceId || !deliveryIds?.length) return [];
+        return [{ exchange, proof, sourceId, deliveryIds }];
+      });
+      if (!candidates.length) return selected;
+      await this.port.prepareValidation?.([...new Set([this.current.messageId, ...candidates.flatMap(({ proof, sourceId, deliveryIds }) =>
+        [sourceId, ...deliveryIds, ...proof.dependencies.map((dependency) => dependency.messageId)])])], this.signal);
+      for (const { exchange, proof, sourceId, deliveryIds } of candidates) {
+        const human = await this.read(sourceId);
         if (!human || human.event.authorId !== this.port.actorId || !human.event.content.startsWith(exchange.user.content)) continue;
         let valid = true;
         for (const dependency of proof.dependencies) {
@@ -239,14 +254,14 @@ export class GuardedConversationContext {
             contextSourceHash(source.event) !== dependency.representationHash) { valid = false; break; }
         }
         let delivered = "";
-        for (const id of exchange.assistant.messageIds) { const source = await this.read(id); if (!source || source.origin !== "chat") { valid = false; break; } delivered += source.event.content; }
+        for (const id of deliveryIds) { const source = await this.read(id); if (!source || source.origin !== "chat") { valid = false; break; } delivered += source.event.content; }
         const normalized = (value: string): string => value.replace(/\s+/gu, "");
         if (!valid || !normalized(delivered).includes(normalized(exchange.assistant.content))) continue;
-        for (const id of [...proof.dependencies.map((source) => source.messageId), ...exchange.assistant.messageIds, exchange.user.sourceMessageId]) if (!await this.retain(id)) valid = false;
+        for (const id of [...proof.dependencies.map((source) => source.messageId), ...deliveryIds, sourceId]) if (!await this.retain(id)) valid = false;
         if (valid) selected.push(exchange);
       }
       return selected;
-    });
+    }, "sessions");
   }
 
   public async validate(): Promise<boolean> {
@@ -264,7 +279,7 @@ export class GuardedConversationContext {
         const actor = await this.port.actor(id, this.signal); if (!actor || JSON.stringify(actor) !== JSON.stringify(previous)) return false;
       }
       return this.port.policyCurrent();
-    });
+    }, "validation");
       if (!valid) this.closed = true;
       this.port.validation?.(valid ? "current" : "changed", this.reads); return valid;
     } catch { this.closed = true; this.port.validation?.(this.report.status === "deadline" ? "deadline" : "bounded", this.reads); return false; }

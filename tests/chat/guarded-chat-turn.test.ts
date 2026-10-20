@@ -52,6 +52,20 @@ async function setup(): Promise<{
 }
 
 describe("guarded turn acceptance", () => {
+  it("skips redundant saved-session reads when both sides already exist in guarded history", async () => {
+    const { service, fixture, input, reply, state } = await setup();
+    await state.commitSuccessfulExchange({ guildId, userId: "alice", channelId, sourceMessageId: "question",
+      userMessage: "Explain the carburetor mixture adjustment", assistantMessage: "Which throttle range?", assistantMessageIds: ["answer"],
+      contextProvenance: fixture.sources.get("answer")!.provenance, actions: [], now: 3000 });
+    const sessions = vi.spyOn(GuardedConversationContext.prototype, "sessions");
+    try {
+      await service.run(input, (response) => Promise.resolve(response.text));
+      expect(sessions).toHaveBeenCalledExactlyOnceWith([]);
+      expect(reply).toHaveBeenCalledOnce();
+      expect(reply.mock.calls[0]![0].recentHistory).toEqual([]);
+      expect(buildChatContext(reply.mock.calls[0]![0])).toContain("Which throttle range?");
+    } finally { sessions.mockRestore(); }
+  });
   it("rejects a mismatched source frame before model work", async () => {
     const { service, input, fixture, reply } = await setup();
     fixture.port.channelId = "another-channel";
