@@ -12,6 +12,22 @@ const input = { personality: "SECRET_PERSONA", events: [], burst: [{ messageId: 
   content: "SECRET_MESSAGE", timestampMs: 100, imageCount: 0 }], botId: "bot", fixedTarget: null, gapMs: 1000, speakingShare: 0, thoughts: false };
 
 describe("decision attempt diagnostics", () => {
+  it("constrains legacy boundary selection in the provider schema", async () => {
+    const provider = { generateCharacterData: vi.fn(() => Promise.resolve(decision)) };
+    await new CharacterDecisionService(provider).evaluate(input);
+    expect(provider.generateCharacterData).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+      properties: expect.objectContaining({ boundary: { type: "string", enum: ["earlier"] } }) as unknown,
+    }), expect.any(Object));
+  });
+  it("ignores the inactive segmentation hint without weakening source validation", async () => {
+    const output = { ...decision, boundary: "not-a-boundary" };
+    const provider = { generateCharacterData: vi.fn(() => Promise.resolve(output)) };
+    const service = new CharacterDecisionService(provider);
+    const result = await service.evaluate({ ...input, useContextBoundary: false });
+    expect(result).toMatchObject({ status: "valid", decision: { boundary: "earlier" } });
+    provider.generateCharacterData.mockResolvedValue({ ...output, target: "unapproved" });
+    expect(await service.evaluate({ ...input, useContextBoundary: false })).toMatchObject({ status: "failed", attempts: [{ failure: "invalid_target" }] });
+  });
   it.each([
     decision,
     { ...decision, contribution: { ...contribution, text: "😀".repeat(200) } },

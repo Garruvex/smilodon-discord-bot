@@ -15,6 +15,7 @@ import { buildChatContext } from "../../src/infrastructure/chat/chat-structured-
 import { guardedEvent, guardedFixture } from "../helpers/guarded-context-fixture.js";
 import { freshDocument, guildId, memoryProvider } from "../helpers/settings-fixtures.js";
 import { decisionProposal, decisionResponse } from "../helpers/conversation-decision-fixtures.js";
+import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 
 const channelId = "500000000000000001";
 const cleanups: (() => Promise<void>)[] = [];
@@ -24,6 +25,7 @@ async function setup(now = 5000, originalAuthor = "alice"): Promise<{
   reply: ReturnType<typeof vi.fn<(request: ChatRequest) => Promise<ChatResponse>>>;
   engine: DefaultMemoryEngine; runtime: CharacterRuntime; state: SqliteChatStateStore;
   decision: { generateCharacterData: ReturnType<typeof vi.fn> };
+  records: Record<string, unknown>[];
 }> {
   const connection = createSqliteDatabaseConnection(mkdtempSync(join(tmpdir(), "guarded-turn-")));
   const repository = new SqliteMemoryRepository(connection.database); const state = new SqliteChatStateStore(connection.database);
@@ -36,9 +38,10 @@ async function setup(now = 5000, originalAuthor = "alice"): Promise<{
     recipientEvidence: ["current"], target: "current", boundary: "earlier",
     contribution: { text: "A carburetor answer", adds: "Mixture adjustment", label: "answer", motivation: 0.95, sourceMessageId: "current", recipientId: "alice" },
   }))) };
-  const runtime = new CharacterRuntime(profiles, repository, null, { reply }, decision, null, () => now);
+  const { logger, records } = captureDiagnosticLogger();
+  const runtime = new CharacterRuntime(profiles, repository, null, { reply }, decision, null, () => now, logger);
   const engine = new DefaultMemoryEngine(repository, null, null, undefined, null, null, null, () => true);
-  const service = new ChatConversationService({ reply }, state, engine, undefined, undefined, undefined, null, null, null, null, null, null, null, null, runtime, () => now);
+  const service = new ChatConversationService({ reply }, state, engine, undefined, undefined, undefined, null, null, null, logger, null, null, null, null, runtime, () => now);
   cleanups.push(async () => { service.stopScheduling(); await service.drain(); runtime.stop(); connection.close(); });
   const fixture = guardedFixture(guardedEvent("question", 1000, "Explain the carburetor mixture adjustment", originalAuthor), { guildId, channelId });
   const previous = await GuardedConversationContext.open(fixture.port, { count: 40, budget: 12000, burstIds: [] });
@@ -50,17 +53,18 @@ async function setup(now = 5000, originalAuthor = "alice"): Promise<{
     message: "UNTRUSTED_SYNTHETIC_INPUT", replyChain: [], channelHistory: [], images: [], includeSources: false,
     webSearchMode: "auto", imageGenerationEnabled: true, toolsEnabled: true, triggerMode: "direct", botUserId: "bot",
     guardedContextPort: fixture.port, guardedContextPolicy: { count: 40, budget: 12000 }, channelHistoryEnabled: true };
-  return { service, fixture, input, reply, engine, runtime, state, decision };
+  return { service, fixture, input, reply, engine, runtime, state, decision, records };
 }
 
 describe("guarded turn acceptance", () => {
-  it.each(["accepted", "cross_participant", "missing_evidence", "other_recipient", "private_source", "low_confidence", "decision_failed"] as const)("handles a sixteen-minute correction with guarded evidence: %s", async (scenario) => {
-    const { service, fixture, input, reply, runtime, decision } = await setup(963000, scenario === "cross_participant" ? "bob" : "alice");
+  it.each(["accepted", "inactive_boundary", "cross_participant", "missing_evidence", "other_recipient", "private_source", "low_confidence", "decision_failed"] as const)("handles a sixteen-minute correction with guarded evidence: %s", async (scenario) => {
+    const { service, fixture, input, reply, runtime, decision, records } = await setup(963000, scenario === "cross_participant" ? "bob" : "alice");
     const correction = guardedEvent("current", 962000, "我是在修你ㄟ 你剛剛壞掉了不回他\n跟大番薯沒關西");
     fixture.add(correction);
     // The local episode window is empty, as after restart or a long gap.
     expect(runtime.couldBeAddressed(guildId, channelId, correction, [], "bot")).toBe(true);
     const proposal = decisionProposal({ recipientEvidence: ["question", "answer", "current"] });
+    if (scenario === "inactive_boundary") proposal.boundary = "invalid-legacy-boundary";
     if (scenario === "missing_evidence") proposal.recipientEvidence = ["current"];
     if (scenario === "low_confidence") proposal.recipientConfidence = 0.2;
     if (scenario === "other_recipient") fixture.add({ ...correction, replyToMessageId: "question" });
@@ -70,8 +74,12 @@ describe("guarded turn acceptance", () => {
     await service.run({ ...input, triggerMode: "continuation" }, (response) => Promise.resolve(response.text)).catch((error: unknown) => {
       expect(error).toBeInstanceOf(SocialOutputSuppressed);
     });
-    if (scenario === "accepted" || scenario === "cross_participant") expect(reply).toHaveBeenCalledOnce();
+    if (scenario === "accepted" || scenario === "cross_participant" || scenario === "inactive_boundary") expect(reply).toHaveBeenCalledOnce();
     else expect(reply).not.toHaveBeenCalled();
+    const completed = records.filter((record) => record.event === "chat.turn.completed");
+    expect(completed).toHaveLength(1);
+    expect(completed[0]).toMatchObject({ sourceMessageId: "current", triggerMode: "continuation" });
+    if (scenario === "inactive_boundary") expect(completed[0]).toMatchObject({ outcome: "text_delivered", textDeliveryConfirmed: true });
   });
   it("skips redundant saved-session reads when both sides already exist in guarded history", async () => {
     const { service, fixture, input, reply, state } = await setup();
