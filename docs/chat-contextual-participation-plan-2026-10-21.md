@@ -8,6 +8,8 @@ Checkpoint 2 implemented locally: neutral admission in enabled guarded contextua
 
 Checkpoint 3 implemented locally: neutral messages carry transport metadata separately from contextual relationship. The application fixes their response event; contextual classification determines continuation/group policy, threshold and output reservation. Both output budgets are checked before interpretation and the selected budget is reserved at delivery. Social reaction-only outcomes skip generation; answer/clarification requests cannot degrade to emoji. Continuation-only channels reject group output after classification. New contextual prompts use one consistent older-reference rule. Guarded/contract/engine/scheduler suites: 76 passed; typecheck and changed-file lint passed. Real-provider behavior remains unverified.
 
+Checkpoint 4 implemented locally: contextual decision projection preserves authorized ancestry/references and up to two complete relevant human/bot exchange pairs before the ordinary recent tail. Projection never fetches or invents sources and reports available/selected/required/omitted-required counts. Existing bounded retrieval and privacy validation remain authoritative. Full suite: 4,760 passed / 7 skipped; typecheck and changed-file lint passed. Relevance ranking is bounded and cannot guarantee that every ambiguous older referent is present.
+
 ## Objective and non-negotiable rules
 
 An eligible short message should be interpreted using authorized context before deciding whether it is a follow-up, a group contribution, or irrelevant to the bot. A bare ping may refer to earlier substantive text. Time gaps do not remove reference relevance. Speaker, recipient, reply destination and discussed subject remain distinct.

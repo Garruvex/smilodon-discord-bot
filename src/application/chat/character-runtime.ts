@@ -1,4 +1,5 @@
 import { isGuardedContext, projectDecisionContext } from "./guarded-conversation-context.js";
+import { selectDecisionContext } from "./decision-context-selection.js";
 import { z } from "zod";
 import { budgetEligibleHistory } from "./eligible-channel-history.js";
 import type { Logger } from "pino";
@@ -264,7 +265,9 @@ export class CharacterRuntime {
         targetMessageId, memoryContextSignature: "[]", participation: { action: "ignore", reaction: null }, styleUserId, styleSignature, targetConfidence };
     }
     if (!request.characterEvaluation && capabilities.context && (optional || settings.context.enabled || enabled("addressing") || enabled("thoughts"))) {
-      const decisionEvents = guarded ? projectDecisionContext(request, settings.context.decisionMessages) : events.slice(-settings.context.decisionMessages);
+      const contextualProjection = guarded && profile.chat.participation?.flowVersion === "contextual_v1" ? selectDecisionContext(request, settings.context.decisionMessages) : null;
+      const decisionEvents = contextualProjection?.events ?? (guarded ? projectDecisionContext(request, settings.context.decisionMessages) : events.slice(-settings.context.decisionMessages));
+      if (contextualProjection) emitChatDiagnostic(this.logger, { event: "context.decision.coverage", ...contextualProjection.coverage });
       const fixedTarget = request.contextualCandidate || request.triggerMode === "continuation" ? burst.at(-1)?.messageId ?? null : optional || request.triggerMode === "reaction" ? null : request.currentEvent?.type === "message" ? request.currentEvent.messageId : null;
       const shouldDecide = optional || request.triggerMode === "reaction";
       const decisionStarted = Date.now();

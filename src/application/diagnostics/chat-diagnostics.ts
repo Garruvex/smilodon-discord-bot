@@ -66,6 +66,7 @@ const eventSchema = z.discriminatedUnion("event", [
   z.object({ event: z.literal("context.eligibility.denied"), sourceMessageId: identifier, purpose: z.enum(["direct", "ambient", "continuation", "spontaneous", "reaction", "observation", "background_observation", "history_reaction", "history", "guarded_current"]), reason: eligibilityReason }),
   z.object({ event: z.literal("context.source.selected"), source: z.enum(["reply_chain", "channel_history"]), fetched: count, selected: count, omitted: count, status: z.enum(["complete", "ineligible", "fetch_failed", "bounded"]), chars: count }),
   z.object({ event: z.literal("context.selection.completed"), fetchedHistory: count, episodeCandidates: count, burstCandidates: count, merged: count, selected: count, replyChain: count, chars: count }),
+  z.object({ event: z.literal("context.decision.coverage"), available: count, selected: count, required: count, omittedRequired: count }),
   z.object({ event: z.literal("context.selection.filtered"), reason: z.enum(["scope", "window", "gap", "segment", "count", "budget"]), before: count, after: count }),
   z.object({ event: z.literal("model.decision.attempt"), providerRole: z.enum(["primary", "fallback"]), attempt: count, status: z.enum(["valid", "failed"]), durationMs: duration, failure: failureCategory.optional(), httpStatus: z.number().int().min(100).max(599).optional(),
     stage: z.enum(["context_validation", "model"]).optional(), contextDurationMs: duration.optional(), timeoutMs: duration.optional(),
