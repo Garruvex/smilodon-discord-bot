@@ -271,12 +271,14 @@ export class CharacterRuntime {
       return { turn, request, fingerprint, allowed: false, decisionStatus, conversationDecision: denied, acceptedContribution: null, exchangeId: null,
         targetMessageId, memoryContextSignature: "[]", participation: { action: "ignore", reaction: null }, styleUserId, styleSignature, targetConfidence };
     }
-    if (!request.characterEvaluation && capabilities.context && (optional || settings.context.enabled || enabled("addressing") || enabled("thoughts"))) {
+    if (!request.characterEvaluation && (capabilities.context && (optional || settings.context.enabled || enabled("thoughts")) || request.triggerMode === "reaction")) {
       const contextualProjection = contextual ? selectDecisionContext(request, settings.context.decisionMessages) : null;
       const decisionEvents = contextualProjection?.events ?? (guarded ? projectDecisionContext(request, settings.context.decisionMessages) : events.slice(-settings.context.decisionMessages));
       if (contextualProjection) emitChatDiagnostic(this.logger, { event: "context.decision.coverage", ...contextualProjection.coverage });
       const fixedTarget = contextual && request.currentEvent?.type === "reaction_snapshot" ? request.currentEvent.targetMessageId : contextual && optional || request.triggerMode === "continuation" ? burst.at(-1)?.messageId ?? null : optional || request.triggerMode === "reaction" ? null : request.currentEvent?.type === "message" ? request.currentEvent.messageId : null;
-      const shouldDecide = optional || request.triggerMode === "reaction";
+      // Legacy reaction generation already selects its action in the reply
+      // contract. Its bot target cannot enter the legacy human-target schema.
+      const shouldDecide = optional || request.triggerMode === "reaction" && guarded;
       const decisionStarted = Date.now();
       const outcome = shouldDecide ? await this.decisions.evaluate({ personality: request.personality, events: decisionEvents, burst, botId: request.botUserId ?? "bot",
         fixedTarget, contextual, useContextBoundary: !guarded && settings.context.retrievalMode !== "eligible_count", gapMs: settings.context.segmentGapMinutes * 60_000,
