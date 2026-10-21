@@ -6,7 +6,7 @@ import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
 import { allowsDurableWrites } from "../memory/memory-channel-policy.js";
 import { personaDriftPayload, type ScopedPersonaDrift } from "../chat/persona-drift-provenance.js";
 import { withTurnAbort } from "../chat/turn-work-budget.js";
-import { approveModelOperation } from "./approved-model-operation.js";
+import { approveModelOperation, approveAttributionOperation } from "./approved-model-operation.js";
 
 // Owns the session-to-model projection. Stored transcripts are candidates,
 // never caller authority: the lease verifies human sources and actual bot
@@ -27,7 +27,8 @@ export class ConversationModelGateway {
     if (!transport?.verifyAttribution) return null;
     await request.beforeModelAttempt!();
     const context = [...request.replyChain, ...request.channelHistory].map(({ authorId, authorDisplayName, content }) => ({ authorId, authorDisplayName, content }));
-    const result = await transport.verifyAttribution(draft, context, request.message, request.beforeModelAttempt);
+    const result = await transport.verifyAttribution(draft, context, request.message,
+      approveAttributionOperation(request.contextLease!, [draft, context, request.message], request.beforeModelAttempt!));
     await request.beforeModelAttempt!(); return result;
   }
   public get canCompactReply(): boolean { return !!(this.provider.summarizeReplyChainOverflow || this.fallback?.summarizeReplyChainOverflow); }

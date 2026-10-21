@@ -32,9 +32,10 @@ describe("conversation execution ownership", () => {
           const issuers = ["application/context/conversation-model-gateway.ts", "application/context/background-model-gateway.ts", "application/context/configuration-model-gateway.ts",
             "application/memory/memory-context-guard.ts", "application/chat/character-runtime.ts", "application/chat/character-decision.ts", "application/chat/tools/generate-self-image-tool.ts"];
           const permitted = relative === "application/context/guarded-embedding-transport.ts" ? ["consumeEmbeddingOperation"] :
-            relative === "application/context/guarded-utility-transport.ts" ? ["consumeModelOperation", "snapshotModelArguments"] :
+            relative === "application/context/guarded-model-transport.ts" ? ["consumeModelOperation", "snapshotModelArguments"] :
             ["application/memory/memory-context-guard.ts", "application/context/configuration-model-gateway.ts"].includes(relative) ? ["approveModelOperation", "approveEmbeddingOperation"] :
-            issuers.includes(relative) ? relative === "application/chat/character-decision.ts" ? ["approveModelOperation", "approveDiagnosticModelOperation"] : ["approveModelOperation"] : [];
+            issuers.includes(relative) ? relative === "application/chat/character-decision.ts" ? ["approveModelOperation", "approveDiagnosticModelOperation"] :
+              relative === "application/context/conversation-model-gateway.ts" ? ["approveModelOperation", "approveAttributionOperation"] : ["approveModelOperation"] : [];
           if (imported.some((name) => !permitted.includes(name))) offenders.push(relative);
         }
         if (module.endsWith("/approved-decision-input.js") && !node.importClause?.isTypeOnly) {
@@ -44,7 +45,7 @@ describe("conversation execution ownership", () => {
             relative === "application/chat/character-decision.ts" ? ["isApprovedDecisionInput"] : [];
           if (imported.some((name) => !permitted.includes(name))) offenders.push(relative);
         }
-        if (module.endsWith("/guarded-utility-transport.js") && !node.importClause?.isTypeOnly && !["bootstrap/dependencies.ts", "scripts/replay-contextual-participation.ts", "scripts/replay-conversation-lifecycle.ts"].includes(relative)) offenders.push(relative);
+        if (module.endsWith("/guarded-model-transport.js") && !node.importClause?.isTypeOnly && !["bootstrap/dependencies.ts", "scripts/replay-contextual-participation.ts", "scripts/replay-conversation-lifecycle.ts"].includes(relative)) offenders.push(relative);
         if (module.endsWith("/guarded-embedding-transport.js") && !node.importClause?.isTypeOnly && relative !== "bootstrap/dependencies.ts") offenders.push(relative);
         if (module.endsWith("/character-memory.js") && !node.importClause?.isTypeOnly) {
           const bindings = node.importClause?.namedBindings;
@@ -77,13 +78,15 @@ describe("conversation execution ownership", () => {
           const bindings = node.importClause?.namedBindings;
           const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
           const permitted = relative === "bootstrap/dependencies.ts" ? ["GuardedEvaluationContext"] :
-            ["application/chat/character-runtime.ts", "application/context/configuration-model-gateway.ts", "application/context/approved-model-operation.ts"].includes(relative) ? ["isEvaluationContext"] : [];
+            ["application/chat/character-runtime.ts", "application/context/configuration-model-gateway.ts", "application/context/approved-model-operation.ts", "application/context/approved-conversation-request.ts"].includes(relative) ? ["isEvaluationContext"] : [];
           if (imported.some((name) => !permitted.includes(name))) offenders.push(relative);
         }
         if (module.endsWith("/approved-conversation-request.js") && !node.importClause?.isTypeOnly) {
           const bindings = node.importClause?.namedBindings;
           const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
-          const permitted = relative === "application/chat/guarded-chat-turn.ts" ? ["approveConversationRequest"] :
+          const permitted = relative === "application/context/guarded-model-transport.ts" ? ["requireApprovedModelReply"] :
+            relative === "application/context/configuration-model-gateway.ts" ? ["approveEvaluationRequest"] :
+            relative === "application/chat/guarded-chat-turn.ts" ? ["approveConversationRequest"] :
             ["application/chat/chat-conversation-service.ts", "application/chat/character-runtime.ts"].includes(relative) ? ["repairConversationRequest"] :
               relative === "application/context/conversation-model-gateway.ts" ? ["requireApprovedConversationRequest"] : [];
           if (imported.some((name) => !permitted.includes(name))) offenders.push(relative);

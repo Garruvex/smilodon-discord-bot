@@ -1,5 +1,5 @@
 import { GuardedEvaluationContext } from "../application/context/guarded-evaluation-context.js";
-import { guardUtilityTransport } from "../application/context/guarded-utility-transport.js";
+import { guardModelTransport } from "../application/context/guarded-model-transport.js";
 import { guardEmbeddingTransport } from "../application/context/guarded-embedding-transport.js";
 import { interviewProbes } from "../application/chat/character-evaluation.js";
 import { CommandModule } from "../application/commands/command.js";
@@ -204,7 +204,7 @@ type ProviderConfig =
 // from. summaryModels defaults to the provider's own `models` when omitted
 // (utilityChat never sets it — it IS the summary/utility model already).
 export function createChatProviderFromConfig(config: ProviderConfig, logger: Logger): ChatProvider {
-  return guardUtilityTransport(instrumentModel(createRawChatProviderFromConfig(config, logger), logger));
+  return guardModelTransport(instrumentModel(createRawChatProviderFromConfig(config, logger), logger));
 }
 
 function createRawChatProviderFromConfig(config: ProviderConfig, logger: Logger): ChatProvider {
@@ -703,7 +703,7 @@ export function createDependencies(
   settingsEngine.bindChatToolRegistry(chatToolRegistry);
   const structuredUtility = utilityProvider?.generateCharacterData ? { generateCharacterData: utilityProvider.generateCharacterData.bind(utilityProvider) } : null;
   const structuredReply = chatProvider?.generateCharacterData ? { generateCharacterData: chatProvider.generateCharacterData.bind(chatProvider) } : null;
-  const dedicatedDecision = configuration.decision ? guardUtilityTransport(instrumentModel(new HttpDecisionProvider(configuration.decision), logger)) : null;
+  const dedicatedDecision = configuration.decision ? guardModelTransport(instrumentModel(new HttpDecisionProvider(configuration.decision), logger)) : null;
   const contextualProviders = contextualDecisionProviders(dedicatedDecision, structuredReply, structuredUtility);
   logger.info({ contextualDecisionSource: contextualProviders.source, contextualDecisionModel: configuration.decision?.model ??
     (contextualProviders.source === "reply" || !configuration.utilityChat ? configuration.chat?.summaryModels[0] : configuration.utilityChat.models[0]) ?? null,

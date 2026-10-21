@@ -10,7 +10,7 @@ import type { EmbeddingCallOptions } from "../chat/embeddings-client.js";
 export type ModelAuthority = GuardedConversationContext | GuardedBackgroundContext | GuardedConfigurationContext | GuardedEvaluationContext;
 export type UtilityOperation = "generateCharacterData" | "summarizeDroppedExchanges" | "summarizeReplyChainOverflow" |
   "extractPersonalMemories" | "evolvePersonaDrift" | "summarizeChannelMessages" | "analyzeUserCustomization" |
-  "compilePersonaBundle" | "classifyMemoryConflict" | "generateReferenceImage";
+  "compilePersonaBundle" | "classifyMemoryConflict" | "generateReferenceImage" | "verifyAttribution";
 interface Receipt { method: UtilityOperation; hash: string; check: () => Promise<void>; options: StructuredCallOptions; used: boolean }
 const receipts = new WeakMap<object, Receipt>();
 interface EmbeddingReceipt { remaining: Map<string, number>; fallback: Map<string, number>; options: EmbeddingCallOptions }
@@ -61,11 +61,16 @@ export function approveModelOperation(authority: ModelAuthority, method: Utility
 export function approveDiagnosticModelOperation(prompt: string, schema: Record<string, unknown>, options: StructuredCallOptions): StructuredCallOptions {
   return issue("generateCharacterData", [prompt, schema], async (): Promise<void> => {}, options);
 }
-export function consumeModelOperation(method: UtilityOperation, args: readonly unknown[], options: StructuredCallOptions | undefined): StructuredCallOptions {
+export function consumeModelOperation(method: UtilityOperation, args: readonly unknown[], options: StructuredCallOptions | (() => Promise<void>) | undefined): StructuredCallOptions {
   const receipt = options && receipts.get(options);
   if (!receipt || receipt.used || receipt.method !== method || receipt.hash !== digest(args)) throw new SocialOutputSuppressed();
   receipt.used = true;
   return { ...receipt.options };
+}
+
+export function approveAttributionOperation(authority: ModelAuthority, args: readonly unknown[], beforeAttempt: () => Promise<void>): () => Promise<void> {
+  const options = approveModelOperation(authority, "verifyAttribution", args, { beforeAttempt });
+  const check = options.beforeAttempt!; receipts.set(check, receipts.get(options)!); return check;
 }
 
 export function approveEmbeddingOperation(authority: ModelAuthority, texts: readonly string[], options: EmbeddingCallOptions = {}): EmbeddingCallOptions {

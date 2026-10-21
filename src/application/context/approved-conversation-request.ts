@@ -3,9 +3,11 @@ import { isGuardedContext } from "../chat/guarded-conversation-context.js";
 import { isConfigurationContext } from "./guarded-configuration-context.js";
 import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
 import { immutableSnapshot } from "./immutable-snapshot.js";
+import { isEvaluationContext, type GuardedEvaluationContext } from "./guarded-evaluation-context.js";
 
 const requests = new WeakSet<object>();
 const execution = new WeakMap<object, () => boolean>();
+const evaluationRequests = new WeakSet<object>();
 const references = new Set(["contextLease", "configurationContext", "turnSignal", "beforeModelAttempt", "musicResolveAccessSubjectFields"]);
 
 // Only the source-owned assembler can issue initial requests. Derivation is
@@ -47,6 +49,26 @@ function readonlySet(values: ReadonlySet<unknown>): ReadonlySet<unknown> {
 
 export function requireApprovedConversationRequest(request: ChatRequest): void {
   if (!requests.has(request)) throw new SocialOutputSuppressed();
+}
+
+// Only the closed configuration probe assembler issues these. It does not
+// inherit conversation authority, nor authorize learned participant state.
+export function approveEvaluationRequest(context: GuardedEvaluationContext, input: ChatRequest): ChatRequest {
+  if (!isEvaluationContext(context) || input.guildId !== context.scope.guildId || input.channelId !== context.scope.channelId ||
+      input.message !== context.question || input.personality !== context.persona.material.text || input.currentUser.id !== "synthetic-reviewer" ||
+      input.contextLease || input.recentHistory.length || input.channelHistory.length || input.replyChain.length || input.memories.length ||
+      input.guildKnowledge.length || input.causalChains.length || input.mentionedUsers.length || input.images.length || input.enabledTools?.length ||
+      input.webSearchMode !== "off" || input.imageGenerationEnabled || input.personaDrift || input.userCustomization || input.birthday) throw new SocialOutputSuppressed();
+  const beforeAttempt = input.beforeModelAttempt;
+  const { beforeModelAttempt: _before, ...material } = input;
+  const request: ChatRequest = Object.freeze({ ...immutableSnapshot(material), beforeModelAttempt: async (): Promise<void> => {
+    await context.check(); await beforeAttempt?.();
+  } });
+  evaluationRequests.add(request); return request;
+}
+
+export function requireApprovedModelReply(request: ChatRequest): void {
+  if (!requests.has(request) && !evaluationRequests.has(request)) throw new SocialOutputSuppressed();
 }
 
 export function repairConversationRequest(request: ChatRequest, draft: string, notes: string): ChatRequest {

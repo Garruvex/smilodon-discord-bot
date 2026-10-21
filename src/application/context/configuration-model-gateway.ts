@@ -12,6 +12,7 @@ import { parseExampleExchanges } from "../chat/example-exchange.js";
 import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
 import { isConfigurationContext, type GuardedConfigurationContext } from "./guarded-configuration-context.js";
 import { approveModelOperation, approveEmbeddingOperation } from "./approved-model-operation.js";
+import { approveEvaluationRequest } from "./approved-conversation-request.js";
 
 // Closed configuration operations own input projection. Consumers cannot add
 // participant text through an arbitrary prompt or embedding override.
@@ -26,7 +27,7 @@ export class ConfigurationModelGateway {
     await check();
     const material = context.persona.material;
     const controls = context.settings;
-    const request: ChatRequest = Object.freeze({ ...immutableSnapshot({
+    const request: ChatRequest = approveEvaluationRequest(context, { ...immutableSnapshot({
       guildId: context.scope.guildId, channelId: context.scope.channelId, personality: material.text,
       characterEvaluation: true, personaLore: (material.loreChunks ?? []).map(({ heading, text }) => ({ heading, text })),
       exampleExchanges: (material.examples ?? []).slice(0, 4).map(({ tags, user, character }) => ({ tags, user, character })),
@@ -45,7 +46,7 @@ export class ConfigurationModelGateway {
       const substantive = context.question.length > 100 || /explain|how to|解釋|說明|教我|説明/iu.test(context.question);
       const flags = voiceViolations(text, deriveStyleProfile(request.exampleExchanges), substantive);
       if (controls.modules.voice.strictness === "regenerate" && (flags.includes("markdown") || flags.includes("length"))) {
-        response = await this.provider.reply(Object.freeze({ ...request, attributionRepair: Object.freeze({ draft: text,
+        response = await this.provider.reply(approveEvaluationRequest(context, { ...request, attributionRepair: Object.freeze({ draft: text,
           notes: "Repair only casual voice/formatting. Match the authored examples, preserve factual content and truthful bot disclosures." }) }));
         await check(); return response.text.trim() || text;
       }

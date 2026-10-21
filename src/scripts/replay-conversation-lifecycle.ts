@@ -19,7 +19,7 @@ import { createGuildConfigurationDocument, toGuildConfiguration } from "../confi
 import type { GuildConfigurationProvider } from "../config/guild-configuration-provider.js";
 import { createChatProviderFromConfig } from "../bootstrap/dependencies.js";
 import { HttpDecisionProvider } from "../infrastructure/chat/http-decision-provider.js";
-import { guardUtilityTransport } from "../application/context/guarded-utility-transport.js";
+import { guardModelTransport } from "../application/context/guarded-model-transport.js";
 import { createSqliteDatabaseConnection } from "../infrastructure/database/sqlite-database.js";
 import { SqliteMemoryRepository } from "../infrastructure/persistence/sqlite-memory-repository.js";
 import { SqliteChatStateStore } from "../infrastructure/persistence/sqlite-chat-state-store.js";
@@ -43,7 +43,7 @@ async function main(): Promise<void> {
   if (!configuration.chat) throw new Error("No configured reply provider");
   const replyProvider = createChatProviderFromConfig(configuration.chat, logger);
   const utility = configuration.utilityChat ? createChatProviderFromConfig(configuration.utilityChat, logger) : replyProvider;
-  const dedicated = configuration.decision ? guardUtilityTransport(new HttpDecisionProvider(configuration.decision)) : null;
+  const dedicated = configuration.decision ? guardModelTransport(new HttpDecisionProvider(configuration.decision)) : null;
   const results: Result[] = [];
   for (const { language, mode } of inventory) {
     const started = Date.now(); let decisionCalls = 0; let generationCalls = 0; let verificationCalls = 0; let generationTokens = 0; let measuredGenerations = 0; let deliveries = 0; let response: ChatResponse | null = null;

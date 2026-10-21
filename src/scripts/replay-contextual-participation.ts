@@ -13,7 +13,7 @@ import { loadInstanceEnvironment } from "../config/instance-environment.js";
 import { loadConfiguration } from "../config/environment.js";
 import { createChatProviderFromConfig } from "../bootstrap/dependencies.js";
 import { approveDecisionInput } from "../application/context/approved-decision-input.js";
-import { guardUtilityTransport } from "../application/context/guarded-utility-transport.js";
+import { guardModelTransport } from "../application/context/guarded-model-transport.js";
 import { syntheticReplayContext } from "../application/chat/synthetic-replay-context.js";
 import { GuardedConversationContext } from "../application/chat/guarded-conversation-context.js";
 import { HttpDecisionProvider } from "../infrastructure/chat/http-decision-provider.js";
@@ -53,7 +53,7 @@ async function main(): Promise<void> {
     const reply = config.chat === utilityConfig ? utility : config.chat ? createChatProviderFromConfig(config.chat, logger) : null;
     const structuredReply = reply?.generateCharacterData ? { generateCharacterData: reply.generateCharacterData.bind(reply) } : null;
     const structuredUtility = utility?.generateCharacterData ? { generateCharacterData: utility.generateCharacterData.bind(utility) } : null;
-    const dedicated = config.decision ? guardUtilityTransport(new HttpDecisionProvider(config.decision)) : null;
+    const dedicated = config.decision ? guardModelTransport(new HttpDecisionProvider(config.decision)) : null;
     const selected = contextualDecisionProviders(dedicated, structuredReply, structuredUtility);
     primary = providerRole === "decision" ? selected.primary : providerRole === "reply" ? structuredReply : structuredUtility;
     fallback = providerRole === "decision" ? selected.fallback : null;

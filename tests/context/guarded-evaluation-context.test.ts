@@ -1,3 +1,4 @@
+import { guardModelTransport } from "../../src/application/context/guarded-model-transport.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GuardedEvaluationContext } from "../../src/application/context/guarded-evaluation-context.js";
 import { ConfigurationModelGateway } from "../../src/application/context/configuration-model-gateway.js";
@@ -22,7 +23,7 @@ describe("configuration-only character evaluation", () => {
   it.each(["raw", "copy"] as const)("rejects %s evaluation authority before dispatch", async (kind) => {
     const { context } = await fixture(); const reply = vi.fn(() => Promise.resolve(decisionResponse()));
     const input = kind === "copy" ? { ...context } : { scope: context.scope, persona: context.persona, question: "unregistered" };
-    await expect(new ConfigurationModelGateway({ reply }).probe(input as GuardedEvaluationContext)).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    await expect(new ConfigurationModelGateway(guardModelTransport({ reply })).probe(input as GuardedEvaluationContext)).rejects.toBeInstanceOf(SocialOutputSuppressed);
     expect(reply).not.toHaveBeenCalled();
   });
   it("owns the final payload and gives probes no participant or learned-state fields", async () => {
@@ -35,14 +36,14 @@ describe("configuration-only character evaluation", () => {
     });
     expect(() => { (context as unknown as { memories: string }).memories = "PRIVATE_MEMBER_MEMORY"; }).toThrow();
     expect(() => { (context.scope as { reviewerId: string }).reviewerId = "other"; }).toThrow();
-    await new ConfigurationModelGateway({ reply }).probe(context);
+    await new ConfigurationModelGateway(guardModelTransport({ reply })).probe(context);
     expect(captured[0]).toContain("AUTHORIZED_PERSONA"); expect(captured[0]).toContain("AUTHORIZED_QUESTION");
     expect(captured[0]).not.toContain("PRIVATE_MEMBER_MEMORY");
   });
   it.each(["reviewer", "persona"] as const)("rejects %s revocation before consuming a model call", async (kind) => {
     const { context, revoke, changePersona } = await fixture(); const reply = vi.fn(() => Promise.resolve(decisionResponse()));
     if (kind === "reviewer") revoke(); else changePersona();
-    await expect(new ConfigurationModelGateway({ reply }).probe(context)).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    await expect(new ConfigurationModelGateway(guardModelTransport({ reply })).probe(context)).rejects.toBeInstanceOf(SocialOutputSuppressed);
     expect(reply).not.toHaveBeenCalled();
   });
   it("stops an actual transport fallback when reviewer authority is revoked", async () => {
@@ -53,12 +54,12 @@ describe("configuration-only character evaluation", () => {
     });
     vi.stubGlobal("fetch", fetch);
     const provider = new OpenAiResponsesChatProvider("https://api.openai.com/v1", "synthetic-key", ["primary", "fallback"], { reasoningEffort: "low", verbosity: "low", maxOutputTokens: 2048 });
-    await expect(new ConfigurationModelGateway(provider).probe(context)).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    await expect(new ConfigurationModelGateway(guardModelTransport(provider)).probe(context)).rejects.toBeInstanceOf(SocialOutputSuppressed);
     expect(fetch).toHaveBeenCalledOnce();
   });
   it("rejects changed authority after generation instead of exposing the result", async () => {
     const { context, revoke } = await fixture(); const reply = vi.fn(() => { revoke(); return Promise.resolve(decisionResponse()); });
-    await expect(new ConfigurationModelGateway({ reply }).probe(context)).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    await expect(new ConfigurationModelGateway(guardModelTransport({ reply })).probe(context)).rejects.toBeInstanceOf(SocialOutputSuppressed);
   });
   it("keeps runtime cancellation attached to provider attempts", async () => {
     const { context } = await fixture(); let active = true; const external = vi.fn();
@@ -66,7 +67,7 @@ describe("configuration-only character evaluation", () => {
       await request.beforeModelAttempt!(); external(); active = false;
       await request.beforeModelAttempt!(); external(); return decisionResponse();
     });
-    await expect(new ConfigurationModelGateway({ reply }).probe(context, true, () => active)).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    await expect(new ConfigurationModelGateway(guardModelTransport({ reply })).probe(context, true, () => active)).rejects.toBeInstanceOf(SocialOutputSuppressed);
     expect(external).toHaveBeenCalledOnce();
   });
   it("rejects a mismatched persona audience and oversized synthetic input", async () => {
