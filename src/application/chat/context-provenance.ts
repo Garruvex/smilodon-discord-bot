@@ -11,12 +11,14 @@ export const contextProvenanceSchema = z.object({
   coverage: z.enum(["partial", "complete"]),
   audience: z.object({ guildId: id, channelId: id, userId: id.nullable() }).strict(),
   outputHash: digest,
+  outputAssetsHash: digest.optional(),
   dependencies: z.array(z.object({
     guildId: id, channelId: id, messageId: id, authorId: id,
     timestampMs: z.number().finite().nonnegative(),
     // Hash of the representation supplied to this turn, not a claim to have
     // captured every field or the full original Discord message.
     representationHash: digest,
+    assetsHash: digest.optional(),
     projection: z.object({ kind: z.literal("background_text"), chars: z.number().int().positive().max(16000) }).strict().optional(),
   }).strict()).max(contextProvenanceLimits.dependencies),
   actors: z.array(z.object({ userId: id, representationHash: digest }).strict()).max(100).optional(),

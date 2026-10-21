@@ -53,3 +53,13 @@ Guarded recall checks purpose, guild/channel, audience, current subject eligibil
 Current source admission is conservative across channels: a claim requires verified sources in the turn's authorized channel/audience. Unverified legacy claims, external-audience facts and unproven relationship/canonicalization evidence remain excluded. Guarded writes do not send unproven older claims to a conflict model. Migrating relationship metadata, learned state, assets, tools and the remaining legacy consumers is ongoing.
 
 Validation: **4,894 passed, 7 skipped, zero failed**; typecheck, production compilation and changed-file lint passed. New tests cover durable reload, identity tampering, source edits/deletion/revocation, public/private audiences, unsupported proposals, and actual decision/generation projection. Both backend migrations were generated locally; no live PostgreSQL connection, paid model call or deployment was used.
+
+## Checkpoint 6: image source authorization and lineage
+
+Guarded turns now load supported images through their registered source port after author/scope authorization. Current, reply and history images retain distinct labels and message identities; the configured image limit and a four-image hard ceiling apply. Existing caller-supplied image arrays cannot bypass this path. Model decisions receive only the admitted image counts; generation receives the authorized image data.
+
+Input attachment identities are retained as source dependencies and rechecked on provider attempts, persistence, delivery and later reuse. A bot image requires an output origin bound to the actual confirmed Discord attachment identities; a text-only origin cannot certify an arbitrary image. Confirmed delivery records bind those identities, without persisting pixels or signed URLs in manifests. Source phases are serialized to avoid overlapping validations replacing one another's read scope.
+
+Downloads retain the Discord host allowlist and file-signature checks, reject redirects, and enforce byte limits during streaming. These guarantees concern the trusted Discord attachment identity/metadata and the actual bounded bytes supplied to this turn, not general authenticated URL retrieval. Separate extracted/cached descriptions still require their own source-bearing records before reuse.
+
+Validation: **4,902 passed, 7 skipped, zero failed**; typecheck and changed-file lint passed. Tests cover hidden-source omission, history/reply labeling, stale/replaced images, bot-image origin binding, injected caller image arrays and oversized download cancellation. No paid model call or Discord send occurred. Image generation and application tool continuations are the next migration boundary.

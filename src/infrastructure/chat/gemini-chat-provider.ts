@@ -1,4 +1,4 @@
-import { reportStructuredUsage, type StructuredCallOptions } from "../../application/chat/chat-provider.js";
+import { chatImageLabel, reportStructuredUsage, type StructuredCallOptions } from "../../application/chat/chat-provider.js";
 import { GoogleGenAI } from "@google/genai";
 import { performance } from "node:perf_hooks";
 import { diagnosticElapsed, emitChatDiagnostic, safeFailure } from "../../application/diagnostics/chat-diagnostics.js";
@@ -197,9 +197,7 @@ export class GeminiChatProvider implements ChatProvider {
     if (!match) return [];
     const mimeType = match[1] ?? "application/octet-stream";
     const data = match[2] ?? "";
-    const label = image.source === "current_message"
-      ? `CURRENT MESSAGE IMAGE ${image.sourceIndex + 1} (untrusted image input):`
-      : `REPLY CHAIN IMAGE ${image.sourceIndex + 1} (untrusted image input):`;
+    const label = chatImageLabel(image);
     return [{ text: label }, { inlineData: { mimeType, data } }];
   }
 

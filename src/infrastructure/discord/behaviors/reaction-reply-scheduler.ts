@@ -435,6 +435,7 @@ export class ReactionReplyScheduler {
         replyChain: this.turnSupport.toChannelHistoryMessages(kept),
         replyChainOverflow: this.turnSupport.toChannelHistoryMessages(overflow), channelHistory,
         images: [], webSearchMode: profile.chat.webSearchMode,
+        imageInputEnabled: profile.chat.imageInputEnabled, maxImagesPerRequest: profile.chat.maxImagesPerRequest,
         imageGenerationEnabled: false, includeSources: profile.chat.includeSources,
         triggerMode: "reaction",
         channelHistoryEnabled: profile.features.channelHistory,

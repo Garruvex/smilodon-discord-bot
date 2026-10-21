@@ -275,7 +275,7 @@ export const ja = {
   "setup.status.chat.toolsWithDisabled": "ウェブ検索：{webSearch} · ツール：{tools}（{count} 個を無効化）",
   "setup.status.chat.effectiveTitle": "このチャンネルで利用可能な機能",
   "setup.status.chat.flowBlocked": "現在の会話フロー設定では、このチャンネルでチャットを実行できません。",
-  "setup.status.chat.excludedSources": "出典を検証できたメモリと要約のみを使用します。未検証の保存データ、学習したキャラクター／プロフィール情報、画像、アプリケーションツールは引き続き除外します。",
+  "setup.status.chat.excludedSources": "出典を検証できたメモリ、要約、画像のみを使用します。未検証の保存データ、学習したキャラクター／プロフィール情報、アプリケーションツールは引き続き除外します。",
   "setup.status.chat.images": "画像の読み取り：{read} · 画像の生成：{make}",
   "setup.status.chat.sources": "出典の表示：{sources} · ペルソナの変化：{drift}",
   "setup.status.chat.history": "直近 {count} 件のメッセージを文脈として読む",

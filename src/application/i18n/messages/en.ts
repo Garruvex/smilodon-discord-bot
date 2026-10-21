@@ -306,7 +306,7 @@ export const en = {
   "setup.status.chat.title": "Configured AI chat settings",
   "setup.status.chat.effectiveTitle": "Available in this channel",
   "setup.status.chat.flowBlocked": "Chat cannot run here with the current conversation-flow configuration.",
-  "setup.status.chat.excludedSources": "Only source-verified memory and summary claims are used. Unverified stored data, learned character/profile facts, images and application tools remain excluded.",
+  "setup.status.chat.excludedSources": "Only source-verified memory, summaries and images are used. Unverified stored data, learned character/profile facts and application tools remain excluded.",
   "setup.status.chat.cooldowns": "Reply cooldown: {reply}s · Name-mention cooldown: {ambient}s",
   "setup.status.chat.tools": "Web search: {webSearch} · Tools: {tools}",
   "setup.status.chat.toolsWithDisabled": "Web search: {webSearch} · Tools: {tools} ({count} disabled)",

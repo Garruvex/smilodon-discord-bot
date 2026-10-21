@@ -1,4 +1,4 @@
-import type { Message } from "discord.js";
+import { Collection, type Message } from "discord.js";
 import type { Logger } from "pino";
 import { describe, expect, it, vi } from "vitest";
 import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
@@ -9,7 +9,7 @@ import { captureIncompleteTurnProvenance } from "../../src/application/chat/cont
 import { hashContent } from "../../src/application/assets/content-hash.js";
 import { decisionRequest } from "../helpers/conversation-decision-fixtures.js";
 import type { MessageOriginRecord } from "../../src/application/chat/message-origin-store.js";
-import { GuardedConversationContext } from "../../src/application/chat/guarded-conversation-context.js";
+import { GuardedConversationContext, guardedAssetsHash } from "../../src/application/chat/guarded-conversation-context.js";
 import { guardedFixture } from "../helpers/guarded-context-fixture.js";
 
 function logger(): Logger {
@@ -27,6 +27,19 @@ function image(bytes: number, filename = "image.png"): GeneratedChatImage {
 const oneMiB = 1024 * 1024;
 
 describe("ChatTurnSupport.deliverChatResponse", () => {
+  it("binds a confirmed bot image's attachment identity into its output origin", async () => {
+    const fixture = guardedFixture();
+    const lease = await GuardedConversationContext.open(fixture.port, { count: 40, budget: 12000, burstIds: [] });
+    const recorded: MessageOriginRecord[] = [];
+    const support = new ChatTurnSupport(logger(), null, { record: (record): Promise<void> => { recorded.push(record); return Promise.resolve(); }, find: (): Promise<null> => Promise.resolve(null) });
+    const sent = { id: "sent", content: "a picture", attachments: new Collection([["output-image", { id: "output-image", size: 10, contentType: "image/png" }]]) } as unknown as Message;
+    await support.deliverChatResponse({ sender: { first: () => Promise.resolve(sent), rest: vi.fn() }, text: "a picture", sources: [], images: [image(10)],
+      emptyFallbackContent: "empty", maxImageAggregateBytes: oneMiB, contextLease: lease,
+      sourceMessage: { id: "current", guildId: "guild", channelId: "channel", author: { bot: false } } as Message });
+    expect(recorded[0]?.contextProvenance?.outputAssetsHash).toBe(guardedAssetsHash([{ id: "output-image", size: 10, contentType: "image/png" }]));
+    expect(recorded[0]?.contextProvenance?.coverage).toBe("complete");
+  });
+
   it("reuses one enforced nonce after an accepted send loses its response", async () => {
     const support = new ChatTurnSupport(logger()); const visible = new Map<string, Message>();
     let attempts = 0;

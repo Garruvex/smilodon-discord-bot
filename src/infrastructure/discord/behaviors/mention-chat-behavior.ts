@@ -271,6 +271,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         replyChainOverflow,
         channelHistory,
         images,
+        imageInputEnabled: profile.chat.imageInputEnabled, maxImagesPerRequest: profile.chat.maxImagesPerRequest,
         webSearchMode: profile.chat.webSearchMode,
         imageGenerationEnabled: profile.chat.imageGenerationEnabled,
         includeSources: profile.chat.includeSources,

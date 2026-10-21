@@ -28,7 +28,7 @@ describe("operator capability status", () => {
     const effective = fields.find((field) => field.name === text.chat.effectiveTitle)!;
     expect(configured.value).toContain(text.chat.images({ read: text.on, make: text.on }));
     expect(effective.value).toContain(text.chat.tools({ webSearch: text.auto, tools: text.off }));
-    expect(effective.value).toContain(text.chat.images({ read: text.off, make: text.off }));
+    expect(effective.value).toContain(text.chat.images({ read: text.on, make: text.off }));
     expect(effective.value).toContain(text.chat.excludedSources);
   });
 });

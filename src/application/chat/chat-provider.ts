@@ -130,6 +130,8 @@ export interface ChatRequest {
   // trust/authorship distinction from LLM-curated memory claims.
   birthday: { month: number; day: number; birthYear?: number | null | undefined } | null;
   images: readonly ChatImage[];
+  imageInputEnabled?: boolean;
+  maxImagesPerRequest?: number;
   webSearchMode: "off" | "auto";
   imageGenerationEnabled: boolean;
   includeSources: boolean;
@@ -359,11 +361,17 @@ export interface GroundedProposedGuildKnowledgeCandidate extends ProposedGuildKn
 
 export interface ChatImage {
   dataUrl: string;
-  source: "current_message" | "reply_chain";
+  source: "current_message" | "reply_chain" | "channel_history";
+  sourceMessageId?: string;
   // Global index across the whole selected image set (not per-source), so
   // numbering shown to the model is unambiguous even when both the current
   // message and the reply chain contribute images.
   sourceIndex: number;
+}
+
+export function chatImageLabel(image: ChatImage): string {
+  const location = image.source === "current_message" ? "CURRENT MESSAGE" : image.source === "reply_chain" ? "REPLY CHAIN" : "CHANNEL HISTORY";
+  return `${location} IMAGE ${image.sourceIndex + 1}${image.sourceMessageId ? ` from message ${image.sourceMessageId}` : ""} (untrusted image input):`;
 }
 
 export interface ChatSource {

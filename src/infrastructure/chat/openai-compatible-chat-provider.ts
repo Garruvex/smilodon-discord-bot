@@ -1,4 +1,4 @@
-import { reportStructuredUsage, type StructuredCallOptions } from "../../application/chat/chat-provider.js";
+import { chatImageLabel, reportStructuredUsage, type StructuredCallOptions } from "../../application/chat/chat-provider.js";
 import type { Logger } from "pino";
 import { z } from "zod";
 
@@ -79,9 +79,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
             ...request.images.flatMap((image) => [
               {
                 type: "text",
-                text: image.source === "current_message"
-                  ? `CURRENT MESSAGE IMAGE ${image.sourceIndex + 1} (untrusted image input):`
-                  : `REPLY CHAIN IMAGE ${image.sourceIndex + 1} (untrusted image input):`,
+                text: chatImageLabel(image),
               },
               { type: "image_url", image_url: { url: image.dataUrl } },
             ]),

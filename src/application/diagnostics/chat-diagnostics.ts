@@ -38,7 +38,7 @@ export type FailureCategory = z.infer<typeof failureCategory>;
 // Allow-list every serialized field. Runtime stripping also protects callers
 // compiled without TypeScript, and prevents raw provider/Discord objects leaking.
 const eventSchema = z.discriminatedUnion("event", [
-  z.object({ event: z.literal("context.guard.work"), phase: z.enum(["assembly", "sessions", "memory", "validation"]), status: z.enum(["completed", "deadline", "failed"]), durationMs: duration }),
+  z.object({ event: z.literal("context.guard.work"), phase: z.enum(["assembly", "sessions", "memory", "assets", "validation"]), status: z.enum(["completed", "deadline", "failed"]), durationMs: duration }),
   z.object({ event: z.literal("chat.access.refreshed"), cachedReason: z.enum(["member_unavailable", "restricted_role", "channel_denied", "missing_chat_role"]), currentReason: z.enum(["allowed", "member_unavailable", "restricted_role", "channel_denied", "missing_chat_role"]) }),
   z.object({ event: z.literal("chat.delivery.bookkeeping_failed"), stage: z.enum(["proof", "origin"]), failure: failureCategory, httpStatus: z.number().int().min(100).max(599).optional() }),
   z.object({ event: z.literal("context.guard.validation"), status: z.enum(["current", "changed", "deadline", "bounded"]), reads: count }),

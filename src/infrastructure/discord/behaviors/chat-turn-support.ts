@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { retryAfterMs } from "../../../application/concurrency/retry-after.js";
 import { chatDeliveryText } from "../../../application/i18n/chat-delivery.js";
 import type { GuardedConversationContext, GuardedContextPort, GuardedContextSource } from "../../../application/chat/guarded-conversation-context.js";
+import { guardedAssetsHash, type GuardedAssetDescriptor } from "../../../application/chat/guarded-conversation-context.js";
 import { bindProvenanceOutput, type ContextProvenance } from "../../../application/chat/context-provenance.js";
 import type { Attachment, Message, User, GuildMember } from "discord.js";
 import type { ChatUser, ConversationEvent } from "../../../application/chat/chat-provider.js";
@@ -119,6 +120,15 @@ export class ChatTurnSupport {
       work: (phase, status, durationMs) => emitChatDiagnostic(this.logger, { event: "context.guard.work", phase, status, durationMs }),
       validation: (status, reads) => emitChatDiagnostic(this.logger, { event: "context.guard.validation", status, reads }),
       policyCurrent: () => !!eligibility && eligibility.contextPolicyVersion(source) === version,
+      loadAsset: async (messageId, assetId, signal): Promise<string | null> => {
+        if (!eligibility || signal.aborted || eligibility.contextPolicyVersion(source) !== version) return null;
+        const message = state(signal).messages.get(messageId) ?? await source.channel.messages.fetch({ message: messageId, force: true }).catch(() => null);
+        if (!message || message.guildId !== source.guildId || message.channelId !== source.channelId || signal.aborted) return null;
+        const actor = message.author.bot ? null : await member(message.author.id, signal);
+        if (!(await eligibility.checkGuardedSource(message, actor, messageId === source.id)).eligible) return null;
+        const attachment = message.attachments.get(assetId);
+        return attachment && this.isSupportedImageAttachment(attachment) ? this.loadImageDataUrl(attachment, signal) : null;
+      },
       prepareValidation: async (ids, signal): Promise<void> => {
         if (!eligibility || signal.aborted || !ids.length) return;
         if (!await eligibility.canReadHistory(source, source.author.bot ? null : await member(source.author.id, signal))) return;
@@ -158,7 +168,7 @@ export class ChatTurnSupport {
         if (message.author.bot && origin?.origin !== "chat") return null;
         const user = this.toChatUser(message.author, actor);
         const event = { ...this.toChannelHistoryMessages([message])[0]!, author: { ...user, roleNames: [...user.roleNames].sort() }, content: message.content, imageCount: 0, replyToAuthorId: null, replyToAuthorDisplayName: null };
-        return { event, origin: message.author.bot ? "chat" : "human", provenance: origin?.contextProvenance ?? null };
+        return { event, assets: this.imageAssetDescriptors(message), origin: message.author.bot ? "chat" : "human", provenance: origin?.contextProvenance ?? null };
       },
       page: async (before, signal): Promise<readonly string[]> => {
         if (!eligibility || signal.aborted || !await eligibility.canReadHistory(source, source.author.bot ? null : await member(source.author.id, signal))) return [];
@@ -463,6 +473,11 @@ export class ChatTurnSupport {
     return contentType?.split(";", 1)[0]?.trim().toLowerCase() ?? null;
   }
 
+  private imageAssetDescriptors(message: Message): GuardedAssetDescriptor[] {
+    return [...(message.attachments?.values() ?? [])].filter((attachment) => this.isSupportedImageAttachment(attachment))
+      .map((attachment) => ({ id: attachment.id, contentType: this.normalizeContentType(attachment.contentType)!, size: attachment.size }));
+  }
+
   private isSupportedImageAttachment(attachment: Attachment): boolean {
     const contentType = this.normalizeContentType(attachment.contentType);
     return Boolean(
@@ -489,7 +504,7 @@ export class ChatTurnSupport {
     return { images, droppedFailed };
   }
 
-  private async loadImageDataUrl(attachment: Attachment): Promise<string | null> {
+  private async loadImageDataUrl(attachment: Attachment, signal?: AbortSignal): Promise<string | null> {
     const contentType = this.normalizeContentType(attachment.contentType);
     if (!contentType || !supportedImageTypes.has(contentType)) return null;
     if (attachment.size <= 0 || attachment.size > maximumImageBytes) return null;
@@ -503,7 +518,8 @@ export class ChatTurnSupport {
     }
     const response = await fetch(url, {
       headers: { Accept: contentType },
-      signal: AbortSignal.timeout(15_000),
+      redirect: "error",
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000),
     }).catch((error: unknown) => {
       this.logger.warn({ ...safeFailure(error, "operation_error") }, "Dropped image attachment: fetch failed");
       return null;
@@ -516,7 +532,23 @@ export class ChatTurnSupport {
       );
       return null;
     }
-    const data = Buffer.from(await response.arrayBuffer());
+    const declaredLength = Number(response.headers.get("content-length"));
+    if (declaredLength > maximumImageBytes) { await response.body?.cancel(); return null; }
+    const reader = response.body?.getReader();
+    const chunks: Buffer[] = []; let bytes = 0;
+    if (reader) {
+      try {
+        for (;;) {
+          const chunk = await reader.read(); if (chunk.done) break;
+          const value: unknown = chunk.value;
+          if (!(value instanceof Uint8Array)) { await reader.cancel(); return null; }
+          bytes += value.byteLength;
+          if (bytes > maximumImageBytes) { await reader.cancel(); return null; }
+          chunks.push(Buffer.from(value));
+        }
+      } catch { return null; } finally { reader.releaseLock(); }
+    }
+    const data = reader ? Buffer.concat(chunks, bytes) : Buffer.from(await response.arrayBuffer());
     if (data.length === 0 || data.length > maximumImageBytes) {
       this.logger.warn(
         { bytes: data.length },
@@ -652,7 +684,11 @@ export class ChatTurnSupport {
         try { await this.origins.record({
           guildId: params.sourceMessage.guildId, channelId: params.sourceMessage.channelId, messageId: sent.id,
           origin: params.origin ?? "chat", sourceMessageId: params.sourceMessage.id, createdAt: Date.now(),
-          contextProvenance: params.contextLease ? params.contextLease.provenance(sent.content) : bindProvenanceOutput(params.contextProvenance, sent.content, {
+          contextProvenance: params.contextLease ? ((): ContextProvenance | null => {
+            const proof = params.contextLease.provenance(sent.content);
+            const assets = this.imageAssetDescriptors(sent);
+            return proof && assets.length ? { ...proof, outputAssetsHash: guardedAssetsHash(assets) } : proof;
+          })() : bindProvenanceOutput(params.contextProvenance, sent.content, {
             guildId: params.sourceMessage.guildId, channelId: params.sourceMessage.channelId,
           }),
         }); } catch (error) { emitChatDiagnostic(this.logger, { event: "chat.delivery.bookkeeping_failed", stage: "origin", ...safeFailure(error, "operation_error") }); }

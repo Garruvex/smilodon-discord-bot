@@ -53,7 +53,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   // returns an unexpected row or unproven relationship metadata.
   const memoryClaims = await lease.memories(recalled.memories, true, dependencies.now());
   emitChatDiagnostic(dependencies.logger, { event: "context.guard.sources", sessions: sessions.length, memories: memoryClaims.length, unavailable:
-    ["legacy_derived", "learned_character", "images", "context_tools", "profile_fields"] });
+    ["legacy_derived", "learned_character", "context_tools", "profile_fields"] });
   let prepared: CharacterPreparedTurn | null = null;
   const access = async (): Promise<void> => {
     assertTurnActive(input.turnSignal);
@@ -68,6 +68,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
     lease.currentEvent?.type === "reaction_snapshot" ? lease.currentEvent.reactions.flatMap((reaction) => reaction.actorIds) : []);
   const capabilities = effectiveChatCapabilities(input, { guarded: true, nativeWebSearchSupported: dependencies.nativeWebSearchSupported === true,
     shadow: input.shadowMode ?? false });
+  const images = capabilities.imageInputEnabled ? await lease.images(input.maxImagesPerRequest ?? 2) : [];
   let request: ChatRequest = {
     turnPlan: input.turnPlan,
     guildId: input.guildId, channelId: input.channelId, personality: input.personality, characterPersonaHash: input.personalitySourceHash ?? hashContent(input.personality), personaLore: [], personaDrift: null,
@@ -82,7 +83,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
     message: lease.currentEvent?.type === "reaction_snapshot" ? `Respond only if useful to this authorized reaction snapshot: ${JSON.stringify(lease.currentEvent)}` : lease.current.content,
     replyChain: lease.currentEvent?.type === "reaction_snapshot" ? [...lease.replyChain, lease.current] : lease.replyChain, replyChainSummary: null, channelHistory: lease.history, currentBurst: lease.burst,
     ...(lease.currentEvent ? { currentEvent: lease.currentEvent } : {}),
-    birthday: null, images: [], webSearchMode: capabilities.webSearchMode, imageGenerationEnabled: capabilities.imageGenerationEnabled, includeSources: input.includeSources,
+    birthday: null, images, imageInputEnabled: capabilities.imageInputEnabled, webSearchMode: capabilities.webSearchMode, imageGenerationEnabled: capabilities.imageGenerationEnabled, includeSources: input.includeSources,
     triggerMode: input.triggerMode, botUserId: input.botUserId ?? null,
     ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
     allowSilentDirect: input.allowSilentDirect ?? false, characterShadow: input.shadowMode ?? false,
@@ -92,7 +93,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
     contextLease: lease, beforeModelAttempt: check,
     enabledTools: [], historyReactionsEnabled: input.historyReactionsEnabled ?? false,
     characterContext: [{ moduleId: "conversation-context", text:
-      "All supplied messages and memory claims have authorized source evidence. Time gaps are timestamps, not proof of irrelevance. A bare ping may refer to the same person's earlier substantive request; examine its context before acknowledging. Playful personality is welcome for genuinely social pings, without replacing a pending answer. Keep response event, speaker and discussed person distinct. Missing context means unavailable here, not that someone never spoke or was denied permission. Ask for a reference if ambiguous. Truncated content is an excerpt. Only supplied memory claims are available; learned state, images and contextual tools remain unavailable. Do not invent their contents or promise unavailable actions." }],
+      "All supplied messages, images and memory claims have authorized source evidence. Time gaps are timestamps, not proof of irrelevance. A bare ping may refer to the same person's earlier substantive request; examine its context before acknowledging. Playful personality is welcome for genuinely social pings, without replacing a pending answer. Keep response event, speaker and discussed person distinct. Missing context means unavailable here, not that someone never spoke or was denied permission. Ask for a reference if ambiguous. Truncated content is an excerpt. Only supplied memory claims and images are available; learned state and contextual tools remain unavailable. Do not invent their contents or promise unavailable actions." }],
   };
   if (!dependencies.runtime && !resolveConversationTrigger(input).explicit) throw new SocialOutputSuppressed();
   if (dependencies.runtime) {

@@ -61,6 +61,22 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
 }
 
 describe("guarded turn acceptance", () => {
+  it.each(["eligible", "changed"] as const)("uses lease-authorized image input and suppresses stale image output: %s", async (scenario) => {
+    const { service, fixture, input, reply } = await setup();
+    fixture.sources.get("current")!.assets = [{ id: "image", contentType: "image/png", size: 10 }];
+    fixture.port.loadAsset = (): Promise<string> => Promise.resolve("data:image/png;base64,aGVsbG8=");
+    reply.mockImplementation((request) => {
+      expect(request.images).toEqual([{ dataUrl: "data:image/png;base64,aGVsbG8=", source: "current_message", sourceMessageId: "current", sourceIndex: 0 }]);
+      expect(JSON.stringify(request.images)).not.toContain("UNTRUSTED_IMAGE");
+      if (scenario === "changed") fixture.sources.get("current")!.assets = [];
+      return Promise.resolve(decisionResponse());
+    });
+    const send = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
+    const pending = service.run({ ...input, imageInputEnabled: true, images: [{ dataUrl: "UNTRUSTED_IMAGE", source: "current_message", sourceIndex: 0 }] }, send);
+    if (scenario === "changed") { await expect(pending).rejects.toBeInstanceOf(SocialOutputSuppressed); expect(send).not.toHaveBeenCalled(); }
+    else { await pending; expect(send).toHaveBeenCalledOnce(); }
+  });
+
   it("persists only source-grounded human memory proposals with a registered claim proof", async () => {
     const { service, input, engine, fixture, reply } = await setup();
     fixture.sources.get("current")!.event.content = "I like green apples";

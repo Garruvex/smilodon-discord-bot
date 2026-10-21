@@ -1,4 +1,4 @@
-import { reportStructuredUsage, type StructuredCallOptions } from "../../application/chat/chat-provider.js";
+import { chatImageLabel, reportStructuredUsage, type StructuredCallOptions } from "../../application/chat/chat-provider.js";
 import { z } from "zod";
 import { performance } from "node:perf_hooks";
 import { diagnosticElapsed, emitChatDiagnostic, safeFailure } from "../../application/diagnostics/chat-diagnostics.js";
@@ -180,9 +180,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
       ...request.images.flatMap((image) => [
         {
           type: "input_text",
-          text: image.source === "current_message"
-            ? `CURRENT MESSAGE IMAGE ${image.sourceIndex + 1} (untrusted image input):`
-            : `REPLY CHAIN IMAGE ${image.sourceIndex + 1} (untrusted image input):`,
+          text: chatImageLabel(image),
         },
         { type: "input_image", image_url: image.dataUrl, detail: "auto" },
       ]),

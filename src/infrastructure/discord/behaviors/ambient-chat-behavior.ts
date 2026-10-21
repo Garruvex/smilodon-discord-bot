@@ -199,6 +199,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         replyChainOverflow,
         channelHistory,
         images,
+        imageInputEnabled: profile.chat.imageInputEnabled, maxImagesPerRequest: profile.chat.maxImagesPerRequest,
         webSearchMode: profile.chat.webSearchMode,
         imageGenerationEnabled: trigger === "ambient" && !participation.shadowMode && profile.chat.imageGenerationEnabled,
         includeSources: profile.chat.includeSources,

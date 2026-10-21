@@ -291,6 +291,7 @@ Data: ${JSON.stringify({ personality: input.personality, botId: input.botId, cur
       events: events.map((event) => ({ evidenceKey: contract.evidenceSources.find((source) => source.eventId === event.messageId)?.key,
         authorId: event.authorId, displayName: event.authorDisplayName, bot: event.authorId === input.botId, content: event.content,
         timestampMs: event.timestampMs, replyToEvidenceKey: contract.evidenceSources.find((source) => source.eventId === event.replyToMessageId)?.key ?? null,
+        ...(event.imageCount ? { authorizedImages: event.imageCount } : {}),
         replyToAuthorId: event.replyToAuthorId ?? null, contentTruncated: event.contentTruncated ?? false })),
       currentEventKey: contract.evidenceSources.find((source) => source.eventId === (input.fixedTarget ?? input.burst.at(-1)?.messageId))?.key,
       targetCandidates: contract.targets, availableActions: input.availableActions ?? { text: true, reaction: true } }).replaceAll("<", "\\u003c")}` : legacyPrompt;

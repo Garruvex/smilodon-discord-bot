@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { GuardedConversationContext, contextSourceHash, isGuardedContext, projectDecisionContext, type GuardedContextSource } from "../../src/application/chat/guarded-conversation-context.js";
+import { GuardedConversationContext, contextSourceHash, guardedAssetsHash, isGuardedContext, projectDecisionContext, type GuardedContextSource } from "../../src/application/chat/guarded-conversation-context.js";
 import { SocialOutputSuppressed } from "../../src/application/chat/message-origin-store.js";
 import { guardedEvent, guardedFixture } from "../helpers/guarded-context-fixture.js";
 import { decisionRequest } from "../helpers/conversation-decision-fixtures.js";
@@ -8,6 +8,42 @@ afterEach(() => vi.useRealTimers());
 const policy = { count: 40, budget: 12000, burstIds: [] };
 
 describe("guarded conversation context", () => {
+  it("loads only eligible images, preserving reply/history identity and attachment dependencies", async () => {
+    const fixture = guardedFixture(guardedEvent("current", 4000, "What do these pictures show?", "alice", { replyToMessageId: "old" }));
+    for (const [id, time] of [["old", 1000], ["recent", 2000], ["hidden", 3000]] as const) {
+      fixture.add(guardedEvent(id, time, "image"));
+      fixture.sources.get(id)!.assets = [{ id: `asset-${id}`, contentType: "image/png", size: 10 }];
+    }
+    fixture.denied.add("hidden");
+    const load = vi.fn(() => Promise.resolve("data:image/png;base64,aGVsbG8=")); fixture.port.loadAsset = load;
+    const context = await GuardedConversationContext.open(fixture.port, policy);
+    const images = await context.images(2);
+    expect(images.map(({ source, sourceMessageId }) => ({ source, sourceMessageId }))).toEqual([
+      { source: "reply_chain", sourceMessageId: "old" }, { source: "channel_history", sourceMessageId: "recent" },
+    ]);
+    expect(load.mock.calls).toHaveLength(2);
+    expect(context.provenance("answer")?.dependencies.filter((source) => source.assetsHash).map((source) => source.messageId).sort()).toEqual(["old", "recent"]);
+    fixture.sources.get("old")!.assets = [];
+    expect(await context.validate()).toBe(false);
+  });
+
+  it("requires an attachment-bound output origin before reusing a bot image", async () => {
+    const fixture = guardedFixture(guardedEvent("question", 1000, "draw a cat"));
+    const prior = await GuardedConversationContext.open(fixture.port, policy);
+    const assets = [{ id: "generated", contentType: "image/png", size: 10 }];
+    const proof = prior.provenance("a cat")!;
+    fixture.sources.set("answer", { event: guardedEvent("answer", 2000, "a cat", "bot"), origin: "chat", assets, provenance: proof });
+    fixture.add(guardedEvent("current", 3000, "change that picture", "alice", { replyToMessageId: "answer" })); fixture.port.sourceMessageId = "current";
+    const load = vi.fn(() => Promise.resolve("data:image/png;base64,aGVsbG8=")); fixture.port.loadAsset = load;
+    const unbound = await GuardedConversationContext.open(fixture.port, policy);
+    expect(await unbound.images(2)).toEqual([]); expect(load).not.toHaveBeenCalled();
+    fixture.sources.get("answer")!.provenance = { ...proof, outputAssetsHash: guardedAssetsHash(assets) };
+    const bound = await GuardedConversationContext.open(fixture.port, policy);
+    expect(await bound.images(2)).toHaveLength(1);
+    fixture.sources.get("answer")!.assets = [{ ...assets[0]!, id: "replacement" }];
+    expect(await bound.validate()).toBe(false);
+  });
+
   it("preserves public search lineage through reused answers without widening protected-source access", async () => {
     const fixture = guardedFixture(guardedEvent("question", 1000, "Find public information"));
     const original = await GuardedConversationContext.open(fixture.port, policy);

@@ -22,7 +22,7 @@ export function effectiveChatCapabilities(settings: ChatCapabilitySettings, scop
   return {
     webSearchMode: external && scope.nativeWebSearchSupported ? settings.webSearchMode : "off",
     toolsEnabled: migrated && settings.toolsEnabled === true,
-    imageInputEnabled: !scope.blocked && !scope.guarded && settings.imageInputEnabled === true,
+    imageInputEnabled: !scope.blocked && settings.imageInputEnabled === true,
     imageGenerationEnabled: migrated && settings.imageGenerationEnabled,
   };
 }
