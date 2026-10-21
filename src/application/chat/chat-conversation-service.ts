@@ -859,6 +859,7 @@ export class ChatConversationService {
         const guarded: GuardedChatConversationInput = { ...turn, guardedContextPort: turn.guardedContextPort };
         return this.queue.run(`${turn.guildId}:${turn.currentUser.id}`, () => withTurnAbort(turn.turnSignal, () => runGuardedChatTurn(guarded, { state: this.stateStore, runtime: this.characterRuntime,
           logger: this.logger, now: this.now, memory: this.memoryEngine, toolRegistry: this.toolRegistry,
+          customization: this.userCustomizationStore, examples: this.exampleExchangeSelector, lore: this.personaLoreSelector,
           applicationToolsSupported: this.provider.applicationToolsSupported === true, nativeWebSearchSupported: this.provider.nativeWebSearchSupported === true, reply: (request, observer) => this.replyWithDiagnostics(request, observer),
           imageGenerationSupported: this.provider.imageGenerationSupported === true,
           repair: (text, request) => this.verifyAttribution(text, request), admitSocialPing: () => this.admitSocialPing(turn) }, send, observe))); } : this.runTurn.bind(this);

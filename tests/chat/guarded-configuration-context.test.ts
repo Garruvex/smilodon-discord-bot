@@ -6,8 +6,26 @@ import { SocialOutputSuppressed } from "../../src/application/chat/message-origi
 import type { ChatProvider } from "../../src/application/chat/chat-provider.js";
 import { configurationFixture } from "../helpers/configuration-context-fixture.js";
 import { ConfigurationModelGateway } from "../../src/application/context/configuration-model-gateway.js";
+import { conversationConfiguration } from "../../src/application/context/conversation-configuration.js";
+import { guardedToolResourcePort } from "../../src/application/chat/guarded-tool-gateway.js";
+import { GuardedConversationContext } from "../../src/application/chat/guarded-conversation-context.js";
+import { guardedFixture, guardedEvent } from "../helpers/guarded-context-fixture.js";
+import type { UserCustomizationStore } from "../../src/application/chat/user-customization-store.js";
 
 describe("registered configuration sources", () => {
+  it("does not reuse another owner's style-derived reply through a public bot quote", async () => {
+    const fixture = guardedFixture(); fixture.actors.set("bob", { id: "bob", displayName: "Bob", roleNames: [] });
+    const persona = await configurationFixture("Authored persona", "persona", () => true, "guild");
+    const store: UserCustomizationStore = { initialize: vi.fn(), save: vi.fn(), clear: vi.fn(), load: (_guild, user) => Promise.resolve(user === "alice" ? "- Tone: concise OWNER_STYLE" : null) };
+    const aliceConfiguration = await conversationConfiguration("guild", "alice", persona, store);
+    const alice = await GuardedConversationContext.open(guardedToolResourcePort(fixture.port, null, { currentUser: fixture.actors.get("alice")!, channelMode: "shared", channelIsNsfw: false, isOwner: false }, undefined, aliceConfiguration), { count: 0, budget: 4000, burstIds: [] });
+    await alice.resource({ kind: "persona_configuration", id: "current" }); await alice.resource({ kind: "user_preferences", id: "alice" });
+    fixture.sources.set("answer", { event: guardedEvent("answer", 4500, "STYLE_DERIVED_REPLY", "bot"), origin: "chat", provenance: alice.provenance("STYLE_DERIVED_REPLY") });
+    fixture.add(guardedEvent("next", 5000, "what did you say?", "bob", { replyToMessageId: "answer" })); fixture.port.sourceMessageId = "next"; fixture.port.actorId = "bob";
+    const bobConfiguration = await conversationConfiguration("guild", "bob", persona, store);
+    const bob = await GuardedConversationContext.open(guardedToolResourcePort(fixture.port, null, { currentUser: fixture.actors.get("bob")!, channelMode: "shared", channelIsNsfw: false, isOwner: false }, undefined, bobConfiguration), { count: 40, budget: 4000, burstIds: [] });
+    expect(bob.replyChain).toEqual([]); expect(JSON.stringify(bob.history)).not.toContain("STYLE_DERIVED_REPLY");
+  });
   it("rejects forged, wrong-purpose and cross-owner contexts", async () => {
     const provider = { compilePersonaBundle: vi.fn(), reply: vi.fn() } as ChatProvider;
     const compiler = new PersonaBundleCompiler(provider, null);

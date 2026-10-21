@@ -16,6 +16,8 @@ import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { extendConversationSource } from "../context/conversation-source-registry.js";
 import { ReviewedMusicTool } from "../../infrastructure/discord/commands/music/reviewed-music-tool.js";
 import { immutableSnapshot } from "../context/immutable-snapshot.js";
+import type { ConversationConfiguration } from "../context/conversation-configuration.js";
+import { isConfigurationContext } from "../context/guarded-configuration-context.js";
 
 // Only reviewed implementations can enter this boundary. A name or a model-
 // supplied "filtered" flag cannot turn an unknown tool into a source authority.
@@ -78,14 +80,28 @@ export async function resolveGuardedToolResource(registry: ChatToolRegistry | nu
     return tool instanceof BirthdayLookupTool ? tool.readResource(context.guildId, key.id) : null;
   }
   if (key.id !== "current") return null;
+  if (key.kind !== "server_metadata" && key.kind !== "server_events") return null;
   const tool = registry?.list().find((candidate) => candidate instanceof DiscordServerLookupTool);
   return tool instanceof DiscordServerLookupTool ? tool.readResource(key.kind === "server_events" ? "events" : "server", context) : null;
 }
 
 export function guardedToolResourcePort(port: GuardedContextPort, registry: ChatToolRegistry | null,
-  context: { currentUser: ChatUser; channelMode: ChatToolContext["channelMode"]; channelIsNsfw: boolean; isOwner: boolean }, turnSignal?: AbortSignal): GuardedContextPort {
+  context: { currentUser: ChatUser; channelMode: ChatToolContext["channelMode"]; channelIsNsfw: boolean; isOwner: boolean }, turnSignal?: AbortSignal,
+  configuration?: ConversationConfiguration): GuardedContextPort {
   const source = { ...port }; const destination = { ...context };
-  return extendConversationSource(port, { ...(turnSignal ? { turnSignal } : {}), resource: (key, signal): Promise<string | null> => resolveGuardedToolResource(registry, key, {
-    ...destination, guildId: source.guildId, channelId: source.channelId, music: null, pendingGeneratedImages: [], signal,
-  }, async (id) => (await source.actor(id, signal))?.id === id) });
+  const persona = configuration?.persona; const preferences = configuration?.preferences;
+  return extendConversationSource(port, { ...(turnSignal ? { turnSignal } : {}), resource: async (key, signal): Promise<string | null> => {
+    signal.throwIfAborted();
+    if (key.kind === "persona_configuration") {
+      if (key.id !== "current" || !isConfigurationContext(persona, "persona")) return null;
+      await persona.check({ guildId: source.guildId, ownerUserId: null }); return persona.fingerprint;
+    }
+    if (key.kind === "user_preferences") {
+      if (key.id !== destination.currentUser.id || !isConfigurationContext(preferences, "user_preferences") || (await source.actor(key.id, signal))?.id !== key.id) return null;
+      await preferences.check({ guildId: source.guildId, ownerUserId: key.id }); return preferences.fingerprint;
+    }
+    return resolveGuardedToolResource(registry, key, {
+      ...destination, guildId: source.guildId, channelId: source.channelId, music: null, pendingGeneratedImages: [], signal,
+    }, async (id) => (await source.actor(id, signal))?.id === id);
+  } });
 }

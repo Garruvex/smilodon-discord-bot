@@ -1,3 +1,7 @@
+import type { GuardedConversationContext } from "./guarded-conversation-context.js";
+import { memoryModelOptions, checkMemoryContext } from "../memory/memory-context-guard.js";
+import { SocialOutputSuppressed } from "./message-origin-store.js";
+import { safeFailure } from "../diagnostics/chat-diagnostics.js";
 import type { Logger } from "pino";
 
 import { exampleExchangeLimits } from "./example-exchange.js";
@@ -16,6 +20,7 @@ import {
 import type { EmbeddingsClient } from "./embeddings-client.js";
 
 export interface ExampleExchangeSelectionInput {
+  context?: GuardedConversationContext;
   records: readonly ExampleExchange[];
   currentUser: ChatUser;
   mentionedUsers: readonly ChatUser[];
@@ -110,6 +115,7 @@ export class RelevantExampleExchangeSelector implements ExampleExchangeSelector 
   ) {}
 
   public async select(input: ExampleExchangeSelectionInput): Promise<readonly ExampleExchange[]> {
+    await checkMemoryContext(input.context);
     if (input.records.length === 0) return input.records;
     const context = buildRelevanceContext({
       message: input.message,
@@ -130,7 +136,8 @@ export class RelevantExampleExchangeSelector implements ExampleExchangeSelector 
           message: input.message,
           recentHistory: input.recentHistory,
           replyToContent: input.replyChain?.at(-1)?.content,
-        }));
+        }), memoryModelOptions(input.context, "recall_embedding"));
+        await checkMemoryContext(input.context);
         const compatible = input.records.filter((record) => record.embedding?.length === queryEmbedding.length);
         if (compatible.length > 0) {
           for (const record of compatible) cosineScores.set(record, cosineSimilarity(record.embedding!, queryEmbedding));
@@ -138,7 +145,8 @@ export class RelevantExampleExchangeSelector implements ExampleExchangeSelector 
           rankings.push(embeddingOrder);
         }
       } catch (error) {
-        this.logger?.debug({ error }, "Embedding the current message failed; example exchange selection falling back to lexical-only ranking");
+        if (error instanceof SocialOutputSuppressed) throw error;
+        this.logger?.debug({ failure: safeFailure(error) }, "Embedding the current message failed; example exchange selection falling back to lexical-only ranking");
       }
     }
     // Same relevance floor as RelevantPersonaLoreSelector: a record with no

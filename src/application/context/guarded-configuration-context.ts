@@ -9,6 +9,7 @@ export type ConfigurationKind = "persona" | "persona_upload" | "examples_upload"
 export interface ConfigurationScope { kind: ConfigurationKind; guildId: string; ownerUserId: string | null }
 export interface ConfigurationMaterial {
   text: string;
+  personalitySourceHash?: string;
   loreChunks?: readonly PersonaLoreChunk[];
   examples?: readonly ExampleExchange[];
 }

@@ -1,3 +1,7 @@
+import type { GuardedConversationContext } from "./guarded-conversation-context.js";
+import { memoryModelOptions, checkMemoryContext } from "../memory/memory-context-guard.js";
+import { SocialOutputSuppressed } from "./message-origin-store.js";
+import { safeFailure } from "../diagnostics/chat-diagnostics.js";
 import type { Logger } from "pino";
 
 import { personaLoreLimits } from "./persona-lore-policy.js";
@@ -17,6 +21,7 @@ import {
 } from "./memory-relevance.js";
 
 export interface PersonaLoreSelectionInput {
+  context?: GuardedConversationContext;
   chunks: readonly PersonaLoreChunk[];
   recentHistory: readonly ChatHistoryMessage[];
   message: string;
@@ -63,6 +68,7 @@ export class RelevantPersonaLoreSelector implements PersonaLoreSelector {
   ) {}
 
   public async select(input: PersonaLoreSelectionInput): Promise<readonly PersonaLoreChunk[]> {
+    await checkMemoryContext(input.context);
     if (input.chunks.length === 0) return input.chunks;
     const replyContext = [
       ...(input.replyChain ?? []).map((hop) => ({ content: hop.content })),
@@ -93,7 +99,8 @@ export class RelevantPersonaLoreSelector implements PersonaLoreSelector {
           message: input.message,
           recentHistory: input.recentHistory,
           replyToContent: input.replyChain?.at(-1)?.content,
-        }));
+        }), memoryModelOptions(input.context, "recall_embedding"));
+        await checkMemoryContext(input.context);
         const compatible = input.chunks.filter((chunk) => chunk.embedding?.length === queryEmbedding.length);
         if (compatible.length > 0) {
           for (const chunk of compatible) cosineScores.set(chunk, cosineSimilarity(chunk.embedding!, queryEmbedding));
@@ -103,7 +110,8 @@ export class RelevantPersonaLoreSelector implements PersonaLoreSelector {
           rankings.push(embeddingOrder);
         }
       } catch (error) {
-        this.logger?.debug({ error }, "Embedding the current message failed; persona lore selection falling back to lexical-only ranking");
+        if (error instanceof SocialOutputSuppressed) throw error;
+        this.logger?.debug({ failure: safeFailure(error) }, "Embedding the current message failed; persona lore selection falling back to lexical-only ranking");
       }
     }
     // A chunk with zero lexical overlap AND no meaningfully similar

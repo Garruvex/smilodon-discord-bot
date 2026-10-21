@@ -19,6 +19,10 @@ import { groupObservedAliasRows } from "../memory/observed-subject-names.js";
 import { guardedMemoryProposals } from "./guarded-memory-proposals.js";
 import { guardedTools, guardedToolResourcePort } from "./guarded-tool-gateway.js";
 import type { ChatToolRegistry } from "./tools/chat-tool-registry.js";
+import { conversationConfiguration } from "../context/conversation-configuration.js";
+import type { UserCustomizationStore } from "./user-customization-store.js";
+import type { ExampleExchangeSelector } from "./example-exchange-selector.js";
+import type { PersonaLoreSelector } from "./persona-lore-selector.js";
 
 export async function runGuardedChatTurn(input: GuardedChatConversationInput, dependencies: {
   state: ChatStateStore; runtime: CharacterRuntime | null; logger: Logger | null; now: () => number;
@@ -30,13 +34,17 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   imageGenerationSupported?: boolean;
   memory: MemoryEngine;
   toolRegistry: ChatToolRegistry | null;
+  customization: UserCustomizationStore | null;
+  examples: ExampleExchangeSelector;
+  lore: PersonaLoreSelector;
 }, deliver: (response: ChatResponse) => Promise<string>, observer?: ChatResponseObserver): Promise<ChatResponse> {
   // A partial image has not passed the final conversation/effect decision.
   // Guarded generation delivers its confirmed final assets through the same
   // effect and per-part source checks as text, never a speculative preview.
   void observer;
+  const configuration = await conversationConfiguration(input.guildId, input.triggerMode === "reaction" ? null : input.currentUser.id, input.configurationContext, dependencies.customization);
   const port = guardedToolResourcePort(input.guardedContextPort, dependencies.toolRegistry, { currentUser: input.currentUser,
-    channelIsNsfw: input.channelIsNsfw ?? false, channelMode: input.resolveMemoryMode?.() ?? "shared", isOwner: input.isOwner ?? false }, input.turnSignal);
+    channelIsNsfw: input.channelIsNsfw ?? false, channelMode: input.resolveMemoryMode?.() ?? "shared", isOwner: input.isOwner ?? false }, input.turnSignal, configuration);
   assertTurnActive(input.turnSignal);
   if (port.guildId !== input.guildId || port.channelId !== input.channelId || input.sourceMessageId !== port.sourceMessageId ||
     (input.triggerMode === "reaction" ? port.actorId !== null || input.currentEvent?.type !== "reaction_snapshot" : port.actorId !== input.currentUser.id))
@@ -88,13 +96,25 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
     imageGenerationSupported: dependencies.imageGenerationSupported === true,
     shadow: input.shadowMode ?? false });
   const images = capabilities.imageInputEnabled ? await lease.images(input.maxImagesPerRequest ?? 2) : [];
+  if (!await lease.resource({ kind: "persona_configuration", id: "current" }) ||
+      configuration.preferences && !await lease.resource({ kind: "user_preferences", id: currentUser.id })) throw new SocialOutputSuppressed();
+  const recentHistory = new RecentPromptHistorySelector().select(sessions);
+  const examplePool = configuration.persona.material.examples ?? []; const lorePool = configuration.persona.material.loreChunks ?? [];
+  const selectedExamples = (await dependencies.examples.select({ records: examplePool, currentUser, mentionedUsers: participants,
+    recentHistory, message: lease.current.content, replyChain: lease.replyChain, now: dependencies.now(), context: lease }))
+    .filter((item) => examplePool.some((source) => source.tags === item.tags && source.user === item.user && source.character === item.character));
+  const selectedLore = (await dependencies.lore.select({ chunks: lorePool, recentHistory,
+    message: lease.current.content, replyChain: lease.replyChain, now: dependencies.now(), context: lease }))
+    .filter((item) => lorePool.some((source) => source.heading === item.heading && source.text === item.text));
   emitChatDiagnostic(dependencies.logger, { event: "context.guard.sources", sessions: sessions.length, memories: memoryClaims.length,
-    relations: relations.length, actors: lease.admittedActorIds.length, images: images.length, unavailable: ["legacy_derived"] });
+    relations: relations.length, actors: lease.admittedActorIds.length, images: images.length, configurations: configuration.preferences ? 2 : 1, unavailable: ["legacy_derived"] });
   let request: ChatRequest = {
     turnPlan: input.turnPlan,
-    guildId: input.guildId, channelId: input.channelId, personality: input.personality, characterPersonaHash: input.personalitySourceHash ?? hashContent(input.personality), personaLore: [], personaDrift: null,
-    exampleExchanges: [], userCustomization: null, currentUser, mentionedUsers: participants.filter((actor) => actor.id !== currentUser.id && actor.id !== input.botUserId && actor.kind !== "bot" && mentionedIds.has(actor.id)),
-    recentHistory: new RecentPromptHistorySelector().select(sessions), memories: memoryClaims.filter((record) => record.audience === "private").map((record) => ({
+    guildId: input.guildId, channelId: input.channelId, configurationContext: configuration.persona, personality: configuration.persona.material.text,
+    characterPersonaHash: configuration.persona.material.personalitySourceHash ?? hashContent(configuration.persona.material.text), personaLore: selectedLore.map(({ heading, text }) => ({ heading, text })), personaDrift: null,
+    exampleExchanges: selectedExamples.map(({ tags, user, character }) => ({ tags, user, character })), userCustomization: configuration.preferences?.material.text ?? null,
+    currentUser, mentionedUsers: participants.filter((actor) => actor.id !== currentUser.id && actor.id !== input.botUserId && actor.kind !== "bot" && mentionedIds.has(actor.id)),
+    recentHistory, memories: memoryClaims.filter((record) => record.audience === "private").map((record) => ({
       id: record.id, assertedByUserId: record.ownerUserId!, subjectUserId: record.subjectId, topic: record.topic, slot: record.slot,
       statement: record.statement, updatedAt: record.updatedAt, embedding: null,
     })), guildKnowledge: memoryClaims.filter((record) => record.audience !== "private").map((record) => ({

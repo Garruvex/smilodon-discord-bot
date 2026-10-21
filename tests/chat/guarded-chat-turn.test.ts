@@ -11,7 +11,7 @@ import { createSqliteDatabaseConnection } from "../../src/infrastructure/databas
 import { SqliteMemoryRepository } from "../../src/infrastructure/persistence/sqlite-memory-repository.js";
 import { DefaultMemoryEngine } from "../../src/application/memory/memory-engine.js";
 import { SocialOutputSuppressed } from "../../src/application/chat/message-origin-store.js";
-import { buildChatContext } from "../../src/infrastructure/chat/chat-structured-output.js";
+import { buildChatContext, buildChatInstructions } from "../../src/infrastructure/chat/chat-structured-output.js";
 import { guardedEvent, guardedFixture } from "../helpers/guarded-context-fixture.js";
 import { freshDocument, guildId, memoryProvider } from "../helpers/settings-fixtures.js";
 import { decisionProposal, decisionResponse } from "../helpers/conversation-decision-fixtures.js";
@@ -24,11 +24,16 @@ import { DiceRollTool } from "../../src/application/chat/tools/dice-tool.js";
 import { hashContent } from "../../src/application/assets/content-hash.js";
 import { memoryRelationPayload } from "../../src/application/memory/memory-relation-provenance.js";
 import type { MemoryRelation } from "../../src/application/memory/memory.js";
+import { configurationFixture } from "../helpers/configuration-context-fixture.js";
+import { guardedToolResourcePort } from "../../src/application/chat/guarded-tool-gateway.js";
+import { conversationConfiguration } from "../../src/application/context/conversation-configuration.js";
+import { GuardedConfigurationContext } from "../../src/application/context/guarded-configuration-context.js";
+import type { UserCustomizationStore } from "../../src/application/chat/user-customization-store.js";
 
 const channelId = "500000000000000001";
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { vi.useRealTimers(); for (const cleanup of cleanups.splice(0)) await cleanup(); });
-async function setup(now = 5000, originalAuthor = "alice", contextual = false, nativeWebSearchSupported = false, tools: ChatToolRegistry | null = null, imageGenerationSupported = false): Promise<{
+async function setup(now = 5000, originalAuthor = "alice", contextual = false, nativeWebSearchSupported = false, tools: ChatToolRegistry | null = null, imageGenerationSupported = false, customization: UserCustomizationStore | null = null): Promise<{
   service: ChatConversationService; fixture: ReturnType<typeof guardedFixture>; input: ChatConversationInput;
   reply: ReturnType<typeof vi.fn<(request: ChatRequest) => Promise<ChatResponse>>>;
   engine: DefaultMemoryEngine; runtime: CharacterRuntime; state: SqliteChatStateStore;
@@ -50,7 +55,7 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
   const { logger, records } = captureDiagnosticLogger();
   const runtime = new CharacterRuntime(profiles, repository, null, { reply }, decision, null, () => now, logger);
   const engine = new DefaultMemoryEngine(repository, null, null, undefined, null, null, null, () => true);
-  const service = new ChatConversationService({ reply, nativeWebSearchSupported, applicationToolsSupported: true, imageGenerationSupported }, state, engine, undefined, undefined, undefined, null, null, tools, logger, null, null, null, null, runtime, () => now);
+  const service = new ChatConversationService({ reply, nativeWebSearchSupported, applicationToolsSupported: true, imageGenerationSupported }, state, engine, undefined, undefined, undefined, customization, null, tools, logger, null, null, null, null, runtime, () => now);
   cleanups.push(async () => { service.stopScheduling(); await service.drain(); runtime.stop(); connection.close(); });
   const fixture = guardedFixture(guardedEvent("question", 1000, "Explain the carburetor mixture adjustment", originalAuthor), { guildId, channelId });
   const previous = await GuardedConversationContext.open(fixture.port, { count: 40, budget: 12000, burstIds: [] });
@@ -58,6 +63,7 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
   fixture.add(guardedEvent("current", 4000, "@bot", "alice", { replyToMessageId: "answer" })); fixture.port.sourceMessageId = "current";
   fixture.port.actorId = "alice";
   const input: ChatConversationInput = { guildId, channelId, sourceMessageId: "current", personality: "A dry, playful mechanic",
+    configurationContext: await configurationFixture("A dry, playful mechanic", "persona", () => true, guildId),
     personaDrift: "SECRET_DRIFT", loreChunks: [], examplePool: [], currentUser: { id: "alice", displayName: "alice", roleNames: [] }, mentionedUsers: [],
     message: "UNTRUSTED_SYNTHETIC_INPUT", replyChain: [], channelHistory: [], images: [], includeSources: false,
     webSearchMode: "auto", imageGenerationEnabled: true, toolsEnabled: true, triggerMode: "direct", botUserId: "bot",
@@ -66,6 +72,52 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
 }
 
 describe("guarded turn acceptance", () => {
+  it.each(["eligible", "changed"] as const)("uses owner-scoped style preferences and rechecks before delivery: %s", async (scenario) => {
+    let value = "- Tone: concise OWNER_STYLE";
+    const load = vi.fn<UserCustomizationStore["load"]>(() => Promise.resolve(value));
+    const store: UserCustomizationStore = { initialize: vi.fn(), load, save: vi.fn(), clear: vi.fn() };
+    const { service, input, reply } = await setup(5000, "alice", false, false, null, false, store);
+    reply.mockImplementation((request) => {
+      expect(request.userCustomization).toBe(value);
+      expect(buildChatInstructions(request, "Safety instructions")).toContain("OWNER_STYLE");
+      if (scenario === "changed") value = "- Tone: changed";
+      return Promise.resolve(decisionResponse());
+    });
+    const send = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
+    const call = service.run(input, send);
+    if (scenario === "changed") await expect(call).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    else { const result = await call;
+      expect(result.contextProvenance?.resources).toContainEqual(expect.objectContaining({ kind: "user_preferences", id: "alice" }));
+      expect(JSON.stringify(result.contextProvenance)).not.toContain("OWNER_STYLE");
+    }
+    expect(send).toHaveBeenCalledTimes(scenario === "eligible" ? 1 : 0);
+    expect(load.mock.calls.every(([scope, owner]) => scope === guildId && owner === "alice")).toBe(true);
+  });
+  it.each(["eligible", "changed"] as const)("uses registered persona material and rejects changes before delivery: %s", async (scenario) => {
+    const { service, input, fixture, reply, decision } = await setup(5000, "alice", true); let current = true;
+    fixture.sources.get("current")!.event.content = "Tell me about the forest";
+    fixture.sources.get("current")!.event.replyToMessageId = null;
+    input.configurationContext = await GuardedConfigurationContext.open({ kind: "persona", guildId, ownerUserId: null }, {
+      text: "AUTHORIZED_CORE", loreChunks: [{ heading: "forest", text: "AUTHORIZED_LORE", embedding: null }],
+      examples: [{ tags: "forest", user: "AUTHORIZED_EXAMPLE", character: "AUTHORED_VOICE" }],
+    }, () => current);
+    input.personality = "UNREGISTERED_PERSONA";
+    input.loreChunks = [{ heading: "forest", text: "UNREGISTERED_LORE", embedding: null }];
+    input.examplePool = [{ tags: "forest", user: "UNREGISTERED_EXAMPLE", character: "hidden" }];
+    decision.generateCharacterData.mockResolvedValue(contextualProposal({ relationship: "group", intent: "contribute", referent: "self_contained", linkKey: null, recipientEvidence: ["current"] }));
+    reply.mockImplementation((request) => {
+      const payload = buildChatInstructions(request, "Safety instructions") + buildChatContext(request);
+      expect(payload).toContain("AUTHORIZED_LORE"); expect(payload).toContain("AUTHORIZED_EXAMPLE");
+      expect(request.personality).toBe("AUTHORIZED_CORE"); expect(payload).not.toContain("UNREGISTERED_");
+      if (scenario === "changed") current = false;
+      return Promise.resolve(decisionResponse());
+    });
+    const send = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
+    const call = service.run({ ...input, triggerMode: "spontaneous" }, send);
+    if (scenario === "changed") await expect(call).rejects.toBeInstanceOf(SocialOutputSuppressed); else await call;
+    expect(send).toHaveBeenCalledTimes(scenario === "eligible" ? 1 : 0);
+    expect(JSON.stringify(decision.generateCharacterData.mock.calls)).toContain("AUTHORIZED_LORE");
+  });
   it.each(["verified", "unproven", "revoked"] as const)("independently projects alias evidence for decision and generation: %s", async (scenario) => {
     const { service, input, fixture, engine, reply, decision } = await setup(5000, "alice", true);
     fixture.sources.get("question")!.event.content = "Call me OldAlice. I like apples.";
@@ -572,7 +624,8 @@ describe("guarded turn acceptance", () => {
     const stored = await state.load(guildId, "alice", channelId, 5000);
     expect(stored.exchanges[0]?.contextProvenance?.coverage).toBe("complete");
     fixture.add(guardedEvent("next", 5000, "next question")); fixture.port.sourceMessageId = "next";
-    const next = await GuardedConversationContext.open(fixture.port, { count: 40, budget: 12000, burstIds: [] });
+    const configuration = await conversationConfiguration(guildId, "alice", input.configurationContext, null);
+    const next = await GuardedConversationContext.open(guardedToolResourcePort(fixture.port, null, { currentUser: input.currentUser, channelMode: "shared", channelIsNsfw: false, isOwner: false }, undefined, configuration), { count: 40, budget: 12000, burstIds: [] });
     expect(await next.sessions(stored.exchanges)).toHaveLength(1);
   });
 });

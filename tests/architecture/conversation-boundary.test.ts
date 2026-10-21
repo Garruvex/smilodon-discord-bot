@@ -19,10 +19,15 @@ describe("conversation execution ownership", () => {
         if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) continue;
         const module = node.moduleSpecifier.text;
         const relative = path.relative(root, file).replaceAll(path.sep, "/");
+        if (module.endsWith("/conversation-configuration.js") && !node.importClause?.isTypeOnly) {
+          const bindings = node.importClause?.namedBindings;
+          const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
+          if (imported.some((name) => name !== "defaultPersonality") && !["application/chat/guarded-chat-turn.ts", "bootstrap/dependencies.ts"].includes(relative)) offenders.push(relative);
+        }
         if (module.endsWith("/guarded-configuration-context.js") && !node.importClause?.isTypeOnly) {
           const bindings = node.importClause?.namedBindings;
           const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
-          const issuers = ["application/assets/guild-asset-store.ts", "infrastructure/chat/file-persona-source.ts", "infrastructure/discord/commands/common/customize-command.ts"];
+          const issuers = ["application/assets/guild-asset-store.ts", "application/context/conversation-configuration.ts", "infrastructure/chat/file-persona-source.ts", "infrastructure/discord/commands/common/customize-command.ts"];
           if (imported.some((name) => !["isConfigurationContext", "configurationMaterialHash"].includes(name)) && !issuers.includes(relative)) offenders.push(relative);
         }
         if (module.endsWith("/conversation-source-registry.js") && !node.importClause?.isTypeOnly) {

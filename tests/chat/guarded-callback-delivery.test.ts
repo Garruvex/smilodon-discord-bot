@@ -13,13 +13,16 @@ import { SqliteMemoryRepository } from "../../src/infrastructure/persistence/sql
 import { guardedEvent, guardedFixture } from "../helpers/guarded-context-fixture.js";
 import { freshDocument, guildId, memoryProvider } from "../helpers/settings-fixtures.js";
 import { decisionRequest, decisionResponse } from "../helpers/conversation-decision-fixtures.js";
+import { conversationConfiguration } from "../../src/application/context/conversation-configuration.js";
+import { configurationFixture } from "../helpers/configuration-context-fixture.js";
+import { guardedToolResourcePort } from "../../src/application/chat/guarded-tool-gateway.js";
 
 const cleanups: (() => Promise<void>)[] = [];
 const channelId = "500000000000000001";
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
 
 describe("scheduled callback source authorization", () => {
-  it.each(["verified", "legacy", "revoked", "tampered", "changed_during_model"] as const)("checks persisted evidence before model attempts and sending: %s", async (scenario) => {
+  it.each(["verified", "legacy", "revoked", "tampered", "changed_during_model", "configuration_changed"] as const)("checks persisted evidence before model attempts and sending: %s", async (scenario) => {
     const connection = createSqliteDatabaseConnection(mkdtempSync(join(tmpdir(), "guarded-callback-")));
     let runtime: CharacterRuntime | null = null;
     cleanups.push(async () => { runtime?.stop(); await runtime?.drain(); connection.close(); });
@@ -30,7 +33,11 @@ describe("scheduled callback source authorization", () => {
       character: { enabled: true, modules: { callbacks: { enabled: true } } } });
     const fixture = guardedFixture(guardedEvent("current", 4000, "hello"), { guildId, channelId: channelId });
     fixture.add(guardedEvent("event", 1000, "my exam is on 2026-10-20"));
-    const lease = await GuardedConversationContext.open(fixture.port, { count: 10, budget: 4000, burstIds: [] });
+    let configurationCurrent = true;
+    const configuration = await conversationConfiguration(guildId, "alice", await configurationFixture("Authored persona", "persona", () => configurationCurrent, guildId), null);
+    const port = guardedToolResourcePort(fixture.port, null, { currentUser: fixture.actors.get("alice")!, channelMode: "shared", channelIsNsfw: false, isOwner: false }, undefined, configuration);
+    const lease = await GuardedConversationContext.open(port, { count: 10, budget: 4000, burstIds: [] });
+    expect(await lease.resource({ kind: "persona_configuration", id: "current" })).not.toBeNull();
     const input: RepositoryIngestInput = { guildId, kind: "fact", audience: "channel", ownerUserId: null, channelId, isolationChannelId: null,
       subjectType: "member", subjectId: "alice", topic: "schedule", slot: "exam", statement: "exam on 2026-10-20", status: "active", source: "live",
       importance: 1, embedding: null, embeddingModel: null, expiresAt: null, now: 1000, sourceMessageId: "event", sourceChannelId: channelId,
@@ -39,6 +46,7 @@ describe("scheduled callback source authorization", () => {
     const callbacks = new CharacterCallbacks(repository);
     const planned = await callbacks.plan(memory, 2000, channelId, scenario === "legacy" ? undefined : lease);
     expect(planned).not.toBeNull();
+    if (scenario === "configuration_changed") configurationCurrent = false;
     if (scenario === "revoked") fixture.denied.add("event");
     if (scenario === "tampered") await repository.compareAndSetStructuredValue({ guildId, memoryId: planned!.id, updatedAt: planned!.updatedAt,
       expected: planned!.structuredValue, value: { callback: { ...callbackState(planned!)!, dueAt: 2500 } } });
@@ -50,7 +58,7 @@ describe("scheduled callback source authorization", () => {
     runtime = new CharacterRuntime(profiles, repository, { generateCharacterData }, { reply: (): Promise<ChatResponse> => Promise.resolve(decisionResponse()) }, undefined, null, () => 5000);
     runtime.bindProbeSchedule(() => Promise.resolve(decisionRequest({ guildId, channelId: channelId, channelHistory: [], currentBurst: [] })));
     const send = vi.fn<CharacterCallbackDelivery["send"]>(() => Promise.resolve("sent"));
-    runtime.bindCallbackDelivery({ context: () => Promise.resolve(fixture.port), check: () => Promise.resolve(true),
+    runtime.bindCallbackDelivery({ context: () => Promise.resolve(port), check: () => Promise.resolve(true),
       run: (_guild, _channel, operation) => operation(), send });
     runtime.observe(guildId, channelId, fixture.sources.get("current")!.event);
     await runtime.tickCallbacks(5000);

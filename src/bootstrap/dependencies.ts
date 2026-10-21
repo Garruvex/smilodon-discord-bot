@@ -9,6 +9,7 @@ import { SocialChatEligibility } from "../infrastructure/discord/behaviors/socia
 import { ChatTurnSupport } from "../infrastructure/discord/behaviors/chat-turn-support.js";
 import { guardedToolResourcePort } from "../application/chat/guarded-tool-gateway.js";
 import { ReviewedMusicTool } from "../infrastructure/discord/commands/music/reviewed-music-tool.js";
+import { conversationConfiguration } from "../application/context/conversation-configuration.js";
 import { isGuardedContext } from "../application/chat/guarded-conversation-context.js";
 import { resolveChannelMemoryMode } from "../application/memory/memory-channel-policy.js";
 import { ConversationObservationBehavior } from "../infrastructure/discord/behaviors/conversation-observation-behavior.js";
@@ -776,10 +777,12 @@ export function createDependencies(
     characterRuntime.bindCallbackDelivery({
       context: async (guildId, channelId, sourceMessageId) => {
         const source = await resolveCallbackSource(guildId, channelId, sourceMessageId); if (!source) return null;
+        const persona = await personaSource.resolve(guildConfigurationProvider.require(guildId));
+        const contextConfiguration = await conversationConfiguration(guildId, source.author.id, persona.configurationContext, userCustomizationStore);
         return guardedToolResourcePort(callbackSources.createContextPort(source), chatToolRegistry, {
           currentUser: callbackSources.toChatUser(source.author, source.member), channelMode: resolveChannelMemoryMode(guildConfigurationProvider.require(guildId).chat.channelMemoryModes, channelId),
           channelIsNsfw: "nsfw" in source.channel && source.channel.nsfw, isOwner: configuration.ownerUserIds.has(source.author.id),
-        });
+        }, undefined, contextConfiguration);
       },
       run: (guildId, channelId, operation) => chatConversationService.runCallback(guildId, channelId,
         resolveParticipation(guildConfigurationProvider.find(guildId)?.chat.participation, channelId).limits, operation),
