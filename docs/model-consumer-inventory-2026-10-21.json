@@ -48,6 +48,11 @@
     "analyzeUserCustomization",
     "compilePersonaBundle"
   ],
+  "src/application/context/conversation-model-gateway.ts": [
+    "evolvePersonaDrift",
+    "extractPersonalMemories",
+    "summarizeDroppedExchanges"
+  ],
   "src/application/memory/memory-engine.ts": [
     "classifyMemoryConflict",
     "embed"

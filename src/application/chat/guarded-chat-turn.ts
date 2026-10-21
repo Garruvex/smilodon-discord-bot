@@ -23,6 +23,9 @@ import { conversationConfiguration } from "../context/conversation-configuration
 import type { UserCustomizationStore } from "./user-customization-store.js";
 import type { ExampleExchangeSelector } from "./example-exchange-selector.js";
 import type { PersonaLoreSelector } from "./persona-lore-selector.js";
+import type { ChatSessionExchange } from "./chat-state-store.js";
+import type { PersonaDriftStore } from "./persona-drift-store.js";
+import { personaDriftPayload } from "./persona-drift-provenance.js";
 
 export async function runGuardedChatTurn(input: GuardedChatConversationInput, dependencies: {
   state: ChatStateStore; runtime: CharacterRuntime | null; logger: Logger | null; now: () => number;
@@ -37,6 +40,8 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   customization: UserCustomizationStore | null;
   examples: ExampleExchangeSelector;
   lore: PersonaLoreSelector;
+  drift: PersonaDriftStore | null;
+  postTurn: (dropped: readonly ChatSessionExchange[]) => void;
 }, deliver: (response: ChatResponse) => Promise<string>, observer?: ChatResponseObserver): Promise<ChatResponse> {
   // A partial image has not passed the final conversation/effect decision.
   // Guarded generation delivers its confirmed final assets through the same
@@ -44,7 +49,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   void observer;
   const configuration = await conversationConfiguration(input.guildId, input.triggerMode === "reaction" ? null : input.currentUser.id, input.configurationContext, dependencies.customization);
   const port = guardedToolResourcePort(input.guardedContextPort, dependencies.toolRegistry, { currentUser: input.currentUser,
-    channelIsNsfw: input.channelIsNsfw ?? false, channelMode: input.resolveMemoryMode?.() ?? "shared", isOwner: input.isOwner ?? false }, input.turnSignal, configuration);
+    channelIsNsfw: input.channelIsNsfw ?? false, channelMode: input.resolveMemoryMode?.() ?? "shared", isOwner: input.isOwner ?? false }, input.turnSignal, configuration, dependencies.drift);
   assertTurnActive(input.turnSignal);
   if (port.guildId !== input.guildId || port.channelId !== input.channelId || input.sourceMessageId !== port.sourceMessageId ||
     (input.triggerMode === "reaction" ? port.actorId !== null || input.currentEvent?.type !== "reaction_snapshot" : port.actorId !== input.currentUser.id))
@@ -86,7 +91,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
     assertTurnActive(input.turnSignal);
   };
   const check = async (): Promise<void> => { await access(); if (!await lease.validate()) throw new SocialOutputSuppressed(); };
-  const currentUser = lease.current.author ?? input.currentUser;
+  const currentUser = lease.current.author ?? { id: lease.current.authorId, displayName: lease.current.authorDisplayName, roleNames: [] };
   const historyParticipants = [...lease.replyChain, ...lease.history, ...lease.burst].filter((event) => event.author).map((event) => event.author!);
   const mentionedIds = new Set(lease.currentEvent?.type === "message" ? lease.currentEvent.mentionedUserIds :
     lease.currentEvent?.type === "reaction_snapshot" ? lease.currentEvent.reactions.flatMap((reaction) => reaction.actorIds) : []);
@@ -106,12 +111,16 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   const selectedLore = (await dependencies.lore.select({ chunks: lorePool, recentHistory,
     message: lease.current.content, replyChain: lease.replyChain, now: dependencies.now(), context: lease }))
     .filter((item) => lorePool.some((source) => source.heading === item.heading && source.text === item.text));
+  const drift = input.personaDriftEnabled && allowsDurableWrites(mode) ? await dependencies.drift?.getScoped(input.guildId, input.channelId) : null;
+  const personaHash = configuration.persona.material.personalitySourceHash ?? hashContent(configuration.persona.material.text);
+  const personaDrift = drift && drift.personalitySourceHash === personaHash && await lease.derived(drift.contextProvenance, personaDriftPayload(drift), "character_state") &&
+    await lease.resource({ kind: "persona_drift", id: drift.epoch }) === drift.epoch ? drift.text : null;
   emitChatDiagnostic(dependencies.logger, { event: "context.guard.sources", sessions: sessions.length, memories: memoryClaims.length,
     relations: relations.length, actors: lease.admittedActorIds.length, images: images.length, configurations: configuration.preferences ? 2 : 1, unavailable: ["legacy_derived"] });
   let request: ChatRequest = {
     turnPlan: input.turnPlan,
     guildId: input.guildId, channelId: input.channelId, configurationContext: configuration.persona, personality: configuration.persona.material.text,
-    characterPersonaHash: configuration.persona.material.personalitySourceHash ?? hashContent(configuration.persona.material.text), personaLore: selectedLore.map(({ heading, text }) => ({ heading, text })), personaDrift: null,
+    characterPersonaHash: personaHash, personaLore: selectedLore.map(({ heading, text }) => ({ heading, text })), personaDrift,
     exampleExchanges: selectedExamples.map(({ tags, user, character }) => ({ tags, user, character })), userCustomization: configuration.preferences?.material.text ?? null,
     currentUser, mentionedUsers: participants.filter((actor) => actor.id !== currentUser.id && actor.id !== input.botUserId && actor.kind !== "bot" && mentionedIds.has(actor.id)),
     recentHistory, memories: memoryClaims.filter((record) => record.audience === "private").map((record) => ({
@@ -201,7 +210,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   response.contextProvenance = allowsDurableWrites(mode) ? lease.provenance(response.text) : null;
   const delivered = await deliver(response);
   if (!input.shadowMode) await check();
-  if (!input.shadowMode && input.triggerMode !== "reaction" && mode !== "disabled") { try { await dependencies.state.commitSuccessfulExchange({
+  if (!input.shadowMode && input.triggerMode !== "reaction" && mode !== "disabled") { try { const committed = await dependencies.state.commitSuccessfulExchange({
     guildId: input.guildId, channelId: input.channelId, userId: input.currentUser.id,
     userMessage: lease.current.content.slice(0, 1000), assistantMessage: delivered.slice(0, 2000),
     sourceMessageId: lease.current.messageId, sourceTimestampMs: lease.current.timestampMs, channelMemoryMode: mode,
@@ -215,6 +224,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
         sourceTimestampMs: lease.current.timestampMs, now: dependencies.now() });
       if (result.failed) throw new Error("Guarded memory persistence failed");
     }
+    if (allowsDurableWrites(mode)) dependencies.postTurn(committed.droppedExchanges);
   } catch (error) { throw new ChatStateCommitError(error); } }
   if (!input.shadowMode && prepared && allowsDurableWrites(mode)) dependencies.runtime!.learnGuarded(response, prepared);
   return response;

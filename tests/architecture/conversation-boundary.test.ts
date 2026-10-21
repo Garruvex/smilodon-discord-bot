@@ -22,7 +22,7 @@ describe("conversation execution ownership", () => {
         if (module.endsWith("/conversation-configuration.js") && !node.importClause?.isTypeOnly) {
           const bindings = node.importClause?.namedBindings;
           const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
-          if (imported.some((name) => name !== "defaultPersonality") && !["application/chat/guarded-chat-turn.ts", "bootstrap/dependencies.ts"].includes(relative)) offenders.push(relative);
+          if (imported.some((name) => name !== "defaultPersonality") && !["application/chat/guarded-chat-turn.ts", "application/chat/guarded-post-turn.ts", "bootstrap/dependencies.ts"].includes(relative)) offenders.push(relative);
         }
         if (module.endsWith("/guarded-configuration-context.js") && !node.importClause?.isTypeOnly) {
           const bindings = node.importClause?.namedBindings;
@@ -40,6 +40,8 @@ describe("conversation execution ownership", () => {
         }
         const owner = file.endsWith(`${path.sep}application${path.sep}chat${path.sep}chat-conversation-service.ts`);
         if (module.endsWith("/guarded-chat-turn.js") && !owner) offenders.push(path.relative(root, file));
+        if (module.endsWith("/guarded-post-turn.js") && !owner) offenders.push(relative);
+        if (module.endsWith("/conversation-model-gateway.js") && !node.importClause?.isTypeOnly && relative !== "application/chat/guarded-post-turn.ts") offenders.push(relative);
         const typeOnly = node.importClause?.isTypeOnly;
         const predicateOnly = module.endsWith("/guarded-background-context.js") && node.importClause?.namedBindings &&
           ts.isNamedImports(node.importClause.namedBindings) && node.importClause.namedBindings.elements.every((item) => item.isTypeOnly || (item.propertyName ?? item.name).text === "isBackgroundContext");

@@ -25,6 +25,7 @@ export interface GuardedAssetDescriptor { id: string; contentType: string; size:
 export const guardedAssetsHash = (assets: readonly GuardedAssetDescriptor[]): string => hashContent(JSON.stringify(
   [...assets].map(({ id, contentType, size }) => ({ id, contentType, size })).sort((a, b) => a.id.localeCompare(b.id))));
 export interface GuardedContextPort {
+  shareMemory?: boolean;
   turnSignal?: AbortSignal;
   resource?: (key: GuardedResourceKey, signal: AbortSignal) => Promise<string | null>;
   work?: (phase: GuardedContextPhase, status: "completed" | "deadline" | "failed", durationMs: number) => void;
@@ -69,6 +70,9 @@ const compact = (event: ChannelHistoryMessage): ChannelHistoryMessage => ({ ...e
 // complete text provenance only for the closed, whitelisted assembly below.
 // It is deliberately narrower than the separately planned universal gateway.
 export class GuardedConversationContext {
+  public get durableWritesAllowed(): boolean { return !this.closed && this.port.persist !== false && this.port.policyCurrent(); }
+  public get sharedMemoryAllowed(): boolean { return this.durableWritesAllowed && this.port.shareMemory === true; }
+  public get scope(): Readonly<{ guildId: string; channelId: string; actorId: string | null }> { return Object.freeze({ guildId: this.port.guildId, channelId: this.port.channelId, actorId: this.port.actorId }); }
   public get cancellationSignal(): AbortSignal | undefined { return this.port.turnSignal; }
   public get admittedActorIds(): readonly string[] { return Object.freeze([...new Set([...this.reactionActors.keys(), ...this.identityActors])]); }
   private remainingMs: number = guardedContextLimits.workMs;
@@ -220,7 +224,7 @@ export class GuardedConversationContext {
       const candidates: ChannelHistoryMessage[] = []; let cursor: string | null = lease.sourceEvent.type === "reaction_snapshot" ? null : current.messageId;
       const backward = /\b(?:earlier|previous|above|before)\b|之前|前面|上面|剛剛|さっき|前の/iu.test(current.content);
       const maxPages = guardedContextLimits.pages + (backward ? guardedContextLimits.targetedPages : 0);
-      for (let page = 0; page < maxPages; page++) {
+      for (let page = 0; input.count > 0 && page < maxPages; page++) {
         let ids: readonly string[];
         try { ids = (await port.page(cursor, lease.signal)).slice(0, guardedContextLimits.pageSize); }
         catch { lease.coverageReport.status = "fetch_failed"; break; }
@@ -555,9 +559,16 @@ export class GuardedConversationContext {
     }, "memory");
   }
 
+  public async humanCurrent(): Promise<ChannelHistoryMessage | null> {
+    return this.phase(async () => {
+      const source = await this.read(this.sourceCurrent.messageId);
+      return source?.origin === "human" ? immutableSnapshot(this.sourceCurrent) : null;
+    }, "memory");
+  }
+
   public async resource(key: GuardedResourceKey): Promise<string | null> {
     return this.phase(async () => {
-      if (!this.port.resource || this.resources.size >= 32) return null;
+      if (!this.port.resource || this.resources.size >= 32 && !this.resources.has(`${key.kind}:${key.id}`)) return null;
       const actor = key.kind === "birthday" ? await this.port.actor(key.id, this.signal) : null;
       if (key.kind === "birthday" && (!actor || actor.id !== key.id)) return null;
       const value = await this.port.resource(key, this.signal).catch(() => null);

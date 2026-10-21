@@ -473,11 +473,13 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
   public async summarizeDroppedExchanges(
     exchanges: readonly { user: string; assistant: string }[],
     speaker: { id: string; displayName: string },
+    options?: StructuredCallOptions,
   ): Promise<readonly DroppedExchangeFact[]> {
     const text = await this.callStructuredOutput(
       buildDroppedExchangeConsolidationPrompt(exchanges, speaker),
       "dropped_exchange_consolidation",
       droppedExchangeConsolidationJsonSchema,
+      options,
     );
     return parseDroppedExchangeConsolidationOutput(text).facts;
   }
@@ -595,11 +597,13 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
   public async evolvePersonaDrift(
     currentText: string,
     exchanges: readonly { user: string; assistant: string }[],
+    options?: StructuredCallOptions,
   ): Promise<string> {
     const text = await this.callStructuredOutput(
       buildPersonaDriftEvolutionPrompt(currentText, exchanges),
       "persona_drift_evolution",
       personaDriftEvolutionJsonSchema,
+      options,
     );
     return parsePersonaDriftEvolutionOutput(text).text;
   }

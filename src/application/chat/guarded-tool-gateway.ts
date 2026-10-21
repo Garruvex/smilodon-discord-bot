@@ -18,6 +18,7 @@ import { ReviewedMusicTool } from "../../infrastructure/discord/commands/music/r
 import { immutableSnapshot } from "../context/immutable-snapshot.js";
 import type { ConversationConfiguration } from "../context/conversation-configuration.js";
 import { isConfigurationContext } from "../context/guarded-configuration-context.js";
+import type { PersonaDriftStore } from "./persona-drift-store.js";
 
 // Only reviewed implementations can enter this boundary. A name or a model-
 // supplied "filtered" flag cannot turn an unknown tool into a source authority.
@@ -52,7 +53,7 @@ export function guardedTools(registry: ChatToolRegistry | null, lease: GuardedCo
             return { content: "The link must come from supplied authorized conversation context. Ask for the link." };
         }
         if (boundAuthority.music && (boundAuthority.music.actor.guildId !== scope.guildId || boundAuthority.music.actor.userId !== scope.userId)) throw new SocialOutputSuppressed();
-        const result = await tool.execute(args, { ...context, ...boundAuthority, currentUser: lease.current.author ?? context.currentUser,
+        const result = await tool.execute(args, { ...context, ...boundAuthority, currentUser: lease.current.author ?? { id: lease.current.authorId, displayName: lease.current.authorDisplayName, roleNames: [] },
           contextLease: lease, beforeModelAttempt: check, knownSubjectIds: [...new Set([...subjects, ...lease.admittedActorIds])] });
         context.signal?.throwIfAborted(); await check();
         if (tool instanceof ReadLinkTool || tool instanceof BooruSearchTool) lease.recordPublicTool(tool.name, result.content);
@@ -87,11 +88,15 @@ export async function resolveGuardedToolResource(registry: ChatToolRegistry | nu
 
 export function guardedToolResourcePort(port: GuardedContextPort, registry: ChatToolRegistry | null,
   context: { currentUser: ChatUser; channelMode: ChatToolContext["channelMode"]; channelIsNsfw: boolean; isOwner: boolean }, turnSignal?: AbortSignal,
-  configuration?: ConversationConfiguration): GuardedContextPort {
+  configuration?: ConversationConfiguration, drift?: Pick<PersonaDriftStore, "readScopedEpoch"> | null): GuardedContextPort {
   const source = { ...port }; const destination = { ...context };
   const persona = configuration?.persona; const preferences = configuration?.preferences;
   return extendConversationSource(port, { ...(turnSignal ? { turnSignal } : {}), resource: async (key, signal): Promise<string | null> => {
     signal.throwIfAborted();
+    if (key.kind === "persona_drift") {
+      if (!drift || source.shareMemory !== true) return null;
+      const epoch = await drift.readScopedEpoch(source.guildId, source.channelId); return epoch === key.id ? epoch : null;
+    }
     if (key.kind === "persona_configuration") {
       if (key.id !== "current" || !isConfigurationContext(persona, "persona")) return null;
       await persona.check({ guildId: source.guildId, ownerUserId: null }); return persona.fingerprint;

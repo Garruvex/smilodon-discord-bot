@@ -1,4 +1,5 @@
 import { runGuardedChatTurn } from "./guarded-chat-turn.js";
+import { runGuardedPostTurn } from "./guarded-post-turn.js";
 import { effectiveChatCapabilities } from "./chat-capabilities.js";
 import { authorizeConversationEffects } from "./conversation-effects.js";
 import type { ActiveConversationTurnPlan, ConversationTurnPlan } from "./conversation-turn-plan.js";
@@ -860,6 +861,11 @@ export class ChatConversationService {
         return this.queue.run(`${turn.guildId}:${turn.currentUser.id}`, () => withTurnAbort(turn.turnSignal, () => runGuardedChatTurn(guarded, { state: this.stateStore, runtime: this.characterRuntime,
           logger: this.logger, now: this.now, memory: this.memoryEngine, toolRegistry: this.toolRegistry,
           customization: this.userCustomizationStore, examples: this.exampleExchangeSelector, lore: this.personaLoreSelector,
+          drift: this.personaDriftStore, postTurn: (dropped) => this.trackBackground(runGuardedPostTurn(guarded, dropped, {
+            provider: this.provider, utility: this.utilityProvider, memory: this.memoryEngine, customization: this.userCustomizationStore,
+            tools: this.toolRegistry, drift: this.personaDriftStore, logger: this.logger, now: this.now,
+            mutate: (operation) => this.runMemoryMutation(guarded.guildId, guarded.currentUser.id, operation),
+          }).catch((error: unknown) => this.logger?.warn({ failure: safeFailure(error) }, "Guarded post-turn processing stopped"))),
           applicationToolsSupported: this.provider.applicationToolsSupported === true, nativeWebSearchSupported: this.provider.nativeWebSearchSupported === true, reply: (request, observer) => this.replyWithDiagnostics(request, observer),
           imageGenerationSupported: this.provider.imageGenerationSupported === true,
           repair: (text, request) => this.verifyAttribution(text, request), admitSocialPing: () => this.admitSocialPing(turn) }, send, observe))); } : this.runTurn.bind(this);

@@ -447,12 +447,14 @@ export class GeminiChatProvider implements ChatProvider {
   public async summarizeDroppedExchanges(
     exchanges: readonly { user: string; assistant: string }[],
     speaker: { id: string; displayName: string },
+    options?: StructuredCallOptions,
   ): Promise<readonly DroppedExchangeFact[]> {
-    const response = await this.summaryModelChain.run((model) => this.generateStructured(
+    const response = await this.summaryModelChain.run(async (model) => { await options?.beforeAttempt?.(); return this.generateStructured(
       model,
       buildDroppedExchangeConsolidationPrompt(exchanges, speaker),
       droppedExchangeConsolidationJsonSchema,
-    ));
+      undefined, undefined, options?.signal,
+    ); }, options);
     return parseDroppedExchangeConsolidationOutput((response.text ?? "").trim()).facts;
   }
 
@@ -526,12 +528,14 @@ export class GeminiChatProvider implements ChatProvider {
   public async evolvePersonaDrift(
     currentText: string,
     exchanges: readonly { user: string; assistant: string }[],
+    options?: StructuredCallOptions,
   ): Promise<string> {
-    const response = await this.summaryModelChain.run((model) => this.generateStructured(
+    const response = await this.summaryModelChain.run(async (model) => { await options?.beforeAttempt?.(); return this.generateStructured(
       model,
       buildPersonaDriftEvolutionPrompt(currentText, exchanges),
       personaDriftEvolutionJsonSchema,
-    ));
+      undefined, undefined, options?.signal,
+    ); }, options);
     return parsePersonaDriftEvolutionOutput((response.text ?? "").trim()).text;
   }
 

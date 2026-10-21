@@ -29,7 +29,7 @@ async function fixture(): Promise<{
       attachments: new Map(), inGuild: () => true } as unknown as Message);
   }
   const eligibility = {
-    contextPolicyVersion: () => "current-policy", canPersistContext: () => true,
+    contextPolicyVersion: () => "current-policy", canPersistContext: () => true, canShareContext: () => true,
     canReadHistory: () => Promise.resolve(true),
     checkGuardedSource: (message: Message) => Promise.resolve({ eligible: !denied.has(message.id), reason: "passive_access_denied" }),
   } as unknown as SocialChatEligibility;

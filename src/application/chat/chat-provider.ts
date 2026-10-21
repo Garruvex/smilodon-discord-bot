@@ -493,6 +493,7 @@ export interface ConversationConsolidator {
     // covers the whole batch. Passed through so the model can attribute
     // extracted facts to them instead of only ever writing guild-level facts.
     speaker: { id: string; displayName: string },
+    options?: StructuredCallOptions,
   ): Promise<readonly DroppedExchangeFact[]>;
 }
 
@@ -516,6 +517,7 @@ export interface PersonaDriftEvolver {
   evolvePersonaDrift(
     currentText: string,
     exchanges: readonly { user: string; assistant: string }[],
+    options?: StructuredCallOptions,
   ): Promise<string>;
 }
 

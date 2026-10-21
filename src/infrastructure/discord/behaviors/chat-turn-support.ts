@@ -117,6 +117,7 @@ export class ChatTurnSupport {
     };
     return registerConversationSource({
       guildId: source.guildId!, channelId: source.channelId, sourceMessageId: source.id, actorId: reaction ? null : source.author.id, persist: eligibility?.canPersistContext(source) ?? false,
+      shareMemory: eligibility?.canShareContext(source) ?? false,
       coverage: (report) => emitChatDiagnostic(this.logger, { event: "context.guard.coverage", ...report }),
       work: (phase, status, durationMs) => emitChatDiagnostic(this.logger, { event: "context.guard.work", phase, status, durationMs }),
       validation: (status, reads) => emitChatDiagnostic(this.logger, { event: "context.guard.validation", status, reads }),
