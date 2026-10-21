@@ -4,6 +4,7 @@ import { chatDeliveryText } from "../../../application/i18n/chat-delivery.js";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
 import { characterSettings } from "../../../application/chat/character-settings.js";
 import { contextualFlow } from "../../../application/chat/contextual-flow.js";
+import { conversationEffects } from "../../../application/chat/conversation-effects.js";
 
 import { ChatAccessService } from "../../../application/access/chat-access-service.js";
 import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
@@ -411,14 +412,15 @@ export class ReactionReplyScheduler {
         shouldDeliver: () => !resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).shadowMode,
         shadowMode: resolveParticipation(profile.chat.participation, message.channelId).shadowMode,
         afterDecision: async (result) => {
+          const effects = conversationEffects(result); if (!effects) return;
           if (!await this.canDeliver(channel, guildId)) return;
           const reserve = (): ((success: boolean) => void) | null => this.conversation.reserveReaction(guildId, message.channelId,
             resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).limits);
-          if (result.reactionEmoji && await this.turnSupport.isEligible(message, "history_reaction")) {
+          if (effects.reactionEmoji && await this.turnSupport.isEligible(message, "history_reaction")) {
             const release = reserve();
-            if (release) { try { await withDiscordCaller("chat_reaction", () => message.react(result.reactionEmoji!)); release(true); } catch { release(false); } }
+            if (release) { try { await withDiscordCaller("chat_reaction", () => message.react(effects.reactionEmoji!)); release(true); } catch { release(false); } }
           }
-          await this.turnSupport.applyHistoryReactions(channel, result.historyReactions,
+          await this.turnSupport.applyHistoryReactions(channel, effects.historyReactions,
             { guildId, sourceMessageId: message.id }, reserve);
         },
         botUserId: author.id,

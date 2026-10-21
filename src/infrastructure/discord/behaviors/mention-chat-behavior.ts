@@ -9,6 +9,7 @@ import { withDiscordCaller } from "../../../application/diagnostics/discord-diag
 import { emitChatDiagnostic } from "../../../application/diagnostics/chat-diagnostics.js";
 import { mentionInteraction } from "../../../application/chat/conversation-trigger.js";
 import { contextualFlow } from "../../../application/chat/contextual-flow.js";
+import { conversationEffects } from "../../../application/chat/conversation-effects.js";
 import { MentionChatAccess } from "./mention-chat-access.js";
 import { resolvesReplyToBot } from "./direct-reply-resolver.js";
 import { characterSettings } from "../../../application/chat/character-settings.js";
@@ -240,14 +241,15 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         refreshContextMessage: (event) => this.turnSupport.refreshHistoryEvent(message, event),
         allowSilentDirect: participation.barePingMode === "personality",
         afterDecision: async (result) => {
+          const effects = conversationEffects(result); if (!effects) return;
           const reserve = (): ((success: boolean) => void) | null => this.conversation!.reserveReaction(message.guildId, message.channelId,
             resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits);
-          if (result.reactionEmoji && this.profiles.find(message.guildId)?.features.historyReactions &&
+          if (effects.reactionEmoji && this.profiles.find(message.guildId)?.features.historyReactions &&
               await this.turnSupport.isEligible(message, "history_reaction")) {
             const release = reserve();
-            if (release) { try { await withDiscordCaller("chat_reaction", () => message.react(result.reactionEmoji!)); release(true); } catch { release(false); } }
+            if (release) { try { await withDiscordCaller("chat_reaction", () => message.react(effects.reactionEmoji!)); release(true); } catch { release(false); } }
           }
-          await this.turnSupport.applyHistoryReactions(message.channel, result.historyReactions,
+          await this.turnSupport.applyHistoryReactions(message.channel, effects.historyReactions,
             { guildId: message.guildId, sourceMessageId: message.id }, reserve);
         },
         personality: persona.personality,

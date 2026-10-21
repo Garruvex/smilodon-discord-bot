@@ -1,4 +1,5 @@
 import { runGuardedChatTurn } from "./guarded-chat-turn.js";
+import { authorizeConversationEffects } from "./conversation-effects.js";
 import { assertTurnActive, contextualTurnLimits, withTurnAbort } from "./turn-work-budget.js";
 import type { GuardedContextPort } from "./guarded-conversation-context.js";
 import { captureIncompleteTurnProvenance } from "./context-provenance.js";
@@ -869,6 +870,8 @@ export class ChatConversationService {
         } } : {}),
         canExecute: async () => (this.privacyVersions.get(input.guildId) ?? 0) === privacyVersion && (!input.canExecute || await input.canExecute()) && await expandedStillCurrent(),
         onModelAttempt: () => this.scheduler.recordModelAttempt() }, async (result) => {
+        const effects = authorizeConversationEffects(result, input.sourceMessageId ?? null);
+        if (effects.action !== "reply" && effects.action !== "reply_and_react") throw new SocialOutputSuppressed();
         if ((this.privacyVersions.get(input.guildId) ?? 0) !== privacyVersion) {
           emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "privacy_changed" });
           throw new SocialOutputSuppressed();
@@ -905,8 +908,9 @@ export class ChatConversationService {
         try { const text = await deliver(result); release(true); await this.characterRuntime?.recordDelivery(input.guildId, input.sourceMessageId ?? null, true, false); return text; }
         catch (error) { release(false); await this.characterRuntime?.recordDelivery(input.guildId, input.sourceMessageId ?? null, false, false); throw error; }
       }, observer);
+      const effects = authorizeConversationEffects(response, input.sourceMessageId ?? null);
       response.participationDecision = participationDecision(response, input.sourceMessageId ?? null, expiresAt);
-      if (!input.shadowMode && (!optional || this.now() < expiresAt!) &&
+      if (effects.action !== "silent" && !input.shadowMode && (!optional || this.now() < expiresAt!) &&
           (response.ambientAction === "reply" || (input.triggerMode !== "continuation" && input.triggerMode !== "spontaneous") || this.episodes.version(key) === contextVersion) &&
           (!input.shouldDeliver || input.shouldDeliver()) && (!input.canExecute || await input.canExecute()) && (!response.contextLease || await response.contextLease.validate()) && (!response.characterCanDeliver || await response.characterCanDeliver())) await input.afterDecision?.(response);
       return response;

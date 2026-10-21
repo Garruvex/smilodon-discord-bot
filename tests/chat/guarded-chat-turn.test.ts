@@ -59,6 +59,17 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false): 
 }
 
 describe("guarded turn acceptance", () => {
+  it("never exposes reactions to effect callbacks after invalid generation evidence", async () => {
+    const { service, fixture, input, reply, decision } = await setup(5000, "alice", true);
+    fixture.add(guardedEvent("current", 4000, "然後呢"));
+    decision.generateCharacterData.mockResolvedValue(contextualProposal({ recipientEvidence: ["question", "answer", "current"] }));
+    reply.mockResolvedValue(decisionResponse({ referentSourceIds: ["not-authorized"], reactionEmoji: "👍", historyReactions: [{ messageId: "question", emoji: "🎉" }] }));
+    const send = vi.fn(() => Promise.resolve("sent")); const afterDecision = vi.fn(() => Promise.resolve());
+    const response = await service.run({ ...input, triggerMode: "spontaneous", contextualCandidate: true, afterDecision }, send);
+    expect(response.conversationDecision).toMatchObject({ status: "failed", decision: { action: "silent" } });
+    expect(response.reactionEmoji).toBeNull(); expect(response.historyReactions).toEqual([]);
+    expect(send).not.toHaveBeenCalled(); expect(afterDecision).not.toHaveBeenCalled();
+  });
   it.each(["followup", "group", "low_confidence", "social_generation"] as const)("distinguishes requested confirmation from unsolicited contribution: %s", async (scenario) => {
     const { service, fixture, input, reply, decision } = await setup(5000, "alice", true);
     fixture.add(guardedEvent("current", 4000, "第二個"));

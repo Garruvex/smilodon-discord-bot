@@ -7,6 +7,7 @@ import type { SocialChatEligibility } from "./social-chat-eligibility.js";
 import { resolveParticipation } from "../../../application/chat/participation-policy.js";
 import { characterSettings } from "../../../application/chat/character-settings.js";
 import { contextualFlow } from "../../../application/chat/contextual-flow.js";
+import { conversationEffects } from "../../../application/chat/conversation-effects.js";
 import { resolveChannelMemoryMode } from "../../../application/memory/memory-channel-policy.js";
 
 import { ChatAccessService } from "../../../application/access/chat-access-service.js";
@@ -165,16 +166,17 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         refreshContextMessage: (event) => this.turnSupport.refreshHistoryEvent(message, event),
         shouldDeliver: () => (opportunityVersion == null || this.conversation?.optionalOpportunityVersion(message.guildId, message.channelId) === opportunityVersion) && !resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).shadowMode,
         afterDecision: async (result) => {
+          const effects = conversationEffects(result); if (!effects) return;
           if (result.characterIsCurrent && !result.characterIsCurrent() || result.characterCanDeliver && !await result.characterCanDeliver()) return;
-          const reactionTarget = result.replyTargetMessageId && result.replyTargetMessageId !== message.id
-            ? await message.channel.messages.fetch(result.replyTargetMessageId).catch(() => null) : message;
+          const reactionTarget = effects.targetMessageId && effects.targetMessageId !== message.id
+            ? await message.channel.messages.fetch(effects.targetMessageId).catch(() => null) : message;
           const reserve = (): ((success: boolean) => void) | null => this.conversation!.reserveReaction(message.guildId, message.channelId,
             resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits);
-          if (result.reactionEmoji && reactionTarget && await this.turnSupport.isEligible(reactionTarget, "history_reaction")) {
+          if (effects.reactionEmoji && reactionTarget && await this.turnSupport.isEligible(reactionTarget, "history_reaction")) {
             const release = reserve();
-            if (release) { try { await withDiscordCaller("chat_reaction", () => reactionTarget.react(result.reactionEmoji!)); release(true); } catch { release(false); } }
+            if (release) { try { await withDiscordCaller("chat_reaction", () => reactionTarget.react(effects.reactionEmoji!)); release(true); } catch { release(false); } }
           }
-          await this.turnSupport.applyHistoryReactions(message.channel, result.historyReactions,
+          await this.turnSupport.applyHistoryReactions(message.channel, effects.historyReactions,
             { guildId: message.guildId, sourceMessageId: message.id }, reserve);
         },
         personality: persona.personality,

@@ -132,7 +132,8 @@ export class ConversationDecisionEngine {
     const result = this.result(request, trigger, now, policyVersion, textAllowed ? "accepted_contribution" : reaction ? "reaction_only" : rejection ?? "text_unavailable",
       "ready", textAllowed ? "reply" : reaction ? "react" : "silent", textAllowed ? "contribute" : "abstain", proposal.recipientEvidence);
     const target = events.find((event) => event.messageId === proposal.target);
-    if (target) result.decision.recipientIds = proposal.contribution.recipientId === "group" ? [] : [target.authorId];
+    if (target) { result.decision.responseToEventId = target.messageId;
+      result.decision.recipientIds = proposal.contribution.recipientId === "group" ? [] : [target.authorId]; }
     return { ...base, result, targetMessageId: proposal.target, targetConfidence: proposal.targetConfidence,
       contribution: textAllowed ? proposal.contribution : null, reaction };
   }
@@ -160,6 +161,7 @@ export class ConversationDecisionEngine {
     const result = this.result(request, trigger, now, policyVersion, reply ? trigger.explicit ? "explicit_request" : "accepted_contribution" : rejectedContribution ? "generated_contribution_rejected" : "contextual_abstention",
       "ready", reply ? react ? "reply_and_react" : "reply" : react ? "react" : "silent", reply || intent === "social" || intent === "closing" ? intent : "abstain", references);
     if (prior) { result.status = prior.status; result.recovery = prior.recovery; result.decision.decisionId = prior.decision.decisionId;
+      result.decision.responseToEventId = prior.decision.responseToEventId;
       if (!trigger.explicit) result.decision.recipientIds = prior.decision.recipientIds;
       if (prior.decision.participationKind) result.decision.participationKind = prior.decision.participationKind;
       if (!trigger.explicit) result.decision.expiresAt = prior.decision.expiresAt;
