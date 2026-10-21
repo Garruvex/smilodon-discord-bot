@@ -91,6 +91,8 @@ export type MemoryRelationPredicate =
 export type MemoryRelationKind = "association" | "consequence";
 
 export interface MemoryRelation {
+  channelId?: string | null;
+  contextProvenance?: ContextProvenance | null;
   id: string;
   guildId: string;
   fromSubjectType: MemorySubjectType;
@@ -106,6 +108,8 @@ export interface MemoryRelation {
 }
 
 export interface RelationCreateInput {
+  channelId?: string | null;
+  contextProvenance?: ContextProvenance | null;
   guildId: string;
   fromSubjectType: MemorySubjectType;
   fromSubjectId: string;
@@ -119,6 +123,8 @@ export interface RelationCreateInput {
 }
 
 export interface RelatedSubjectsQuery {
+  context?: GuardedConversationContext;
+  now?: number;
   guildId: string;
   // The current channel the recall is happening in — matches canRecall's
   // isolationChannelId rule exactly: a relation is visible when its own
@@ -134,6 +140,7 @@ export interface RelatedSubjectsQuery {
 }
 
 export interface RelatedSubject {
+  sourceRelation?: MemoryRelation;
   subjectType: MemorySubjectType;
   subjectId: string;
   // 1 = directly connected to one of the query's subjectIds, 2 = connected
@@ -462,6 +469,7 @@ export interface MemoryRecallInput {
 // path back to the query's subjectIds) — a scoped-out follow-up, not
 // silently dropped.
 export interface CausalChainLink {
+  sourceRelation?: MemoryRelation;
   fromSubjectType: MemorySubjectType;
   fromSubjectId: string;
   predicate: MemoryRelationPredicate;
@@ -597,6 +605,7 @@ export interface ProposedRelation {
 }
 
 export interface MemoryRelationIngestInput {
+  context?: GuardedBackgroundContext | GuardedConversationContext;
   guildId: string;
   channelId: string;
   channelMode: ChannelMemoryMode;

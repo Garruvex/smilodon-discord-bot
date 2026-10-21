@@ -22,6 +22,8 @@ import { GuardedBackgroundContext } from "../../src/application/context/guarded-
 import { ChatToolRegistry } from "../../src/application/chat/tools/chat-tool-registry.js";
 import { DiceRollTool } from "../../src/application/chat/tools/dice-tool.js";
 import { hashContent } from "../../src/application/assets/content-hash.js";
+import { memoryRelationPayload } from "../../src/application/memory/memory-relation-provenance.js";
+import type { MemoryRelation } from "../../src/application/memory/memory.js";
 
 const channelId = "500000000000000001";
 const cleanups: (() => Promise<void>)[] = [];
@@ -64,6 +66,32 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
 }
 
 describe("guarded turn acceptance", () => {
+  it.each(["verified", "unproven", "actor_revoked"] as const)("independently authorizes graph context before exposing a recalled chain: %s", async (scenario) => {
+    const { service, input, fixture, engine, reply } = await setup();
+    fixture.actors.set("bob", { id: "bob", displayName: "Bob", roleNames: [] });
+    const source = await GuardedConversationContext.open(fixture.port, { count: 40, budget: 12000, burstIds: [] });
+    await source.participants(["bob"]);
+    const relation: MemoryRelation = { id: "edge", guildId, channelId, fromSubjectType: "member", fromSubjectId: "alice", toSubjectType: "member", toSubjectId: "bob",
+      predicate: "owes", kind: "consequence", supportingMemoryId: null, isolationChannelId: null, createdAt: 3000 };
+    relation.contextProvenance = scenario === "unproven" ? null : source.provenance(memoryRelationPayload(relation)!, "relation");
+    if (scenario === "actor_revoked") fixture.actors.delete("bob");
+    vi.spyOn(engine, "recall").mockResolvedValue({ memories: [], causalChains: [{ fromSubjectType: "member", fromSubjectId: "alice", toSubjectType: "member", toSubjectId: "bob",
+      predicate: "owes", sourceRelation: relation }] });
+    await service.run(input, (response) => Promise.resolve(response.text));
+    const chains = reply.mock.calls[0]![0].causalChains;
+    expect(chains).toHaveLength(scenario === "verified" ? 1 : 0);
+    expect(JSON.stringify(chains)).not.toContain("contextProvenance"); expect(JSON.stringify(chains)).not.toContain("sourceRelation");
+  });
+
+  it.each([true, false])("resolves an explicitly mentioned eligible profile even without that person's history: %s", async (allowed) => {
+    const { service, input, fixture, reply } = await setup();
+    const bobId = "500000000000000002";
+    fixture.sources.get("current")!.event.content = `<@${bobId}> what is their birthday?`;
+    if (allowed) fixture.actors.set(bobId, { id: bobId, displayName: "Bob", roleNames: [] });
+    await service.run(input,
+      (response) => Promise.resolve(response.text));
+    expect(reply.mock.calls[0]![0].mentionedUsers.map((user) => user.id)).toEqual(allowed ? [bobId] : []);
+  });
   it.each(["eligible", "revoked"] as const)("shares source-verified learned state with decision and generation: %s", async (scenario) => {
     const { service, input, reply, fixture, runtime, profiles, decision } = await setup(5000, "alice", true);
     fixture.sources.get("current")!.event.content = "What should I adjust in this engine?";

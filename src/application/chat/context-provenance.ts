@@ -7,7 +7,7 @@ const digest = z.string().regex(/^[a-f0-9]{64}$/);
 export const contextProvenanceLimits = { dependencies: 128, serializedChars: 48_000 } as const;
 export const contextProvenanceSchema = z.object({
   version: z.literal(1),
-  purpose: z.enum(["reply", "memory_claim", "character_state"]).optional(),
+  purpose: z.enum(["reply", "memory_claim", "character_state", "relation", "identity_alias"]).optional(),
   coverage: z.enum(["partial", "complete"]),
   audience: z.object({ guildId: id, channelId: id, userId: id.nullable() }).strict(),
   outputHash: digest,

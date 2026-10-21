@@ -326,6 +326,8 @@ export const memorySources = pgTable("memory_sources", {
 // here, just an edge between two (subjectType, subjectId) pairs that may or
 // may not have memories of their own.
 export const memoryRelations = pgTable("memory_relations", {
+  channelId: text("channel_id"),
+  contextProvenance: jsonb("context_provenance").$type<ContextProvenance | null>(),
   id: uuid("id").primaryKey(),
   guildId: text("guild_id").notNull(),
   fromSubjectType: text("from_subject_type").notNull(),
@@ -356,7 +358,7 @@ export const memoryRelations = pgTable("memory_relations", {
   // reason as memories_identity.
   uniqueIndex("memory_relations_identity").on(
     table.guildId, table.fromSubjectType, table.fromSubjectId, table.predicate, table.kind,
-    table.toSubjectType, table.toSubjectId, sql`coalesce(${table.isolationChannelId}, '')`,
+    table.toSubjectType, table.toSubjectId, sql`coalesce(${table.isolationChannelId}, '')`, sql`coalesce(${table.channelId}, '')`,
   ),
 ]);
 

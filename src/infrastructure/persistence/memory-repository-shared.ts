@@ -1,10 +1,44 @@
 import type {
   Memory,
+  MemoryRelation,
   MemoryRelationKind,
   MemoryRelationPredicate,
   MemorySubjectType,
   RelatedSubject,
+  RelatedSubjectsQuery,
 } from "../../application/memory/memory.js";
+import { memoryRelationProof } from "../../application/memory/memory-relation-provenance.js";
+import { isGuardedContext } from "../../application/chat/guarded-conversation-context.js";
+import { SocialOutputSuppressed } from "../../application/chat/message-origin-store.js";
+
+export interface StoredRelation {
+  id: string; guildId: string; channelId?: string | null; contextProvenance?: unknown;
+  fromSubjectType: string; fromSubjectId: string; toSubjectType: string; toSubjectId: string; kind: string; predicate: string;
+  isolationChannelId: string | null; supportingMemoryId: string | null; createdAt: Date;
+}
+export function relationFromRow(row: StoredRelation): MemoryRelation {
+  return { id: row.id, guildId: row.guildId, channelId: row.channelId ?? null, contextProvenance: memoryRelationProof(row.contextProvenance, row),
+    fromSubjectType: row.fromSubjectType as MemorySubjectType, fromSubjectId: row.fromSubjectId,
+    toSubjectType: row.toSubjectType as MemorySubjectType, toSubjectId: row.toSubjectId,
+    predicate: row.predicate as MemoryRelationPredicate, kind: row.kind as MemoryRelationKind,
+    isolationChannelId: row.isolationChannelId, supportingMemoryId: row.supportingMemoryId, createdAt: row.createdAt.getTime() };
+}
+export async function authorizedRelationRows<T extends StoredRelation>(rows: readonly T[], query: RelatedSubjectsQuery,
+  resolveMemory: (id: string) => Promise<Memory | null>): Promise<readonly (T & { sourceRelation?: MemoryRelation })[]> {
+  if (!query.context) return rows;
+  if (!isGuardedContext(query.context)) throw new SocialOutputSuppressed();
+  const supportIds = [...new Set(rows.slice(0, 128).flatMap((row) => row.supportingMemoryId ? [row.supportingMemoryId] : []))];
+  const supported = (await Promise.all(supportIds.map(resolveMemory))).filter((memory): memory is Memory => memory !== null);
+  const allowedSupport = new Set((await query.context.memories(supported, true, query.now)).map((memory) => memory.id));
+  const candidates: MemoryRelation[] = [];
+  for (const row of rows.slice(0, 128)) {
+    const relation = relationFromRow(row); if (!relation.contextProvenance) continue;
+    if (relation.supportingMemoryId && !allowedSupport.has(relation.supportingMemoryId)) continue;
+    candidates.push(relation);
+  }
+  const allowed = new Map((await query.context.relations(candidates)).map((relation) => [relation.id, relation]));
+  return rows.filter((row) => allowed.has(row.id)).map((row) => ({ ...row, sourceRelation: allowed.get(row.id)! }));
+}
 
 // Backend-independent pieces of the MemoryRepository implementations —
 // shared by sqlite-memory-repository.ts and postgres-memory-repository.ts so
@@ -50,6 +84,7 @@ export function collectRelatedSubjects(
   rows: readonly {
     fromSubjectType: string; fromSubjectId: string; toSubjectType: string; toSubjectId: string;
     kind: string; predicate: string;
+    sourceRelation?: MemoryRelation;
   }[],
   frontier: readonly string[],
   hop: number,
@@ -74,6 +109,7 @@ export function collectRelatedSubjects(
         viaSubjectId: fromInFrontier ? row.fromSubjectId : row.toSubjectId,
         viaSubjectType: (fromInFrontier ? row.fromSubjectType : row.toSubjectType) as MemorySubjectType,
         edgePointsToVia: !fromInFrontier,
+        ...(row.sourceRelation ? { sourceRelation: row.sourceRelation } : {}),
       });
     }
     if (!visited.has(otherSubjectId)) {

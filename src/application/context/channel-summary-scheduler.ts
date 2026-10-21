@@ -585,6 +585,7 @@ export class ChannelSummaryScheduler {
           // from the same batch — provenance here is the batch, not a row.
           await this.memoryEngine.ingestRelations({
             guildId: profile.guildId, channelId, channelMode: mode,
+            context,
             proposals, supportingMemoryId: null, now,
           });
         } catch (error) {

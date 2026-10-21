@@ -32,7 +32,7 @@ export function guardedTools(registry: ChatToolRegistry | null, lease: GuardedCo
           if (typeof raw !== "string" || !texts.some((text) => text.match(/https?:\/\/[^\s<>]+/gu)?.includes(raw)))
             return { content: "The link must come from supplied authorized conversation context. Ask for the link." };
         }
-        const result = await tool.execute(args, { ...context, contextLease: lease, beforeModelAttempt: check, knownSubjectIds: subjects });
+        const result = await tool.execute(args, { ...context, contextLease: lease, beforeModelAttempt: check, knownSubjectIds: [...new Set([...subjects, ...lease.admittedActorIds])] });
         context.signal?.throwIfAborted(); await check();
         if (tool instanceof ReadLinkTool) lease.recordPublicTool(tool.name, result.content);
         if (tool.outputKind !== "context") executed();

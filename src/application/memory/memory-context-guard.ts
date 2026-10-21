@@ -23,6 +23,15 @@ export function memoryModelOptions(context: MemoryIngestInput["context"], purpos
 
 export async function authorizeClassificationClaims(context: MemoryIngestInput["context"], records: readonly Memory[], now: number): Promise<readonly Memory[]> {
   if (context === undefined) return records;
-  await checkMemoryContext(context);
+  if (!isGuardedContext(context) && !isBackgroundContext(context, "summary") && !isBackgroundContext(context, "memory_extraction")) throw new SocialOutputSuppressed();
   return context.classificationClaims(records, now);
+}
+
+export async function authorizeRelationMembers(context: MemoryIngestInput["context"], ids: readonly string[]): Promise<ReadonlySet<string>> {
+  if (context === undefined) return new Set(ids);
+  if (isGuardedContext(context)) return new Set((await context.participants(ids)).map((actor) => actor.id));
+  if (isBackgroundContext(context, "summary") || isBackgroundContext(context, "memory_extraction")) {
+    await context.check(); return new Set(context.messages.map((message) => message.authorId));
+  }
+  throw new SocialOutputSuppressed();
 }

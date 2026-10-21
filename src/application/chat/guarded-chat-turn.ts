@@ -62,8 +62,12 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   // The source authority owns admission even if a repository/engine adapter
   // returns an unexpected row or unproven relationship metadata.
   const memoryClaims = await lease.memories(recalled.memories, true, dependencies.now());
-  emitChatDiagnostic(dependencies.logger, { event: "context.guard.sources", sessions: sessions.length, memories: memoryClaims.length, unavailable:
-    ["legacy_derived"] });
+  const relationCandidates = recalled.causalChains.flatMap((chain) => chain.sourceRelation ? [chain.sourceRelation] : []);
+  const relations = await lease.relations(relationCandidates);
+  const causalChains = relations.filter((relation) => relation.kind === "consequence").map((relation) => ({
+    fromSubjectType: relation.fromSubjectType, fromSubjectId: relation.fromSubjectId, predicate: relation.predicate,
+    toSubjectType: relation.toSubjectType, toSubjectId: relation.toSubjectId,
+  }));
   let prepared: CharacterPreparedTurn | null = null;
   const access = async (): Promise<void> => {
     assertTurnActive(input.turnSignal);
@@ -72,26 +76,28 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   };
   const check = async (): Promise<void> => { await access(); if (!await lease.validate()) throw new SocialOutputSuppressed(); };
   const currentUser = lease.current.author ?? input.currentUser;
-  const participants = [...new Map([...lease.replyChain, ...lease.history, ...lease.burst].filter((event) => event.author)
-    .map((event) => [event.authorId, event.author!])).values()];
+  const historyParticipants = [...lease.replyChain, ...lease.history, ...lease.burst].filter((event) => event.author).map((event) => event.author!);
   const mentionedIds = new Set(lease.currentEvent?.type === "message" ? lease.currentEvent.mentionedUserIds :
     lease.currentEvent?.type === "reaction_snapshot" ? lease.currentEvent.reactions.flatMap((reaction) => reaction.actorIds) : []);
+  const participants = [...new Map([...historyParticipants, ...await lease.participants([...mentionedIds])].map((actor) => [actor.id, actor])).values()];
   const capabilities = effectiveChatCapabilities(input, { guarded: true, nativeWebSearchSupported: dependencies.nativeWebSearchSupported === true,
     applicationToolsSupported: dependencies.applicationToolsSupported === true,
     imageGenerationSupported: dependencies.imageGenerationSupported === true,
     shadow: input.shadowMode ?? false });
   const images = capabilities.imageInputEnabled ? await lease.images(input.maxImagesPerRequest ?? 2) : [];
+  emitChatDiagnostic(dependencies.logger, { event: "context.guard.sources", sessions: sessions.length, memories: memoryClaims.length,
+    relations: relations.length, actors: lease.admittedActorIds.length, images: images.length, unavailable: ["legacy_derived"] });
   let request: ChatRequest = {
     turnPlan: input.turnPlan,
     guildId: input.guildId, channelId: input.channelId, personality: input.personality, characterPersonaHash: input.personalitySourceHash ?? hashContent(input.personality), personaLore: [], personaDrift: null,
-    exampleExchanges: [], userCustomization: null, currentUser, mentionedUsers: participants.filter((actor) => actor.id !== currentUser.id && mentionedIds.has(actor.id)),
+    exampleExchanges: [], userCustomization: null, currentUser, mentionedUsers: participants.filter((actor) => actor.id !== currentUser.id && actor.id !== input.botUserId && actor.kind !== "bot" && mentionedIds.has(actor.id)),
     recentHistory: new RecentPromptHistorySelector().select(sessions), memories: memoryClaims.filter((record) => record.audience === "private").map((record) => ({
       id: record.id, assertedByUserId: record.ownerUserId!, subjectUserId: record.subjectId, topic: record.topic, slot: record.slot,
       statement: record.statement, updatedAt: record.updatedAt, embedding: null,
     })), guildKnowledge: memoryClaims.filter((record) => record.audience !== "private").map((record) => ({
       id: record.id, subjectType: record.subjectType, subjectId: record.subjectId, topic: record.topic, slot: record.slot,
       statement: record.statement, updatedAt: record.updatedAt, embedding: null, source: record.source === "administrator" ? "administrator" : record.source === "consolidation" ? "consolidation" : "community",
-    })), causalChains: [],
+    })), causalChains,
     message: lease.currentEvent?.type === "reaction_snapshot" ? `Respond only if useful to this authorized reaction snapshot: ${JSON.stringify(lease.currentEvent)}` : lease.current.content,
     replyChain: lease.currentEvent?.type === "reaction_snapshot" ? [...lease.replyChain, lease.current] : lease.replyChain, replyChainSummary: null, channelHistory: lease.history, currentBurst: lease.burst,
     ...(lease.currentEvent ? { currentEvent: lease.currentEvent } : {}),

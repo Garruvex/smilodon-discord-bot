@@ -176,6 +176,13 @@
       "when": 1792582760958,
       "tag": "0024_awesome_earthquake",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792589539945,
+      "tag": "0025_bouncy_clea",
+      "breakpoints": true
     }
   ]
 }

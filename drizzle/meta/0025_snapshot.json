@@ -1,6 +1,6 @@
 {
-  "id": "7a3e25c1-22b9-446d-9438-67fcc6efb305",
-  "prevId": "475a8049-31b2-4a75-872f-3df1106b5c56",
+  "id": "92ad707d-38a9-4efa-96f9-e3029ef9301a",
+  "prevId": "7a3e25c1-22b9-446d-9438-67fcc6efb305",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2251,6 +2251,18 @@
       "name": "memory_relations",
       "schema": "",
       "columns": {
+        "channel_id": {
+          "name": "channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "context_provenance": {
+          "name": "context_provenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "id": {
           "name": "id",
           "type": "uuid",
@@ -2422,6 +2434,12 @@
             },
             {
               "expression": "coalesce(\"isolation_channel_id\", '')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "coalesce(\"channel_id\", '')",
               "asc": true,
               "isExpression": true,
               "nulls": "last"

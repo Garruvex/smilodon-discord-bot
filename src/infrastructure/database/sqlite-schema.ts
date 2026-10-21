@@ -134,6 +134,8 @@ export const memorySources = sqliteTable("memory_sources", {
 
 // See schema.ts's memoryRelations for the design rationale.
 export const memoryRelations = sqliteTable("memory_relations", {
+  channelId: text("channel_id"),
+  contextProvenance: text("context_provenance", { mode: "json" }).$type<ContextProvenance | null>(),
   id: text("id").primaryKey(),
   guildId: text("guild_id").notNull(),
   fromSubjectType: text("from_subject_type").notNull(),
@@ -152,7 +154,7 @@ export const memoryRelations = sqliteTable("memory_relations", {
   // See schema.ts's memory_relations_identity.
   uniqueIndex("memory_relations_identity").on(
     table.guildId, table.fromSubjectType, table.fromSubjectId, table.predicate, table.kind,
-    table.toSubjectType, table.toSubjectId, sql`coalesce(${table.isolationChannelId}, '')`,
+    table.toSubjectType, table.toSubjectId, sql`coalesce(${table.isolationChannelId}, '')`, sql`coalesce(${table.channelId}, '')`,
   ),
 ]);
 

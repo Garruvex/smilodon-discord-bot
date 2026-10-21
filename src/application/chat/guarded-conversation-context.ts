@@ -2,7 +2,8 @@ import { hashContent } from "../assets/content-hash.js";
 import type { ChannelHistoryMessage, ChatImage, ChatRequest, ChatSource, ChatUser, ConversationEvent } from "./chat-provider.js";
 import { publicWebSources } from "./public-web-sources.js";
 import { memoryClaimProof } from "../memory/memory-claim-provenance.js";
-import { canRecall, canRecallOrdinaryMemory, type Memory, type MemorySource } from "../memory/memory.js";
+import { canRecall, canRecallOrdinaryMemory, type Memory, type MemorySource, type MemoryRelation } from "../memory/memory.js";
+import { memoryRelationPayload, memoryRelationProof } from "../memory/memory-relation-provenance.js";
 import type { ChatSessionExchange } from "./chat-state-store.js";
 import { budgetEligibleHistory } from "./eligible-channel-history.js";
 import { contextProvenanceLimits, dependencyMatchesSource, parseContextProvenance, parseScopedContextProvenance, type ContextProvenance } from "./context-provenance.js";
@@ -22,7 +23,7 @@ export const guardedAssetsHash = (assets: readonly GuardedAssetDescriptor[]): st
 export interface GuardedContextPort {
   turnSignal?: AbortSignal;
   resource?: (key: GuardedResourceKey, signal: AbortSignal) => Promise<string | null>;
-  work?: (phase: "assembly" | "sessions" | "memory" | "assets" | "validation", status: "completed" | "deadline" | "failed", durationMs: number) => void;
+  work?: (phase: GuardedContextPhase, status: "completed" | "deadline" | "failed", durationMs: number) => void;
   loadAsset?: (messageId: string, assetId: string, signal: AbortSignal) => Promise<string | null>;
   persist?: boolean;
   audienceUserId?: string | null;
@@ -38,6 +39,7 @@ export interface GuardedContextPort {
   policyCurrent(): boolean;
 }
 export type GuardedResourceKey = Pick<NonNullable<ContextProvenance["resources"]>[number], "kind" | "id">;
+export type GuardedContextPhase = "assembly" | "sessions" | "memory" | "assets" | "relations" | "identities" | "validation";
 export interface GuardedContextReport {
   replyChain: number; replyBounded: boolean; burst: number; eligibleReactors: number; omittedReactors: number;
   requested: number; fetched: number; examined: number; duplicates: number; unverifiedBot: number; invalidatedDerived: number;
@@ -64,6 +66,7 @@ const compact = (event: ChannelHistoryMessage): ChannelHistoryMessage => ({ ...e
 // It is deliberately narrower than the separately planned universal gateway.
 export class GuardedConversationContext {
   public get cancellationSignal(): AbortSignal | undefined { return this.port.turnSignal; }
+  public get admittedActorIds(): readonly string[] { return Object.freeze([...this.reactionActors.keys()]); }
   private remainingMs: number = guardedContextLimits.workMs;
   private reads = 0;
   private passes = 0;
@@ -87,11 +90,11 @@ export class GuardedConversationContext {
   private reactionActors = new Map<string, ChatUser>();
   private constructor(private readonly port: GuardedContextPort) { registered.add(this); }
 
-  private phase<T>(operation: () => Promise<T>, phase: "assembly" | "sessions" | "memory" | "assets" | "validation" = "assembly"): Promise<T> {
+  private phase<T>(operation: () => Promise<T>, phase: GuardedContextPhase = "assembly"): Promise<T> {
     const work = this.phaseQueue.then(() => this.runPhase(operation, phase));
     this.phaseQueue = work.then(() => undefined, () => undefined); return work;
   }
-  private async runPhase<T>(operation: () => Promise<T>, phase: "assembly" | "sessions" | "memory" | "assets" | "validation"): Promise<T> {
+  private async runPhase<T>(operation: () => Promise<T>, phase: GuardedContextPhase): Promise<T> {
     if (this.closed || !this.port.policyCurrent() || this.remainingMs <= 0) throw new SocialOutputSuppressed();
     const controller = new AbortController(); this.signal = controller.signal; this.cache = new Map();
     const started = Date.now(); let timer: ReturnType<typeof setTimeout> | undefined;
@@ -369,8 +372,42 @@ export class GuardedConversationContext {
     return true;
   }
 
-  public async derived(value: unknown, output: string, purpose: "character_state"): Promise<boolean> {
+  public async participants(ids: readonly string[]): Promise<ChatUser[]> {
+    return this.phase(() => this.resolveParticipants(ids), "identities");
+  }
+
+  private async resolveParticipants(ids: readonly string[]): Promise<ChatUser[]> {
+      const admitted: ChatUser[] = [];
+      for (const id of [...new Set(ids)].slice(0, 100)) {
+        const actor = await this.port.actor(id, this.signal); if (!actor) continue;
+        const prior = this.reactionActors.get(id);
+        if (prior && JSON.stringify(prior) !== JSON.stringify(actor)) throw new SocialOutputSuppressed();
+        this.reactionActors.set(id, actor); admitted.push(actor);
+      }
+      return admitted;
+  }
+
+  public async relations(records: readonly MemoryRelation[]): Promise<MemoryRelation[]> {
     return this.phase(async () => {
+    const admitted: MemoryRelation[] = [];
+    for (const record of records.slice(0, 128)) {
+      if (record.guildId !== this.port.guildId || record.channelId !== this.port.channelId ||
+          record.isolationChannelId !== null && record.isolationChannelId !== this.port.channelId) continue;
+      const proof = memoryRelationProof(record.contextProvenance, record); const payload = memoryRelationPayload(record);
+      if (!proof || !payload) continue;
+      const members = [...new Set([...(record.fromSubjectType === "member" ? [record.fromSubjectId] : []), ...(record.toSubjectType === "member" ? [record.toSubjectId] : [])])];
+      if ((await this.resolveParticipants(members)).length !== members.length || !await this.retainDerived(proof, payload, "relation")) continue;
+      admitted.push(record);
+    }
+    return admitted;
+    }, "relations");
+  }
+
+  public async derived(value: unknown, output: string, purpose: "character_state" | "relation" | "identity_alias"): Promise<boolean> {
+    return this.phase(() => this.retainDerived(value, output, purpose), "memory");
+  }
+
+  private async retainDerived(value: unknown, output: string, purpose: "character_state" | "relation" | "identity_alias"): Promise<boolean> {
       const proof = parseContextProvenance(value);
       if (!proof || proof.purpose !== purpose || proof.outputHash !== hashContent(output) || !await this.proofSourcesCurrent(proof)) return false;
       for (const entry of proof.dependencies) {
@@ -382,7 +419,6 @@ export class GuardedConversationContext {
       this.inheritPublicTools(proof);
       if (proof.publicWeb) { this.publicWebUsed = true; for (const digest of proof.publicWeb.citationHashes) this.publicWebCitations.add(digest); }
       return true;
-    }, "memory");
   }
 
   private async validateResources(proof: Pick<ContextProvenance, "resources">): Promise<boolean> {
@@ -493,7 +529,7 @@ export class GuardedConversationContext {
     return selected;
   }
 
-  public provenance(output: string, purpose: "reply" | "memory_claim" | "character_state" = "reply"): ContextProvenance | null {
+  public provenance(output: string, purpose: "reply" | "memory_claim" | "character_state" | "relation" | "identity_alias" = "reply"): ContextProvenance | null {
     if (this.port.persist === false || this.closed || !this.port.policyCurrent() || !this.evidence.size || this.evidence.size > contextProvenanceLimits.dependencies) return null;
     return parseContextProvenance({ version: 1, ...(purpose !== "reply" ? { purpose } : {}), coverage: "complete", audience: { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.audienceUserId ?? null },
       outputHash: hashContent(output), dependencies: [...this.evidence.values()].map((source) => ({ guildId: this.port.guildId,

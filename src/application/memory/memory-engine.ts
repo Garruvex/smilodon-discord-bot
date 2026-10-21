@@ -4,7 +4,8 @@ import { safeFailure } from "../diagnostics/chat-diagnostics.js";
 
 import type { MemoryConflictClassifier } from "../chat/chat-provider.js";
 import type { EmbeddingsClient } from "../chat/embeddings-client.js";
-import { authorizeClassificationClaims, checkMemoryContext, memoryModelOptions } from "./memory-context-guard.js";
+import { authorizeClassificationClaims, authorizeRelationMembers, checkMemoryContext, memoryModelOptions } from "./memory-context-guard.js";
+import { memoryRelationPayload } from "./memory-relation-provenance.js";
 import { memoryClaimPayload } from "./memory-claim-provenance.js";
 import { allowsDurableWrites, resolveMemoryScope } from "./memory-channel-policy.js";
 import type { MemoryRelevanceTraceCollector } from "./memory-relevance-trace.js";
@@ -267,9 +268,9 @@ export class DefaultMemoryEngine implements MemoryEngine {
           ...(input.filterSubjectIds?.length ? { subjectIds: input.filterSubjectIds } : {}),
         });
     if (input.context) candidates = { memories: await input.context.memories(candidates.memories, false, input.now) };
-    if (candidates.memories.length === 0) return { memories: [], causalChains: [] };
-    const { boostBySubjectId, causalChains } = input.context ? { boostBySubjectId: new Map<string, number>(), causalChains: [] } :
-      await this.expandRelatedSubjects({ ...input, subjectIds: [...input.subjectIds, ...resolvedAliasIds] });
+    if (candidates.memories.length === 0) return input.context ? { memories: [],
+      causalChains: (await this.expandRelatedSubjects({ ...input, subjectIds: [...input.subjectIds, ...resolvedAliasIds] })).causalChains } : { memories: [], causalChains: [] };
+    const { boostBySubjectId, causalChains } = await this.expandRelatedSubjects({ ...input, subjectIds: [...input.subjectIds, ...resolvedAliasIds] });
     const subjectIds = new Set(input.subjectIds);
     const context = buildRelevanceContext({ message: input.message, recentHistory: input.recentHistory, subjectIds, now: input.now });
     const halfLife = this.fadingHalfLifeDays(input.guildId, input.channelId);
@@ -399,6 +400,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
       related = await this.repository.findRelatedSubjects({
         guildId: input.guildId, channelId: input.channelId, subjectIds: input.subjectIds,
         maxHops: this.limits.maxRelationHops,
+        ...(input.context ? { context: input.context, now: input.now } : {}),
       });
     } catch (error) {
       this.logger?.warn({ ...safeFailure(error), guildId: input.guildId }, "Related-subject lookup failed; recall proceeds without relational boost");
@@ -412,6 +414,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
         const found = { type: subject.subjectType, id: subject.subjectId };
         const [from, to] = subject.edgePointsToVia ? [found, via] : [via, found];
         causalChains.push({
+          ...(subject.sourceRelation ? { sourceRelation: subject.sourceRelation } : {}),
           fromSubjectType: from.type, fromSubjectId: from.id,
           predicate: subject.predicate,
           toSubjectType: to.type, toSubjectId: to.id,
@@ -504,16 +507,29 @@ export class DefaultMemoryEngine implements MemoryEngine {
   // regular facts already go through, so a relation extracted from the same
   // consolidation batch as a fact gets the same isolation boundary.
   public async ingestRelations(input: MemoryRelationIngestInput): Promise<MemoryRelationIngestResult> {
+    await checkMemoryContext(input.context);
     if (!allowsDurableWrites(input.channelMode)) return { created: 0, rejected: input.proposals.length };
     const scope = resolveMemoryScope(input.channelMode, input.channelId, { audience: "guild", channelScoped: true });
     const valid: RelationCreateInput[] = [];
+    const memberIds = [...new Set(input.proposals.flatMap((proposal) => [
+      ...(proposal.fromSubjectType === "member" ? [proposal.fromSubjectId] : []), ...(proposal.toSubjectType === "member" ? [proposal.toSubjectId] : []),
+    ]))];
+    const allowedMembers = await authorizeRelationMembers(input.context, memberIds);
+    if (input.context && input.supportingMemoryId) {
+      const supporting = await this.repository.findById(input.guildId, input.supportingMemoryId);
+      if (!supporting || supporting.status !== "active" || !(await authorizeClassificationClaims(input.context, [supporting], input.now)).length)
+        return { created: 0, rejected: input.proposals.length };
+    }
     let rejected = 0;
     for (const proposal of input.proposals) {
       if (!proposal.fromSubjectId || !proposal.toSubjectId) { rejected += 1; continue; }
+      if (proposal.fromSubjectType === "member" && !allowedMembers.has(proposal.fromSubjectId) ||
+          proposal.toSubjectType === "member" && !allowedMembers.has(proposal.toSubjectId)) { rejected++; continue; }
       if (proposal.fromSubjectType === proposal.toSubjectType && proposal.fromSubjectId === proposal.toSubjectId) {
         rejected += 1; continue; // a relation to itself carries no information
       }
-      valid.push({
+      const relation: RelationCreateInput = {
+        ...(input.context ? { channelId: input.channelId } : {}),
         guildId: input.guildId,
         fromSubjectType: proposal.fromSubjectType,
         fromSubjectId: proposal.fromSubjectId,
@@ -524,13 +540,19 @@ export class DefaultMemoryEngine implements MemoryEngine {
         isolationChannelId: scope.isolationChannelId,
         supportingMemoryId: input.supportingMemoryId,
         now: input.now,
-      });
+      };
+      const payload = memoryRelationPayload(relation);
+      if (!payload) { rejected++; continue; }
+      const contextProvenance = input.context?.provenance(payload, "relation") ?? null;
+      if (input.context && !contextProvenance) { rejected++; continue; }
+      valid.push({ ...relation, contextProvenance });
     }
     if (valid.length === 0) return { created: 0, rejected };
     let created: number;
     try {
       // Already-known edges are skipped by the repository, so `created`
       // counts genuinely new ones only.
+      await checkMemoryContext(input.context);
       created = await this.repository.createRelations(valid);
     } catch (error) {
       this.logger?.warn({ ...safeFailure(error), guildId: input.guildId }, "Relation ingest failed");

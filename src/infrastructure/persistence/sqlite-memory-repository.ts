@@ -1,5 +1,6 @@
 import { hasLegacyRelationshipExpiry } from "./memory-repository-shared.js";
 import { memoryClaimProof } from "../../application/memory/memory-claim-provenance.js";
+import { memoryRelationProof } from "../../application/memory/memory-relation-provenance.js";
 import { randomUUID } from "node:crypto";
 import type { ChannelMemoryMode } from "../../application/memory/memory-channel-policy.js";
 import { aliasQueryTokens, observedSubjectNames } from "../../application/memory/observed-subject-names.js";
@@ -32,7 +33,7 @@ import type {
 } from "../../application/memory/memory.js";
 import * as schema from "../database/sqlite-schema.js";
 import {
-  assertersOf, collectRelatedSubjects, maxCandidatesPerIdentity, maxSupersedeChainDepth, retainCallbackMetadata,
+  assertersOf, authorizedRelationRows, collectRelatedSubjects, maxCandidatesPerIdentity, maxSupersedeChainDepth, retainCallbackMetadata,
 } from "./memory-repository-shared.js";
 
 // SQLite has no ANN index — findRecallCandidates does SQL-side authorization
@@ -603,9 +604,20 @@ export class SqliteMemoryRepository implements MemoryRepository {
     const blocked = new Set(moduleSources.map((memory) => memory.id));
     inputs = inputs.filter((input) => input.supportingMemoryId === null || !blocked.has(input.supportingMemoryId));
     if (inputs.length === 0) return Promise.resolve(0);
+    for (const input of inputs) {
+      const proof = memoryRelationProof(input.contextProvenance, input); if (!proof) continue;
+      this.database.update(schema.memoryRelations).set({ contextProvenance: proof, supportingMemoryId: input.supportingMemoryId }).where(and(
+        eq(schema.memoryRelations.guildId, input.guildId), eq(schema.memoryRelations.fromSubjectType, input.fromSubjectType), eq(schema.memoryRelations.fromSubjectId, input.fromSubjectId),
+        eq(schema.memoryRelations.toSubjectType, input.toSubjectType), eq(schema.memoryRelations.toSubjectId, input.toSubjectId),
+        eq(schema.memoryRelations.predicate, input.predicate), eq(schema.memoryRelations.kind, input.kind),
+        input.channelId == null ? isNull(schema.memoryRelations.channelId) : eq(schema.memoryRelations.channelId, input.channelId),
+        input.isolationChannelId === null ? isNull(schema.memoryRelations.isolationChannelId) : eq(schema.memoryRelations.isolationChannelId, input.isolationChannelId),
+      )).run();
+    }
     // ON CONFLICT DO NOTHING against memory_relations_identity — re-extracting
     // a known edge is a no-op, not a duplicate row.
     const result = this.database.insert(schema.memoryRelations).values(inputs.map((input) => ({
+      channelId: input.channelId ?? null, contextProvenance: memoryRelationProof(input.contextProvenance, input),
       id: randomUUID(),
       guildId: input.guildId,
       fromSubjectType: input.fromSubjectType,
@@ -623,7 +635,7 @@ export class SqliteMemoryRepository implements MemoryRepository {
 
   // See PostgresMemoryRepository.findRelatedSubjects for the BFS rationale
   // (bounded iterative, not a recursive SQL CTE).
-  public findRelatedSubjects(query: RelatedSubjectsQuery): Promise<readonly RelatedSubject[]> {
+  public async findRelatedSubjects(query: RelatedSubjectsQuery): Promise<readonly RelatedSubject[]> {
     const querySubjects = new Set(query.subjectIds);
     const visited = new Set<string>(query.subjectIds);
     const results = new Map<string, RelatedSubject>();
@@ -631,14 +643,17 @@ export class SqliteMemoryRepository implements MemoryRepository {
     for (let hop = 1; hop <= query.maxHops && frontier.length > 0; hop++) {
       const rows = this.database.select().from(schema.memoryRelations).where(and(
         eq(schema.memoryRelations.guildId, query.guildId),
+        or(isNull(schema.memoryRelations.channelId), eq(schema.memoryRelations.channelId, query.channelId)),
+        query.context ? and(eq(schema.memoryRelations.channelId, query.channelId), isNotNull(schema.memoryRelations.contextProvenance)) : undefined,
         notExists(this.database.select({ id: schema.memories.id }).from(schema.memories).where(and(
           eq(schema.memories.id, schema.memoryRelations.supportingMemoryId),
           isNotNull(schema.memories.moduleId),
         ))),
         or(inArray(schema.memoryRelations.fromSubjectId, frontier), inArray(schema.memoryRelations.toSubjectId, frontier)),
         or(isNull(schema.memoryRelations.isolationChannelId), eq(schema.memoryRelations.isolationChannelId, query.channelId)),
-      )).orderBy(asc(schema.memoryRelations.createdAt), asc(schema.memoryRelations.id)).all();
-      frontier = collectRelatedSubjects(rows, frontier, hop, querySubjects, visited, results);
+      )).orderBy(asc(schema.memoryRelations.createdAt), asc(schema.memoryRelations.id)).limit(256).all();
+      const allowed = await authorizedRelationRows(rows, query, (id) => this.findById(query.guildId, id));
+      frontier = collectRelatedSubjects(allowed, frontier, hop, querySubjects, visited, results);
     }
     return Promise.resolve([...results.values()]);
   }

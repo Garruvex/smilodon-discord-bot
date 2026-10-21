@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "bc302ff8-3860-4cb5-9507-da6d3e435c9a",
-  "prevId": "662c0b83-5b3f-453c-8a75-2dae274eb551",
+  "id": "a42ab174-f17f-40f0-a24c-d4fc1f99732b",
+  "prevId": "bc302ff8-3860-4cb5-9507-da6d3e435c9a",
   "tables": {
     "channel_summary_checkpoints": {
       "name": "channel_summary_checkpoints",
@@ -829,6 +829,20 @@
     "memory_relations": {
       "name": "memory_relations",
       "columns": {
+        "channel_id": {
+          "name": "channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "context_provenance": {
+          "name": "context_provenance",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "id": {
           "name": "id",
           "type": "text",
@@ -937,7 +951,8 @@
             "kind",
             "to_subject_type",
             "to_subject_id",
-            "coalesce(\"isolation_channel_id\", '')"
+            "coalesce(\"isolation_channel_id\", '')",
+            "coalesce(\"channel_id\", '')"
           ],
           "isUnique": true
         }
@@ -1374,6 +1389,9 @@
       "memory_relations_identity": {
         "columns": {
           "coalesce(\"isolation_channel_id\", '')": {
+            "isExpression": true
+          },
+          "coalesce(\"channel_id\", '')": {
             "isExpression": true
           }
         }
