@@ -15,6 +15,23 @@ function trace(events: ChatDiagnosticEvent[], overrides: Partial<RetainedChatTra
 }
 
 describe("recorded chat explanations", () => {
+  it("explains successful generation followed by a result guard rejection as suppression", () => {
+    const events: ChatDiagnosticEvent[] = [
+      { event: "model.provider.attempt", modelIndex: 0, attempt: 1, status: "completed", durationMs: 8452 },
+      { event: "model.operation.completed", purpose: "reply", status: "completed", durationMs: 8454 },
+      { event: "model.gateway.rejected", purpose: "reply", phase: "result" },
+      { event: "chat.model.completed", purpose: "reply", status: "failed", durationMs: 8808, failure: "guard_rejected" },
+      { event: "chat.turn.completed", triggerMode: "direct", outcome: "suppressed", textDeliveryConfirmed: false, durationMs: 12519 },
+    ];
+    expect(explainChatTrace([trace(events)])).toMatchObject({ outcome: "suppressed", reason: "model_gateway_result", modelFailures: 0 });
+    const olderBuildEvents = events.map((event): ChatDiagnosticEvent => event.event === "chat.model.completed" ? { ...event, failure: "provider_error" } : event);
+    expect(explainChatTrace([trace(olderBuildEvents)])).toMatchObject({ outcome: "suppressed", reason: "model_gateway_result" });
+    expect(explainChatTrace([trace([
+      { event: "chat.snapshot.invalidated", gate: "trigger", change: "guild_member_update" },
+      { event: "chat.guard.rejected", gate: "trigger", reason: "discord_revision_changed" },
+      ...events,
+    ])])).toMatchObject({ outcome: "suppressed", reason: "guild_member_update", modelFailures: 0 });
+  });
   it.each(["approval", "source", "result"] as const)("explains an unrecovered %s gate rejection without inventing provider failure or intentional silence", (phase) => {
     const rejected: ChatDiagnosticEvent = { event: "model.gateway.rejected", purpose: "reply", phase };
     expect(explainChatTrace([trace([rejected, turn("failed")])])).toMatchObject({ outcome: "suppressed", reason: `model_gateway_${phase}`, modelFailures: 0 });

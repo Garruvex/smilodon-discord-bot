@@ -93,3 +93,27 @@ Correction verification: **5,153 passed, 7 skipped, zero failed**; TypeScript
 checking, complete application/Activity build, changed-file lint and whitespace
 checks pass. All three added regressions failed with `DataCloneError` before
 the fix. No deployment, live Discord send or paid model request was performed.
+
+## Unresolved production follow-up: completed reply rejected at result gate
+
+The next supplied production trace runs `4425dd74`, source message
+`1562557266077421609`, trace `af30dae8-ab29-44bb-b844-43448c6846e8`.
+The provider attempt completes in 8,452 ms, followed by a completed reply
+operation, `model.gateway.rejected` at `result`, and a suppressed direct turn
+after 12,520 ms with no confirmed delivery. This is not the role-set cloning
+failure. The log does not establish a provider refusal or an intentional
+silence decision, nor does it identify the failing eligibility condition.
+
+New metadata-only diagnostics distinguish trigger, character/persona, and
+context gate failures. Snapshot invalidation records an observed Discord
+event category and, for source edits/deletions, the affected message ID.
+The bounded shared tracker and authorization decisions remain unchanged.
+Suppression uses the `guard_rejected` failure category; trace explanations
+recognize the actual suppressed-turn sequence instead of labeling it a
+provider failure after a completed provider attempt.
+
+Local regression evidence covers generation followed by trigger or persona
+invalidation, event-specific snapshot rejection, and the supplied result-gate
+trace shape. Full suite: **5,157 passed, 7 skipped, zero failed**. The underlying
+production invalidator remains unresolved and requires a trace from a build
+with these diagnostics. No live reproduction or paid provider request was run.

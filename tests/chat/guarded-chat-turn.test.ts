@@ -76,6 +76,29 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
 }
 
 describe("guarded turn acceptance", () => {
+  it("identifies a trigger gate that rejects an otherwise completed direct reply", async () => {
+    const { service, input, reply, records } = await setup();
+    let eligible = true;
+    input.canExecute = (): Promise<boolean> => Promise.resolve(eligible);
+    reply.mockImplementation(() => { eligible = false; return Promise.resolve(decisionResponse()); });
+    const deliver = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
+    await expect(service.run(input, deliver)).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    expect(reply).toHaveBeenCalledOnce(); expect(deliver).not.toHaveBeenCalled();
+    expect(records).toContainEqual(expect.objectContaining({ event: "chat.guard.rejected", gate: "trigger", reason: "trigger_ineligible" }));
+    expect(records).toContainEqual(expect.objectContaining({ event: "chat.model.completed", failure: "guard_rejected" }));
+  });
+  it("identifies persona invalidation after a completed direct reply", async () => {
+    const { service, input, reply, runtime, records } = await setup();
+    let persona = "current";
+    input.configurationContext = await GuardedConfigurationContext.open({ kind: "persona", guildId, ownerUserId: null },
+      { text: input.personality, personalitySourceHash: persona }, () => true);
+    runtime.bindPersonaVersion(() => Promise.resolve(persona));
+    reply.mockImplementation(() => { persona = "changed"; return Promise.resolve(decisionResponse()); });
+    const deliver = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
+    await expect(service.run(input, deliver)).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    expect(reply).toHaveBeenCalledOnce(); expect(deliver).not.toHaveBeenCalled();
+    expect(records).toContainEqual(expect.objectContaining({ event: "chat.guard.rejected", gate: "character", reason: "persona_changed" }));
+  });
   it("delivers a direct turn with production music role sets across both request approvals", async () => {
     const { service, input, reply } = await setup();
     input.musicControllerRoleIds = new Set(["controller"]);

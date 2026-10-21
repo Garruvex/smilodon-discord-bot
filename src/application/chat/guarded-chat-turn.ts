@@ -97,10 +97,23 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   let prepared: CharacterPreparedTurn | null = null;
   const access = async (): Promise<void> => {
     assertTurnActive(input.turnSignal);
-    if (input.canExecute && !await input.canExecute() || prepared && !await dependencies.runtime!.validatePrepared(prepared)) throw new SocialOutputSuppressed();
+    if (input.canExecute && !await input.canExecute()) {
+      emitChatDiagnostic(dependencies.logger, { event: "chat.guard.rejected", gate: "trigger", reason: "trigger_ineligible" });
+      throw new SocialOutputSuppressed();
+    }
+    if (prepared && !await dependencies.runtime!.validatePrepared(prepared)) {
+      emitChatDiagnostic(dependencies.logger, { event: "chat.guard.rejected", gate: "character", reason: "character_ineligible" });
+      throw new SocialOutputSuppressed();
+    }
     assertTurnActive(input.turnSignal);
   };
-  const check = async (freshness: "use" | "effect" = "use"): Promise<void> => { await access(); if (!await lease.validate(freshness)) throw new SocialOutputSuppressed(); };
+  const check = async (freshness: "use" | "effect" = "use"): Promise<void> => {
+    await access();
+    if (!await lease.validate(freshness)) {
+      emitChatDiagnostic(dependencies.logger, { event: "chat.guard.rejected", gate: "context", reason: "context_changed" });
+      throw new SocialOutputSuppressed();
+    }
+  };
   const currentUser = lease.current.author ?? { id: lease.current.authorId, displayName: lease.current.authorDisplayName, roleNames: [] };
   const historyParticipants = [...lease.replyChain, ...lease.history, ...lease.burst].filter((event) => event.author).map((event) => event.author!);
   const mentionedIds = new Set(lease.currentEvent?.type === "message" ? lease.currentEvent.mentionedUserIds :

@@ -681,12 +681,20 @@ occurred before the reply model call and was previously logged as a generic
 Earlier turn fixtures omitted these production fields. New regressions cover
 reapproval, repair, and direct reply delivery with role sets present.
 
-Local verification: **5,153 tests passed, 7 skipped**, with typecheck, full build,
-and changed-file lint passing. This does not establish production correctness:
-deployment and successful live reproduction of the failing interaction remain
-unverified. See the [current context plan](docs/channel-context-snapshot-plan-2026-10-22.md)
+Verification at that checkpoint: **5,153 tests passed, 7 skipped**, with typecheck,
+full build, and changed-file lint passing. This does not establish production
+correctness. See the [current context plan](docs/channel-context-snapshot-plan-2026-10-22.md)
 and [implementation audit](docs/chat-context-final-audit-2026-10-22.md) for scope,
 evidence, and remaining acceptance work.
+
+A subsequent production trace confirms `4425dd74` reached a completed reply
+model call, then suppressed its result before delivery. The underlying
+invalidation is **unresolved**: that build did not record which eligibility
+check failed. New `chat.guard.rejected` and `chat.snapshot.invalidated` events
+identify the gate and observed Discord invalidation event without logging
+conversation text. Guard rejections are classified as `guard_rejected`, not
+provider failures. These diagnostic changes do not relax access checks or
+establish that the missing-reply issue is fixed.
 
 ## Channel-context memory
 

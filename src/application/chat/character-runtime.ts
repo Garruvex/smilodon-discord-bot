@@ -126,18 +126,21 @@ export class CharacterRuntime {
     return !!profile && this.fingerprint(profile, prepared.request.channelId) === prepared.fingerprint;
   }
   public async validatePrepared(prepared: CharacterPreparedTurn): Promise<boolean> {
-    if (!this.stillEligible(prepared)) return false;
-    if (prepared.conversationDecision?.recovery === "grounded_reply" && !this.decisionEngine.canUseGroundedContinuation(prepared.request, this.now())) return false;
+    const reject = (reason: "character_profile_changed" | "grounded_continuation_expired" | "persona_changed" | "target_preferences_changed" | "character_memory_changed"): false => {
+      emitChatDiagnostic(this.logger, { event: "chat.guard.rejected", gate: "character", reason }); return false;
+    };
+    if (!this.stillEligible(prepared)) return reject("character_profile_changed");
+    if (prepared.conversationDecision?.recovery === "grounded_reply" && !this.decisionEngine.canUseGroundedContinuation(prepared.request, this.now())) return reject("grounded_continuation_expired");
     if (this.personaVersion && prepared.request.characterPersonaHash && (prepared.turn.settings.enabled || prepared.turn.settings.context.enabled) &&
-        await this.personaVersion(prepared.request.guildId) !== prepared.request.characterPersonaHash) return false;
+        await this.personaVersion(prepared.request.guildId) !== prepared.request.characterPersonaHash) return reject("persona_changed");
     if (prepared.styleUserId && prepared.styleSignature && this.targetPreferences &&
-        JSON.stringify(await this.targetPreferences(prepared.request.guildId, prepared.styleUserId)) !== prepared.styleSignature) return false;
+        JSON.stringify(await this.targetPreferences(prepared.request.guildId, prepared.styleUserId)) !== prepared.styleSignature) return reject("target_preferences_changed");
     // Solicited replies use a stable snapshot. Ordinary background learning
     // and mood expiry must not silence a mention. Explicit forgetting/access
     // changes still use conversation privacy versions and eligibility.
     if (isGuardedContext(prepared.request.contextLease) || prepared.request.triggerMode === "direct" || prepared.request.triggerMode === "ambient") return this.stillEligible(prepared);
     const current = await this.registry.contribute({ ...prepared.turn, validationNow: this.now() });
-    return this.stillEligible(prepared) && JSON.stringify(current) === prepared.memoryContextSignature;
+    return this.stillEligible(prepared) && JSON.stringify(current) === prepared.memoryContextSignature || reject("character_memory_changed");
   }
   private query(turn: CharacterTurn): CharacterCandidateQuery {
     return { guildId: turn.request.guildId, channelId: turn.request.channelId, userId: turn.request.currentUser.id, now: turn.validationNow ?? turn.now,

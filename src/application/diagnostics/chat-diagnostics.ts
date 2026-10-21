@@ -4,6 +4,7 @@ import { performance } from "node:perf_hooks";
 import type { Logger } from "pino";
 import { z } from "zod";
 import type { ChatTraceStore } from "./chat-trace-store.js";
+import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
 
 export const diagnosticProcessRunId = randomUUID();
 let traceSequence = 0;
@@ -31,13 +32,19 @@ export const failureCategory = z.enum([
   "timeout", "http_error", "rate_limited", "invalid_json", "schema_mismatch",
   "incomplete_response", "transport_error", "provider_error", "provider_cooldown", "operation_error", "data_clone_error", "invalid_target",
   "fixed_target_mismatch", "invalid_boundary", "invalid_evidence", "invalid_contribution",
-  "invalid_thought", "recipient_mismatch",
+  "invalid_thought", "recipient_mismatch", "guard_rejected",
 ]);
 export type FailureCategory = z.infer<typeof failureCategory>;
 
 // Allow-list every serialized field. Runtime stripping also protects callers
 // compiled without TypeScript, and prevents raw provider/Discord objects leaking.
 const eventSchema = z.discriminatedUnion("event", [
+  z.object({ event: z.literal("chat.snapshot.invalidated"), gate: z.enum(["trigger", "context"]), changedMessageId: identifier.optional(),
+    change: z.enum(["connection_unavailable", "revision_capacity", "shard_disconnect", "shard_reconnecting", "shard_resume", "message_update", "message_delete", "message_delete_bulk",
+      "guild_member_update", "guild_member_remove", "role_update", "role_delete", "role_create", "channel_update", "channel_delete", "thread_update", "thread_delete", "thread_members_update", "guild_delete"]) }),
+  z.object({ event: z.literal("chat.guard.rejected"), gate: z.enum(["trigger", "character", "context"]),
+    reason: z.enum(["discord_revision_changed", "policy_changed", "channel_access_changed", "trigger_ineligible", "character_ineligible", "context_changed",
+      "character_profile_changed", "grounded_continuation_expired", "persona_changed", "target_preferences_changed", "character_memory_changed"]) }),
   z.object({ event: z.literal("context.guard.work"), phase: z.enum(["assembly", "sessions", "memory", "assets", "relations", "identities", "validation"]), status: z.enum(["completed", "deadline", "failed"]), durationMs: duration }),
   z.object({ event: z.literal("chat.access.refreshed"), cachedReason: z.enum(["member_unavailable", "restricted_role", "channel_denied", "missing_chat_role"]), currentReason: z.enum(["allowed", "member_unavailable", "restricted_role", "channel_denied", "missing_chat_role"]) }),
   z.object({ event: z.literal("chat.delivery.bookkeeping_failed"), stage: z.enum(["proof", "origin"]), failure: failureCategory, httpStatus: z.number().int().min(100).max(599).optional() }),
@@ -202,6 +209,7 @@ export function emitChatDiagnostic(logger: DiagnosticLogger | null, event: ChatD
 // stack, response body, cause, URL, provider code, or an arbitrary error name.
 export function safeFailure(error: unknown, fallback: "provider_error" | "operation_error" = "provider_error"): { failure: FailureCategory; httpStatus?: number } {
   try {
+    if (error instanceof SocialOutputSuppressed) return { failure: "guard_rejected" };
     if (error instanceof SyntaxError) return { failure: "invalid_json" };
     if (error instanceof z.ZodError) return { failure: "schema_mismatch" };
     const parsed = z.object({ name: z.unknown(), status: z.unknown(), code: z.unknown() }).safeParse(error);

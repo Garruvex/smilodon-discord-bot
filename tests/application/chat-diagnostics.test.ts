@@ -4,6 +4,7 @@ import { attachDiagnosticStore, bindDiagnosticTask, diagnosticFields, diagnostic
 import { MemoryChatTraceStore } from "../helpers/chat-trace-fixtures.js";
 import { ChatScheduler, balancedChatLimits } from "../../src/application/chat/chat-scheduler.js";
 import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
+import { SocialOutputSuppressed } from "../../src/application/chat/message-origin-store.js";
 
 describe("chat diagnostic boundary", () => {
   it("retains only controlled labels for a contextual proposal", () => {
@@ -46,6 +47,7 @@ describe("chat diagnostic boundary", () => {
   });
 
   it("classifies safe structural failures without exception messages or provider codes", () => {
+    expect(safeFailure(new SocialOutputSuppressed())).toEqual({ failure: "guard_rejected" });
     expect(safeFailure(new DOMException("SECRET_TIMEOUT", "TimeoutError"))).toEqual({ failure: "timeout" });
     expect(safeFailure(new DOMException("SECRET_CLONE_PAYLOAD", "DataCloneError"))).toEqual({ failure: "data_clone_error" });
     expect(safeFailure(new SyntaxError("SECRET_JSON"))).toEqual({ failure: "invalid_json" });

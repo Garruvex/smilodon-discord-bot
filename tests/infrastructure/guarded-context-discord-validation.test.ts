@@ -16,6 +16,7 @@ async function fixture(retention: "durable" | "session" = "durable", snapshots =
   port: GuardedContextPort;
   client: EventEmitter; forgotten: Set<string>;
   support: ChatTurnSupport; backendRecord: ReturnType<typeof vi.fn>;
+  records: Record<string, unknown>[];
 }> {
   const messages = new Map<string, Message>(); const denied = new Set<string>(); const forgotten = new Set<string>();
   const client = Object.assign(new EventEmitter(), { user: { id: "bot" }, isReady: (): boolean => true });
@@ -41,13 +42,13 @@ async function fixture(retention: "durable" | "session" = "durable", snapshots =
     canReadHistory: () => Promise.resolve(true),
     checkGuardedSource: (message: Message) => Promise.resolve({ eligible: !denied.has(message.id), reason: "passive_access_denied" }),
   } as unknown as SocialChatEligibility;
-  const { logger } = captureDiagnosticLogger();
+  const { logger, records } = captureDiagnosticLogger();
   const backendRecord = vi.fn();
   const support = new ChatTurnSupport(logger, eligibility, withSessionMessageOrigins({ record: backendRecord, find: vi.fn().mockResolvedValue(null) }));
   const port = support.createContextPort(messages.get("41")!);
   const lease = await GuardedConversationContext.open(port, { count: 40, budget: 24000, burstIds: [] });
   fetch.mockClear(); memberFetch.mockClear();
-  return { lease, messages, fetch, memberFetch, denied, port, support, backendRecord, client, forgotten };
+  return { lease, messages, fetch, memberFetch, denied, port, support, backendRecord, client, forgotten, records };
 }
 
 describe("Fallback guarded validation without Discord event snapshots", () => {
@@ -138,6 +139,19 @@ describe("Fallback guarded validation without Discord event snapshots", () => {
 
 
 describe("Discord one-pass context snapshots", () => {
+  it("reports the event that invalidates a trigger without exposing message content", async () => {
+    const { support, messages, client, records } = await fixture("durable", true);
+    const eligible = support.createEligibilityCheck(messages.get("41")!);
+    expect(await eligible()).toBe(true);
+    client.emit("roleUpdate", {}, { guild: { id: "guild" } });
+    expect(await eligible()).toBe(false);
+    expect(await eligible()).toBe(false);
+    expect(records.filter((record) => record.event === "chat.snapshot.invalidated")).toEqual([
+      expect.objectContaining({ gate: "trigger", change: "role_update" }),
+    ]);
+    expect(records).toContainEqual(expect.objectContaining({ event: "chat.guard.rejected", reason: "discord_revision_changed" }));
+    expect(JSON.stringify(records)).not.toContain("text 41");
+  });
   it("reuses 40 filtered history messages across 80 nested checks without REST reads or membership scans", async () => {
     const { lease, fetch, memberFetch } = await fixture("durable", true);
     expect(lease.history).toHaveLength(40);
@@ -149,7 +163,7 @@ describe("Discord one-pass context snapshots", () => {
   });
   it.each(["messageUpdate", "messageDelete", "messageDeleteBulk", "guildMemberUpdate", "roleUpdate", "channelUpdate", "threadUpdate", "shardDisconnect", "shardReconnecting", "shardResume"])(
     "invalidates a snapshot on %s without fetching the entire channel again", async (event) => {
-      const { lease, client, fetch, messages } = await fixture("durable", true);
+      const { lease, client, fetch, messages, records } = await fixture("durable", true);
       const guild = { id: "guild" }; const message = messages.get("10")!;
       if (event === "messageUpdate") client.emit(event, message, message);
       else if (event === "messageDelete") client.emit(event, message);
@@ -158,6 +172,8 @@ describe("Discord one-pass context snapshots", () => {
       else if (event === "channelUpdate" || event === "threadUpdate") client.emit(event, {}, { guildId: "guild" });
       else client.emit(event);
       expect(await lease.validate()).toBe(false); expect(fetch).not.toHaveBeenCalled();
+      expect(records).toContainEqual(expect.objectContaining({ event: "chat.snapshot.invalidated", gate: "context",
+        change: event.replace(/[A-Z]/gu, (letter) => `_${letter.toLowerCase()}`) }));
       expect(lease.provenance("answer")).toBeNull();
     });
   it("does not invalidate for a normal new message or an edit in an unrelated channel", async () => {

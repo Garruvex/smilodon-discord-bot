@@ -37,7 +37,7 @@ export function explainChatTrace(traces: readonly RetainedChatTrace[]): ChatExpl
     if (event.event === "context.guard.coverage") result.context = { selected: event.selected, requested: event.requested, status: event.status };
     else if (event.event === "context.history.coverage") result.context = { selected: event.selectedIds.length, requested: event.requested, status: event.status };
     else if (event.event === "context.selection.completed" && !result.context) result.context = { selected: event.selected, requested: null, status: null };
-    if (event.event === "model.decision.attempt" && event.status === "failed" || event.event === "chat.model.completed" && event.status === "failed" ||
+    if (event.event === "model.decision.attempt" && event.status === "failed" || event.event === "chat.model.completed" && event.status === "failed" && event.failure !== "guard_rejected" ||
       event.event === "model.provider.attempt" && event.status === "failed") result.modelFailures++;
     if (event.event === "model.decision.attempt" && event.providerRole === "fallback" || event.event === "model.provider.attempt" && event.modelIndex > 0 ||
       event.event === "chat.decision.resolved" && event.recovery === "grounded_reply") result.fallbackObserved = true;
@@ -54,6 +54,9 @@ export function explainChatTrace(traces: readonly RetainedChatTrace[]): ChatExpl
   const candidate = last("chat.candidate.changed"); const deadline = last("chat.turn.deadline");
   const plan = last("chat.turn.plan");
   const admission = last("model.gateway.rejected");
+  const snapshotChange = last("chat.snapshot.invalidated");
+  const guardRejection = events.findLast((event) => event.event === "chat.guard.rejected" &&
+    !["trigger_ineligible", "character_ineligible"].includes(event.reason)) ?? last("chat.guard.rejected");
   const admissionIndex = events.findLastIndex((event) => event.event === "model.gateway.rejected");
   const recoveredAdmission = events.slice(admissionIndex + 1).some((event) => event.event === "chat.model.completed" && event.status === "valid" ||
     event.event === "chat.decision.resolved" && event.status === "ready");
@@ -65,7 +68,10 @@ export function explainChatTrace(traces: readonly RetainedChatTrace[]): ChatExpl
   else if (delivery?.status === "failed") { result.outcome = "delivery_failed"; result.reason = delivery.failure ?? null; }
   else if (deadline) { result.outcome = "suppressed"; result.reason = "turn_deadline"; }
   else if (plan?.state === "blocked") { result.outcome = "suppressed"; result.reason = plan.reason ?? "plan_blocked"; }
-  else if (admission && !recoveredAdmission && (!turn || turn.outcome === "failed")) { result.outcome = "suppressed"; result.reason = `model_gateway_${admission.phase}`; }
+  else if (admission && !recoveredAdmission && (!turn || turn.outcome === "failed" || turn.outcome === "suppressed")) {
+    result.outcome = "suppressed";
+    result.reason = snapshotChange?.change ?? (guardRejection?.event === "chat.guard.rejected" ? guardRejection.reason : `model_gateway_${admission.phase}`);
+  }
   else if (turn?.outcome === "failed") { result.outcome = "failed"; result.reason = turn.failure ?? null; }
   else if (last("chat.trace.interrupted")) result.outcome = "interrupted_unknown";
   else if (validation?.status === "changed") { result.outcome = "source_invalidated"; result.reason = "context_changed"; }

@@ -12,6 +12,12 @@ boundary and direct-delivery regressions cover the formerly omitted production
 fields. See the [follow-up evidence](channel-context-snapshot-plan-2026-10-22.md#production-follow-up-request-approval-with-music-roles).
 Earlier local completion evidence did not certify this production case.
 
+The next production report, now running `4425dd74`, reaches a completed reply
+model call but rejects its result at the application gate without delivery.
+The precise invalidator was not logged and remains unresolved. The latest
+diagnostic checkpoint adds gate/event reasons and correct suppression
+classification; it is not a confirmed fix for that production behavior.
+
 The local source and consumer migration is implemented. All production Discord chat entry points use the registered source engine; all configured chat, utility, dedicated decision, image and embedding capabilities are exposed through mandatory frozen model facades. The production memory engine is also behind a frozen mandatory facade. There is no active context-free chat/model fallback selected by a missing port or legacy retrieval setting.
 
 This scope covers Discord conversation context and the consumers listed in the AST [model inventory](model-consumer-inventory-2026-10-21.json). Campaign game-state generation is a separate subsystem and does not receive these chat source authorities. The architecture checks protect ordinary application boundaries; they are not a sandbox against intentionally malicious new JavaScript, arbitrary networking or direct database tampering.

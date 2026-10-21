@@ -403,3 +403,19 @@ Diagnostics classify `data_clone_error` without leaking raw error text.
 Verification: **5,153 passed, 7 skipped, zero failed**; typecheck, full build,
 changed-file lint and whitespace checks pass. The previous turn fixtures omitted
 these production fields. No production deployment or paid evaluation occurred.
+
+## Checkpoint 43: diagnose result-gate suppression; production cause unresolved
+
+The supplied `4425dd74` trace completes a reply provider call in 8.45 seconds
+and rejects the result before sending it. Existing diagnostics omit the
+failing eligibility condition and incorrectly label it a provider error.
+New metadata-only events identify trigger/character/context rejections and
+the observed snapshot invalidation event. Guard suppression has its own
+failure category, and trace explanations handle a suppressed turn following
+a completed model call. Authorization and invalidation policy are unchanged.
+
+The production cause remains open pending a trace containing these reasons.
+Regression tests cover completed generation followed by trigger/persona
+invalidation, event categories, and the supplied result-gate trace shape.
+Full suite: **5,157 passed, 7 skipped, zero failed**. No new live request,
+production deployment, or paid evaluation was performed in this checkpoint.

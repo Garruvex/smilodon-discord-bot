@@ -109,7 +109,8 @@ export class ChatTurnSupport {
     const eligibility = this.eligibility;
     const version = eligibility?.contextPolicyVersion(source);
     const dependencies = new Set([source.id]);
-    const revisionCurrent = source.client ? discordContextSnapshotCurrent(source.client, source.guildId!, source.channelId, () => dependencies) : null;
+    const revisionCurrent = source.client ? discordContextSnapshotCurrent(source.client, source.guildId!, source.channelId, () => dependencies,
+      (change, changedMessageId) => emitChatDiagnostic(this.logger, { event: "chat.snapshot.invalidated", gate: "context", change, ...(changedMessageId ? { changedMessageId } : {}) })) : null;
     type Snapshot = { messages: Map<string, Message>; members: Map<string, Promise<GuildMember | null>>; filtered: Map<string, Promise<GuardedContextSource | null>>; forgotten: Map<string, boolean> };
     const makeState = (): Snapshot => ({ messages: new Map(), members: new Map(), filtered: new Map(), forgotten: new Map() });
     const snapshot = makeState();
@@ -255,12 +256,18 @@ export class ChatTurnSupport {
   }
 
   public createEligibilityCheck(message: Message, trigger: SocialTrigger = "direct"): () => Promise<boolean> {
-    const current = message.client ? discordContextSnapshotCurrent(message.client, message.guildId!, message.channelId, () => [message.id]) : null;
+    const current = message.client ? discordContextSnapshotCurrent(message.client, message.guildId!, message.channelId, () => [message.id],
+      (change, changedMessageId) => emitChatDiagnostic(this.logger, { event: "chat.snapshot.invalidated", gate: "trigger", change, ...(changedMessageId ? { changedMessageId } : {}) })) : null;
     const version = this.eligibility?.contextPolicyVersion(message);
     let admission: Promise<boolean> | null = null;
     return async (): Promise<boolean> => {
       if (!current) return this.isEligible(message, trigger);
-      const fresh = (): boolean => current() && !!this.eligibility && this.eligibility.contextPolicyVersion(message) === version && this.eligibility.botCanReadChannel(message, false);
+      const fresh = (): boolean => {
+        const reason = !current() ? "discord_revision_changed" : !this.eligibility || this.eligibility.contextPolicyVersion(message) !== version ? "policy_changed" :
+          !this.eligibility.botCanReadChannel(message, false) ? "channel_access_changed" : null;
+        if (reason) emitChatDiagnostic(this.logger, { event: "chat.guard.rejected", gate: "trigger", reason });
+        return reason === null;
+      };
       if (!fresh()) return false;
       const allowed = await (admission ??= this.isEligible(message, trigger));
       return allowed && fresh();
