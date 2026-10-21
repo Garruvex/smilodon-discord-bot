@@ -480,6 +480,7 @@ export class ChannelSummaryScheduler {
       let result;
       try {
         result = await this.memoryEngine.ingest({
+          context,
           guildId: profile.guildId, channelId, channelMode: mode,
           // Stable per-batch id (mode + guild + channel + cursor range) — a
           // retry of the exact same batch (e.g. after a partial failure)
@@ -700,6 +701,7 @@ export class ChannelSummaryScheduler {
             try {
               await context.check();
               const result = await this.memoryEngine.ingest({
+                context,
                 guildId: job.guildId, channelId: job.channelId, channelMode: mode,
                 assertedByUserId: null, sourceMessageId: job.batchId, source: "consolidation", now, proposals,
               });

@@ -240,6 +240,7 @@ export const roleMenus = pgTable("role_menus", {
 // audience" — the two compose independently (see MemoryEngine.canRecall).
 // Legacy tables above stay in place, unused, until migration is verified.
 export const memories = pgTable("memories", {
+  contextProvenance: jsonb("context_provenance").$type<ContextProvenance>(),
   id: uuid("id").primaryKey(),
   guildId: text("guild_id").notNull(),
   moduleId: text("module_id"),

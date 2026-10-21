@@ -1,4 +1,5 @@
 import { hasLegacyRelationshipExpiry } from "./memory-repository-shared.js";
+import { memoryClaimProof } from "../../application/memory/memory-claim-provenance.js";
 import { randomUUID } from "node:crypto";
 import type { ChannelMemoryMode } from "../../application/memory/memory-channel-policy.js";
 import { aliasQueryTokens, observedSubjectNames } from "../../application/memory/observed-subject-names.js";
@@ -42,6 +43,7 @@ const maxEligibleCandidates = 2_000;
 
 function toMemory(row: typeof schema.memories.$inferSelect): Memory {
   return {
+    ...(memoryClaimProof(row.contextProvenance, row) ? { contextProvenance: memoryClaimProof(row.contextProvenance, row) } : {}),
     id: row.id,
     guildId: row.guildId,
     moduleId: row.moduleId,
@@ -196,6 +198,7 @@ export class SqliteMemoryRepository implements MemoryRepository {
       if (existing && !isRevision) {
         row = transaction.update(schema.memories).set({
           statement: input.statement,
+          contextProvenance: memoryClaimProof(input.contextProvenance, input) ?? memoryClaimProof(existing.contextProvenance, input),
           structuredValue: retainCallbackMetadata(existing.structuredValue, input.structuredValue ?? null, false, input.now),
           // Never lowered by a restatement: most proposers don't rate
           // importance at all (an unrated proposal arrives as 1), so taking
@@ -233,6 +236,7 @@ export class SqliteMemoryRepository implements MemoryRepository {
           topic: input.topic,
           slot: input.slot,
           statement: input.statement,
+          contextProvenance: memoryClaimProof(input.contextProvenance, input),
           structuredValue: retainCallbackMetadata(existing?.structuredValue, input.structuredValue ?? null, isRevision, input.now),
           status: input.status,
           source: input.source,

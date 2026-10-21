@@ -38,14 +38,14 @@ export type FailureCategory = z.infer<typeof failureCategory>;
 // Allow-list every serialized field. Runtime stripping also protects callers
 // compiled without TypeScript, and prevents raw provider/Discord objects leaking.
 const eventSchema = z.discriminatedUnion("event", [
-  z.object({ event: z.literal("context.guard.work"), phase: z.enum(["assembly", "sessions", "validation"]), status: z.enum(["completed", "deadline", "failed"]), durationMs: duration }),
+  z.object({ event: z.literal("context.guard.work"), phase: z.enum(["assembly", "sessions", "memory", "validation"]), status: z.enum(["completed", "deadline", "failed"]), durationMs: duration }),
   z.object({ event: z.literal("chat.access.refreshed"), cachedReason: z.enum(["member_unavailable", "restricted_role", "channel_denied", "missing_chat_role"]), currentReason: z.enum(["allowed", "member_unavailable", "restricted_role", "channel_denied", "missing_chat_role"]) }),
   z.object({ event: z.literal("chat.delivery.bookkeeping_failed"), stage: z.enum(["proof", "origin"]), failure: failureCategory, httpStatus: z.number().int().min(100).max(599).optional() }),
   z.object({ event: z.literal("context.guard.validation"), status: z.enum(["current", "changed", "deadline", "bounded"]), reads: count }),
   z.object({ event: z.literal("context.guard.coverage"), replyChain: count, replyBounded: z.boolean(), burst: count, eligibleReactors: count, omittedReactors: count, requested: count, fetched: count, examined: count, duplicates: count, unverifiedBot: count, invalidatedDerived: count,
     selectedIds: z.array(identifier).max(128), oldestTimestampMs: duration.nullable(), newestTimestampMs: duration.nullable(), eligible: count, selected: count, pages: count, targetedPages: count,
     omitted: count, truncated: count, sourceReads: count, status: z.enum(["filled", "end", "scan_cap", "deadline", "fetch_failed", "source_ineligible", "ineligible_reaction", "no_progress"]) }),
-  z.object({ event: z.literal("context.guard.sources"), sessions: count, unavailable: z.array(z.enum(["legacy_derived", "memory", "summaries", "learned_character", "images", "context_tools", "profile_fields"])) }),
+  z.object({ event: z.literal("context.guard.sources"), sessions: count, memories: count.optional(), unavailable: z.array(z.enum(["legacy_derived", "memory", "summaries", "learned_character", "images", "context_tools", "profile_fields"])) }),
   z.object({ event: z.literal("chat.capabilities.resolved"), webSearchConfigured: z.enum(["off", "auto"]), webSearchEffective: z.enum(["off", "auto"]),
     nativeWebSearchSupported: z.boolean(), shadow: z.boolean(), recovery: z.boolean() }),
   z.object({ event: z.literal("context.background.validation"), purpose: z.enum(["summary", "memory_extraction"]), sources: count, status: z.enum(["current", "changed", "deadline"]) }),

@@ -14,6 +14,8 @@ import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { ChatProviderError } from "./chat-provider.js";
 import { assertTurnActive } from "./turn-work-budget.js";
 import { effectiveChatCapabilities } from "./chat-capabilities.js";
+import type { MemoryEngine } from "../memory/memory.js";
+import { guardedMemoryProposals } from "./guarded-memory-proposals.js";
 
 export async function runGuardedChatTurn(input: GuardedChatConversationInput, dependencies: {
   state: ChatStateStore; runtime: CharacterRuntime | null; logger: Logger | null; now: () => number;
@@ -21,6 +23,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   repair: (text: string, request: ChatRequest) => Promise<string>;
   admitSocialPing?: () => boolean;
   nativeWebSearchSupported?: boolean;
+  memory: MemoryEngine;
 }, deliver: (response: ChatResponse) => Promise<string>, observer?: ChatResponseObserver): Promise<ChatResponse> {
   const port = input.guardedContextPort;
   assertTurnActive(input.turnSignal);
@@ -41,8 +44,16 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   // prompt. Avoid re-fetching their complete provenance only to discard them.
   const sessions = await lease.sessions(state.exchanges.slice(-4).filter((exchange) => !known.has(exchange.user.sourceMessageId ?? "") ||
     !exchange.assistant.messageIds?.length || !exchange.assistant.messageIds.every((id) => known.has(id))));
-  emitChatDiagnostic(dependencies.logger, { event: "context.guard.sources", sessions: sessions.length, unavailable:
-    ["legacy_derived", "memory", "summaries", "learned_character", "images", "context_tools", "profile_fields"] });
+  const recalled = mode === "disabled" || mode === "session_only" ? { memories: [], causalChains: [] } : await dependencies.memory.recall({
+    guildId: input.guildId, channelId: input.channelId, userId: input.currentUser.id, channelMode: mode, context: lease,
+    message: lease.current.content, recentHistory: sessions.flatMap((exchange) => [exchange.user, exchange.assistant]),
+    subjectIds: [...new Set([lease.current.authorId, ...lease.replyChain.map((event) => event.authorId)])], now: dependencies.now(),
+  }).catch((error: unknown) => { if (error instanceof SocialOutputSuppressed) throw error; return { memories: [], causalChains: [] }; });
+  // The source authority owns admission even if a repository/engine adapter
+  // returns an unexpected row or unproven relationship metadata.
+  const memoryClaims = await lease.memories(recalled.memories, true, dependencies.now());
+  emitChatDiagnostic(dependencies.logger, { event: "context.guard.sources", sessions: sessions.length, memories: memoryClaims.length, unavailable:
+    ["legacy_derived", "learned_character", "images", "context_tools", "profile_fields"] });
   let prepared: CharacterPreparedTurn | null = null;
   const access = async (): Promise<void> => {
     assertTurnActive(input.turnSignal);
@@ -61,7 +72,13 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
     turnPlan: input.turnPlan,
     guildId: input.guildId, channelId: input.channelId, personality: input.personality, characterPersonaHash: input.personalitySourceHash ?? hashContent(input.personality), personaLore: [], personaDrift: null,
     exampleExchanges: [], userCustomization: null, currentUser, mentionedUsers: participants.filter((actor) => actor.id !== currentUser.id && mentionedIds.has(actor.id)),
-    recentHistory: new RecentPromptHistorySelector().select(sessions), memories: [], guildKnowledge: [], causalChains: [],
+    recentHistory: new RecentPromptHistorySelector().select(sessions), memories: memoryClaims.filter((record) => record.audience === "private").map((record) => ({
+      id: record.id, assertedByUserId: record.ownerUserId!, subjectUserId: record.subjectId, topic: record.topic, slot: record.slot,
+      statement: record.statement, updatedAt: record.updatedAt, embedding: null,
+    })), guildKnowledge: memoryClaims.filter((record) => record.audience !== "private").map((record) => ({
+      id: record.id, subjectType: record.subjectType, subjectId: record.subjectId, topic: record.topic, slot: record.slot,
+      statement: record.statement, updatedAt: record.updatedAt, embedding: null, source: record.source === "administrator" ? "administrator" : record.source === "consolidation" ? "consolidation" : "community",
+    })), causalChains: [],
     message: lease.currentEvent?.type === "reaction_snapshot" ? `Respond only if useful to this authorized reaction snapshot: ${JSON.stringify(lease.currentEvent)}` : lease.current.content,
     replyChain: lease.currentEvent?.type === "reaction_snapshot" ? [...lease.replyChain, lease.current] : lease.replyChain, replyChainSummary: null, channelHistory: lease.history, currentBurst: lease.burst,
     ...(lease.currentEvent ? { currentEvent: lease.currentEvent } : {}),
@@ -75,7 +92,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
     contextLease: lease, beforeModelAttempt: check,
     enabledTools: [], historyReactionsEnabled: input.historyReactionsEnabled ?? false,
     characterContext: [{ moduleId: "conversation-context", text:
-      "All supplied messages are authorized context. Time gaps are timestamps, not proof of irrelevance. A bare ping may refer to the same person's earlier substantive request; examine its context before acknowledging. Playful personality is welcome for genuinely social pings, without replacing a pending answer. Keep response event, speaker and discussed person distinct. Missing context means unavailable here, not that someone never spoke or was denied permission. Ask for a reference if ambiguous. Truncated content is an excerpt. Memory, learned state, images and contextual tools are unavailable in this guarded text mode; do not invent their contents or promise unavailable actions." }],
+      "All supplied messages and memory claims have authorized source evidence. Time gaps are timestamps, not proof of irrelevance. A bare ping may refer to the same person's earlier substantive request; examine its context before acknowledging. Playful personality is welcome for genuinely social pings, without replacing a pending answer. Keep response event, speaker and discussed person distinct. Missing context means unavailable here, not that someone never spoke or was denied permission. Ask for a reference if ambiguous. Truncated content is an excerpt. Only supplied memory claims are available; learned state, images and contextual tools remain unavailable. Do not invent their contents or promise unavailable actions." }],
   };
   if (!dependencies.runtime && !resolveConversationTrigger(input).explicit) throw new SocialOutputSuppressed();
   if (dependencies.runtime) {
@@ -98,6 +115,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
     shadow: input.shadowMode ?? false, recovery: prepared?.conversationDecision?.recovery === "grounded_reply" });
   await check();
   let response = await dependencies.reply(request, observer);
+  const memoryProposals = guardedMemoryProposals(request, response);
   const webSearchUsed = request.webSearchMode === "auto" && response.webSearchUsed;
   const sources = webSearchUsed ? lease.recordPublicWebSearch(response.sources) : [];
   // Provider output cannot add unguarded sources, capabilities or proof.
@@ -136,6 +154,14 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
     sourceMessageId: lease.current.messageId, sourceTimestampMs: lease.current.timestampMs, channelMemoryMode: mode,
     contextProvenance: allowsDurableWrites(mode) ? lease.provenance(delivered.slice(0, 2000)) : null,
     assistantMessageIds: (response.characterDeliveryProof ?? []).map((part) => part.messageId), actions: [], now: dependencies.now(),
-  }); } catch (error) { throw new ChatStateCommitError(error); } }
+  });
+    if (allowsDurableWrites(mode) && memoryProposals.length) {
+      await check();
+      const result = await dependencies.memory.ingest({ guildId: input.guildId, channelId: input.channelId, channelMode: mode, context: lease,
+        assertedByUserId: input.currentUser.id, sourceMessageId: lease.current.messageId, source: "live", proposals: memoryProposals,
+        sourceTimestampMs: lease.current.timestampMs, now: dependencies.now() });
+      if (result.failed) throw new Error("Guarded memory persistence failed");
+    }
+  } catch (error) { throw new ChatStateCommitError(error); } }
   return response;
 }

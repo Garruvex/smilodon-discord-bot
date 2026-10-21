@@ -43,3 +43,13 @@ Excluded sources stay closed until their producer and consumer migrations pass. 
 ## Closing verification for these checkpoints
 
 Checkpoint 4 commit: `901e3f4e`. Final full suite: **4,882 passed, 7 skipped, zero failed**. Typecheck, production TypeScript compilation, changed-file ESLint, migration consistency and whitespace checks passed. The original source inventory and migration requirements were reread; the remaining items above are implementation work, not merely a live-test requirement. No paid provider evaluation, production deployment, setting change or Discord send was performed. The server's unrelated `npm ci` failure still needs npm's preceding error output to diagnose.
+
+## Checkpoint 5: durable claim provenance and guarded recall
+
+SQLite and PostgreSQL memory rows now carry nullable, versioned claim manifests. Proofs bind the complete claim identity, scope and statement; unproven overwrites cannot inherit another statement's proof. Background summary and queued extraction writes use their registered source snapshots, and guarded live chat persists only literal-source-grounded human proposals after successful delivery. Legacy rows are not backfilled with invented authority.
+
+Guarded recall checks purpose, guild/channel, audience, current subject eligibility, original source hashes and deletion/forgetting before local ranking. Selected claims are retained as delivery dependencies. Private memory cannot enter public output merely because its owner requested it. The source authority independently rechecks returned rows, including results from an unexpected memory adapter; unproven aliases/relationships do not ride along. Decisions and generation receive the same admitted facts. Source manifests contain hashes/IDs, not conversation text. The logical read/pass ceilings account for the additional checks, while the existing 20-second source-work and 30-second turn deadlines remain.
+
+Current source admission is conservative across channels: a claim requires verified sources in the turn's authorized channel/audience. Unverified legacy claims, external-audience facts and unproven relationship/canonicalization evidence remain excluded. Guarded writes do not send unproven older claims to a conflict model. Migrating relationship metadata, learned state, assets, tools and the remaining legacy consumers is ongoing.
+
+Validation: **4,894 passed, 7 skipped, zero failed**; typecheck, production compilation and changed-file lint passed. New tests cover durable reload, identity tampering, source edits/deletion/revocation, public/private audiences, unsupported proposals, and actual decision/generation projection. Both backend migrations were generated locally; no live PostgreSQL connection, paid model call or deployment was used.

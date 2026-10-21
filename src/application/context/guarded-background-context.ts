@@ -1,5 +1,7 @@
 import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
 import type { ChannelHistoryMessage, ChannelHistoryReader } from "./channel-history-reader.js";
+import { backgroundSourceHash, parseContextProvenance, type ContextProvenance } from "../chat/context-provenance.js";
+import { hashContent } from "../assets/content-hash.js";
 
 const registered = new WeakSet<object>();
 export type BackgroundModelPurpose = "summary" | "memory_extraction";
@@ -31,7 +33,7 @@ export class GuardedBackgroundContext {
   }
 
   public async check(): Promise<void> {
-    if (!registered.has(this) || this.closed || ++this.passes > 16) throw new SocialOutputSuppressed();
+    if (!registered.has(this) || this.closed || ++this.passes > 64) throw new SocialOutputSuppressed();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const controller = new AbortController(); let status: BackgroundValidationStatus = "changed";
     try {
@@ -43,6 +45,16 @@ export class GuardedBackgroundContext {
       status = "current";
     } catch (error) { this.closed = true; throw error; }
     finally { if (timer) clearTimeout(timer); this.report?.(status); }
+  }
+
+  public provenance(output: string, purpose: "memory_claim" | "character_state" = "memory_claim", userId: string | null = null): ContextProvenance | null {
+    if (this.closed) return null;
+    const first = this.messages[0]!;
+    return parseContextProvenance({ version: 1, purpose, coverage: "complete", outputHash: hashContent(output),
+      audience: { guildId: first.guildId, channelId: first.channelId, userId }, unresolved: [],
+      dependencies: this.messages.map((source) => ({ guildId: source.guildId, channelId: source.channelId, messageId: source.id,
+        authorId: source.authorId, timestampMs: source.createdAt, projection: { kind: "background_text", chars: source.content.length },
+        representationHash: backgroundSourceHash({ authorId: source.authorId, authorDisplayName: source.authorDisplayName, content: source.content, timestampMs: source.createdAt }) })) });
   }
 }
 

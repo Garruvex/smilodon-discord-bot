@@ -1,0 +1,1 @@
+ALTER TABLE "memories" ADD COLUMN "context_provenance" jsonb;

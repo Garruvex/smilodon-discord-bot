@@ -1,5 +1,6 @@
 import { hasLegacyRelationshipExpiry } from "./memory-repository-shared.js";
 import { randomUUID } from "node:crypto";
+import { memoryClaimProof } from "../../application/memory/memory-claim-provenance.js";
 import type { ChannelMemoryMode } from "../../application/memory/memory-channel-policy.js";
 import { aliasQueryTokens, observedSubjectNames } from "../../application/memory/observed-subject-names.js";
 
@@ -68,6 +69,7 @@ function identityLockKey(identity: MemoryIdentity): string {
 
 function toMemory(row: typeof schema.memories.$inferSelect): Memory {
   return {
+    ...(memoryClaimProof(row.contextProvenance, row) ? { contextProvenance: memoryClaimProof(row.contextProvenance, row) } : {}),
     id: row.id,
     guildId: row.guildId,
     moduleId: row.moduleId,
@@ -217,6 +219,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
       if (existing && !isRevision) {
         const updated = await transaction.update(schema.memories).set({
           statement: input.statement,
+          contextProvenance: memoryClaimProof(input.contextProvenance, input) ?? memoryClaimProof(existing.contextProvenance, input),
           structuredValue: retainCallbackMetadata(existing.structuredValue, input.structuredValue ?? null, false, input.now),
           // See SqliteMemoryRepository.ingest — a restatement never lowers
           // importance.
@@ -251,6 +254,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
           topic: input.topic,
           slot: input.slot,
           statement: input.statement,
+          contextProvenance: memoryClaimProof(input.contextProvenance, input),
           structuredValue: retainCallbackMetadata(existing?.structuredValue, input.structuredValue ?? null, isRevision, input.now),
           status: input.status,
           source: input.source,

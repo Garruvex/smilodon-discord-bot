@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "662c0b83-5b3f-453c-8a75-2dae274eb551",
-  "prevId": "23953dcc-97fd-40c5-9f83-1fda746b0713",
+  "id": "bc302ff8-3860-4cb5-9507-da6d3e435c9a",
+  "prevId": "662c0b83-5b3f-453c-8a75-2dae274eb551",
   "tables": {
     "channel_summary_checkpoints": {
       "name": "channel_summary_checkpoints",
@@ -495,6 +495,13 @@
     "memories": {
       "name": "memories",
       "columns": {
+        "context_provenance": {
+          "name": "context_provenance",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "id": {
           "name": "id",
           "type": "text",

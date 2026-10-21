@@ -1,21 +1,24 @@
 import { hashContent } from "../assets/content-hash.js";
 import type { ChannelHistoryMessage, ChatRequest, ChatSource, ChatUser, ConversationEvent } from "./chat-provider.js";
 import { publicWebSources } from "./public-web-sources.js";
+import { memoryClaimProof } from "../memory/memory-claim-provenance.js";
+import { canRecallOrdinaryMemory, type Memory } from "../memory/memory.js";
 import type { ChatSessionExchange } from "./chat-state-store.js";
 import { budgetEligibleHistory } from "./eligible-channel-history.js";
-import { contextProvenanceLimits, parseContextProvenance, parseScopedContextProvenance, type ContextProvenance } from "./context-provenance.js";
+import { contextProvenanceLimits, dependencyMatchesSource, parseContextProvenance, parseScopedContextProvenance, type ContextProvenance } from "./context-provenance.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
 
 export const guardedContextLimits = { pageSize: 100, pages: 3, targetedPages: 5, replyDepth: 20, messageChars: 4000, replyChars: 6000, burstMessages: 16, burstChars: 6000, targetedMessages: 8,
-  dependencies: 128, sourceReads: 1000, workMs: 20_000, phaseMs: 8_000, maxValidationPasses: 12 } as const;
+  dependencies: 128, sourceReads: 4096, workMs: 20_000, phaseMs: 8_000, maxValidationPasses: 24 } as const;
 export interface GuardedContextSource {
   event: ChannelHistoryMessage;
   origin: "human" | "chat" | "other";
   provenance: ContextProvenance | null;
 }
 export interface GuardedContextPort {
-  work?: (phase: "assembly" | "sessions" | "validation", status: "completed" | "deadline" | "failed", durationMs: number) => void;
+  work?: (phase: "assembly" | "sessions" | "memory" | "validation", status: "completed" | "deadline" | "failed", durationMs: number) => void;
   persist?: boolean;
+  audienceUserId?: string | null;
   coverage?: (report: GuardedContextReport) => void;
   validation?: (status: "current" | "changed" | "deadline" | "bounded", reads: number) => void;
   guildId: string; channelId: string; sourceMessageId: string; actorId: string | null;
@@ -71,7 +74,7 @@ export class GuardedConversationContext {
   private reactionActors = new Map<string, ChatUser>();
   private constructor(private readonly port: GuardedContextPort) { registered.add(this); }
 
-  private async phase<T>(operation: () => Promise<T>, phase: "assembly" | "sessions" | "validation" = "assembly"): Promise<T> {
+  private async phase<T>(operation: () => Promise<T>, phase: "assembly" | "sessions" | "memory" | "validation" = "assembly"): Promise<T> {
     if (this.closed || !this.port.policyCurrent() || this.remainingMs <= 0) throw new SocialOutputSuppressed();
     const controller = new AbortController(); this.signal = controller.signal; this.cache = new Map();
     const started = Date.now(); let timer: ReturnType<typeof setTimeout> | undefined;
@@ -101,7 +104,7 @@ export class GuardedConversationContext {
       if (source.origin === "chat") {
         const proof = parseScopedContextProvenance(source.provenance, { guildId: this.port.guildId, channelId: this.port.channelId,
           ...(this.port.actorId ? { userId: this.port.actorId } : {}) });
-        if (!proof || proof.coverage !== "complete" || proof.audience.userId !== null && proof.audience.userId !== this.port.actorId) { this.report.unverifiedBot++; return null; }
+        if (!proof || proof.purpose && proof.purpose !== "reply" || proof.coverage !== "complete" || proof.audience.userId !== null && proof.audience.userId !== this.port.actorId) { this.report.unverifiedBot++; return null; }
         if (proof.outputHash !== hashContent(source.event.content)) { this.report.invalidatedDerived++; return null; }
         for (const dependency of proof.actors ?? []) {
           const actor = await this.port.actor(dependency.userId, this.signal);
@@ -110,8 +113,7 @@ export class GuardedConversationContext {
         for (const dependency of proof.dependencies) {
           if (dependency.guildId !== this.port.guildId || dependency.channelId !== this.port.channelId) return null;
           const original = await this.read(dependency.messageId, next);
-          if (!original || original.event.authorId !== dependency.authorId || original.event.timestampMs !== dependency.timestampMs ||
-            contextSourceHash(original.event) !== dependency.representationHash) { this.report.invalidatedDerived++; return null; }
+          if (!original || !dependencyMatchesSource(dependency, original.event, contextSourceHash(original.event))) { this.report.invalidatedDerived++; return null; }
         }
       }
       return source;
@@ -249,7 +251,7 @@ export class GuardedConversationContext {
       const candidates = exchanges.slice(-4).flatMap((exchange) => {
         const proof = parseScopedContextProvenance(exchange.contextProvenance, { guildId: this.port.guildId, channelId: this.port.channelId, userId: actorId });
         const sourceId = exchange.user.sourceMessageId; const deliveryIds = exchange.assistant.messageIds;
-        if (!proof || proof.coverage !== "complete" || proof.outputHash !== hashContent(exchange.assistant.content) ||
+        if (!proof || proof.purpose && proof.purpose !== "reply" || proof.coverage !== "complete" || proof.outputHash !== hashContent(exchange.assistant.content) ||
           !sourceId || !deliveryIds?.length) return [];
         return [{ exchange, proof, sourceId, deliveryIds }];
       });
@@ -263,8 +265,7 @@ export class GuardedConversationContext {
         for (const dependency of proof.dependencies) {
           if (dependency.guildId !== this.port.guildId || dependency.channelId !== this.port.channelId) { valid = false; break; }
           const source = await this.read(dependency.messageId);
-          if (!source || source.event.authorId !== dependency.authorId || source.event.timestampMs !== dependency.timestampMs ||
-            contextSourceHash(source.event) !== dependency.representationHash) { valid = false; break; }
+          if (!source || !dependencyMatchesSource(dependency, source.event, contextSourceHash(source.event))) { valid = false; break; }
         }
         let delivered = "";
         for (const id of deliveryIds) { const source = await this.read(id); if (!source || source.origin !== "chat") { valid = false; break; } delivered += source.event.content; }
@@ -275,6 +276,42 @@ export class GuardedConversationContext {
       }
       return selected;
     }, "sessions");
+  }
+
+  public async memories(records: readonly Memory[], retain = false, now = Date.now()): Promise<Memory[]> {
+    return this.phase(async () => {
+      const allowed: Memory[] = []; let chars = 0;
+      for (const record of records.slice(0, 128)) {
+        if (allowed.length === 20) break;
+        if (record.statement.length > 1000 || chars + record.statement.length > 3000) continue;
+        const proof = memoryClaimProof(record.contextProvenance, record);
+        if (!proof || proof.audience.guildId !== this.port.guildId || proof.audience.channelId !== this.port.channelId ||
+            proof.audience.userId !== null && proof.audience.userId !== this.port.actorId ||
+            record.audience === "private" && (this.port.audienceUserId !== record.ownerUserId || this.port.actorId !== record.ownerUserId) ||
+            !canRecallOrdinaryMemory(record, { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.actorId ?? "" }, now)) continue;
+        const subject = record.subjectType === "member" ? await this.port.actor(record.subjectId, this.signal) : null;
+        if (record.subjectType === "member" && !subject) continue;
+        let valid = true;
+        for (const dependency of proof.dependencies) {
+          if (dependency.guildId !== this.port.guildId || dependency.channelId !== this.port.channelId) { valid = false; break; }
+          const source = await this.read(dependency.messageId);
+          if (!source || !dependencyMatchesSource(dependency, source.event, contextSourceHash(source.event))) { valid = false; break; }
+        }
+        if (!valid) continue;
+        if (retain) {
+          const before = new Set(this.evidence.keys());
+          for (const dependency of proof.dependencies) if (!await this.retain(dependency.messageId)) valid = false;
+          if (!valid) { for (const id of this.evidence.keys()) if (!before.has(id)) this.evidence.delete(id); continue; }
+          if (subject) this.reactionActors.set(subject.id, subject);
+          if (proof.publicWeb) { this.publicWebUsed = true; for (const digest of proof.publicWeb.citationHashes) this.publicWebCitations.add(digest); }
+        }
+        // Unproven alias/callback metadata never rides along with an otherwise
+        // valid statement. Its own source migration is independent.
+        allowed.push({ ...record, structuredValue: null });
+        chars += record.statement.length;
+      }
+      return allowed;
+    }, "memory");
   }
 
   public async validate(): Promise<boolean> {
@@ -305,9 +342,9 @@ export class GuardedConversationContext {
     return selected;
   }
 
-  public provenance(output: string): ContextProvenance | null {
+  public provenance(output: string, purpose: "reply" | "memory_claim" | "character_state" = "reply"): ContextProvenance | null {
     if (this.port.persist === false || this.closed || !this.port.policyCurrent() || !this.evidence.size || this.evidence.size > contextProvenanceLimits.dependencies) return null;
-    return parseContextProvenance({ version: 1, coverage: "complete", audience: { guildId: this.port.guildId, channelId: this.port.channelId, userId: null },
+    return parseContextProvenance({ version: 1, ...(purpose !== "reply" ? { purpose } : {}), coverage: "complete", audience: { guildId: this.port.guildId, channelId: this.port.channelId, userId: null },
       outputHash: hashContent(output), dependencies: [...this.evidence.values()].map((source) => ({ guildId: this.port.guildId,
         channelId: this.port.channelId, messageId: source.messageId, authorId: source.authorId, timestampMs: source.timestampMs,
         representationHash: contextSourceHash(source) })), actors: [...this.reactionActors.values()].map((actor) => ({ userId: actor.id, representationHash: hashContent(JSON.stringify(actor)) })),

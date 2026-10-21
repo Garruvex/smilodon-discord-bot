@@ -4,6 +4,9 @@
 // expression, provenance, contradictory-claim loss, duplicated authorization).
 
 import type { ChannelMemoryMode } from "./memory-channel-policy.js";
+import type { ContextProvenance } from "../chat/context-provenance.js";
+import type { GuardedBackgroundContext } from "../context/guarded-background-context.js";
+import type { GuardedConversationContext } from "../chat/guarded-conversation-context.js";
 
 export type MemoryKind = "fact" | "preference" | "episode" | "impression" | "state";
 export type MemoryAudience = "private" | "channel" | "guild";
@@ -17,6 +20,7 @@ export type MemoryStatus = "candidate" | "active" | "superseded" | "expired";
 export type MemorySourceKind = "live" | "explicit" | "administrator" | "consolidation";
 
 export interface Memory {
+  contextProvenance?: ContextProvenance | null;
   id: string;
   guildId: string;
   // Null/omitted means an ordinary fact. Module-owned records are retained
@@ -182,6 +186,7 @@ export function canRecallOrdinaryMemory(memory: Memory, context: RecallContext, 
 // --- Repository contract -----------------------------------------------
 
 export interface RepositoryIngestInput {
+  contextProvenance?: ContextProvenance | null;
   // Set only by a dedicated application module, never by model proposals.
   moduleId?: string | null;
   sourceTimestampMs?: number | null;
@@ -404,6 +409,7 @@ export interface MemoryRepository {
 // --- Engine contract -----------------------------------------------------
 
 export interface MemoryRecallInput {
+  context?: GuardedConversationContext;
   filterSubjectIds?: readonly string[];
   guildId: string;
   channelId: string;
@@ -522,6 +528,7 @@ export type ProposedMemory =
     };
 
 export interface MemoryIngestInput {
+  context?: GuardedBackgroundContext | GuardedConversationContext;
   sourceTimestampMs?: number;
   guildId: string;
   channelId: string;

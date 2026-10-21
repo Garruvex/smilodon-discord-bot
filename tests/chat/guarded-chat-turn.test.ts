@@ -18,6 +18,7 @@ import { decisionProposal, decisionResponse } from "../helpers/conversation-deci
 import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 import { contextualProposal } from "../helpers/contextual-decision-fixtures.js";
 import { balancedChatLimits } from "../../src/application/chat/chat-scheduler.js";
+import { GuardedBackgroundContext } from "../../src/application/context/guarded-background-context.js";
 
 const channelId = "500000000000000001";
 const cleanups: (() => Promise<void>)[] = [];
@@ -60,6 +61,41 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
 }
 
 describe("guarded turn acceptance", () => {
+  it("persists only source-grounded human memory proposals with a registered claim proof", async () => {
+    const { service, input, engine, fixture, reply } = await setup();
+    fixture.sources.get("current")!.event.content = "I like green apples";
+    fixture.sources.get("current")!.event.replyToMessageId = null;
+    reply.mockResolvedValue(decisionResponse({ userMemoryActions: [
+      { action: "upsert", subjectUserId: "alice", topic: "preference", slot: "food.fruit", statement: "likes green apples", sourceQuote: "I like green apples" },
+      { action: "upsert", subjectUserId: "alice", topic: "preference", slot: "food.secret", statement: "UNSUPPORTED_FACT", sourceQuote: "NOT_IN_ANY_SOURCE" },
+    ] }));
+    await service.run(input, (response) => Promise.resolve(response.text));
+    const stored = await engine.recall({ guildId, channelId, userId: "alice", message: "apples", recentHistory: [], subjectIds: ["alice"], now: 6000 });
+    expect(stored.memories.map((record) => record.statement)).toEqual(["likes green apples"]);
+    expect(stored.memories[0]?.contextProvenance?.purpose).toBe("memory_claim");
+  });
+
+  it.each(["eligible", "revoked"] as const)("shares proven memory with decision and generation without exposing revoked facts: %s", async (scenario) => {
+    const { service, input, engine, fixture, reply, decision } = await setup(5000, "alice", true);
+    decision.generateCharacterData.mockResolvedValue(contextualProposal({ relationship: "group", intent: "contribute", referent: "self_contained", linkKey: null, recipientEvidence: ["current"] }));
+    const original = fixture.sources.get("question")!.event;
+    original.content = "I like green apples";
+    fixture.sources.get("current")!.event.content = "What fruit do I like?";
+    fixture.sources.get("current")!.event.replyToMessageId = null;
+    const context = await GuardedBackgroundContext.open("summary", [{ id: original.messageId, guildId, channelId, authorId: original.authorId,
+      authorDisplayName: original.authorDisplayName, content: original.content, createdAt: original.timestampMs }], { readBatch: vi.fn(), validateBatch: () => Promise.resolve(true) }, () => true);
+    await engine.ingest({ guildId, channelId, channelMode: "shared", context, source: "consolidation", sourceMessageId: "batch",
+      assertedByUserId: "alice", sourceTimestampMs: original.timestampMs, now: 3000, proposals: [{ action: "upsert", audience: "private", kind: "preference",
+        ownerUserId: "alice", subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.fruit", statement: "likes green apples", channelScoped: true }] });
+    if (scenario === "revoked") fixture.denied.add("question");
+    await service.run({ ...input, triggerMode: "spontaneous" }, (response) => Promise.resolve(response.text));
+    const request = reply.mock.calls[0]![0];
+    expect(request.guildKnowledge.map((record) => record.statement)).toEqual(scenario === "eligible" ? ["likes green apples"] : []);
+    const decisions = JSON.stringify(decision.generateCharacterData.mock.calls);
+    if (scenario === "eligible") expect(decisions).toContain("likes green apples");
+    else expect(decisions).not.toContain("green apples");
+  });
+
   it.each(["enabled", "disabled", "unsupported", "shadow"] as const)("resolves native web search without enabling unguarded application tools: %s", async (scenario) => {
     const { service, input, reply, records } = await setup(5000, "alice", false, scenario !== "unsupported");
     reply.mockImplementation((request) => {
@@ -388,12 +424,12 @@ describe("guarded turn acceptance", () => {
     expect(reply).not.toHaveBeenCalled();
   });
 
-  it("never calls memory recall or learned-character context on the guarded text path", async () => {
+  it("treats unavailable memory as an omission and never imports unguarded learned-character context", async () => {
     const { service, input, engine, runtime } = await setup();
     const recall = vi.spyOn(engine, "recall").mockRejectedValue(new Error("SECRET_MEMORY"));
     const contribute = vi.spyOn(runtime.registry, "contribute").mockRejectedValue(new Error("SECRET_CHARACTER"));
     await service.run({ ...input, interactionMode: "direct_mention" }, (response) => Promise.resolve(response.text));
-    expect(recall).not.toHaveBeenCalled(); expect(contribute).not.toHaveBeenCalled();
+    expect(recall.mock.calls[0]?.[0].context).toBeInstanceOf(GuardedConversationContext); expect(contribute).not.toHaveBeenCalled();
   });
 
   it("rechecks source access after generation and prevents all delivery", async () => {

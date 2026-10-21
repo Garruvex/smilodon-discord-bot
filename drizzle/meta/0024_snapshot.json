@@ -1,6 +1,6 @@
 {
-  "id": "475a8049-31b2-4a75-872f-3df1106b5c56",
-  "prevId": "741b461c-96d5-454a-b8ff-e5fee5e66c6b",
+  "id": "7a3e25c1-22b9-446d-9438-67fcc6efb305",
+  "prevId": "475a8049-31b2-4a75-872f-3df1106b5c56",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1836,6 +1836,12 @@
       "name": "memories",
       "schema": "",
       "columns": {
+        "context_provenance": {
+          "name": "context_provenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "id": {
           "name": "id",
           "type": "uuid",

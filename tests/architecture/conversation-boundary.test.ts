@@ -20,7 +20,10 @@ describe("conversation execution ownership", () => {
         const module = node.moduleSpecifier.text;
         const owner = file.endsWith(`${path.sep}application${path.sep}chat${path.sep}chat-conversation-service.ts`);
         if (module.endsWith("/guarded-chat-turn.js") && !owner) offenders.push(path.relative(root, file));
-        if ((module.endsWith("/background-model-gateway.js") || module.endsWith("/guarded-background-context.js")) &&
+        const typeOnly = node.importClause?.isTypeOnly;
+        const predicateOnly = module.endsWith("/guarded-background-context.js") && node.importClause?.namedBindings &&
+          ts.isNamedImports(node.importClause.namedBindings) && node.importClause.namedBindings.elements.every((item) => item.isTypeOnly || (item.propertyName ?? item.name).text === "isBackgroundContext");
+        if (!typeOnly && !predicateOnly && (module.endsWith("/background-model-gateway.js") || module.endsWith("/guarded-background-context.js")) &&
             !file.endsWith(`${path.sep}context${path.sep}channel-summary-scheduler.ts`) &&
             !file.endsWith(`${path.sep}context${path.sep}background-model-gateway.ts`)) offenders.push(path.relative(root, file));
         if (module.endsWith("/synthetic-replay-context.js") && !file.includes(`${path.sep}scripts${path.sep}replay-`) &&

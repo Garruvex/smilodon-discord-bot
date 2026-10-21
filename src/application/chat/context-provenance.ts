@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { hashContent } from "../assets/content-hash.js";
-import type { ChatRequest } from "./chat-provider.js";
+import type { ChatRequest, ChannelHistoryMessage } from "./chat-provider.js";
 
 const id = z.string().min(1).max(128);
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 export const contextProvenanceLimits = { dependencies: 128, serializedChars: 48_000 } as const;
 export const contextProvenanceSchema = z.object({
   version: z.literal(1),
+  purpose: z.enum(["reply", "memory_claim", "character_state"]).optional(),
   coverage: z.enum(["partial", "complete"]),
   audience: z.object({ guildId: id, channelId: id, userId: id.nullable() }).strict(),
   outputHash: digest,
@@ -16,6 +17,7 @@ export const contextProvenanceSchema = z.object({
     // Hash of the representation supplied to this turn, not a claim to have
     // captured every field or the full original Discord message.
     representationHash: digest,
+    projection: z.object({ kind: z.literal("background_text"), chars: z.number().int().positive().max(16000) }).strict().optional(),
   }).strict()).max(contextProvenanceLimits.dependencies),
   actors: z.array(z.object({ userId: id, representationHash: digest }).strict()).max(100).optional(),
   // Public provider-managed search is separate from protected Discord inputs.
@@ -30,6 +32,16 @@ export const contextProvenanceSchema = z.object({
     context.addIssue({ code: z.ZodIssueCode.custom, message: "Duplicate dependencies" });
 });
 export type ContextProvenance = z.infer<typeof contextProvenanceSchema>;
+
+export function backgroundSourceHash(source: { authorId: string; authorDisplayName: string; content: string; timestampMs: number }): string {
+  return hashContent(JSON.stringify(source));
+}
+
+export function dependencyMatchesSource(dependency: ContextProvenance["dependencies"][number], source: ChannelHistoryMessage, conversationHash: string): boolean {
+  return dependency.authorId === source.authorId && dependency.timestampMs === source.timestampMs && dependency.representationHash ===
+    (dependency.projection ? backgroundSourceHash({ authorId: source.authorId, authorDisplayName: source.authorDisplayName,
+      content: source.content.trim().slice(0, dependency.projection.chars), timestampMs: source.timestampMs }) : conversationHash);
+}
 
 // Invalid/legacy provenance cannot break loading other records or become a
 // reusable proof. No raw prompt text belongs in this persisted metadata.

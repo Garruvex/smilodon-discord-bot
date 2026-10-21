@@ -3,6 +3,8 @@ import type { Logger } from "pino";
 
 import type { MemoryConflictClassifier } from "../chat/chat-provider.js";
 import type { EmbeddingsClient } from "../chat/embeddings-client.js";
+import { checkMemoryContext } from "./memory-context-guard.js";
+import { memoryClaimPayload } from "./memory-claim-provenance.js";
 import { allowsDurableWrites, resolveMemoryScope } from "./memory-channel-policy.js";
 import type { MemoryRelevanceTraceCollector } from "./memory-relevance-trace.js";
 import type {
@@ -157,7 +159,7 @@ function toScorable(memory: Memory): ScorableRecord {
 // Never sends the embedding vector itself to the model — same exclusion as
 // the legacy selectors' prompt projections.
 function memoryPromptProjection(memory: Memory): unknown {
-  const { embedding: _embedding, moduleId: _moduleId, ...rest } = memory;
+  const { embedding: _embedding, moduleId: _moduleId, contextProvenance: _proof, ...rest } = memory;
   if (rest.structuredValue && typeof rest.structuredValue === "object" && ("callback" in rest.structuredValue || "callbackDateUnresolved" in rest.structuredValue || "callbackDatePlanning" in rest.structuredValue)) {
     const metadata: Record<string, unknown> = { ...rest.structuredValue };
     delete metadata.callback;
@@ -226,8 +228,9 @@ export class DefaultMemoryEngine implements MemoryEngine {
   ) {}
 
   public async recall(input: MemoryRecallInput): Promise<MemoryContext> {
+    await checkMemoryContext(input.context);
     if (input.channelMode === "disabled") return { memories: [], causalChains: [] };
-    const aliasCandidates = groupObservedAliasRows(await this.repository.findObservedAliases({
+    const aliasCandidates = input.context ? [] : groupObservedAliasRows(await this.repository.findObservedAliases({
       guildId: input.guildId, channelId: input.channelId, userId: input.userId, now: input.now, message: input.message,
     }), input.message);
     const resolvedAliasIds = aliasCandidates.filter((alias) => alias.subjectIds.length === 1).flatMap((alias) => alias.subjectIds);
@@ -243,7 +246,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
     // that user's own memory count, not the guild's. It doesn't filter
     // isolationChannelId/expiresAt/status itself (unlike
     // findRecallCandidates), so those are re-applied here in JS.
-    const candidates = input.onlySelfSubjectMemories
+    let candidates = input.onlySelfSubjectMemories
       ? { memories: (await this.repository.listBySubject(input.guildId, input.userId)).filter((memory) =>
           canRecallOrdinaryMemory(memory, { guildId: input.guildId, channelId: input.channelId, userId: input.userId }, input.now)) }
       : input.onlySelfPrivateMemories
@@ -262,8 +265,10 @@ export class DefaultMemoryEngine implements MemoryEngine {
           prioritySubjectIds: [...input.subjectIds, ...resolvedAliasIds],
           ...(input.filterSubjectIds?.length ? { subjectIds: input.filterSubjectIds } : {}),
         });
+    if (input.context) candidates = { memories: await input.context.memories(candidates.memories, false, input.now) };
     if (candidates.memories.length === 0) return { memories: [], causalChains: [] };
-    const { boostBySubjectId, causalChains } = await this.expandRelatedSubjects({ ...input, subjectIds: [...input.subjectIds, ...resolvedAliasIds] });
+    const { boostBySubjectId, causalChains } = input.context ? { boostBySubjectId: new Map<string, number>(), causalChains: [] } :
+      await this.expandRelatedSubjects({ ...input, subjectIds: [...input.subjectIds, ...resolvedAliasIds] });
     const subjectIds = new Set(input.subjectIds);
     const context = buildRelevanceContext({ message: input.message, recentHistory: input.recentHistory, subjectIds, now: input.now });
     const halfLife = this.fadingHalfLifeDays(input.guildId, input.channelId);
@@ -301,6 +306,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
       const queryText = buildEmbeddingQueryText({
         message: input.message, recentHistory: input.recentHistory, replyToContent: input.replyToContent,
       });
+      await checkMemoryContext(input.context);
       const queryEmbedding = await this.embeddingsClient.embed(queryText).catch(() => null);
       if (queryEmbedding) {
         const withCosine = candidates.memories
@@ -369,7 +375,8 @@ export class DefaultMemoryEngine implements MemoryEngine {
         this.logger?.warn({ error, guildId: input.guildId }, "Memory relevance trace collection failed");
       });
     }
-    return { memories: selected, causalChains, maxSerializedChars: this.limits.maxSelectedChars, ...(aliasCandidates.length ? { aliasCandidates } : {}) };
+    const verified = input.context ? await input.context.memories(selected, true, input.now) : selected;
+    return { memories: verified, causalChains, maxSerializedChars: this.limits.maxSelectedChars, ...(aliasCandidates.length ? { aliasCandidates } : {}) };
   }
 
   // Bounded multi-hop expansion out from the turn's subjectIds — see
@@ -428,6 +435,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
   }
 
   public async ingest(input: MemoryIngestInput): Promise<MemoryIngestResult> {
+    await checkMemoryContext(input.context);
     if (!allowsDurableWrites(input.channelMode) && input.proposals.every((proposal) => proposal.action === "upsert"))
       return { ingested: [], removed: 0, rejected: 0, failed: 0 };
     // Candidate TTL sweep, piggybacked on writes rather than a separate
@@ -572,6 +580,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
     // variant for why: a consolidation batch has no single asserter, so
     // ChannelSummaryScheduler resolves one per fact from its evidence.
     const status = resolveInitialStatus(scope.audience, proposal.subjectType, proposal.subjectId, assertedByUserId, input.source);
+    await checkMemoryContext(input.context);
     const embedding = this.embeddingsClient ? await this.embeddingsClient.embed(statement).catch(() => null) : null;
     const ownerUserId = scope.audience === "private" ? proposal.ownerUserId ?? proposal.subjectId : null;
     // Canonicalize BEFORE writing, not after: findActiveBySubject/embedding
@@ -580,7 +589,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
     // this?" costs one extra query, not a whole extra pass. See
     // canonicalizeIdentity's own comment for why this needs to happen
     // pre-ingest rather than relying on checkForConflicts alone.
-    const canonical = embedding
+    const canonical = embedding && !input.context
       ? await this.canonicalizeIdentity({
           guildId: input.guildId, subjectType: proposal.subjectType, subjectId: proposal.subjectId,
           audience: scope.audience, ownerUserId, channelId: scope.channelId, isolationChannelId: scope.isolationChannelId,
@@ -592,9 +601,16 @@ export class DefaultMemoryEngine implements MemoryEngine {
       const previous = (await this.repository.findActiveBySubject({ guildId: input.guildId, subjectType: proposal.subjectType,
         subjectId: proposal.subjectId, audience: scope.audience, ownerUserId, channelId: scope.channelId, isolationChannelId: scope.isolationChannelId }))
         .find((record) => record.topic === canonical.topic && record.slot === canonical.slot);
+      await checkMemoryContext(input.context);
+      const claim = { guildId: input.guildId, kind: proposal.kind, audience: scope.audience, ownerUserId,
+        channelId: scope.channelId, isolationChannelId: scope.isolationChannelId, subjectType: proposal.subjectType,
+        subjectId: proposal.subjectId, topic: canonical.topic, slot: canonical.slot, statement };
+      const proof = input.context?.provenance(memoryClaimPayload(claim), "memory_claim") ?? null;
+      if (input.context && !proof) throw new Error("Memory context cannot issue complete provenance");
       const names = new Map(observedSubjectNames(previous ?? { structuredValue: null }).map((name) => [name.value, name]));
       for (const name of proposal.observedSubjectNames ?? []) if (name.trim()) names.set(name.slice(0, 100), { value: name.slice(0, 100), observedAt: input.now });
       memory = await this.repository.ingest({
+        contextProvenance: proof,
         guildId: input.guildId,
         kind: proposal.kind,
         audience: scope.audience,
@@ -635,7 +651,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
     if (memory.status === "candidate") {
       memory = (await this.corroborate(memory, assertedByUserId, input.now)) ?? memory;
     }
-    if (memory.status === "active" && memory.embedding) {
+    if (memory.status === "active" && memory.embedding && !input.context) {
       await this.checkForConflicts(memory, input.now);
     }
     return memory;

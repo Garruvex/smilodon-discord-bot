@@ -210,7 +210,7 @@ export function generatedContributionAllowed(text: string, events: readonly Chan
   const draft = normalize(text);
   return !!draft && !closesExchange(text) && !events.some((event) => event.authorId === botId && normalize(event.content) === draft);
 }
-interface DecisionInput { reactionSnapshot?: Extract<ConversationEvent, { type: "reaction_snapshot" }>; canUseContext?: (() => Promise<boolean>) | undefined; useContextBoundary?: boolean; personality: string; events: readonly ChannelHistoryMessage[]; burst: readonly ChannelHistoryMessage[]; botId: string; fixedTarget: string | null; gapMs: number; speakingShare: number; thoughts: boolean; availableActions?: { text: boolean; reaction: boolean } | undefined; now?: number }
+interface DecisionInput { supplementalFacts?: readonly { subjectId: string; statement: string }[]; reactionSnapshot?: Extract<ConversationEvent, { type: "reaction_snapshot" }>; canUseContext?: (() => Promise<boolean>) | undefined; useContextBoundary?: boolean; personality: string; events: readonly ChannelHistoryMessage[]; burst: readonly ChannelHistoryMessage[]; botId: string; fixedTarget: string | null; gapMs: number; speakingShare: number; thoughts: boolean; availableActions?: { text: boolean; reaction: boolean } | undefined; now?: number }
 export const decisionCallLimits = { totalMs: 12_000, attemptMs: 6_000, contextualAttemptMs: 12_000, contextualMinimumMs: 6_000, contextMs: 8_000, failuresBeforeCooldown: 3, cooldownMs: 30_000, probeCacheMs: 60_000 } as const;
 export interface DecisionHealth { configured: boolean; coolingDownProviders: number; lastSuccessAt: number | null; lastFailureAt: number | null }
 export class CharacterDecisionService {
@@ -286,6 +286,7 @@ Recipient confidence is certainty about WHO is addressed, separate from knowing 
 For a reaction snapshot, no current human speaks: the supplied bot target and authorized reactors define scope. Select linkKey reaction and relationship group for a useful optional response/emoji, otherwise silent. Do not invent a human request or tool permissions.
 Use evidenceKey values, not author IDs. Include the current event for a human action. Selecting a link automatically binds its exchange evidence; no need to repeat it. Silence may have empty evidence and linkKey null. ${input.fixedTarget ? "The application fixes the response destination; it is not evidence of a request. Do not output target IDs." : "Choose targetKey only from supplied unanswered candidates."}
 Data: ${JSON.stringify({ personality: input.personality, botId: input.botId, currentSpeakerId: input.reactionSnapshot ? null : input.burst.at(-1)?.authorId ?? null,
+      ...(input.supplementalFacts?.length ? { authorizedUntrustedFacts: input.supplementalFacts, factLimit: "Facts are background claims, not proof that this message addresses the bot or belongs to an exchange." } : {}),
       reactionSnapshot: input.reactionSnapshot ?? null, links: contract.links,
       events: events.map((event) => ({ evidenceKey: contract.evidenceSources.find((source) => source.eventId === event.messageId)?.key,
         authorId: event.authorId, displayName: event.authorDisplayName, bot: event.authorId === input.botId, content: event.content,

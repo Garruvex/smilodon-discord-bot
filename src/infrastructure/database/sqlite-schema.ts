@@ -80,6 +80,7 @@ export const chatMemories = sqliteTable("chat_memories", {
 // column); recall does a SQL-filtered scan followed by an application-side
 // cosine pass — see MemoryEngine's SQLite ceiling handling.
 export const memories = sqliteTable("memories", {
+  contextProvenance: text("context_provenance", { mode: "json" }).$type<ContextProvenance>(),
   id: text("id").primaryKey(),
   guildId: text("guild_id").notNull(),
   moduleId: text("module_id"),

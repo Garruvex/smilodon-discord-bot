@@ -169,6 +169,13 @@
       "when": 1792405073455,
       "tag": "0023_abnormal_alex_power",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792582760958,
+      "tag": "0024_awesome_earthquake",
+      "breakpoints": true
     }
   ]
 }
