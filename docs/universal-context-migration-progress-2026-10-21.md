@@ -16,7 +16,7 @@ Validation: 162 focused tests passed, along with typecheck, changed-file lint an
 
 ## Checkpoint 2: effective operator status
 
-Execution and `/status` now use one capability resolver. Status distinguishes configured settings from capabilities available in the current channel, and explicitly lists guarded sources that remain excluded. The actual transport's declared native search support is supplied by bootstrap, rather than guessed from a model name. Legacy execution also disables unsupported search instead of advertising an unavailable native tool. English, Traditional Chinese and Japanese status-rendering tests exercise the real command. Focused validation: 208 tests passed; typecheck and changed-file lint are required before the commit.
+Execution and `/status` now use one capability resolver. Status distinguishes configured settings from capabilities available in the current channel, and explicitly lists guarded sources that remain excluded. The actual transport's declared native search support is supplied by bootstrap, rather than guessed from a model name. Legacy execution also disables unsupported search instead of advertising an unavailable native tool. English, Traditional Chinese and Japanese status-rendering tests exercise the real command. Focused validation: 208 tests, typecheck and changed-file lint passed. Commit: `f71065c9`.
 
 ## Checkpoint 3: background source revalidation
 
@@ -24,14 +24,14 @@ Channel summaries and queued personal-memory extraction now enter a registered, 
 
 This closes these background operations' stale-input/retry gap. It does **not** migrate the persisted memory claims' provenance, memory-engine embedding/conflict calls, learned-character consolidation, live legacy extraction or every model consumer. Summary-derived records remain excluded from guarded reply recall until that work is complete.
 
-Validation: 103 focused tests passed; the full suite passed 4,881 tests with 7 skipped and zero failures. New tests include actual provider fallback cancellation and fresh Discord source/member reads. Typecheck and changed-file lint are required before committing. No paid model call or Discord send occurred.
+Validation: 103 focused tests passed; the full suite passed 4,881 tests with 7 skipped and zero failures. New tests include actual provider fallback cancellation and fresh Discord source/member reads. Typecheck, build and changed-file lint passed. Commit: `570b97ca`. No paid model call or Discord send occurred.
 
 ## Remaining implementation checkpoints (updated)
 
 Checkpoint 4 inventories the remaining model consumers in [model consumer migration](model-consumer-migration-2026-10-21.md) and its machine-readable artifact. A type-aware architecture test detects new/removed capability consumers, including bound callbacks; gateway/lease imports are restricted to their application owner. This inventories the work and prevents ordinary unreviewed growth. It does not close the remaining legacy/raw consumer gaps.
 
 1. Effective capability/source availability is now surfaced in operator status; expand it as each new source migrates.
-2. The first background source boundary is implemented; complete the provider-consumer inventory and migrate the remaining consumers behind the shared mandatory boundary.
+2. The first background source boundary and provider-consumer inventory are implemented; migrate the remaining inventoried consumers behind the shared mandatory boundary.
 3. Migrate summary and personal-memory producers and records with claim-level evidence, subject/purpose/audience authorization and invalidation. Legacy batch identifiers alone do not establish re-readable source provenance.
 4. Migrate memory/relationship recall, learned character/profile context and caches; preserve forgetting and reject unproven legacy records.
 5. Migrate images, attachments and application tool results/continuations with source and action checks.
@@ -39,3 +39,7 @@ Checkpoint 4 inventories the remaining model consumers in [model consumer migrat
 7. Reread all plan requirements, run scoped local checks and update the alignment ledger with exact evidence. Human review and production rollout remain external validation.
 
 Excluded sources stay closed until their producer and consumer migrations pass. A new abstraction or passing decision replay alone does not close these items.
+
+## Closing verification for these checkpoints
+
+Checkpoint 4 commit: `901e3f4e`. Final full suite: **4,882 passed, 7 skipped, zero failed**. Typecheck, production TypeScript compilation, changed-file ESLint, migration consistency and whitespace checks passed. The original source inventory and migration requirements were reread; the remaining items above are implementation work, not merely a live-test requirement. No paid provider evaluation, production deployment, setting change or Discord send was performed. The server's unrelated `npm ci` failure still needs npm's preceding error output to diagnose.
