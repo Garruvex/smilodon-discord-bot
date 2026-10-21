@@ -81,3 +81,13 @@ Guarded turns now honor supported image generation, including the self-image too
 Generated images pass the final conversation/effect decision and per-part delivery guard, with confirmed attachment identities recorded by the existing origin writer. Guarded turns do not dispatch speculative image previews before that decision. This is final-image delivery support; no stream-preview authorization is inferred from an enabled setting. Shadow, grounded recovery and unsupported transports keep generation disabled. Operator status shares the actual transport capability.
 
 Validation: full suite **4,919 passed, 7 skipped, zero failed**, then **97 focused tests passed** including two added service-level final-image scenarios. Provider fallback and source replacement tests use fake HTTP/SDK responses only. No paid image/model generation occurred. Remaining functional tools and independent model consumers continue in subsequent checkpoints.
+
+## Checkpoint 9: source-backed learned character state
+
+Character memory reads now require registered source authorization before relevance scoring. New module records persist claim manifests covering their identity, statement and canonically serialized prompt-affecting metadata. Legacy/unproven module records and metadata-tampered records stay excluded. Dependencies and protected member subjects are rechecked before reuse, model calls and writes. New guarded character records retain their channel audience rather than publishing a learned state to the whole guild.
+
+Decision and generation receive the same admitted character contributions. Existing local style and voice hooks operate over the guarded request; voice repair retains its attempt guard. Mood observation and post-delivery learning produce verified state, while module utility calls recheck before every fallback and before accepting a result. Guarded callback planning authorizes candidate facts and original human quotes, strips unproven alternate source statements and validates before scheduling. Scheduled callback delivery, independent evaluation and other remaining legacy consumers still require their separate migration.
+
+The validation pass ceiling now accommodates tool/character phases (64 passes); physical source-read, phase, total source-work and turn budgets remain unchanged. Module-failure logging uses metadata-only safe failures.
+
+Validation: **4,927 passed, 7 skipped, zero failed**, typecheck, production compilation and changed-file lint. Tests cover durable learned-state reload, canonical JSON ordering, metadata tampering, source revocation and actual decision/reply payloads. No paid provider call or production action was performed.

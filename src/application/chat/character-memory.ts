@@ -6,6 +6,12 @@ import { allowsDurableWrites, resolveChannelMemoryMode } from "../memory/memory-
 import { characterSettings } from "./character-settings.js";
 import type { CharacterModuleId } from "./character-settings.js";
 import type { PersonalMemoryExtractionQueueStore } from "../context/personal-memory-extraction-queue.js";
+import { isGuardedContext, type GuardedConversationContext } from "./guarded-conversation-context.js";
+import { memoryClaimPayload } from "../memory/memory-claim-provenance.js";
+import { SocialOutputSuppressed } from "./message-origin-store.js";
+
+export type CharacterCandidateQuery = CandidateQuery & { sourceContext?: GuardedConversationContext };
+export type CharacterMemoryWrite = Omit<RepositoryIngestInput, "guildId" | "moduleId"> & { sourceContext?: GuardedConversationContext };
 
 const dependencySchema = z.object({ id: z.string(), updatedAt: z.number(), subjectId: z.string(), sourceIds: z.array(z.string()).default([]) });
 const metadataSchema = z.object({ dependencies: z.array(dependencySchema).default([]), personaHash: z.string().optional() }).passthrough();
@@ -25,7 +31,12 @@ export class CharacterMemory {
     private readonly coordinator: Pick<PersonalMemoryExtractionQueueStore, "runForSubject"> | null = null,
     private readonly resolveProfile: ((guildId: string) => GuildConfiguration | null) | null = null,
     private readonly canWrite: ((guildId: string, channelId: string, moduleId: CharacterModuleId) => boolean) | null = null) {}
-  public async sourceEligible(memory: Memory, profile: GuildConfiguration, query: CandidateQuery): Promise<boolean> {
+  public async sourceEligible(memory: Memory, profile: GuildConfiguration, query: CharacterCandidateQuery): Promise<boolean> {
+    if (query.sourceContext) {
+      if (!isGuardedContext(query.sourceContext)) throw new SocialOutputSuppressed();
+      const admitted = memory.moduleId ? await query.sourceContext.characterMemories([memory], true, query.now) : await query.sourceContext.memories([memory], true, query.now);
+      if (!admitted.length) return false;
+    }
     if (this.resolveProfile) { const current = this.resolveProfile(profile.guildId); if (!current) return false; profile = current; }
     if (!canRecall(memory, query, query.now)) return false;
     const sources = await this.repository.findSources(memory.id);
@@ -37,7 +48,7 @@ export class CharacterMemory {
     }
     return true;
   }
-  public async read(profile: GuildConfiguration, query: CandidateQuery, moduleId: CharacterModuleId, personaHash?: string, message = ""): Promise<readonly Memory[]> {
+  public async read(profile: GuildConfiguration, query: CharacterCandidateQuery, moduleId: CharacterModuleId, personaHash?: string, message = ""): Promise<readonly Memory[]> {
     if (moduleId === "relationships") await this.repository.migrateRelationshipExpiries?.(query.guildId);
     const rows = await this.repository.findModuleCandidates?.({ ...query, moduleId });
     const valid: Memory[] = [];
@@ -81,11 +92,13 @@ export class CharacterMemory {
     };
     return valid.sort((left, right) => score(right) - score(left) || (moduleId === "relationships" ? left.id.localeCompare(right.id) : right.updatedAt - left.updatedAt));
   }
-  public async write(profile: GuildConfiguration, channelId: string, moduleId: CharacterModuleId, input: Omit<RepositoryIngestInput, "guildId" | "moduleId">, dependencies: readonly Memory[] = []): Promise<Memory | null> {
+  public async write(profile: GuildConfiguration, channelId: string, moduleId: CharacterModuleId, input: CharacterMemoryWrite, dependencies: readonly Memory[] = []): Promise<Memory | null> {
     const write = (): Promise<Memory | null> => this.writeChecked(profile, channelId, moduleId, input, dependencies);
     return this.coordinator ? this.coordinator.runForSubject(profile.guildId, input.subjectId, write) : write();
   }
-  private async writeChecked(profile: GuildConfiguration, channelId: string, moduleId: CharacterModuleId, input: Omit<RepositoryIngestInput, "guildId" | "moduleId">, dependencies: readonly Memory[]): Promise<Memory | null> {
+  private async writeChecked(profile: GuildConfiguration, channelId: string, moduleId: CharacterModuleId, input: CharacterMemoryWrite, dependencies: readonly Memory[]): Promise<Memory | null> {
+    const { sourceContext, ...record } = input;
+    if (sourceContext && (!isGuardedContext(sourceContext) || !await sourceContext.validate())) throw new SocialOutputSuppressed();
     input = { ...input, topic: `character.${moduleId}` };
     if (this.resolveProfile) { const current = this.resolveProfile(profile.guildId); if (!current) return null; profile = current; }
     if (this.canWrite && !this.canWrite(profile.guildId, channelId, moduleId)) return null;
@@ -95,7 +108,7 @@ export class CharacterMemory {
     if (moduleId !== "relationships" && input.subjectType === "member") throw new Error("Only relationship impressions may describe members");
     if (input.subjectType === "member" && (input.kind !== "impression" || !dependencies.length)) throw new Error("Relationship impressions require source-backed dependencies");
     if (input.subjectType === "member" && dependencies.some((source) => source.subjectType !== "member" || source.subjectId !== input.subjectId)) throw new Error("Relationship evidence must describe the same member");
-    const query = { guildId: profile.guildId, channelId, userId: input.subjectId, now: input.now };
+    const query = { guildId: profile.guildId, channelId, userId: input.subjectId, now: input.now, ...(sourceContext ? { sourceContext } : {}) };
     for (const source of dependencies) {
       const current = await this.repository.findById(profile.guildId, source.id);
       if (!current || current.updatedAt !== source.updatedAt || current.status !== "active") return null;
@@ -109,9 +122,13 @@ export class CharacterMemory {
     const sourceLists = await Promise.all(dependencies.map((source) => this.repository.findSources(source.id))); const sources = sourceLists.flat();
     if (moduleId === "relationships" && (dependencies.some((source) => source.moduleId) || sourceLists.some((evidence) => !evidence.some((item) => item.assertedByUserId !== null && (item.source !== "consolidation" || item.sourceTimestampMs != null))))) return null;
     if (this.canWrite && !this.canWrite(profile.guildId, channelId, moduleId) || this.resolveProfile && JSON.stringify(this.resolveProfile(profile.guildId)?.chat.channelMemoryModes) !== scopeFingerprint) return null;
-    return this.repository.ingest({ ...input, guildId: profile.guildId, moduleId, assertedByUserId: null,
-      structuredValue: { ...metadata, dependencies: dependencies.map((source, index) => ({ id: source.id, updatedAt: source.updatedAt, subjectId: source.subjectId, sourceIds: sourceLists[index]!.map((evidence) => evidence.id) })),
+    const structuredValue = { ...metadata, dependencies: dependencies.map((source, index) => ({ id: source.id, updatedAt: source.updatedAt, subjectId: source.subjectId, sourceIds: sourceLists[index]!.map((evidence) => evidence.id) })),
         supportingSubjects: [...new Set([...dependencies.map((source) => source.subjectId), ...sources.flatMap((evidence) => evidence.assertedByUserId ? [evidence.assertedByUserId] : [])])],
-        supportingSourceMessageIds: [...new Set(sources.flatMap((source) => source.sourceMessageId ? [source.sourceMessageId] : []))] } });
+        supportingSourceMessageIds: [...new Set(sources.flatMap((source) => source.sourceMessageId ? [source.sourceMessageId] : []))] };
+    if (sourceContext && !await sourceContext.validate()) throw new SocialOutputSuppressed();
+    const claim = { ...record, topic: `character.${moduleId}`, guildId: profile.guildId, moduleId, structuredValue };
+    const contextProvenance = sourceContext?.provenance(memoryClaimPayload(claim), "memory_claim") ?? null;
+    if (sourceContext && !contextProvenance) throw new SocialOutputSuppressed();
+    return this.repository.ingest({ ...claim, assertedByUserId: null, contextProvenance });
   }
 }

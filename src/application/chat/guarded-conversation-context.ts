@@ -2,14 +2,14 @@ import { hashContent } from "../assets/content-hash.js";
 import type { ChannelHistoryMessage, ChatImage, ChatRequest, ChatSource, ChatUser, ConversationEvent } from "./chat-provider.js";
 import { publicWebSources } from "./public-web-sources.js";
 import { memoryClaimProof } from "../memory/memory-claim-provenance.js";
-import { canRecallOrdinaryMemory, type Memory } from "../memory/memory.js";
+import { canRecall, canRecallOrdinaryMemory, type Memory, type MemorySource } from "../memory/memory.js";
 import type { ChatSessionExchange } from "./chat-state-store.js";
 import { budgetEligibleHistory } from "./eligible-channel-history.js";
 import { contextProvenanceLimits, dependencyMatchesSource, parseContextProvenance, parseScopedContextProvenance, type ContextProvenance } from "./context-provenance.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
 
 export const guardedContextLimits = { pageSize: 100, pages: 3, targetedPages: 5, replyDepth: 20, messageChars: 4000, replyChars: 6000, burstMessages: 16, burstChars: 6000, targetedMessages: 8,
-  dependencies: 128, sourceReads: 4096, workMs: 20_000, phaseMs: 8_000, maxValidationPasses: 24 } as const;
+  dependencies: 128, sourceReads: 4096, workMs: 20_000, phaseMs: 8_000, maxValidationPasses: 64 } as const;
 export interface GuardedContextSource {
   assets?: readonly GuardedAssetDescriptor[];
   event: ChannelHistoryMessage;
@@ -306,6 +306,14 @@ export class GuardedConversationContext {
   }
 
   public async memories(records: readonly Memory[], retain = false, now = Date.now()): Promise<Memory[]> {
+    return this.claims(records, retain, now, false);
+  }
+
+  public async characterMemories(records: readonly Memory[], retain = false, now = Date.now()): Promise<Memory[]> {
+    return this.claims(records, retain, now, true);
+  }
+
+  private async claims(records: readonly Memory[], retain: boolean, now: number, character: boolean): Promise<Memory[]> {
     return this.phase(async () => {
       const allowed: Memory[] = []; let chars = 0;
       for (const record of records.slice(0, 128)) {
@@ -315,7 +323,8 @@ export class GuardedConversationContext {
         if (!proof || proof.audience.guildId !== this.port.guildId || proof.audience.channelId !== this.port.channelId ||
             proof.audience.userId !== null && proof.audience.userId !== this.port.actorId ||
             record.audience === "private" && (this.port.audienceUserId !== record.ownerUserId || this.port.actorId !== record.ownerUserId) ||
-            !canRecallOrdinaryMemory(record, { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.actorId ?? "" }, now)) continue;
+            (character ? !record.moduleId || !canRecall(record, { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.actorId ?? "" }, now)
+              : !canRecallOrdinaryMemory(record, { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.actorId ?? "" }, now))) continue;
         const subject = record.subjectType === "member" ? await this.port.actor(record.subjectId, this.signal) : null;
         if (record.subjectType === "member" && !subject) continue;
         let valid = await this.validateResources(proof);
@@ -338,7 +347,7 @@ export class GuardedConversationContext {
         }
         // Unproven alias/callback metadata never rides along with an otherwise
         // valid statement. Its own source migration is independent.
-        allowed.push({ ...record, structuredValue: null });
+        allowed.push({ ...record, structuredValue: character ? record.structuredValue : null });
         chars += record.statement.length;
       }
       return allowed;
@@ -352,6 +361,24 @@ export class GuardedConversationContext {
       if (value === null || hashContent(value) !== entry.representationHash) return false;
     }
     return true;
+  }
+
+  public async humanQuotes(records: readonly MemorySource[]): Promise<MemorySource[]> {
+    return this.phase(async () => {
+      const admitted: MemorySource[] = [];
+      let chars = 0;
+      for (const record of records.slice(0, 32)) {
+        if (!record.sourceMessageId || !record.sourceQuote || record.sourceChannelId !== this.port.channelId) continue;
+        if (record.sourceQuote.length > 2000 || chars + record.sourceQuote.length > 8000) continue;
+        const source = await this.read(record.sourceMessageId);
+        if (!source || source.origin !== "human" || source.event.authorId !== record.assertedByUserId ||
+            record.sourceTimestampMs != null && source.event.timestampMs !== record.sourceTimestampMs || !source.event.content.includes(record.sourceQuote)) continue;
+        if (!await this.retain(record.sourceMessageId)) continue;
+        admitted.push({ ...record, statement: record.sourceQuote });
+        chars += record.sourceQuote.length;
+      }
+      return admitted;
+    }, "memory");
   }
 
   public async resource(key: GuardedResourceKey): Promise<string | null> {

@@ -21,6 +21,7 @@ import { balancedChatLimits } from "../../src/application/chat/chat-scheduler.js
 import { GuardedBackgroundContext } from "../../src/application/context/guarded-background-context.js";
 import { ChatToolRegistry } from "../../src/application/chat/tools/chat-tool-registry.js";
 import { DiceRollTool } from "../../src/application/chat/tools/dice-tool.js";
+import { hashContent } from "../../src/application/assets/content-hash.js";
 
 const channelId = "500000000000000001";
 const cleanups: (() => Promise<void>)[] = [];
@@ -63,6 +64,24 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
 }
 
 describe("guarded turn acceptance", () => {
+  it.each(["eligible", "revoked"] as const)("shares source-verified learned state with decision and generation: %s", async (scenario) => {
+    const { service, input, reply, fixture, runtime, profiles, decision } = await setup(5000, "alice", true);
+    fixture.sources.get("current")!.event.content = "What should I adjust in this engine?";
+    fixture.sources.get("current")!.event.replyToMessageId = null;
+    await profiles.update(guildId, { character: { enabled: true, modules: { mood: { enabled: true } } } });
+    const sourceContext = await GuardedConversationContext.open(fixture.port, { count: 40, budget: 12000, burstIds: [] });
+    const written = await runtime.memory.write(profiles.current(), channelId, "mood", { kind: "state", audience: "channel", ownerUserId: null,
+      channelId, isolationChannelId: channelId, subjectType: "persona", subjectId: "character", topic: "character.mood", slot: "fast-mood", statement: "SOURCE_VERIFIED_MOOD",
+      status: "active", source: "consolidation", importance: 1, embedding: null, embeddingModel: null, expiresAt: null, now: 3000,
+      sourceMessageId: "question", sourceChannelId: channelId, assertedByUserId: null, structuredValue: { personaHash: hashContent(input.personality) }, sourceContext });
+    expect(written).not.toBeNull();
+    if (scenario === "revoked") fixture.denied.add("question");
+    decision.generateCharacterData.mockResolvedValue(contextualProposal({ relationship: "group", intent: "contribute", referent: "self_contained", linkKey: null, recipientEvidence: ["current"] }));
+    await service.run({ ...input, triggerMode: "spontaneous" }, (response) => Promise.resolve(response.text));
+    const request = reply.mock.calls[0]![0];
+    expect(JSON.stringify(request.characterContext).includes("SOURCE_VERIFIED_MOOD")).toBe(scenario === "eligible");
+    expect(JSON.stringify(decision.generateCharacterData.mock.calls).includes("SOURCE_VERIFIED_MOOD")).toBe(scenario === "eligible");
+  });
   it.each(["eligible", "changed"] as const)("checks generated images at the final delivery boundary without speculative previews: %s", async (scenario) => {
     const { service, input, reply, fixture } = await setup(5000, "alice", false, false, null, true);
     const image = { data: Buffer.from("image"), contentType: "image/png" as const, filename: "picture.png" };
@@ -469,12 +488,13 @@ describe("guarded turn acceptance", () => {
     expect(reply).not.toHaveBeenCalled();
   });
 
-  it("treats unavailable memory as an omission and never imports unguarded learned-character context", async () => {
+  it("treats unavailable memory as an omission and gives character contributors the registered source context", async () => {
     const { service, input, engine, runtime } = await setup();
     const recall = vi.spyOn(engine, "recall").mockRejectedValue(new Error("SECRET_MEMORY"));
-    const contribute = vi.spyOn(runtime.registry, "contribute").mockRejectedValue(new Error("SECRET_CHARACTER"));
+    const contribute = vi.spyOn(runtime.registry, "contribute");
     await service.run({ ...input, interactionMode: "direct_mention" }, (response) => Promise.resolve(response.text));
-    expect(recall.mock.calls[0]?.[0].context).toBeInstanceOf(GuardedConversationContext); expect(contribute).not.toHaveBeenCalled();
+    expect(recall.mock.calls[0]?.[0].context).toBeInstanceOf(GuardedConversationContext);
+    expect(contribute.mock.calls[0]?.[0].request.contextLease).toBeInstanceOf(GuardedConversationContext);
   });
 
   it("rechecks source access after generation and prevents all delivery", async () => {

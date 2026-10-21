@@ -277,7 +277,7 @@ export const zhTW = {
   "setup.status.chat.toolsWithDisabled": "網路搜尋：{webSearch} · 工具：{tools}（停用 {count} 個）",
   "setup.status.chat.effectiveTitle": "此頻道實際可用功能",
   "setup.status.chat.flowBlocked": "目前的對話流程設定無法在此頻道執行聊天。",
-  "setup.status.chat.excludedSources": "使用已驗證的記憶、摘要、圖片與已審核工具。生日／伺服器查詢會重新驗證來源。未驗證的儲存資料、學習到的角色資訊及尚未遷移的工具仍不使用。",
+  "setup.status.chat.excludedSources": "使用已驗證的記憶、摘要、角色狀態、圖片與已審核工具。生日／伺服器查詢會重新驗證來源。未驗證的儲存或學習資料及尚未遷移的工具仍不使用。",
   "setup.status.chat.images": "讀取圖片：{read} · 產生圖片：{make}",
   "setup.status.chat.sources": "附上來源：{sources} · 人設漂移：{drift}",
   "setup.status.chat.history": "讀取最近 {count} 則訊息作為上下文",

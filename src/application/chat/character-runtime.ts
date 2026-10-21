@@ -7,15 +7,15 @@ import { z } from "zod";
 import { budgetEligibleHistory } from "./eligible-channel-history.js";
 import type { Logger } from "pino";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
-import { emitChatDiagnostic } from "../diagnostics/chat-diagnostics.js";
+import { emitChatDiagnostic, safeFailure } from "../diagnostics/chat-diagnostics.js";
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
 import type { ChatProvider, ChatRequest, ChatResponse, ChannelHistoryMessage, StructuredCharacterProvider, PersonalMemoryExtractionAction } from "./chat-provider.js";
-import type { Memory, MemoryRepository, RepositoryIngestInput } from "../memory/memory.js";
+import type { Memory, MemoryRepository } from "../memory/memory.js";
 import { resolveChannelMemoryMode } from "../memory/memory-channel-policy.js";
 import { characterSettings, characterInactiveReason, type CharacterModuleId, type CharacterCapabilities } from "./character-settings.js";
 import { CharacterModuleRegistry, type CharacterTurn } from "./character-module-registry.js";
-import { CharacterMemory } from "./character-memory.js";
+import { CharacterMemory, type CharacterCandidateQuery, type CharacterMemoryWrite } from "./character-memory.js";
 import { addressedElsewhere, CharacterDecisionService, localAddressing, possiblePersonalFollowup, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
 import { createCharacterModules } from "./character-modules/index.js";
 import { hash, personaFingerprint, serious } from "./character-modules/shared.js";
@@ -71,7 +71,7 @@ export class CharacterRuntime {
     decisionProvider: StructuredCharacterProvider | null = utility, coordinator: Pick<PersonalMemoryExtractionQueueStore, "runForSubject"> | null = null,
     private readonly now: () => number = () => Date.now(), private readonly logger: Pick<Logger, "info" | "warn"> | null = null,
     contextualProviders: ContextualDecisionProviders | null = null) {
-    this.registry = new CharacterModuleRegistry((moduleId, error) => this.logger?.warn({ moduleId, error }, "Character module hook failed"));
+    this.registry = new CharacterModuleRegistry((moduleId, error) => this.logger?.warn({ moduleId, ...safeFailure(error) }, "Character module hook failed"));
     this.memory = new CharacterMemory(repository, coordinator, (guildId) => this.profiles.find(guildId), (guildId, channelId, id) => {
       const profile = this.profiles.find(guildId); if (!profile) return false;
       return this.registry.has(id) && !(id === "canon" && characterSettings(profile).modules.canon.freeze) &&
@@ -167,23 +167,38 @@ export class CharacterRuntime {
     const current = await this.registry.contribute({ ...prepared.turn, validationNow: this.now() });
     return this.stillEligible(prepared) && JSON.stringify(current) === prepared.memoryContextSignature;
   }
-  private query(turn: CharacterTurn): { guildId: string; channelId: string; userId: string; now: number } {
-    return { guildId: turn.request.guildId, channelId: turn.request.channelId, userId: turn.request.currentUser.id, now: turn.validationNow ?? turn.now };
+  private query(turn: CharacterTurn): CharacterCandidateQuery {
+    return { guildId: turn.request.guildId, channelId: turn.request.channelId, userId: turn.request.currentUser.id, now: turn.validationNow ?? turn.now,
+      ...(isGuardedContext(turn.request.contextLease) ? { sourceContext: turn.request.contextLease } : {}) };
   }
   private profile(turn: CharacterTurn): GuildConfiguration { return this.profiles.require(turn.request.guildId); }
-  private async generate(prompt: string, schema = textSchema): Promise<unknown> {
+  private async generate(prompt: string, schema = textSchema, turn?: CharacterTurn): Promise<unknown> {
     if (!this.utility) return null;
-    try { return await this.utility.generateCharacterData(prompt, schema); } catch { return null; }
+    const guarded = isGuardedContext(turn?.request.contextLease);
+    const check = async (): Promise<void> => {
+      if (guarded) {
+        await turn.request.beforeModelAttempt?.();
+        if (!await turn.request.contextLease!.validate()) throw new SocialOutputSuppressed();
+      }
+    };
+    try {
+      await check();
+      const result = await this.utility.generateCharacterData(prompt, schema, guarded ? { beforeAttempt: check,
+        ...(turn?.request.turnSignal ? { signal: turn.request.turnSignal } : {}) } : undefined);
+      await check(); return result;
+    } catch (error) { if (error instanceof SocialOutputSuppressed) throw error; return null; }
   }
-  private async text(prompt: string): Promise<string | null> {
-    const output = z.object({ text: z.string().max(1000) }).safeParse(await this.generate(prompt));
+  private async text(prompt: string, turn?: CharacterTurn): Promise<string | null> {
+    const output = z.object({ text: z.string().max(1000) }).safeParse(await this.generate(prompt, textSchema, turn));
     return output.success ? output.data.text.trim() || null : null;
   }
-  private base(turn: CharacterTurn, slot: string, statement: string): Omit<RepositoryIngestInput, "guildId" | "moduleId"> {
+  private base(turn: CharacterTurn, slot: string, statement: string): CharacterMemoryWrite {
     return { kind: "fact", audience: "guild", ownerUserId: null, channelId: null, isolationChannelId: null,
       subjectType: "persona", subjectId: "character", topic: "character", slot, statement, status: "active", source: "consolidation", importance: 1,
       embedding: null, embeddingModel: null, expiresAt: null, now: turn.now, sourceMessageId: null,
-      assertedByUserId: null, structuredValue: { personaHash: personaFingerprint(turn.request) }, sourceChannelId: null };
+      assertedByUserId: null, structuredValue: { personaHash: personaFingerprint(turn.request) }, sourceChannelId: null,
+      ...(isGuardedContext(turn.request.contextLease) ? { sourceContext: turn.request.contextLease, audience: "channel", channelId: turn.request.channelId,
+        isolationChannelId: resolveChannelMemoryMode(this.profile(turn).chat.channelMemoryModes, turn.request.channelId) === "isolated" ? turn.request.channelId : null } : {}) };
   }
   private ready(turn: CharacterTurn, id: CharacterModuleId): boolean {
     const profile = this.profiles.find(turn.request.guildId);
@@ -229,7 +244,7 @@ export class CharacterRuntime {
   private registerModules(): void {
     for (const module of createCharacterModules({ memory: this.memory, repository: this.repository,
       profile: (turn) => this.profile(turn), query: (turn) => this.query(turn), base: (turn, slot, statement) => this.base(turn, slot, statement),
-      ready: (turn, id) => this.ready(turn, id), generate: (prompt, schema) => this.generate(prompt, schema), text: (prompt) => this.text(prompt),
+      ready: (turn, id) => this.ready(turn, id), generate: (prompt, schema, turn) => this.generate(prompt, schema, turn), text: (prompt, turn) => this.text(prompt, turn),
       replyProvider: this.replyProvider, callbacks: this.callbacks, hasUtility: this.utility !== null })) this.registry.register(module);
   }
   public async prepare(request: ChatRequest): Promise<CharacterPreparedTurn | null> {
@@ -242,6 +257,10 @@ export class CharacterRuntime {
     const turn: CharacterTurn = { request, settings, capabilities, now: this.now() };
     const enabled = (id: CharacterModuleId): boolean => this.registry.has(id) && !characterInactiveReason(settings, id, request.channelId, capabilities);
     const guarded = isGuardedContext(request.contextLease);
+    const guardedCharacterContext = guarded ? await this.registry.contribute(turn) : [];
+    if (guardedCharacterContext.length) {
+      request = { ...request, characterContext: [...(request.characterContext ?? []), ...guardedCharacterContext] }; turn.request = request;
+    }
     const plan = request.turnPlan ?? resolveConversationTurnPlan(profile, request.channelId);
     if (!request.characterEvaluation && plan.state === "blocked") throw new SocialOutputSuppressed();
     const contextual = guarded && plan.state === "ready" && (plan.decision === "contextual" || request.currentEvent?.type === "reaction_snapshot");
@@ -284,9 +303,10 @@ export class CharacterRuntime {
       const shouldDecide = optional || request.triggerMode === "reaction" && guarded;
       const decisionStarted = Date.now();
       const outcome = shouldDecide ? await this.decisions.evaluate({ personality: request.personality, events: decisionEvents, burst, botId: request.botUserId ?? "bot",
-        ...(guarded && (request.memories.length || request.guildKnowledge.length) ? { supplementalFacts: [
+        ...(guarded && (request.memories.length || request.guildKnowledge.length || guardedCharacterContext.length) ? { supplementalFacts: [
           ...request.memories.map((record) => ({ subjectId: record.subjectUserId, statement: record.statement })),
           ...request.guildKnowledge.map((record) => ({ subjectId: record.subjectId, statement: record.statement })),
+          ...guardedCharacterContext.map((record) => ({ subjectId: `character:${record.moduleId}`, statement: record.text })),
         ] } : {}),
         fixedTarget, contextual, useContextBoundary: !guarded && settings.context.retrievalMode !== "eligible_count", gapMs: settings.context.segmentGapMinutes * 60_000,
         ...(contextual && request.currentEvent?.type === "reaction_snapshot" ? { reactionSnapshot: request.currentEvent } : {}),
@@ -354,9 +374,9 @@ export class CharacterRuntime {
       }
     }
     turn.request = request;
-    if (!guarded && !request.characterEvaluation && !request.characterShadow && burst.at(-1)) await this.registry.observe(burst.at(-1)!, turn);
-    const context = guarded ? [] : await this.registry.contribute(turn);
-    request = { ...request, characterContext: [...(request.characterContext ?? []), ...context] };
+    if (!request.characterEvaluation && !request.characterShadow && burst.at(-1)) await this.registry.observe(burst.at(-1)!, turn);
+    const context = guarded ? guardedCharacterContext : await this.registry.contribute(turn);
+    if (!guarded) request = { ...request, characterContext: [...(request.characterContext ?? []), ...context] };
     if (targetMessageId) {
       const target = [...events, ...burst].find((event) => event.messageId === targetMessageId);
       if (target) {
@@ -379,7 +399,7 @@ export class CharacterRuntime {
     return { turn, request, fingerprint, allowed, decisionStatus, acceptedContribution, exchangeId, targetMessageId, memoryContextSignature: JSON.stringify(context), participation, styleUserId, styleSignature, targetConfidence, ...(conversationDecision ? { conversationDecision } : {}) };
   }
   public async process(reply: ChatResponse, prepared: CharacterPreparedTurn): Promise<ChatResponse> {
-    const processed = isGuardedContext(prepared.request.contextLease) ? reply : await this.registry.postProcess(reply, prepared.turn);
+    const processed = await this.registry.postProcess(reply, prepared.turn);
     return { ...processed, ...(prepared.exchangeId ? { participationExchangeId: prepared.exchangeId } : {}), characterIsCurrent: () => this.stillEligible(prepared),
       characterCanDeliver: () => this.validatePrepared(prepared),
       ...(prepared.targetMessageId ? { replyTargetMessageId: prepared.targetMessageId,
@@ -387,6 +407,15 @@ export class CharacterRuntime {
   }
   public consolidate(reply: ChatResponse, prepared: CharacterPreparedTurn): Promise<void> {
     return this.stillEligible(prepared) ? this.registry.consolidate(reply, prepared.turn) : Promise.resolve();
+  }
+  public learnGuarded(reply: ChatResponse, prepared: CharacterPreparedTurn): void {
+    if (!isGuardedContext(prepared.request.contextLease)) throw new SocialOutputSuppressed();
+    this.trackJob((async (): Promise<void> => {
+      if (!this.stillEligible(prepared) || !await prepared.request.contextLease!.validate()) return;
+      await this.registry.consolidate(reply, prepared.turn);
+      if (!await prepared.request.contextLease!.validate()) return;
+      await this.registry.extractMemories(prepared.request.message, reply, prepared.turn);
+    })());
   }
   public extractConversationMemories(userMessage: string, reply: ChatResponse, prepared: CharacterPreparedTurn): Promise<readonly PersonalMemoryExtractionAction[] | null> {
     return this.stillEligible(prepared) ? this.registry.extractMemories(userMessage, reply, prepared.turn) : Promise.resolve(null);

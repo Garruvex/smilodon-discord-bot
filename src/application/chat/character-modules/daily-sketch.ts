@@ -16,7 +16,7 @@ export class DailySketchModule implements CharacterModule {
     const timeZone = this.services.profile(turn).timezone;
     const day = new Intl.DateTimeFormat("en-CA", { timeZone }).format(new Date(turn.now));
     const canon = await this.services.memory.read(this.services.profile(turn), this.services.query(turn), "canon", personaFingerprint(turn.request));
-    const text = await this.services.text(`Write one short fictional "what I'm up to today" sketch for ${day}, solely from personality, canon, and fictional lore. No events involving real members or claims of real-world actions. Data: ${JSON.stringify({ personality: turn.request.personality, lore: turn.request.personaLore, canon: canon.map((memory) => memory.statement) }).replaceAll("<", "\\u003c")}`);
+    const text = await this.services.text(`Write one short fictional "what I'm up to today" sketch for ${day}, solely from personality, canon, and fictional lore. No events involving real members or claims of real-world actions. Data: ${JSON.stringify({ personality: turn.request.personality, lore: turn.request.personaLore, canon: canon.map((memory) => memory.statement) }).replaceAll("<", "\\u003c")}`, turn);
     if (text && this.services.ready(turn, "daily-sketch")) {
       let expiry = turn.now + 60_000;
       expiry = (endOfLocalDay(day, timeZone) ?? expiry) + 1;

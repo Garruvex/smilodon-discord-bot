@@ -2,6 +2,7 @@ import type { CharacterModule, CharacterTurn } from "../character-module-registr
 import type { ChatResponse } from "../chat-provider.js";
 import type { CharacterModuleServices } from "./shared.js";
 import { hash } from "./shared.js";
+import { isGuardedContext } from "../guarded-conversation-context.js";
 export class RelationshipsModule implements CharacterModule {
   public readonly id = "relationships";
   private readonly refreshes = new Map<string, number>();
@@ -17,7 +18,9 @@ export class RelationshipsModule implements CharacterModule {
     if (turn.now - (this.refreshes.get(key) ?? -Infinity) < turn.settings.modules.relationships.intervalMinutes * 60_000) return;
     if (this.refreshes.size >= 256 && !this.refreshes.has(key)) this.refreshes.delete(this.refreshes.keys().next().value!);
     this.refreshes.set(key, turn.now);
-    const sources = (await this.services.repository.findRecallCandidates({ ...this.services.query(turn), subjectIds: [turn.request.currentUser.id] })).memories.filter((memory) => memory.subjectType === "member");
+    const candidates = (await this.services.repository.findRecallCandidates({ ...this.services.query(turn), subjectIds: [turn.request.currentUser.id] })).memories;
+    const sources = (isGuardedContext(turn.request.contextLease) ? await turn.request.contextLease.memories(candidates, true, turn.now) : candidates)
+      .filter((memory) => memory.subjectType === "member");
     // Each note has one source: new evidence must not refresh unrelated parts.
     for (const scope of sources.slice(0, 10)) {
       if (!await this.services.memory.sourceEligible(scope, this.services.profile(turn), this.services.query(turn)) || !this.services.ready(turn, "relationships")) continue;

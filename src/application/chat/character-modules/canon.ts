@@ -37,7 +37,7 @@ export class CanonModule implements CharacterModule {
     const prompt = buildPersonalMemoryExtractionPrompt(userMessage, reply.text, turn.request.currentUser) +
       "\nAlso extract at most two stable fictional SELF-descriptions from confirmed character reply text, separately as facts. Never write member facts into character canon or use character speech as evidence of personal memory. Check each against ALL existing canon regardless of slot, and personality/lore. consistent=false for any contradiction or uncertainty; return no unsupported facts. Each quote must be verbatim. Data: " +
       JSON.stringify({ personality: turn.request.personality, lore: turn.request.personaLore, canon: old.map((row) => row.statement), confirmedMessages: reply.characterDeliveryProof ?? [] }).replaceAll("<", "\\u003c");
-    const output = combinedSchema.safeParse(await this.services.generate(prompt, combinedJsonSchema));
+    const output = combinedSchema.safeParse(await this.services.generate(prompt, combinedJsonSchema, turn));
     if (!output.success) return [];
     if (!this.services.ready(turn, "canon")) return output.data.actions;
     const comparisons = old.map((record) => ({ slot: record.slot, statement: record.statement }));
