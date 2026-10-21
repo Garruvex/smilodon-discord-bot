@@ -142,109 +142,40 @@ a half-written file — and rolls back (`rmSync`) if the freshly-written file
 fails full-set validation on reload (for example, two files now claim the
 same `guildId`).
 
-## 4. Mention chat (a mention message to a delivered reply)
+## 4. Common chat lifecycle (all seven interactions)
+
+Current as of 2026-10-22; see the [closing audit](chat-context-final-audit-2026-10-22.md) for the source/consumer matrix, limits and test evidence.
 
 ```text
-Events.MessageCreate                            (src/bootstrap/application.ts)
-  -> ControlChannelService.handleMessage (control-channel requests take priority)
-  -> BehaviorDispatcher.dispatch(MessageCreated)
-       -> MentionChatBehavior.execute            (src/infrastructure/discord/behaviors/mention-chat-behavior.ts)
-            -> ChatAccessService.canUseMentionChat
-            -> FilePersonaSource.resolve          (src/infrastructure/chat/file-persona-source.ts)
-            -> ChatConversationService.run        (src/application/chat/chat-conversation-service.ts)
+MessageCreate / ReactionAdd
+  -> BehaviorDispatcher / fresh SocialChatEligibility
+  -> mention, ambient or reaction adapter
+  -> registered ChatTurnSupport source port + registered persona configuration
+  -> ChatConversationService scheduling, turn plan and work deadline
+  -> runGuardedChatTurn (the only live conversation executor)
+       -> source-owned current/burst/history/ancestry and verified sessions
+       -> authorized claims, relations, identities, configuration and images
+       -> approved character preparation and optional decision projection
+       -> deterministic ConversationDecisionEngine policy
+       -> immutable approved request -> ConversationModelGateway
+       -> frozen guardModelTransport -> provider attempts / reviewed tools
+       -> attribution / voice repair under derived registered requests
+       -> source revalidation -> immutable effect permit -> adapter delivery
+       -> confirmed state commit and approved memory mutation batch
+       -> fresh guarded post-turn extraction, consolidation and scoped drift
 ```
 
-`MentionChatBehavior` dedupes by message id (5-minute TTL), checks
-`features.chatbot` and role/channel access, strips the mention out of the
-prompt, resolves the reply chain and (if enabled) channel history and image
-attachments. An empty prompt is only rejected when there are also no images
-and no reply chain — replying to a message with a bare mention is treated as
-a valid question about that message.
+Mention, explicit reply, bare ping and matched name address have application-owned response destinations. Follow-up, group and reaction opportunities use context interpretation and deterministic participation policy. All modes share source eligibility and final effect controls. A bare ping can refer to an earlier untagged question. Quiet gaps alone do not discard otherwise eligible evidence; coalescing, expiry and work deadlines remain separate from relevance.
 
-`FilePersonaSource.resolve` loads the guild's `personality.md`; if a compiled
-`personality.bundle.json` sits next to it and its stored content hash still
-matches the current file, the bundle's always-sent "core" plus
-retrieval-selected "lore" chunks are used instead of the raw file. A stale or
-missing bundle falls back to the raw file (truncated to 32,000 characters)
-with no lore. Persona drift (`resolvePersonaDrift`, opt-in per guild) is
-similarly discarded if its stored `personalitySourceHash` no longer matches
-the current personality — drift computed against an edited personality file
-is untrustworthy. `examples.md` follows the same bundle-vs-raw-file pattern.
+`FilePersonaSource` issues registered authored configuration and verifies file/bundle fingerprints. Lore/examples are selected under that authority. Learned drift is a separately verified channel-scoped source, never an unproven global file folded into persona configuration. Preferences remain style data for the currently authorized user. Birthday/server data enters through reviewed resource/tool reads.
 
-`ChatConversationService.run` is the orchestrator, serialized per
-`guildId:userId` via a `KeyedSerialQueue` so a user's own messages can't
-race each other into inconsistent session state:
+Memory recall uses the mandatory frozen memory facade, source/subject/audience checks before external relevance work, source-owned queries and exact-text embedding admission. BM25/cosine rankings and RRF operate only on admitted candidates. Model proposals require reviewed immutable batches; shared and isolated modes permit durable writes, while session-only/disabled modes do not. Module-owned character records never enter ordinary recall.
 
-1. Loads session history (`stateStore.load`) and narrows it
-   (`promptHistorySelector.select`).
-2. In parallel: `memoryEngine.recall(...)` (flow continues below),
-   `userCustomizationStore.load`, `birthdayStore.getBirthday`.
-3. Narrows the example-exchange pool and persona-lore chunks to what's
-   relevant this turn (`exampleExchangeSelector`, `personaLoreSelector`).
-4. Calls `provider.reply({...})` — the one LLM round trip for this turn,
-   including guild knowledge, private memory, persona, examples, and (if
-   enabled) the tool list minus any guild-disabled tools.
-5. Validates the model's structured output —
-   `validateMemoryActions` (private-memory upserts/removals) and
-   `validateGuildKnowledgeCandidates` (guild-knowledge candidates) — checking
-   topic vocabulary, subject authorization, and secret/length rules.
-6. Calls `deliver(...)` (posts/edits the Discord reply) **before** committing
-   session state, so a later commit failure still leaves the user with a
-   delivered reply; the commit failure surfaces as `ChatStateCommitError`,
-   caught by `MentionChatBehavior` to DM an apology rather than silently
-   losing the exchange.
-7. `stateStore.commitSuccessfulExchange` records the turn and returns any
-   `droppedExchanges` — exchanges evicted from the rolling history window.
-8. Validated memory actions and guild-knowledge candidates become
-   `ProposedMemory[]` and go to `memoryEngine.ingest(...)`.
-9. `consolidateDroppedExchanges` runs off the critical path (failures are
-   logged and swallowed, never surfaced to the user): it summarizes the
-   exchanges that just aged out into durable `scene_summary` guild
-   knowledge, and separately evolves the persona-drift overlay if enabled.
+All model capabilities use the frozen model facade, and embeddings use a separate facade outside caches. Missing/copied/modified approval fails before dispatch. Provider callbacks revalidate source/configuration authority for retries and tool continuations, and delivery/persistence check again. The guard cannot atomically undo already-dispatched external bytes.
 
-Ambient (non-mention) replies share this same service method through
-`AmbientChatBehavior`: if the model chooses not to reply, `deliver` is never
-called, and if it still emitted memory proposals with no reply text, those
-are ingested without a session-exchange write.
+Delivery occurs before session commit; confirmed delivery survives a later bookkeeping failure and is not blindly replayed. Post-turn work uses fresh source authority and shares mutation ordering. Session-only bot-origin proofs remain ephemeral. Unknown legacy records, unsupported tools and unauthorized cross-channel data remain excluded.
 
-### The memory engine (`src/application/memory/memory-engine.ts`)
-
-`DefaultMemoryEngine` is what `recall` and `ingest` above actually do:
-
-- **`recall`** fetches candidates (`repository.findRecallCandidates`), scores
-  them with BM25 over a per-call corpus, and — when an embeddings client is
-  configured — separately ranks them by cosine similarity against the
-  embedded query (memories with no embedding, or a dimension mismatch, are
-  excluded from that ranking rather than tying at the bottom). The two
-  rankings are merged with **Reciprocal Rank Fusion** rather than summed
-  directly, since their scales aren't comparable, and `selectByRelevance`
-  keeps as many results as fit under an 8,000-character budget.
-- **`ingest`** is a no-op entirely when the resolved channel mode disallows
-  durable writes (e.g. isolated/disabled channels). Each proposal is
-  validated, then either removed (topic/slot match) or upserted.
-- **`upsertOne`** resolves the final scope via `resolveMemoryScope` — the
-  guild's configured channel mode is authoritative over whatever
-  `channelScoped` flag the model returned, since the model's flag can't be
-  trusted for an isolated channel. It also resolves the initial status:
-  private memories and guild/community facts self-activate immediately; a
-  fact **about a specific member** only self-activates when that member's
-  own message is the evidence behind it — a claim one member makes about
-  another stays an unconfirmed `"candidate"`.
-- **`checkForConflicts`** runs after an active memory with an embedding is
-  written: it finds other active memories about the same subject/scope,
-  compares cosine similarity, and uses a deterministic tie-break
-  (`createdAt` then `id`) so only the definitionally-later memory can
-  supersede — this is what stops two memories ingested at nearly the same
-  time from both trying to supersede each other and leaving neither active.
-  Above the similarity threshold, an optional LLM classifier decides
-  supersession; if that classifier call fails, the engine fails **safe
-  toward not superseding** — the worst case is a stale duplicate surviving
-  longer, never a memory silently vanishing.
-
-Memory relevance selection uses the unified `MemoryEngine.recall` path.
-The unused guild/user selector implementations and their obsolete selector
-tests were removed during the universal-boundary migration. Guarded recall,
-embedding, ranking and revocation behavior are tested through the active engine.
+Diagnostics contain metadata only. `model.gateway.rejected` distinguishes approval/source/result failures from provider work; explain-message preserves actual recovery/delivery evidence. Paid replays, production deployment and live Discord timing are separate acceptance work.
 
 ## 5. Channel-context memory (scan / daily consolidation)
 
@@ -255,9 +186,11 @@ ChannelSummaryScheduler                         (src/application/context/channel
        -> runScan   (one-time backfill to a configured seed-days boundary)
        -> runDaily  (bounded catch-up of each day's new messages)
             -> summarizeAndIngest
-                 -> ChannelMessageSummarizer.summarizeChannelMessages
+                 -> GuardedBackgroundContext + BackgroundModelGateway.summarize
+                 -> guardModelTransport -> summary provider attempts
                  -> validateGuildKnowledgeCandidates (channelScoped forced true)
-                 -> MemoryEngine.ingest (source: "consolidation")
+                 -> approved immutable fact/relation batch
+                 -> guarded MemoryEngine.ingest (source: "consolidation")
 ```
 
 `processChannel` skips a channel entirely if its resolved memory mode is
@@ -285,3 +218,5 @@ ingest failure is treated as a hard failure and the checkpoint is **not**
 advanced, so nothing is silently skipped past. Disabling a guild's `chatbot`
 feature pauses all channel-context processing without touching checkpoints;
 re-enabling it resumes exactly where it left off.
+
+Background model inputs and downstream writes inherit the registered batch source proof, eligible subjects and channel audience. Job/source/member changes cancel actual provider attempts and persistence. Completed extraction reflection reopens the original eligible messages after worker locks are released; failed jobs cannot create character state. Unproven legacy summary text is excluded rather than treated as unrestricted shared knowledge.

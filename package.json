@@ -21,6 +21,7 @@
     "i18n:coverage": "tsx src/scripts/i18n-coverage.ts",
     "eval:memory-relevance": "tsx src/scripts/calibrate-memory-relevance.ts",
     "eval:character-replay": "tsx src/scripts/replay-character-conversations.ts",
+    "eval:character-replay:built": "node dist/scripts/replay-character-conversations.js",
     "eval:contextual": "tsx src/scripts/replay-contextual-participation.ts",
     "eval:contextual:built": "node dist/scripts/replay-contextual-participation.js",
     "eval:conversation": "tsx src/scripts/replay-conversation-lifecycle.ts",

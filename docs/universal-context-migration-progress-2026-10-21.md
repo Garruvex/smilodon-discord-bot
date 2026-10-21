@@ -1,6 +1,6 @@
 # Universal context migration progress
 
-This continues the source-migration track in the contextual participation and privacy gateway plans. Completion of interaction-flow work did not complete this track. No deployment or production configuration change is implied.
+Current local status, 2026-10-22: the mandatory chat source/consumer migration is implemented through checkpoint 37. The [closing audit](chat-context-final-audit-2026-10-22.md) is the current coverage and acceptance record. The dated checkpoints below preserve their original migration gaps and evidence; later checkpoints supersede them. Production deployment, independent semantic review and a scoped live pilot remain separate. Repository-wide pre-existing lint debt is recorded explicitly.
 
 ## Checkpoint 1: guarded native web search
 
@@ -325,3 +325,13 @@ The final API reread found that production used guarded character preparation bu
 Removed unused public consolidation/extraction compatibility methods. Domain lifecycle tests now explicitly access private core behavior through a test-only white-box helper; no synthetic authority is invented to disguise those tests as production admission. Architecture checks keep private core access inside the runtime, guarded learning inside the source assembler and ledger actions inside the authorized settings action.
 
 Validation: full suite **5,116 passed, 7 skipped, zero failed**, typecheck, production compilation, changed-file lint and diff checks; the added final ownership assertion passed its focused architecture suite. New tests reject raw/leased/copied public preparation and raw public postprocessing/learning before model calls or mutation. This closes a further local gap found by the requested reread. No paid call or production action occurred. Closing documentation records the verified local boundary and the independent lint/release limits.
+
+## Checkpoint 38: final plan reconciliation and reproduction
+
+Reread the original trigger/context, privacy gateway and contextual participation plans after the implementation, then reconciled the source/consumer matrix, system flows, alignment ledger and historical audit banners. The closing audit records each enforced path, intentional exclusions, public API ownership and release limits. The extra public-character gap found by this reread was fixed in checkpoint 37 before closure. All three replay tools now have compiled npm entry points; inventory/help commands need no development tsx and perform no provider work.
+
+Final verification: **5,116 passed, 7 skipped, zero failed**; full TypeScript checking, complete Activity/application build, migration consistency, all TypeScript files changed in this continuation linted together, and whitespace checks passed. Contextual/lifecycle compiled inventory and character compiled help passed. Offline `npm ci` dry-run passed after the package-script update. No new paid model run, live database action, Discord send, production setting change or deployment occurred.
+
+Whole-repository lint was also run and reports **2,145 errors in 58 files**, including generated Activity output. None of the offending files changed in checkpoints 29–37 against `fbdc85b0`; lint configuration and Activity source remain unchanged. This unrelated debt is documented, not hidden by a relaxed lint rule or described as a passing check. A local dry-run/build does not reproduce a clean Linux/Alpine install or diagnose the missing root error from the server's npm excerpt.
+
+No tracked active raw-call/source migration gap remains in the chat inventory. Remaining acceptance is external: independent human semantic review, an explicitly authorized provider-cost run if needed, server build/deployment evidence and a named Discord channel pilot. Earlier paid replay reports are historical and were not relabeled as validation of this later source/model revision. See [the closing audit](chat-context-final-audit-2026-10-22.md) for the complete current contract and bounded guarantees.

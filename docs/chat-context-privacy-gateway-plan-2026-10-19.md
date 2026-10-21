@@ -1,8 +1,8 @@
 # Chat context privacy guard and model gateway plan
 
-Status: universal mandatory gateway remains a proposed design, not implemented or deployed. Phase 3 now implements a scoped, opt-in guarded text path with complete provenance and source revalidation for its activated inputs. Other raw model/background/tool paths remain pending. Prepared 2026-10-19. Split out of `chat-system-improvement-plan-2026-10-19.md` so diagnostics and isolated routing fixes can ship independently, while context expansion observes explicit source-specific privacy dependencies.
+Status, updated 2026-10-22: the local mandatory chat source/model migration is implemented through checkpoint 37. All production conversation modes use the registered source engine, frozen model/embedding facades and guarded memory mutations. The [closing audit](chat-context-final-audit-2026-10-22.md) maps every source and consumer to enforcement and evidence, including explicit legacy exclusion, authored configuration, remaining repository lint debt and external release gates. No deployment or production pilot is claimed.
 
-Implementation checkpoint: chat output origins and session exchanges persist bounded, versioned, content-free manifests. Legacy assembly emits partial coverage; the registered guarded text assembly alone can issue complete proofs. Current text, reply ancestry, fragments, eligible history, verified bot/session text, and reactions are source-checked across all seven interactions, including retries and delivery. Complete proof/hash/dependency checks and persistent forget cutoffs govern reuse; matching origin/session footprints are invalidated within their guild. Unverified legacy content, memory, summaries, learned state, images, and tools remain excluded from this path. See [Phase 3 acceptance](phase-3-context-acceptance-2026-10-19.md) for exact limits and local evidence. This does not complete universal gateway enforcement or migrate every background consumer.
+This document preserves the original design contract, prepared 2026-10-19. The [checkpoint log](universal-context-migration-progress-2026-10-21.md) records the staged implementation; old dated exclusions there describe their checkpoint, not the current source set. New paid replay, independent semantic review and a named-channel production pilot remain separate acceptance work.
 
 ## 1. Scope and relationship to the chat plan
 
@@ -67,7 +67,7 @@ Audit and migration must enumerate all producers and consumers of the inventory 
 
 Decision: adopt a shared context engine backed by a mandatory authorization guard and model gateway. A standalone `filter(messages)` helper is insufficient because callers can forget it, derived information needs provenance, and private information can reach decision/summary/tool models before final response generation.
 
-Current integration gaps to address: `ChatRequest` accepts independently assembled text/context arrays; character preparation can modify a request after assembly; `generateCharacterData` accepts a raw prompt string; bootstrap injects main/utility providers into several independent consumers. Filtering only `ChatConversationService`'s final `reply` call would not protect earlier decision calls, background summaries, repair calls, extraction, or provider-internal tool loops. Existing eligibility checks remain useful policy inputs, but should not remain independently implemented privacy authorities.
+Original integration gaps, now addressed by the source-owned serializers and mandatory transport facade: `ChatRequest` accepts independently assembled text/context arrays; character preparation can modify a request after assembly; `generateCharacterData` accepts a raw prompt string; bootstrap injects main/utility providers into several independent consumers. Filtering only `ChatConversationService`'s final `reply` call would not protect earlier decision calls, background summaries, repair calls, extraction, or provider-internal tool loops. Existing eligibility checks remain useful policy inputs, but should not remain independently implemented privacy authorities.
 
 | Design option | Assessment |
 | --- | --- |
@@ -75,7 +75,7 @@ Current integration gaps to address: `ChatRequest` accepts independently assembl
 | Only a final chat-response guard | Catches some mistakes but is too late for decision, summarization, embedding, extraction, and tool-result exposures |
 | Shared context engine + mandatory model gateway + guarded tool continuations | Recommended: one authorization contract, one controlled serialization boundary, separate participation policy |
 
-Proposed components:
+Implemented responsibilities (the type sketch below remains illustrative; see the closing audit for concrete modules):
 
 1. `ContextSourceRegistry`: enumerates source adapters and their metadata/provenance requirements. Adapters retrieve candidates; they cannot authorize themselves or dispatch model calls.
 2. `ContextPolicyGuard`: sole authority for source eligibility, subject/audience restrictions, purpose, policy versions, and derived dependencies. Returns explicit rejection reasons; unknown required evidence fails closed.

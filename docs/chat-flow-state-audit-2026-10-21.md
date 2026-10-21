@@ -2,7 +2,7 @@
 
 Reviewed 2026-10-21 at source commit `865b345d`. This is a code review and local reproduction report, not a production configuration audit. No production behavior, configuration or deployment was changed for this review.
 
-Follow-up: the local repairs, real adapter-to-effect coverage, dead-code removals and final provider evidence are recorded in the [alignment ledger](chat-plan-alignment-2026-10-21.md). F1–F6 below describe the historical audited revision, not unresolved defects in the finished local implementation. Intentional legacy strategies and separate universal-source gaps remain explicitly documented. Deployment/pilot acceptance is still separate.
+Follow-up, 2026-10-22: the [closing audit](chat-context-final-audit-2026-10-22.md) records the completed local source/consumer migration through checkpoint 37. F1–F6, the assessment and routing tables below describe the historical `865b345d` revision, not current production wiring or unresolved local runner choices. There is now one guarded conversation runner and mandatory registered model/embedding dispatch. Deployment/pilot and independent semantic acceptance remain separate.
 
 ## Assessment
 
