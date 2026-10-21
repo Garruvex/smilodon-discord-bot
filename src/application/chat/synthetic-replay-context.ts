@@ -1,6 +1,26 @@
 import type { ContextualReplayCase } from "./contextual-replay.js";
 import { GuardedConversationContext, type GuardedContextPort, type GuardedContextSource } from "./guarded-conversation-context.js";
 import { registerConversationSource } from "../context/conversation-source-registry.js";
+import { GuardedConfigurationContext } from "../context/guarded-configuration-context.js";
+import type { ChannelHistoryMessage } from "./chat-provider.js";
+
+// Explicit consented/anonymized replay premises only. The source map retains
+// actual generated-reply proofs; this helper never fabricates bot evidence.
+export function syntheticReplaySource(scope: Pick<GuardedContextPort, "guildId" | "channelId" | "sourceMessageId" | "actorId">,
+  sources: ReadonlyMap<string, GuardedContextSource>, mode: "shared" | "isolated" | "session_only" | "disabled" = "shared"): GuardedContextPort {
+  const events = (): ChannelHistoryMessage[] => [...sources.values()].map((source) => source.event).filter((event) => event.channelId === scope.channelId);
+  return registerConversationSource({ ...scope, persist: mode === "shared" || mode === "isolated", shareMemory: mode === "shared",
+    retention: mode === "disabled" ? "none" : mode === "session_only" ? "session" : "durable",
+    read: (id) => Promise.resolve(structuredClone(sources.get(id)?.event.channelId === scope.channelId ? sources.get(id)! : null)),
+    page: (before) => Promise.resolve(events().filter((event) => event.timestampMs < (before ? sources.get(before)?.event.timestampMs ?? Infinity : Infinity))
+      .sort((a, b) => b.timestampMs - a.timestampMs).map((event) => event.messageId)),
+    actor: (id) => Promise.resolve(structuredClone(events().find((event) => event.authorId === id)?.author ?? null)), policyCurrent: () => true,
+  });
+}
+
+export function syntheticReplayConfiguration(guildId: string, text: string, current: () => boolean | Promise<boolean> = () => true): Promise<GuardedConfigurationContext> {
+  return GuardedConfigurationContext.open({ kind: "persona", guildId, ownerUserId: null }, { text }, current);
+}
 
 // Offline synthetic authorization premise only. Never use this port for live
 // Discord data. Bot text gets real registered provenance from its seed source.

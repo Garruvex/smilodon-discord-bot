@@ -99,7 +99,7 @@ describe("conversation execution ownership", () => {
         if (module.endsWith("/guarded-configuration-context.js") && !node.importClause?.isTypeOnly) {
           const bindings = node.importClause?.namedBindings;
           const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
-          const issuers = ["application/assets/guild-asset-store.ts", "application/context/conversation-configuration.ts", "infrastructure/chat/file-persona-source.ts", "infrastructure/discord/commands/common/customize-command.ts"];
+          const issuers = ["application/assets/guild-asset-store.ts", "application/context/conversation-configuration.ts", "application/chat/synthetic-replay-context.ts", "infrastructure/chat/file-persona-source.ts", "infrastructure/discord/commands/common/customize-command.ts"];
           if (imported.some((name) => !["isConfigurationContext", "configurationMaterialHash"].includes(name)) && !issuers.includes(relative)) offenders.push(relative);
         }
         if (module.endsWith("/conversation-source-registry.js") && !node.importClause?.isTypeOnly) {

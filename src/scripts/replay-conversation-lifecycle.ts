@@ -6,7 +6,7 @@ import { ChatConversationService } from "../application/chat/chat-conversation-s
 import { CharacterRuntime } from "../application/chat/character-runtime.js";
 import { contextualDecisionProviders } from "../application/chat/contextual-decision-providers.js";
 import { contextualReplayCases } from "../application/chat/contextual-replay.js";
-import { syntheticReplayContext } from "../application/chat/synthetic-replay-context.js";
+import { syntheticReplayContext, syntheticReplayConfiguration } from "../application/chat/synthetic-replay-context.js";
 import type { ChatProvider, ChatResponse, ChatUser, StructuredCharacterProvider } from "../application/chat/chat-provider.js";
 import type { ConversationInteraction } from "../application/chat/conversation-trigger.js";
 import { conversationEffects } from "../application/chat/conversation-effects.js";
@@ -95,9 +95,11 @@ async function main(): Promise<void> {
     const runtime = new CharacterRuntime(profiles, repository, null, provider, null, null, Date.now, logger, selected);
     const service = new ChatConversationService(provider, new SqliteChatStateStore(connection.database), createGuardedMemoryEngine(repository, null, null, undefined, null, null, null, () => true),
       undefined, undefined, undefined, null, null, null, logger, utilityFacade, null, null, null, runtime);
+    const persona = await syntheticReplayConfiguration(guildId,
+      `A fictional Discord bot named Pinecone. Reply in ${language}. Be concise. Do not claim an unverified repair or personal gameplay experience.`);
     try {
       response = await service.run({ guildId, channelId, sourceMessageId: sourceId, channelHistoryEnabled: true, guardedContextPort: port,
-        personality: `A fictional Discord bot named Pinecone. Reply in ${language}. Be concise. Do not claim an unverified repair or personal gameplay experience.`,
+        personality: persona.material.text, configurationContext: persona,
         loreChunks: [], examplePool: [], personaDrift: null, currentUser: mode === "reaction" ? { id: botId, displayName: "Pinecone", roleNames: [], kind: "bot" } : human,
         mentionedUsers: [], message: fixture.current.content, replyChain: [], channelHistory: [], images: [], webSearchMode: "off", imageGenerationEnabled: false, includeSources: false,
         toolsEnabled: false, historyReactionsEnabled: true, botUserId: botId, interactionMode: mode,

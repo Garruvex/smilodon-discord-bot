@@ -18,6 +18,9 @@ import { createGuardedMemoryEngine } from "../application/context/guarded-memory
 import { createSqliteDatabaseConnection } from "../infrastructure/database/sqlite-database.js";
 import { SqliteMemoryRepository } from "../infrastructure/persistence/sqlite-memory-repository.js";
 import { SqliteChatStateStore } from "../infrastructure/persistence/sqlite-chat-state-store.js";
+import { syntheticReplaySource, syntheticReplayConfiguration } from "../application/chat/synthetic-replay-context.js";
+import type { GuardedContextSource } from "../application/chat/guarded-conversation-context.js";
+import { resolveChannelMemoryMode } from "../application/memory/memory-channel-policy.js";
 
 const args = process.argv.slice(2);
 const argument = (name: string): string | null => { const index = args.indexOf(name); return index >= 0 ? args[index + 1] ?? null : null; };
@@ -40,8 +43,10 @@ if (args.includes("--help")) {
   const utility = configuration.utilityChat ? createChatProviderFromConfig(configuration.utilityChat, logger) : provider;
   const personality = await readFile(resolve(personaPath), "utf8");
   const settingsPath = argument("--settings"); const settings = settingsPath ? characterSettingsSchema.parse(JSON.parse(await readFile(resolve(settingsPath), "utf8")) as unknown) : characterSettingsSchema.parse({});
-  if (settings.context.enabled && settings.context.retrievalMode === "eligible_count") throw new Error("Character replay exercises legacy direct/session behavior and has no Discord source lease. Use eval:contextual for guarded preflight acceptance.");
   const guildId = "100000000000000001";
+  const botId = "1000000000000000200";
+  const persona = await syntheticReplayConfiguration(guildId, personality, async () => await readFile(resolve(personaPath), "utf8") === personality);
+  const sources = new Map<string, GuardedContextSource>();
   let document = guildConfigurationFileSchema.parse({ schemaVersion: 1, guild: { id: guildId, name: "Anonymized replay" },
     features: { chatbot: true, channelHistory: true }, chat: { sharedMemoryEnabled: true }, character: settings });
   const current = (): GuildConfiguration => toGuildConfiguration(document, "replay");
@@ -51,25 +56,31 @@ if (args.includes("--help")) {
   let now = manifest.turns[0]!.timestampMs; const clock = (): number => now;
   const directory = await mkdtemp(join(tmpdir(), "character-replay-")); const connection = createSqliteDatabaseConnection(directory);
   const repository = new SqliteMemoryRepository(connection.database);
-  const memoryEngine = createGuardedMemoryEngine(repository, null, logger, undefined, utility, null, (id) => Promise.resolve(id === "bot"), () => true, () => null, clock);
+  const memoryEngine = createGuardedMemoryEngine(repository, null, logger, undefined, utility, null, (id) => Promise.resolve(id === botId), () => true, () => null, clock);
   const runtime = new CharacterRuntime(profiles, repository, utility.generateCharacterData ? { generateCharacterData: utility.generateCharacterData.bind(utility) } : null, provider, undefined, null, clock);
   const conversation = new ChatConversationService(provider, new SqliteChatStateStore(connection.database), memoryEngine,
     undefined, undefined, undefined, null, null, null, logger, utility, null, null, null, runtime, clock);
   try {
     const output = await replayCharacterConversations(manifest, async (turn) => {
       now = turn.timestampMs;
-      const event = { messageId: `replay-${now}-${turn.speakerId}`, timestampMs: now, authorId: turn.speakerId, authorDisplayName: `Member-${turn.speakerId.slice(-4)}`,
-        content: turn.message, imageCount: 0, channelId: turn.channelId };
+      const event = { messageId: `replay-${sources.size}-${now}-${turn.speakerId}`, timestampMs: now, authorId: turn.speakerId, authorDisplayName: `Member-${turn.speakerId.slice(-4)}`,
+        content: turn.message, imageCount: 0, channelId: turn.channelId,
+        author: { id: turn.speakerId, displayName: `Member-${turn.speakerId.slice(-4)}`, roleNames: [], kind: "human" as const } };
+      sources.set(event.messageId, { event, origin: "human", provenance: null });
+      const port = syntheticReplaySource({ guildId, channelId: turn.channelId, sourceMessageId: event.messageId, actorId: turn.speakerId }, sources,
+        resolveChannelMemoryMode(current().chat.channelMemoryModes, turn.channelId));
       conversation.observe(guildId, turn.channelId, event);
       const response = await conversation.run({ guildId, channelId: turn.channelId, sourceMessageId: event.messageId,
-        channelHistoryEnabled: true, personality, personaDrift: null, examplePool: [], loreChunks: [],
+        channelHistoryEnabled: true, guardedContextPort: port, configurationContext: persona, personality, personaDrift: null, examplePool: [], loreChunks: [],
         currentUser: { id: turn.speakerId, displayName: event.authorDisplayName, roleNames: [] }, mentionedUsers: [],
         message: turn.message, replyChain: [], channelHistory: [], images: [], webSearchMode: "off", imageGenerationEnabled: false, includeSources: false,
-        triggerMode: "direct", botUserId: "bot", currentEvent: { type: "message", messageId: event.messageId, timestampMs: now, channelId: turn.channelId,
+        triggerMode: "direct", botUserId: botId, currentEvent: { type: "message", messageId: event.messageId, timestampMs: now, channelId: turn.channelId,
           authorId: turn.speakerId, mentionedUserIds: [], replyToMessageId: null }, channelMemoryModes: current().chat.channelMemoryModes }, (reply) => {
           reply.characterDeliveryProof = [{ messageId: `bot-${event.messageId}`, content: reply.text }];
-          conversation.observe(guildId, turn.channelId, { messageId: `bot-${event.messageId}`, timestampMs: now, authorId: "bot", authorDisplayName: "Character",
-            content: reply.text, imageCount: 0, replyToMessageId: event.messageId, replyToAuthorId: turn.speakerId, author: { id: "bot", kind: "bot", displayName: "Character", roleNames: [] } });
+          const delivered = { messageId: `bot-${event.messageId}`, channelId: turn.channelId, timestampMs: now + 0.5, authorId: botId, authorDisplayName: "Character",
+            content: reply.text, imageCount: 0, replyToMessageId: event.messageId, replyToAuthorId: turn.speakerId, author: { id: botId, kind: "bot" as const, displayName: "Character", roleNames: [] } };
+          sources.set(delivered.messageId, { event: delivered, origin: "chat", sourceMessageId: event.messageId, provenance: reply.contextProvenance ?? null });
+          conversation.observe(guildId, turn.channelId, delivered);
           return Promise.resolve(reply.text);
         });
       await conversation.drain();
@@ -77,7 +88,7 @@ if (args.includes("--help")) {
         text: response.text, action: response.ambientAction, replyTargetMessageId: response.replyTargetMessageId ?? null };
     });
     const path = resolve(argument("--output") ?? "character-replay-review.json");
-    await writeFile(path, JSON.stringify({ consented: true, anonymized: true, scope: "Legacy direct/session generation; excludes contextual admission, guarded retrieval and Discord effects.", evaluation: "human review required", outputs: output }, null, 2), "utf8");
+    await writeFile(path, JSON.stringify({ consented: true, anonymized: true, scope: "Common guarded conversation service with explicit synthetic source/configuration authority, real generated-reply provenance and a temporary database; excludes Discord effects.", evaluation: "human review required", outputs: output }, null, 2), "utf8");
     process.stdout.write(`Replay completed: ${output.length} turns. Review artifact: ${path}\nTemporary replay database: ${directory}\n`);
   } finally { conversation.stopScheduling(); await conversation.drain(); connection.close(); }
 }
