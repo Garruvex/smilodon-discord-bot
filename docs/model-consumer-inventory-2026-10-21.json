@@ -6,9 +6,6 @@
   "src/application/chat/character-decision.ts": [
     "generateCharacterData"
   ],
-  "src/application/chat/character-modules/voice.ts": [
-    "reply"
-  ],
   "src/application/chat/character-runtime.ts": [
     "generateCharacterData",
     "reply"
@@ -47,8 +44,10 @@
   "src/application/context/conversation-model-gateway.ts": [
     "evolvePersonaDrift",
     "extractPersonalMemories",
+    "reply",
     "summarizeDroppedExchanges",
-    "summarizeReplyChainOverflow"
+    "summarizeReplyChainOverflow",
+    "verifyAttribution"
   ],
   "src/application/memory/memory-engine.ts": [
     "classifyMemoryConflict",

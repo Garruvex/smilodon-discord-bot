@@ -1,6 +1,7 @@
 import { runGuardedChatTurn } from "./guarded-chat-turn.js";
 import { runGuardedPostTurn } from "./guarded-post-turn.js";
 import { ConversationModelGateway } from "../context/conversation-model-gateway.js";
+import { repairConversationRequest } from "../context/approved-conversation-request.js";
 import { authorizeConversationEffects } from "./conversation-effects.js";
 import type { ActiveConversationTurnPlan, ConversationTurnPlan } from "./conversation-turn-plan.js";
 import { assertTurnActive, withTurnAbort } from "./turn-work-budget.js";
@@ -156,30 +157,15 @@ export class ChatConversationService {
     draftResponse: string,
     request: ChatRequest,
   ): Promise<string> {
-    const { message: currentMessage, replyChain, channelHistory, guildId, channelId } = request;
-    if (replyChain.length === 0 && channelHistory.length === 0) return draftResponse;
-    const verifier = this.utilityProvider?.verifyAttribution ? this.utilityProvider : this.provider;
-    if (!verifier.verifyAttribution) return draftResponse;
+    const { guildId, channelId } = request;
     try {
-      const context = [
-        ...replyChain.map((hop) => ({ authorId: hop.authorId, authorDisplayName: hop.authorDisplayName, content: hop.content })),
-        ...channelHistory.map((hop) => ({ authorId: hop.authorId, authorDisplayName: hop.authorDisplayName, content: hop.content })),
-      ];
-      const result = request.beforeModelAttempt ? await verifier.verifyAttribution(draftResponse, context, currentMessage, request.beforeModelAttempt)
-        : await verifier.verifyAttribution(draftResponse, context, currentMessage);
-      if (!result.needsCorrection) return draftResponse;
+      const result = await this.conversationModels.verifyAttribution(request, draftResponse);
+      if (!result?.needsCorrection) return draftResponse;
       const notes = result.correctionNotes?.trim();
       if (!notes) return draftResponse;
       // Keep the original request/persona, but never execute tools or emit previews twice.
       // Only the repaired text is consumed; all secondary output is discarded.
-      const repair = await this.replyWithDiagnostics({
-        ...request,
-        attributionRepair: { draft: draftResponse, notes },
-        enabledTools: [],
-        webSearchMode: "off",
-        imageGenerationEnabled: false,
-        historyReactionsEnabled: false,
-      });
+      const repair = await this.replyWithDiagnostics(repairConversationRequest(request, draftResponse, notes));
       const corrected = stripUntrustedMarkers(repair.text);
       if (!corrected) return draftResponse;
       // A "correction" that is just the draft echoed back (often wrapped in
@@ -189,7 +175,7 @@ export class ChatConversationService {
       this.logger?.info({ guildId, channelId }, "Attribution verification corrected a misattributed reply");
       return corrected;
     } catch (error) {
-      this.logger?.warn({ error, guildId, channelId }, "Attribution verification failed; delivering the unverified draft");
+      this.logger?.warn({ failure: safeFailure(error), guildId, channelId }, "Attribution verification failed; delivering the unverified draft");
       return draftResponse;
     }
   }
@@ -542,7 +528,7 @@ export class ChatConversationService {
     const started = performance.now();
     const purpose = request.attributionRepair ? "repair" : request.participationOnly ? "participation" : "reply";
     try {
-      const response = purpose === "reply" ? await this.provider.reply(request, observer) : await this.provider.reply(request);
+      const response = await this.conversationModels.reply(request, purpose === "reply" ? observer : undefined);
       emitChatDiagnostic(this.logger, { event: "chat.model.completed", purpose, status: "valid", durationMs: diagnosticElapsed(started) });
       return response;
     } catch (error) {

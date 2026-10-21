@@ -1229,6 +1229,7 @@ describe("ChatConversationService", () => {
       ...original,
       attributionRepair: { draft: "LW said that.", notes: "CONTEXT: ginco authored the quote; LW did not." },
       enabledTools: [], webSearchMode: "off", imageGenerationEnabled: false, historyReactionsEnabled: false,
+      beforeModelAttempt: expect.any(Function) as unknown,
     }]);
     expect(result.text).toBe("欸，那句是 Ginco 說的啦。");
     expect(deliver).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ text: result.text }));

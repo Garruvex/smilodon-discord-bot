@@ -1,4 +1,6 @@
 import { GuardedConversationContext, isGuardedContext, projectDecisionContext, type GuardedContextPort } from "./guarded-conversation-context.js";
+import { ConversationModelGateway } from "../context/conversation-model-gateway.js";
+import { repairConversationRequest } from "../context/approved-conversation-request.js";
 import { selectDecisionContext } from "./decision-context-selection.js";
 import { resolveConversationTurnPlan, type ConversationTurnPlan } from "./conversation-turn-plan.js";
 import { contextualDecisionWireRevision } from "./contextual-decision-contract.js";
@@ -246,7 +248,11 @@ export class CharacterRuntime {
     for (const module of createCharacterModules({ memory: this.memory, repository: this.repository,
       profile: (turn) => this.profile(turn), query: (turn) => this.query(turn), base: (turn, slot, statement) => this.base(turn, slot, statement),
       ready: (turn, id) => this.ready(turn, id), generate: (prompt, schema, turn) => this.generate(prompt, schema, turn), text: (prompt, turn) => this.text(prompt, turn),
-      replyProvider: this.replyProvider, callbacks: this.callbacks, hasUtility: this.utility !== null })) this.registry.register(module);
+      repairVoice: (turn, draft) => {
+        const notes = "Repair only casual voice/formatting: remove headings/lists, match examples, preserve factual content and complete substantive answers. Keep truthful bot disclosures.";
+        if (isGuardedContext(turn.request.contextLease)) return new ConversationModelGateway(this.replyProvider).reply(repairConversationRequest(turn.request, draft, notes));
+        return this.replyProvider.reply({ ...turn.request, enabledTools: [], imageGenerationEnabled: false, webSearchMode: "off", attributionRepair: { draft, notes } });
+      }, callbacks: this.callbacks, hasUtility: this.utility !== null })) this.registry.register(module);
   }
   public async prepare(request: ChatRequest): Promise<CharacterPreparedTurn | null> {
     if (request.botUserId) this.botIds.add(request.botUserId);

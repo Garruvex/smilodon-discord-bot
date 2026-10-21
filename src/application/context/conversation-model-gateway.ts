@@ -1,4 +1,5 @@
-import type { ChatProvider, DroppedExchangeFact, StructuredCallOptions, PersonalMemoryExtractionAction } from "../chat/chat-provider.js";
+import type { ChatProvider, ChatRequest, ChatResponse, ChatResponseObserver, DroppedExchangeFact, StructuredCallOptions, PersonalMemoryExtractionAction } from "../chat/chat-provider.js";
+import { requireApprovedConversationRequest } from "./approved-conversation-request.js";
 import type { ChatSessionExchange } from "../chat/chat-state-store.js";
 import { isGuardedContext, type GuardedConversationContext } from "../chat/guarded-conversation-context.js";
 import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
@@ -11,6 +12,23 @@ import { withTurnAbort } from "../chat/turn-work-budget.js";
 // deliveries again before any text reaches a consolidation model.
 export class ConversationModelGateway {
   public constructor(private readonly provider: ChatProvider, private readonly fallback: ChatProvider | null = null) {}
+  public async reply(request: ChatRequest, observer?: ChatResponseObserver): Promise<ChatResponse> {
+    requireApprovedConversationRequest(request);
+    await request.beforeModelAttempt!();
+    const transport = this.fallback ?? this.provider;
+    const response = await (request.attributionRepair ? transport.reply(request) : transport.reply(request, observer));
+    await request.beforeModelAttempt!(); return response;
+  }
+  public async verifyAttribution(request: ChatRequest, draft: string): Promise<{ needsCorrection: boolean; correctionNotes: string | null } | null> {
+    requireApprovedConversationRequest(request);
+    if (!request.replyChain.length && !request.channelHistory.length) return null;
+    const transport = this.provider.verifyAttribution ? this.provider : this.fallback;
+    if (!transport?.verifyAttribution) return null;
+    await request.beforeModelAttempt!();
+    const context = [...request.replyChain, ...request.channelHistory].map(({ authorId, authorDisplayName, content }) => ({ authorId, authorDisplayName, content }));
+    const result = await transport.verifyAttribution(draft, context, request.message, request.beforeModelAttempt);
+    await request.beforeModelAttempt!(); return result;
+  }
   public get canCompactReply(): boolean { return !!(this.provider.summarizeReplyChainOverflow || this.fallback?.summarizeReplyChainOverflow); }
   public get canExtract(): boolean { return !!(this.provider.extractPersonalMemories || this.fallback?.extractPersonalMemories); }
   public get canConsolidate(): boolean { return !!(this.provider.summarizeDroppedExchanges || this.fallback?.summarizeDroppedExchanges); }

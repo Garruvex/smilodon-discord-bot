@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { ChatRequest, ChatProvider } from "../chat-provider.js";
+import type { ChatRequest, ChatResponse } from "../chat-provider.js";
 import type { CharacterModuleId } from "../character-settings.js";
 import type { CharacterTurn } from "../character-module-registry.js";
 import type { CharacterMemory, CharacterCandidateQuery, CharacterMemoryWrite } from "../character-memory.js";
@@ -11,7 +11,8 @@ export const truthfulQuestion = (text: string): boolean => /(?:are you|你是|�
 export const hash = (text: string): string => createHash("sha256").update(text).digest("hex");
 export const personaFingerprint = (request: ChatRequest): string => request.characterPersonaHash ?? hash(JSON.stringify([request.personality, request.personaLore]));
 export interface CharacterModuleServices {
-  memory: CharacterMemory; repository: MemoryRepository; replyProvider: ChatProvider; callbacks: CharacterCallbacks; hasUtility: boolean;
+  memory: CharacterMemory; repository: MemoryRepository; callbacks: CharacterCallbacks; hasUtility: boolean;
+  repairVoice(turn: CharacterTurn, draft: string): Promise<ChatResponse>;
   profile(turn: CharacterTurn): GuildConfiguration;
   query(turn: CharacterTurn): CharacterCandidateQuery;
   base(turn: CharacterTurn, slot: string, statement: string): CharacterMemoryWrite;

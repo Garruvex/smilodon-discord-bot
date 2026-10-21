@@ -14,8 +14,7 @@ export class VoiceModule implements CharacterModule {
     const flags = voiceViolations(trimmed, style, substantive);
     const severe = flags.includes("markdown") || flags.includes("length");
     if (turn.settings.modules.voice.strictness === "trim" || !severe) return { ...reply, text: trimmed };
-    const repaired = await this.services.replyProvider.reply({ ...turn.request, enabledTools: [], imageGenerationEnabled: false, webSearchMode: "off",
-      attributionRepair: { draft: trimmed, notes: "Repair only casual voice/formatting: remove headings/lists, match examples, preserve factual content and complete substantive answers. Keep truthful bot disclosures." } });
+    const repaired = await this.services.repairVoice(turn, trimmed);
     return { ...reply, text: repaired.text.trim() || trimmed };
   }
 }
