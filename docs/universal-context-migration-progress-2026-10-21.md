@@ -12,11 +12,15 @@ Source display obeys `includeSources`. Display citations are bounded and sanitiz
 
 `chat.capabilities.resolved` records configured/effective search, transport support, shadow and grounded recovery without query or conversation text. These events explain enabled-setting/runtime differences.
 
-Validation: 132 focused tests passed before the final citation-display and prompt changes; final checks are recorded in the checkpoint commit. All model/transport tests use synthetic fake responses; no paid model evaluation was run for this change.
+Validation: 162 focused tests passed, along with typecheck, changed-file lint and whitespace checks. All model/transport tests use synthetic fake responses; no paid model evaluation was run for this change. Commit: `fb618d06`.
+
+## Checkpoint 2: effective operator status
+
+Execution and `/status` now use one capability resolver. Status distinguishes configured settings from capabilities available in the current channel, and explicitly lists guarded sources that remain excluded. The actual transport's declared native search support is supplied by bootstrap, rather than guessed from a model name. Legacy execution also disables unsupported search instead of advertising an unavailable native tool. English, Traditional Chinese and Japanese status-rendering tests exercise the real command. Focused validation: 208 tests passed; typecheck and changed-file lint are required before the commit.
 
 ## Remaining implementation checkpoints
 
-1. Surface effective capability/source availability in operator status, not only configured toggles and per-turn diagnostics.
+1. Effective capability/source availability is now surfaced in operator status; expand it as each new source migrates.
 2. Introduce a mandatory context/model boundary for the remaining consumers; inventory raw calls and prevent new bypasses.
 3. Migrate summary and personal-memory producers and records with claim-level evidence, subject/purpose/audience authorization and invalidation. Legacy batch identifiers alone do not establish re-readable source provenance.
 4. Migrate memory/relationship recall, learned character/profile context and caches; preserve forgetting and reject unproven legacy records.

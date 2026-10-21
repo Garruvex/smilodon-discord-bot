@@ -13,6 +13,7 @@ import { hashContent } from "../assets/content-hash.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { ChatProviderError } from "./chat-provider.js";
 import { assertTurnActive } from "./turn-work-budget.js";
+import { effectiveChatCapabilities } from "./chat-capabilities.js";
 
 export async function runGuardedChatTurn(input: GuardedChatConversationInput, dependencies: {
   state: ChatStateStore; runtime: CharacterRuntime | null; logger: Logger | null; now: () => number;
@@ -54,6 +55,8 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
     .map((event) => [event.authorId, event.author!])).values()];
   const mentionedIds = new Set(lease.currentEvent?.type === "message" ? lease.currentEvent.mentionedUserIds :
     lease.currentEvent?.type === "reaction_snapshot" ? lease.currentEvent.reactions.flatMap((reaction) => reaction.actorIds) : []);
+  const capabilities = effectiveChatCapabilities(input, { guarded: true, nativeWebSearchSupported: dependencies.nativeWebSearchSupported === true,
+    shadow: input.shadowMode ?? false });
   let request: ChatRequest = {
     turnPlan: input.turnPlan,
     guildId: input.guildId, channelId: input.channelId, personality: input.personality, characterPersonaHash: input.personalitySourceHash ?? hashContent(input.personality), personaLore: [], personaDrift: null,
@@ -62,7 +65,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
     message: lease.currentEvent?.type === "reaction_snapshot" ? `Respond only if useful to this authorized reaction snapshot: ${JSON.stringify(lease.currentEvent)}` : lease.current.content,
     replyChain: lease.currentEvent?.type === "reaction_snapshot" ? [...lease.replyChain, lease.current] : lease.replyChain, replyChainSummary: null, channelHistory: lease.history, currentBurst: lease.burst,
     ...(lease.currentEvent ? { currentEvent: lease.currentEvent } : {}),
-    birthday: null, images: [], webSearchMode: !input.shadowMode && dependencies.nativeWebSearchSupported ? input.webSearchMode : "off", imageGenerationEnabled: false, includeSources: input.includeSources,
+    birthday: null, images: [], webSearchMode: capabilities.webSearchMode, imageGenerationEnabled: capabilities.imageGenerationEnabled, includeSources: input.includeSources,
     triggerMode: input.triggerMode, botUserId: input.botUserId ?? null,
     ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
     allowSilentDirect: input.allowSilentDirect ?? false, characterShadow: input.shadowMode ?? false,
@@ -88,7 +91,8 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   // Error recovery must stay grounded in the supplied text, and shadow turns
   // must never initiate searches. Native search does not enable application
   // tools or give access to additional Discord sources.
-  if (prepared?.conversationDecision?.recovery === "grounded_reply") request = { ...request, webSearchMode: "off" };
+  if (prepared?.conversationDecision?.recovery === "grounded_reply") request = { ...request,
+    webSearchMode: effectiveChatCapabilities(input, { guarded: true, nativeWebSearchSupported: dependencies.nativeWebSearchSupported === true, groundedRecovery: true }).webSearchMode };
   emitChatDiagnostic(dependencies.logger, { event: "chat.capabilities.resolved", webSearchConfigured: input.webSearchMode,
     webSearchEffective: request.webSearchMode, nativeWebSearchSupported: dependencies.nativeWebSearchSupported === true,
     shadow: input.shadowMode ?? false, recovery: prepared?.conversationDecision?.recovery === "grounded_reply" });

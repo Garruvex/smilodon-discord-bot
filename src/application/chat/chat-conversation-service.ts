@@ -1,4 +1,5 @@
 import { runGuardedChatTurn } from "./guarded-chat-turn.js";
+import { effectiveChatCapabilities } from "./chat-capabilities.js";
 import { authorizeConversationEffects } from "./conversation-effects.js";
 import type { ActiveConversationTurnPlan, ConversationTurnPlan } from "./conversation-turn-plan.js";
 import { assertTurnActive, withTurnAbort } from "./turn-work-budget.js";
@@ -1173,13 +1174,15 @@ export class ChatConversationService {
       void loreChunks;
       void replyChainOverflow;
       void personalitySourceHash;
+      const capabilities = effectiveChatCapabilities({ ...input, toolsEnabled: toolsEnabled === true }, { guarded: false,
+        nativeWebSearchSupported: this.provider.nativeWebSearchSupported === true, shadow: input.shadowMode ?? false });
       let request: ChatRequest = {
         characterShadow: input.shadowMode ?? false,
         characterStyleExamples: input.examplePool,
         characterPersonaHash: input.personalitySourceHash ?? hashContent(input.personality),
         ...requestInput,
-        webSearchMode: input.shadowMode ? "off" : input.webSearchMode,
-        imageGenerationEnabled: !input.shadowMode && input.imageGenerationEnabled,
+        webSearchMode: capabilities.webSearchMode,
+        imageGenerationEnabled: capabilities.imageGenerationEnabled,
         recentHistory,
         channelMode,
         memories: selectedMemories,
@@ -1193,7 +1196,7 @@ export class ChatConversationService {
         personaLore: selectedPersonaLore.map((chunk) => ({ heading: chunk.heading, text: chunk.text })),
         userCustomization,
         birthday: birthday ? { month: birthday.month, day: birthday.day, birthYear: birthday.birthYear } : null,
-        enabledTools: toolsEnabled && this.toolRegistry && !input.shadowMode
+        enabledTools: capabilities.toolsEnabled && this.toolRegistry
           ? this.toolRegistry.list().filter((tool) => !disabledToolNames?.has(tool.name) && (!allowedToolNames || allowedToolNames.has(tool.name))).map((tool) => ({
               name: tool.name, description: tool.description, parameters: tool.parameters,
               execute: async (args, context): ReturnType<ChatTool["execute"]> => {

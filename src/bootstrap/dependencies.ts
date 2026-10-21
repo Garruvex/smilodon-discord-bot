@@ -367,7 +367,7 @@ export function registerCommands(
     embeddings: configuration.embeddings
       ? { provider: configuration.embeddings.provider, model: configuration.embeddings.model }
       : null,
-  }));
+  }, () => chatProvider?.nativeWebSearchSupported === true));
   commandRegistry.register(new VoteCommand(pollService));
   const embeddingsClient = configuration.embeddings
     ? new CachingEmbeddingsClient(
