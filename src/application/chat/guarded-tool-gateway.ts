@@ -4,6 +4,9 @@ import { MemoryLookupTool } from "./tools/memory-lookup-tool.js";
 import { ReadLinkTool } from "./tools/read-link-tool.js";
 import { BirthdayLookupTool } from "./tools/birthday-lookup-tool.js";
 import { GenerateSelfImageTool } from "./tools/generate-self-image-tool.js";
+import { BirthdaySetTool } from "./tools/birthday-set-tool.js";
+import { BirthdayMemberSetTool } from "./tools/birthday-member-set-tool.js";
+import { BooruSearchTool } from "./tools/booru-search-tool.js";
 import { DiscordServerLookupTool } from "../../infrastructure/discord/discord-server-lookup-tool.js";
 import type { ChatTool, ChatToolContext, ChatToolResult } from "./tools/chat-tool.js";
 import type { ChatToolRegistry } from "./tools/chat-tool-registry.js";
@@ -23,11 +26,18 @@ export function guardedTools(registry: ChatToolRegistry | null, lease: GuardedCo
   const texts = [lease.current, ...lease.history, ...lease.replyChain, ...lease.burst].map((event) => event.content);
   return registry.list().filter((tool) => !scope.disabled?.has(tool.name) && (!scope.allowed || scope.allowed.has(tool.name)) &&
     (tool instanceof DiceRollTool || tool instanceof EightBallTool || tool instanceof MemoryLookupTool || tool instanceof ReadLinkTool ||
-      tool instanceof BirthdayLookupTool || tool instanceof DiscordServerLookupTool || tool instanceof GenerateSelfImageTool && scope.imageGenerationEnabled))
+      tool instanceof BirthdayLookupTool || tool instanceof BirthdaySetTool || tool instanceof BirthdayMemberSetTool || tool instanceof BooruSearchTool ||
+      tool instanceof DiscordServerLookupTool || tool instanceof GenerateSelfImageTool && scope.imageGenerationEnabled))
     .map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters, ...(tool.outputKind ? { outputKind: tool.outputKind } : {}),
       execute: async (args: unknown, context: ChatToolContext): Promise<ChatToolResult> => {
         await check(); context.signal?.throwIfAborted();
         if (context.guildId !== scope.guildId || context.channelId !== scope.channelId || context.currentUser.id !== scope.userId) throw new SocialOutputSuppressed();
+        if (tool instanceof BirthdayMemberSetTool) {
+          const id = typeof args === "object" && args !== null && "userId" in args ? args.userId : null;
+          const known = new Set([...subjects, ...lease.admittedActorIds]);
+          if (typeof id !== "string" || !known.has(id) || !(await lease.participants([id])).length)
+            return { content: "The member must be supplied in authorized conversation context; nothing was saved." };
+        }
         if (tool instanceof ReadLinkTool) {
           const raw = typeof args === "object" && args !== null && "url" in args ? args.url : null;
           if (typeof raw !== "string" || !texts.some((text) => text.match(/https?:\/\/[^\s<>]+/gu)?.includes(raw)))
@@ -35,7 +45,7 @@ export function guardedTools(registry: ChatToolRegistry | null, lease: GuardedCo
         }
         const result = await tool.execute(args, { ...context, contextLease: lease, beforeModelAttempt: check, knownSubjectIds: [...new Set([...subjects, ...lease.admittedActorIds])] });
         context.signal?.throwIfAborted(); await check();
-        if (tool instanceof ReadLinkTool) lease.recordPublicTool(tool.name, result.content);
+        if (tool instanceof ReadLinkTool || tool instanceof BooruSearchTool) lease.recordPublicTool(tool.name, result.content);
         if (tool.outputKind !== "context") executed();
         return { content: result.content.slice(0, 12000) };
       },

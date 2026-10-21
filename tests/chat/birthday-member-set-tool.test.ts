@@ -11,6 +11,14 @@ const context: ChatToolContext = {
 const date = { userId: "123456789012345678", month: 8, day: 17, birthYear: 1999, message: "Happy {birthday}, {member}!" };
 
 describe("BirthdayMemberSetTool", () => {
+  it("rechecks administrator roles after asynchronous birthday reads", async () => {
+    const setBirthday = vi.fn(); let allowed = true;
+    const profile = { features: { birthdays: true }, roles: { botAdministrator: new Set(["admin-role"]) }, timezone: "UTC" } as unknown as GuildConfiguration;
+    const tool = new BirthdayMemberSetTool({ setBirthday, getBirthday: (): Promise<null> => { allowed = false; return Promise.resolve(null); } } as unknown as BirthdayStore,
+      { find: (): GuildConfiguration => profile }, (_guild, userId) => Promise.resolve(userId === "actor" && allowed ? ["admin-role"] : []));
+    expect((await tool.execute(date, context)).content).toContain("Only bot administrators");
+    expect(setBirthday).not.toHaveBeenCalled();
+  });
   it.each([
     { admin: true, member: true, enabled: true, aborted: false, saved: true },
     { admin: false, member: true, enabled: true, aborted: false, saved: false },

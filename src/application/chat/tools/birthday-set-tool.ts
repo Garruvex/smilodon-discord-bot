@@ -2,6 +2,7 @@ import type { BirthdayStore } from "../../birthdays/birthday-store.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
 import { guildCalendarDate, validateBirthday } from "../../birthdays/birthday-message.js";
 import type { ChatTool, ChatToolContext, ChatToolResult } from "./chat-tool.js";
+import { SocialOutputSuppressed } from "../message-origin-store.js";
 
 interface BirthdaySetToolArgs {
   month: number;
@@ -43,6 +44,8 @@ export class BirthdaySetTool implements ChatTool<BirthdaySetToolArgs> {
   ) {}
 
   public async execute(args: BirthdaySetToolArgs, ctx: ChatToolContext): Promise<ChatToolResult> {
+    if (ctx.signal?.aborted) return { content: "Birthday update timed out; nothing was saved." };
+    await ctx.beforeModelAttempt?.(); ctx.signal?.throwIfAborted();
     const { month, day } = args;
     if (!Number.isInteger(month) || month < 1 || month > 12 ||
         !Number.isInteger(day) || day < 1 || day > daysInMonth[month - 1]!) {
@@ -65,9 +68,11 @@ export class BirthdaySetTool implements ChatTool<BirthdaySetToolArgs> {
       if (!this.guildConfigurationProvider.find(ctx.guildId)?.features.birthdays || ctx.signal?.aborted) {
         return { content: "Birthday update is no longer available; nothing was saved." };
       }
+      await ctx.beforeModelAttempt?.(); ctx.signal?.throwIfAborted();
       await this.birthdayStore.setBirthday(ctx.guildId, ctx.currentUser.id, month, day, details);
       return { content: `Your birthday is set to ${monthNames[month - 1]} ${day} in this server.` };
-    } catch {
+    } catch (error) {
+      if (error instanceof SocialOutputSuppressed || ctx.signal?.aborted) throw error;
       return { content: "Could not save the birthday. Ask the user to try again; nothing was confirmed." };
     }
   }

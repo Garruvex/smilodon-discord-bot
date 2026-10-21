@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { guardedTools, resolveGuardedToolResource } from "../../src/application/chat/guarded-tool-gateway.js";
 import { GuardedConversationContext } from "../../src/application/chat/guarded-conversation-context.js";
 import { SocialOutputSuppressed } from "../../src/application/chat/message-origin-store.js";
@@ -7,9 +7,14 @@ import { DiceRollTool } from "../../src/application/chat/tools/dice-tool.js";
 import { ReadLinkTool } from "../../src/application/chat/tools/read-link-tool.js";
 import { MemoryLookupTool } from "../../src/application/chat/tools/memory-lookup-tool.js";
 import { BirthdayLookupTool } from "../../src/application/chat/tools/birthday-lookup-tool.js";
+import { BirthdaySetTool } from "../../src/application/chat/tools/birthday-set-tool.js";
+import { BirthdayMemberSetTool } from "../../src/application/chat/tools/birthday-member-set-tool.js";
+import { BooruSearchTool } from "../../src/application/chat/tools/booru-search-tool.js";
 import type { ChatTool, ChatToolContext } from "../../src/application/chat/tools/chat-tool.js";
 import type { MemoryEngine, MemoryRecallInput, MemoryContext } from "../../src/application/memory/memory.js";
 import { guardedEvent, guardedFixture } from "../helpers/guarded-context-fixture.js";
+
+afterEach(() => vi.unstubAllGlobals());
 
 async function setup(tools: ChatTool[] = [new DiceRollTool()]): Promise<{
   fixture: ReturnType<typeof guardedFixture>; lease: GuardedConversationContext; enabled: ChatTool[]; context: ChatToolContext; executed: ReturnType<typeof vi.fn>;
@@ -25,6 +30,34 @@ async function setup(tools: ChatTool[] = [new DiceRollTool()]): Promise<{
 }
 
 describe("guarded tool source boundary", () => {
+  it("rechecks protected sources immediately before writing a birthday", async () => {
+    const setBirthday = vi.fn(); const getBirthday = vi.fn();
+    const tool = new BirthdaySetTool({ setBirthday, getBirthday } as never,
+      { find: (): unknown => ({ features: { birthdays: true }, timezone: "UTC" }) } as never);
+    const { enabled, fixture, context } = await setup([tool]);
+    getBirthday.mockImplementation(() => { fixture.denied.add("current"); return Promise.resolve(null); });
+    await expect(enabled[0]!.execute({ month: 10, day: 21 }, context)).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    expect(setBirthday).not.toHaveBeenCalled();
+  });
+  it("rejects invented birthday targets before any member or storage lookup", async () => {
+    const resolve = vi.fn(); const setBirthday = vi.fn(); const getBirthday = vi.fn();
+    const tool = new BirthdayMemberSetTool({ setBirthday, getBirthday } as never, { find: vi.fn() }, resolve);
+    const { enabled, context } = await setup([tool]);
+    expect((await enabled[0]!.execute({ userId: "123456789012345678", month: 10, day: 21 }, context)).content).toContain("authorized conversation");
+    expect(resolve).not.toHaveBeenCalled(); expect(getBirthday).not.toHaveBeenCalled(); expect(setBirthday).not.toHaveBeenCalled();
+  });
+  it.each([false, true])("bounds public image-search egress and discards changed-source results: %s", async (changed) => {
+    const tool = new BooruSearchTool(); const { enabled, fixture, context, lease } = await setup([tool]);
+    const fetch = vi.fn((_url: string, options: RequestInit) => {
+      expect(options.redirect).toBe("error"); expect(options.signal).toBeInstanceOf(AbortSignal);
+      if (changed) fixture.denied.add("current");
+      return Promise.resolve(new Response(JSON.stringify({ posts: [{ id: 1, score: { up: 1 }, fav_count: 101, rating: "s", file: { url: "https://static1.e926.net/image.png", ext: "png", size: 100 }, tags: { artist: ["artist"], species: ["wolf"] } }] })));
+    }); vi.stubGlobal("fetch", fetch);
+    const result = enabled[0]!.execute({ query: "wolf", order: "random" }, context);
+    if (changed) await expect(result).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    else { expect((await result).content).toContain("https://e926.net/posts/1"); expect(lease.provenance("image")?.publicTools?.[0]?.name).toBe("search_booru"); }
+    expect(fetch).toHaveBeenCalledOnce(); expect(fetch.mock.calls[0]?.[0]).toContain("https://e926.net/posts.json?");
+  });
   it("rejects unreviewed implementations even when their names imitate known tools", async () => {
     const { lease } = await setup();
     const fake = { ...new DiceRollTool(), execute: vi.fn() };
