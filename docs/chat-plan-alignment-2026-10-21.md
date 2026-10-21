@@ -5,7 +5,7 @@ Work follows the [contextual participation plan](chat-contextual-participation-p
 | Requirement | State | Evidence / remaining work |
 | --- | --- | --- |
 | Final action owns text and every reaction | Implemented locally | Service authorizes immutable effect snapshots; all three Discord callbacks consume them. Invalid-evidence regression proves no callback or text delivery. Target binding survives finalization. |
-| One resolved effective turn plan | Pending | Remove contradictory flow/port flags and expose invalid configuration instead of silent fallback. |
+| One resolved effective turn plan | Implemented locally | Central resolver drives execution, reports, context strategy and guarded deadlines. Removed adapter flow/candidate flags. Missing/mismatched guard or invalid contextual prerequisites fail closed before model work. |
 | Guarded reactions receive preflight | Pending | Add reaction-specific event/target/actor contract and exercise real routing. |
 | Source proof distinct from exchange meaning | Pending | Replace citation-only cross-speaker grounding; preserve valid contextual corrections. |
 | Context projection preserves authorized anchors | Existing, re-audit pending | Verify decision and generator source identity after migration. |
@@ -17,3 +17,5 @@ Work follows the [contextual participation plan](chat-contextual-participation-p
 | Final reread of plan and audit | Pending | Map every acceptance item to implementation/evidence or an explicit external gate. |
 
 Checkpoint 1 validation: 209 existing focused tests plus 62 effect/guarded tests after adding regression coverage; typecheck and changed-file lint passed. No Discord sends or production settings changes.
+
+Checkpoint 2 validation: 4,813 passed / 7 skipped; typecheck and changed-file lint passed. `contextual=false` is now explicitly a legacy-decision configuration, not a claim about the runner. Legacy-context and guarded-context variants remain intentional compatibility strategies selected by one plan, not optional port presence.

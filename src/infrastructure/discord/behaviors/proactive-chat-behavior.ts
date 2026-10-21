@@ -11,6 +11,7 @@ import type { SocialChatEligibility } from "./social-chat-eligibility.js";
 import type { AmbientChatBehavior } from "./ambient-chat-behavior.js";
 import { emitChatDiagnostic } from "../../../application/diagnostics/chat-diagnostics.js";
 import { contextualFlow } from "../../../application/chat/contextual-flow.js";
+import { resolveConversationTurnPlan } from "../../../application/chat/conversation-turn-plan.js";
 import { ContextualCandidateBuffer } from "./contextual-candidate-buffer.js";
 
 type OptionalTrigger = "continuation" | "spontaneous";
@@ -62,6 +63,7 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
     if (addressesBotName(message.content, profile.displayName) || message.mentions.repliedUser?.id === botId ||
         message.reference?.messageId && message.channel?.messages?.cache?.get(message.reference.messageId)?.author.id === botId) return null;
     const policy = resolveParticipation(profile.chat.participation, message.channelId);
+    if (resolveConversationTurnPlan(profile, message.channelId).state === "blocked") return null;
     if (contextualFlow(profile, message.channelId) && this.conversation.optionalDecisionAvailable && (!!message.content.trim() || (message.attachments?.size ?? 0) > 0))
       return policy.spontaneousEnabled ? "spontaneous" : policy.continuationEnabled ? "continuation" : null;
     if (policy.continuationEnabled && this.conversation.isImplicitlyAddressed(message.guildId, message.channelId, { messageId: message.id, timestampMs: message.createdTimestamp,

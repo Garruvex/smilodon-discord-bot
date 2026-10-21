@@ -2,12 +2,14 @@ import type { GuildConfiguration } from "../../config/guild-configuration.js";
 import { characterSettings } from "./character-settings.js";
 import { passiveChannelAllowed, resolveParticipation } from "./participation-policy.js";
 import { resolveChannelMemoryMode } from "../memory/memory-channel-policy.js";
+import { resolveConversationTurnPlan, type ConversationTurnPlan } from "./conversation-turn-plan.js";
 
 export type PolicyReason = "chat_disabled" | "reply_unavailable" | "reply_unknown" | "bot_cannot_read" | "channel_not_selected" |
   "feature_disabled" | "history_disabled" | "observation_not_selected" | "context_channel_disabled" | "memory_disabled" |
-  "decision_unavailable" | "decision_unknown" | "spontaneous_not_selected";
+  "decision_unavailable" | "decision_unknown" | "spontaneous_not_selected" | "context_disabled" | "legacy_retrieval";
 export type PolicyMode = "direct" | "reply" | "bare_ping" | "name_address" | "continuation" | "spontaneous" | "reaction";
 export interface EffectiveChatPolicy {
+  turnPlan: ConversationTurnPlan;
   commonReasons: PolicyReason[];
   modes: { mode: PolicyMode; reasons: PolicyReason[]; shadow: boolean }[];
   guarded: boolean;
@@ -32,8 +34,11 @@ export function effectiveChatPolicy(profile: GuildConfiguration, channelId: stri
   const participation = resolveParticipation(profile.chat.participation, channelId);
   const memoryMode = resolveChannelMemoryMode(profile.chat.channelMemoryModes, channelId);
   const guarded = context.enabled && context.retrievalMode === "eligible_count";
+  const turnPlan = resolveConversationTurnPlan(profile, channelId);
   const directSelected = profile.channels.chatbot.size === 0 || profile.channels.chatbot.has(channelId);
   const common: PolicyReason[] = [
+    ...(turnPlan.state === "blocked" ? [turnPlan.reason === "channel_context_disabled" ? "context_channel_disabled" as const :
+      turnPlan.reason === "legacy_retrieval" ? "legacy_retrieval" as const : "context_disabled" as const] : []),
     ...(!profile.features.chatbot ? ["chat_disabled" as const] : []),
     ...(readiness.reply === false ? ["reply_unavailable" as const] : readiness.reply === null ? ["reply_unknown" as const] : []),
     ...(guarded && !readiness.botRead ? ["bot_cannot_read" as const] : []),
@@ -51,6 +56,7 @@ export function effectiveChatPolicy(profile: GuildConfiguration, channelId: stri
   const passive = [...common, ...historyReasons];
   const mode = (name: PolicyMode, reasons: PolicyReason[], shadow = false): EffectiveChatPolicy["modes"][number] => ({ mode: name, reasons: [...new Set(reasons)], shadow });
   return {
+    turnPlan,
     modes: [mode("direct", direct), mode("reply", direct), mode("bare_ping", direct),
       mode("name_address", [...direct, ...(!profile.features.ambientReplies ? ["feature_disabled" as const] : [])], participation.shadowMode),
       mode("continuation", [...passive, ...decision, ...(!participation.continuationEnabled ? ["feature_disabled" as const] : [])], participation.shadowMode),

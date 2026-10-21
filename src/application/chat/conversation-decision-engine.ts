@@ -71,7 +71,7 @@ export class ConversationDecisionEngine {
     if (proposal?.contextual?.action === "silent") return { ...base, result: this.result(request, trigger, now, policyVersion, "contextual_abstention", "ready", "silent", proposal.contextual.intent) };
     if (proposal?.contextual && isGuardedContext(request.contextLease)) {
       const failure = decisionSourceFailure(proposal, events.filter((event) => event.timestampMs <= now), botId,
-        request.contextualCandidate || request.triggerMode === "continuation" ? current?.messageId ?? null : null);
+        request.turnPlan?.decision === "contextual" || request.triggerMode === "continuation" ? current?.messageId ?? null : null);
       if (failure) return denied(failure, "failed");
       const interpretation = proposal.contextual;
       if (current && isRecipientCorrection(current.content)) return denied("addressed_elsewhere");

@@ -1,5 +1,5 @@
 import type { Logger } from "pino";
-import { ChatStateCommitError, type ChatConversationInput } from "./chat-conversation-service.js";
+import { ChatStateCommitError, type GuardedChatConversationInput } from "./chat-conversation-service.js";
 import type { ChatRequest, ChatResponse, ChatResponseObserver } from "./chat-provider.js";
 import type { ChatStateStore } from "./chat-state-store.js";
 import type { CharacterRuntime, CharacterPreparedTurn } from "./character-runtime.js";
@@ -14,13 +14,13 @@ import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { ChatProviderError } from "./chat-provider.js";
 import { assertTurnActive } from "./turn-work-budget.js";
 
-export async function runGuardedChatTurn(input: ChatConversationInput, dependencies: {
+export async function runGuardedChatTurn(input: GuardedChatConversationInput, dependencies: {
   state: ChatStateStore; runtime: CharacterRuntime | null; logger: Logger | null; now: () => number;
   reply: (request: ChatRequest, observer?: ChatResponseObserver) => Promise<ChatResponse>;
   repair: (text: string, request: ChatRequest) => Promise<string>;
   admitSocialPing?: () => boolean;
 }, deliver: (response: ChatResponse) => Promise<string>, observer?: ChatResponseObserver): Promise<ChatResponse> {
-  const port = input.guardedContextPort!;
+  const port = input.guardedContextPort;
   assertTurnActive(input.turnSignal);
   if (port.guildId !== input.guildId || port.channelId !== input.channelId || input.sourceMessageId !== port.sourceMessageId ||
     (input.triggerMode === "reaction" ? port.actorId !== null || input.currentEvent?.type !== "reaction_snapshot" : port.actorId !== input.currentUser.id))
@@ -54,6 +54,7 @@ export async function runGuardedChatTurn(input: ChatConversationInput, dependenc
   const mentionedIds = new Set(lease.currentEvent?.type === "message" ? lease.currentEvent.mentionedUserIds :
     lease.currentEvent?.type === "reaction_snapshot" ? lease.currentEvent.reactions.flatMap((reaction) => reaction.actorIds) : []);
   let request: ChatRequest = {
+    turnPlan: input.turnPlan,
     guildId: input.guildId, channelId: input.channelId, personality: input.personality, characterPersonaHash: input.personalitySourceHash ?? hashContent(input.personality), personaLore: [], personaDrift: null,
     exampleExchanges: [], userCustomization: null, currentUser, mentionedUsers: participants.filter((actor) => actor.id !== currentUser.id && mentionedIds.has(actor.id)),
     recentHistory: new RecentPromptHistorySelector().select(sessions), memories: [], guildKnowledge: [], causalChains: [],
@@ -65,7 +66,6 @@ export async function runGuardedChatTurn(input: ChatConversationInput, dependenc
     ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
     allowSilentDirect: input.allowSilentDirect ?? false, characterShadow: input.shadowMode ?? false,
     ...(input.optionalActionsAvailable ? { optionalActionsAvailable: input.optionalActionsAvailable } : {}),
-    ...(input.contextualCandidate ? { contextualCandidate: true } : {}),
     ...(input.turnSignal ? { turnSignal: input.turnSignal } : {}), ...(input.turnDeadlineAt ? { turnDeadlineAt: input.turnDeadlineAt } : {}),
     ...(input.contextualActionAvailability ? { contextualActionAvailability: input.contextualActionAvailability } : {}),
     contextLease: lease, beforeModelAttempt: check, ...(input.onModelAttempt ? { onModelAttempt: input.onModelAttempt } : {}),

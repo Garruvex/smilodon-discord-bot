@@ -17,6 +17,14 @@ function profile(): ReturnType<typeof freshProfile> {
 }
 
 describe("effective chat policy", () => {
+  it("reports contextual precondition failure from the same plan used by execution", () => {
+    const p = profile(); p.character!.context.enabled = false;
+    p.chat.participation = { ...defaultParticipation, flowVersion: "contextual_v1" };
+    const policy = effectiveChatPolicy(p, channelId, readiness);
+    expect(policy.turnPlan).toMatchObject({ state: "blocked", reason: "context_disabled" });
+    expect(policy.modes.every((mode) => mode.reasons.includes("context_disabled"))).toBe(true);
+    expect(renderChatPolicy({ profile: p, text: settingsText("en") }, channelId, readiness)).toContain("Effective pipeline:");
+  });
   it("does not invent a legacy direct-chat history prerequisite", () => {
     const p = profile(); p.character!.context.retrievalMode = "legacy";
     const policy = effectiveChatPolicy(p, channelId, { ...readiness, botRead: false });

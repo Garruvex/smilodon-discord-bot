@@ -1,6 +1,7 @@
 import { runGuardedChatTurn } from "./guarded-chat-turn.js";
 import { authorizeConversationEffects } from "./conversation-effects.js";
-import { assertTurnActive, contextualTurnLimits, withTurnAbort } from "./turn-work-budget.js";
+import type { ActiveConversationTurnPlan, ConversationTurnPlan } from "./conversation-turn-plan.js";
+import { assertTurnActive, withTurnAbort } from "./turn-work-budget.js";
 import type { GuardedContextPort } from "./guarded-conversation-context.js";
 import { captureIncompleteTurnProvenance } from "./context-provenance.js";
 import { isRecipientCorrection } from "./character-decision.js";
@@ -168,7 +169,7 @@ function memoryKindForTopic(topic: string): "fact" | "preference" | "episode" {
 }
 
 export interface ChatConversationInput
-  extends Omit<ChatRequest, "recentHistory" | "memories" | "guildKnowledge" | "causalChains" | "replyChainSummary" | "userCustomization" | "birthday" | "enabledTools" | "exampleExchanges" | "personaLore"> {
+  extends Omit<ChatRequest, "turnPlan" | "recentHistory" | "memories" | "guildKnowledge" | "causalChains" | "replyChainSummary" | "userCustomization" | "birthday" | "enabledTools" | "exampleExchanges" | "personaLore"> {
   guildId: string;
   // The Discord message id that triggered this turn, when there is a single
   // one (mention/ambient chat always have one; other callers may not).
@@ -236,6 +237,9 @@ export interface ChatConversationInput
   // callers that don't go through a compiled bundle at all.
   personalitySourceHash?: string;
 }
+
+export type PlannedChatConversationInput = ChatConversationInput & { turnPlan: ActiveConversationTurnPlan };
+export type GuardedChatConversationInput = PlannedChatConversationInput & { guardedContextPort: GuardedContextPort };
 
 export class ChatStateCommitError extends Error {
   public constructor(cause: unknown) {
@@ -751,15 +755,27 @@ export class ChatConversationService {
       sourceMessageId: input.sourceMessageId ?? undefined }, async () => {
       const started = performance.now();
       let textDeliveryConfirmed = false;
-      const controller = (input.contextualCandidate || input.participationFlowVersion === "contextual_v1") && input.guardedContextPort ? new AbortController() : null;
-      const timer = controller ? setTimeout(() => {
-        emitChatDiagnostic(this.logger, { event: "chat.turn.deadline", budgetMs: contextualTurnLimits.totalMs }); controller.abort();
-      }, contextualTurnLimits.totalMs) : null;
-      const activeInput = controller ? { ...input, turnSignal: controller.signal, turnDeadlineAt: Date.now() + contextualTurnLimits.totalMs,
-        canExecute: async (): Promise<boolean> => { assertTurnActive(controller.signal); const allowed = await withTurnAbort(controller.signal, () => input.canExecute?.() ?? Promise.resolve(true)); assertTurnActive(controller.signal); return allowed; },
-        shouldDeliver: (): boolean => !controller.signal.aborted && (!input.shouldDeliver || input.shouldDeliver()) } : input;
+      let timer: ReturnType<typeof setTimeout> | null = null;
       emitChatDiagnostic(this.logger, { event: "chat.turn.started", triggerMode: input.triggerMode, ...(input.candidateId ? { candidateId: input.candidateId } : {}) });
       try {
+        const plan: ConversationTurnPlan | null = this.characterRuntime ? this.characterRuntime.resolveTurnPlan(input.guildId, input.channelId) : {
+          state: "ready", flow: "legacy", context: "legacy", decision: "legacy", deadlineMs: null, contextPolicy: { count: 40, budget: 12000 } };
+        const failure = !plan ? "profile_unavailable" : plan.state === "blocked" ? plan.reason :
+          plan.context === "guarded_text" && !input.guardedContextPort ? "guard_unavailable" :
+          plan.context === "legacy" && input.guardedContextPort ? "guard_mismatch" : null;
+        emitChatDiagnostic(this.logger, { event: "chat.turn.plan", flow: plan?.flow ?? "legacy", context: plan?.context ?? "legacy",
+          state: failure ? "blocked" : "ready", ...(failure ? { reason: failure } : {}) });
+        if (failure || !plan || plan.state !== "ready") throw new SocialOutputSuppressed();
+        const controller = plan.deadlineMs === null ? null : new AbortController();
+        if (controller) timer = setTimeout(() => {
+          emitChatDiagnostic(this.logger, { event: "chat.turn.deadline", budgetMs: plan.deadlineMs! }); controller.abort();
+        }, plan.deadlineMs!);
+        const planned: PlannedChatConversationInput = { ...input, turnPlan: plan,
+          ...(plan.context === "guarded_text" ? { guardedContextPolicy: { ...plan.contextPolicy,
+            ...(input.guardedContextPolicy?.minReactors === undefined ? {} : { minReactors: input.guardedContextPolicy.minReactors }) } } : {}) };
+        const activeInput: PlannedChatConversationInput = controller ? { ...planned, turnSignal: controller.signal, turnDeadlineAt: Date.now() + plan.deadlineMs!,
+          canExecute: async (): Promise<boolean> => { assertTurnActive(controller.signal); const allowed = await withTurnAbort(controller.signal, () => input.canExecute?.() ?? Promise.resolve(true)); assertTurnActive(controller.signal); return allowed; },
+          shouldDeliver: (): boolean => !controller.signal.aborted && (!input.shouldDeliver || input.shouldDeliver()) } : planned;
         const response = await withTurnAbort(controller?.signal, () => this.runScheduled(activeInput, async (result) => {
           assertTurnActive(controller?.signal);
           const text = await deliver(result);
@@ -790,7 +806,7 @@ export class ChatConversationService {
   }
 
   private runScheduled(
-    input: ChatConversationInput,
+    input: PlannedChatConversationInput,
     deliver: (response: ChatResponse) => Promise<string>,
     observer?: ChatResponseObserver,
   ): Promise<ChatResponse> {
@@ -812,7 +828,7 @@ export class ChatConversationService {
         emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "execution_ineligible" });
         throw new SocialOutputSuppressed();
       }
-      if (!input.guardedContextPort && !input.refreshHistoricalContext && input.channelHistoryEnabled && this.episodeStore && (input.resolveMemoryMode?.() ?? resolveChannelMemoryMode(input.channelMemoryModes ?? {}, input.channelId)) !== "disabled") {
+      if (input.turnPlan.context === "legacy" && !input.refreshHistoricalContext && input.channelHistoryEnabled && this.episodeStore && (input.resolveMemoryMode?.() ?? resolveChannelMemoryMode(input.channelMemoryModes ?? {}, input.channelId)) !== "disabled") {
         const persisted = await this.episodeStore.load(input.guildId, input.channelId, this.now());
         persisted.forEach((event) => this.episodes.observe(key, event, this.now(), (this.characterRuntime?.contextWindow(input.guildId, input.channelId) ?? 15) * 60_000));
       }
@@ -824,7 +840,7 @@ export class ChatConversationService {
         input.currentEvent?.type === "message" ? input.currentEvent.replyToMessageId : null, this.now()) : [];
       // The expanded path is rebuilt from Discord and refreshed as one batch;
       // legacy derived bot episode text has no complete provenance.
-      if (input.guardedContextPort || input.refreshHistoricalContext) snapshot = [];
+      if (input.turnPlan.context === "guarded_text" || input.refreshHistoricalContext) snapshot = [];
       if (input.refreshContextMessage) snapshot = (await Promise.all(snapshot.map((event) => input.refreshContextMessage!(event))))
         .filter((event): event is ChannelHistoryMessage => event !== null);
       const ids = new Set(input.replyChain.map((message) => message.messageId));
@@ -854,11 +870,13 @@ export class ChatConversationService {
       emitChatDiagnostic(this.logger, { event: "context.selection.completed", fetchedHistory: input.channelHistory.length,
         episodeCandidates: snapshot.length, burstCandidates: input.currentBurst?.length ?? 0, merged, selected: history.length,
         replyChain: input.replyChain.length, chars: history.reduce((total, message) => total + message.content.length, 0) });
-      const runTurn = input.guardedContextPort ? (turn: ChatConversationInput, send: (response: ChatResponse) => Promise<string>, observe?: ChatResponseObserver): Promise<ChatResponse> =>
-        this.queue.run(`${turn.guildId}:${turn.currentUser.id}`, () => withTurnAbort(turn.turnSignal, () => runGuardedChatTurn(turn, { state: this.stateStore, runtime: this.characterRuntime,
+      const runTurn = input.turnPlan.context === "guarded_text" ? (turn: PlannedChatConversationInput, send: (response: ChatResponse) => Promise<string>, observe?: ChatResponseObserver): Promise<ChatResponse> => {
+        if (!turn.guardedContextPort) throw new SocialOutputSuppressed();
+        const guarded: GuardedChatConversationInput = { ...turn, guardedContextPort: turn.guardedContextPort };
+        return this.queue.run(`${turn.guildId}:${turn.currentUser.id}`, () => withTurnAbort(turn.turnSignal, () => runGuardedChatTurn(guarded, { state: this.stateStore, runtime: this.characterRuntime,
           logger: this.logger, now: this.now, reply: (request, observer) => this.replyWithDiagnostics(request, observer),
-          repair: (text, request) => this.verifyAttribution(text, request), admitSocialPing: () => this.admitSocialPing(turn) }, send, observe))) : this.runTurn.bind(this);
-      const contextualAvailability = input.contextualCandidate ? {
+          repair: (text, request) => this.verifyAttribution(text, request), admitSocialPing: () => this.admitSocialPing(turn) }, send, observe))); } : this.runTurn.bind(this);
+      const contextualAvailability = input.turnPlan.decision === "contextual" && (input.triggerMode === "continuation" || input.triggerMode === "spontaneous") ? {
         continuation: { text: this.scheduler.outputAvailable(key, "text", { ...limits, continuation: true }), reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits) },
         spontaneous: { text: this.scheduler.outputAvailable(key, "text", { ...limits, continuation: false }), reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits) },
       } : null;
@@ -1033,7 +1051,7 @@ export class ChatConversationService {
   }
 
   private runTurn(
-    input: ChatConversationInput,
+    input: PlannedChatConversationInput,
     deliver: (response: ChatResponse) => Promise<string>,
     observer?: ChatResponseObserver,
   ): Promise<ChatResponse> {

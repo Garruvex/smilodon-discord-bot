@@ -8,7 +8,7 @@ import type { Logger } from "pino";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
 import { emitChatDiagnostic } from "../../../application/diagnostics/chat-diagnostics.js";
 import { mentionInteraction } from "../../../application/chat/conversation-trigger.js";
-import { contextualFlow } from "../../../application/chat/contextual-flow.js";
+import { usesGuardedContext } from "../../../application/chat/conversation-turn-plan.js";
 import { conversationEffects } from "../../../application/chat/conversation-effects.js";
 import { MentionChatAccess } from "./mention-chat-access.js";
 import { resolvesReplyToBot } from "./direct-reply-resolver.js";
@@ -137,23 +137,23 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     const participation = resolveParticipation(profile.chat.participation, message.channelId);
     const lowSubstance = isLowSubstancePing(prompt, Boolean(message.reference?.messageId), message.attachments.size > 0);
     // Oldest ancestor first, ending just before `message` itself.
-    const { kept: replyChainMessages, overflow: replyChainOverflowMessages } = (characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count" ? { kept: [], overflow: [] } : await this.turnSupport.resolveReplyChain(message));
+    const { kept: replyChainMessages, overflow: replyChainOverflowMessages } = (usesGuardedContext(profile, message.channelId) ? { kept: [], overflow: [] } : await this.turnSupport.resolveReplyChain(message));
     const ancestors = this.turnSupport.toChannelHistoryMessages([...replyChainOverflowMessages, ...replyChainMessages]);
     const replyChain: ReplyChainMessage[] = ancestors.slice(replyChainOverflowMessages.length);
     // Older ancestors are summarized without attaching their images. Preserve
     // their original authors/addressees even when another human joins a reply.
     const replyChainOverflow: ReplyChainMessage[] = ancestors.slice(0, replyChainOverflowMessages.length)
       .map((hop) => ({ ...hop, imageCount: 0 }));
-    const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory && !(characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count")
+    const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory && !(usesGuardedContext(profile, message.channelId))
       ? this.turnSupport.toChannelHistoryMessages(await this.turnSupport.resolveChannelHistory(
           message,
           characterSettings(profile).context.enabled ? characterSettings(profile).context.maxMessages : profile.chat.channelHistoryLimit,
           new Set(replyChainMessages.map((hop) => hop.id)),
           undefined, characterSettings(profile).context.enabled ? characterSettings(profile).context.budget : chatMemoryLimits.maxChannelHistoryChars,
-          characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count",
+          usesGuardedContext(profile, message.channelId),
         ))
       : [];
-    const { selected: imageAttachments, droppedUnsupported, droppedOverLimit } = profile.chat.imageInputEnabled && !(characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count")
+    const { selected: imageAttachments, droppedUnsupported, droppedOverLimit } = profile.chat.imageInputEnabled && !(usesGuardedContext(profile, message.channelId))
       ? this.turnSupport.selectImageAttachments(
           [...message.attachments.values()],
           // Nearest-to-current hop first, so recency wins once truncated to the limit.
@@ -229,14 +229,13 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         guildId: message.guildId,
         channelId: message.channelId,
         sourceMessageId: message.id,
-        ...(contextualFlow(profile, message.channelId) ? { participationFlowVersion: "contextual_v1" as const } : {}),
         channelHistoryEnabled: profile.features.channelHistory,
         currentEvent: this.turnSupport.toMessageEvent(message), botUserId: this.clientUserId(),
         canExecute: () => this.turnSupport.isEligible(message),
         activityLimits: participation.limits,
         resolveActivityLimits: () => resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits,
         resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(message.guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
-        ...(characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count" ? { guardedContextPort: this.turnSupport.createContextPort(message, false),
+        ...(usesGuardedContext(profile, message.channelId) ? { guardedContextPort: this.turnSupport.createContextPort(message, false),
           guardedContextPolicy: { count: characterSettings(profile).context.maxMessages, budget: characterSettings(profile).context.budget } } : {}),
         refreshContextMessage: (event) => this.turnSupport.refreshHistoryEvent(message, event),
         allowSilentDirect: participation.barePingMode === "personality",

@@ -6,7 +6,7 @@ import { SocialOutputSuppressed, type MessageOriginStore } from "../../../applic
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
 import { resolveParticipation } from "../../../application/chat/participation-policy.js";
 import { characterSettings } from "../../../application/chat/character-settings.js";
-import { contextualFlow } from "../../../application/chat/contextual-flow.js";
+import { usesGuardedContext } from "../../../application/chat/conversation-turn-plan.js";
 import { conversationEffects } from "../../../application/chat/conversation-effects.js";
 import { resolveChannelMemoryMode } from "../../../application/memory/memory-channel-policy.js";
 
@@ -107,23 +107,23 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     const participation = resolveParticipation(profile.chat.participation, message.channelId);
 
 
-    const { kept: replyChainMessages, overflow: replyChainOverflowMessages } = (characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count" ? { kept: [], overflow: [] } : await this.turnSupport.resolveReplyChain(message));
+    const { kept: replyChainMessages, overflow: replyChainOverflowMessages } = (usesGuardedContext(profile, message.channelId) ? { kept: [], overflow: [] } : await this.turnSupport.resolveReplyChain(message));
     const ancestors = this.turnSupport.toChannelHistoryMessages([...replyChainOverflowMessages, ...replyChainMessages]);
     const replyChain: ReplyChainMessage[] = ancestors.slice(replyChainOverflowMessages.length);
     // Older ancestors are summarized without attaching their images. Preserve
     // their original authors/addressees even when another human joins a reply.
     const replyChainOverflow: ReplyChainMessage[] = ancestors.slice(0, replyChainOverflowMessages.length)
       .map((hop) => ({ ...hop, imageCount: 0 }));
-    const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory && !(characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count")
+    const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory && !(usesGuardedContext(profile, message.channelId))
       ? this.turnSupport.toChannelHistoryMessages(await this.turnSupport.resolveChannelHistory(
           message,
           characterSettings(profile).context.enabled ? characterSettings(profile).context.maxMessages : profile.chat.channelHistoryLimit,
           new Set(replyChainMessages.map((hop) => hop.id)),
           undefined, characterSettings(profile).context.enabled ? characterSettings(profile).context.budget : chatMemoryLimits.maxChannelHistoryChars,
-          characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count",
+          usesGuardedContext(profile, message.channelId),
         ))
       : [];
-    const { selected: imageAttachments, droppedUnsupported, droppedOverLimit } = profile.chat.imageInputEnabled && !(characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count")
+    const { selected: imageAttachments, droppedUnsupported, droppedOverLimit } = profile.chat.imageInputEnabled && !(usesGuardedContext(profile, message.channelId))
       ? this.turnSupport.selectImageAttachments(
           [...message.attachments.values()],
           [...replyChainMessages].reverse().map((hop) => [...hop.attachments.values()]),
@@ -153,15 +153,13 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         channelId: message.channelId,
         sourceMessageId: message.id,
         ...(candidateId ? { candidateId } : {}),
-        contextualCandidate: trigger !== "ambient" && contextualFlow(profile, message.channelId),
-        ...(contextualFlow(profile, message.channelId) ? { participationFlowVersion: "contextual_v1" as const } : {}),
         channelHistoryEnabled: profile.features.channelHistory,
         currentEvent: this.turnSupport.toMessageEvent(message), botUserId: this.clientUserId(),
         canExecute: async () => (opportunityVersion == null || this.conversation?.optionalOpportunityVersion(message.guildId, message.channelId) === opportunityVersion) && await this.turnSupport.isEligible(message, trigger),
         activityLimits: participation.limits, shadowMode: participation.shadowMode,
         resolveActivityLimits: () => resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits,
         resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(message.guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
-        ...(characterSettings(profile).context.enabled && characterSettings(profile).context.retrievalMode === "eligible_count" ? { guardedContextPort: this.turnSupport.createContextPort(message, false),
+        ...(usesGuardedContext(profile, message.channelId) ? { guardedContextPort: this.turnSupport.createContextPort(message, false),
           guardedContextPolicy: { count: characterSettings(profile).context.maxMessages, budget: characterSettings(profile).context.budget } } : {}),
         refreshContextMessage: (event) => this.turnSupport.refreshHistoryEvent(message, event),
         shouldDeliver: () => (opportunityVersion == null || this.conversation?.optionalOpportunityVersion(message.guildId, message.channelId) === opportunityVersion) && !resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).shadowMode,

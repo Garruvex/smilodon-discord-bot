@@ -1,6 +1,6 @@
 import { isGuardedContext, projectDecisionContext } from "./guarded-conversation-context.js";
 import { selectDecisionContext } from "./decision-context-selection.js";
-import { contextualFlow } from "./contextual-flow.js";
+import { resolveConversationTurnPlan, type ConversationTurnPlan } from "./conversation-turn-plan.js";
 import { contextualDecisionWireRevision } from "./contextual-decision-contract.js";
 import { z } from "zod";
 import { budgetEligibleHistory } from "./eligible-channel-history.js";
@@ -92,6 +92,9 @@ export class CharacterRuntime {
     const profile = this.profiles.find(guildId); return !!profile && passiveChannelAllowed(profile, channelId) && this.capabilities(profile, channelId).context;
   }
   public get decisionAvailable(): boolean { return this.decisions.available; }
+  public resolveTurnPlan(guildId: string, channelId: string): ConversationTurnPlan | null {
+    const profile = this.profiles.find(guildId); return profile ? resolveConversationTurnPlan(profile, channelId) : null;
+  }
   public get decisionHealth(): ReturnType<CharacterDecisionService["healthStatus"]> { return this.decisions.healthStatus(); }
   public checkDecisionHealth(): ReturnType<CharacterDecisionService["checkHealth"]> { return this.decisions.checkHealth(); }
   public couldBeAddressed(guildId: string, channelId: string, event: ChannelHistoryMessage, history: readonly ChannelHistoryMessage[], botId: string): boolean {
@@ -237,6 +240,9 @@ export class CharacterRuntime {
     const turn: CharacterTurn = { request, settings, capabilities, now: this.now() };
     const enabled = (id: CharacterModuleId): boolean => this.registry.has(id) && !characterInactiveReason(settings, id, request.channelId, capabilities);
     const guarded = isGuardedContext(request.contextLease);
+    const plan = request.turnPlan ?? resolveConversationTurnPlan(profile, request.channelId);
+    if (!request.characterEvaluation && plan.state === "blocked") throw new SocialOutputSuppressed();
+    const contextual = guarded && plan.state === "ready" && plan.decision === "contextual";
     const events = guarded ? [...request.replyChain, ...request.channelHistory] : request.channelHistory;
     const burst = request.currentBurst?.length ? request.currentBurst : request.currentEvent?.type === "message" ? [{
       messageId: request.currentEvent.messageId, timestampMs: request.currentEvent.timestampMs, authorId: request.currentUser.id,
@@ -267,14 +273,14 @@ export class CharacterRuntime {
         targetMessageId, memoryContextSignature: "[]", participation: { action: "ignore", reaction: null }, styleUserId, styleSignature, targetConfidence };
     }
     if (!request.characterEvaluation && capabilities.context && (optional || settings.context.enabled || enabled("addressing") || enabled("thoughts"))) {
-      const contextualProjection = guarded && contextualFlow(profile, request.channelId) ? selectDecisionContext(request, settings.context.decisionMessages) : null;
+      const contextualProjection = contextual ? selectDecisionContext(request, settings.context.decisionMessages) : null;
       const decisionEvents = contextualProjection?.events ?? (guarded ? projectDecisionContext(request, settings.context.decisionMessages) : events.slice(-settings.context.decisionMessages));
       if (contextualProjection) emitChatDiagnostic(this.logger, { event: "context.decision.coverage", ...contextualProjection.coverage });
-      const fixedTarget = request.contextualCandidate || request.triggerMode === "continuation" ? burst.at(-1)?.messageId ?? null : optional || request.triggerMode === "reaction" ? null : request.currentEvent?.type === "message" ? request.currentEvent.messageId : null;
+      const fixedTarget = contextual && optional || request.triggerMode === "continuation" ? burst.at(-1)?.messageId ?? null : optional || request.triggerMode === "reaction" ? null : request.currentEvent?.type === "message" ? request.currentEvent.messageId : null;
       const shouldDecide = optional || request.triggerMode === "reaction";
       const decisionStarted = Date.now();
       const outcome = shouldDecide ? await this.decisions.evaluate({ personality: request.personality, events: decisionEvents, burst, botId: request.botUserId ?? "bot",
-        fixedTarget, contextual: guarded && contextualFlow(profile, request.channelId), useContextBoundary: !guarded && settings.context.retrievalMode !== "eligible_count", gapMs: settings.context.segmentGapMinutes * 60_000,
+        fixedTarget, contextual, useContextBoundary: !guarded && settings.context.retrievalMode !== "eligible_count", gapMs: settings.context.segmentGapMinutes * 60_000,
         ...(request.turnSignal ? { signal: request.turnSignal } : {}), ...(request.turnDeadlineAt ? { deadlineAt: request.turnDeadlineAt } : {}),
         speakingShare: decisionEvents.length ? decisionEvents.filter((event) => event.authorId === request.botUserId).length / decisionEvents.length : 0,
         canUseContext: guarded ? (): Promise<boolean> => request.contextLease!.validate() : undefined, thoughts: !guarded && optional && enabled("thoughts"), availableActions: request.optionalActionsAvailable, now: turn.now }) : { status: "skipped" as const, decision: null };

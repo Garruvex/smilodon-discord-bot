@@ -59,13 +59,23 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false): 
 }
 
 describe("guarded turn acceptance", () => {
+  it.each(["missing_guard", "disabled_context", "legacy_retrieval"] as const)("does not let a contextual turn fall back around its required stages: %s", async (scenario) => {
+    const { service, input, profiles, reply, decision, records } = await setup(5000, "alice", true);
+    if (scenario === "missing_guard") delete input.guardedContextPort;
+    else await profiles.update(guildId, { character: { context: { ...profiles.current().character!.context,
+      ...(scenario === "disabled_context" ? { enabled: false } : { retrievalMode: "legacy" as const }) } } });
+    await expect(service.run(input, () => Promise.resolve("unexpected"))).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    expect(reply).not.toHaveBeenCalled(); expect(decision.generateCharacterData).not.toHaveBeenCalled();
+    expect(records).toContainEqual(expect.objectContaining({ event: "chat.turn.plan", state: "blocked" }));
+    expect(records.filter((record) => record.event === "chat.turn.completed")).toHaveLength(1);
+  });
   it("never exposes reactions to effect callbacks after invalid generation evidence", async () => {
     const { service, fixture, input, reply, decision } = await setup(5000, "alice", true);
     fixture.add(guardedEvent("current", 4000, "然後呢"));
     decision.generateCharacterData.mockResolvedValue(contextualProposal({ recipientEvidence: ["question", "answer", "current"] }));
     reply.mockResolvedValue(decisionResponse({ referentSourceIds: ["not-authorized"], reactionEmoji: "👍", historyReactions: [{ messageId: "question", emoji: "🎉" }] }));
     const send = vi.fn(() => Promise.resolve("sent")); const afterDecision = vi.fn(() => Promise.resolve());
-    const response = await service.run({ ...input, triggerMode: "spontaneous", contextualCandidate: true, afterDecision }, send);
+    const response = await service.run({ ...input, triggerMode: "spontaneous", afterDecision }, send);
     expect(response.conversationDecision).toMatchObject({ status: "failed", decision: { action: "silent" } });
     expect(response.reactionEmoji).toBeNull(); expect(response.historyReactions).toEqual([]);
     expect(send).not.toHaveBeenCalled(); expect(afterDecision).not.toHaveBeenCalled();
@@ -78,7 +88,7 @@ describe("guarded turn acceptance", () => {
       contribution: { text: "", adds: "", label: "acknowledgment-only", motivation: 0.1 } }));
     reply.mockResolvedValue(decisionResponse({ text: "Okay", responseIntent: scenario === "social_generation" ? "social" : "answer" }));
     const send = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
-    const result = await service.run({ ...input, triggerMode: "spontaneous", contextualCandidate: true }, send);
+    const result = await service.run({ ...input, triggerMode: "spontaneous" }, send);
     expect(reply).toHaveBeenCalledTimes(scenario === "followup" || scenario === "social_generation" ? 1 : 0);
     expect(send).toHaveBeenCalledTimes(scenario === "followup" ? 1 : 0);
     if (scenario === "followup") {
@@ -93,7 +103,7 @@ describe("guarded turn acceptance", () => {
     const { service, fixture, input, reply, decision } = await setup(963000, "bob", true);
     fixture.add(guardedEvent("current", 962000, scenario === "ordinary_clause" ? "我是在修你ㄟ，你剛剛壞掉了不回他，跟生日沒關係" : "bob，你剛剛選了哪個？"));
     decision.generateCharacterData.mockResolvedValue(contextualProposal({ recipientEvidence: ["question", "answer", "current"] }));
-    const result = await service.run({ ...input, triggerMode: "spontaneous", contextualCandidate: true }, (response) => Promise.resolve(response.text));
+    const result = await service.run({ ...input, triggerMode: "spontaneous" }, (response) => Promise.resolve(response.text));
     expect(reply).toHaveBeenCalledTimes(scenario === "ordinary_clause" ? 1 : 0);
     if (scenario === "known_recipient") expect(result.conversationDecision?.decision.reasonCode).toBe("addressed_elsewhere");
   });
@@ -101,7 +111,7 @@ describe("guarded turn acceptance", () => {
     const { service, fixture, input, reply, decision, records } = await setup(5000, "alice", true);
     fixture.add(guardedEvent("current", 4000, "好了嗎"));
     decision.generateCharacterData.mockResolvedValue(contextualProposal({ relationship: "group", referent: "unresolved", recipientEvidence: ["question", "answer", "current"] }));
-    const result = await service.run({ ...input, triggerMode: "spontaneous", contextualCandidate: true }, (response) => Promise.resolve(response.text));
+    const result = await service.run({ ...input, triggerMode: "spontaneous" }, (response) => Promise.resolve(response.text));
     expect(decision.generateCharacterData).toHaveBeenCalledOnce();
     expect(reply).not.toHaveBeenCalled();
     expect(result.conversationDecision?.decision).toMatchObject({ action: "silent", reasonCode: "referent_unresolved" });
@@ -119,7 +129,7 @@ describe("guarded turn acceptance", () => {
     if (phase === "generation") reply.mockImplementation(() => new Promise((resolve) => { release = (): void => resolve(decisionResponse()); }));
     vi.useFakeTimers();
     const send = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
-    const pending = service.run({ ...input, triggerMode: "spontaneous", contextualCandidate: true }, send);
+    const pending = service.run({ ...input, triggerMode: "spontaneous" }, send);
     const rejected = expect(pending).rejects.toMatchObject({ name: "TimeoutError" });
     await vi.advanceTimersByTimeAsync(30001); await rejected;
     expect(records.filter((record) => record.event === "chat.turn.completed")).toHaveLength(1);
@@ -135,7 +145,7 @@ describe("guarded turn acceptance", () => {
     await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: false } });
     fixture.add(guardedEvent("current", 4000, "然後呢"));
     decision.generateCharacterData.mockResolvedValue(contextualProposal({ relationship, recipientEvidence: ["question", "answer", "current"] }));
-    const result = await service.run({ ...input, triggerMode: "continuation", contextualCandidate: true }, (response) => Promise.resolve(response.text));
+    const result = await service.run({ ...input, triggerMode: "continuation" }, (response) => Promise.resolve(response.text));
     expect(reply).toHaveBeenCalledTimes(relationship === "followup" ? 1 : 0);
     if (relationship === "group") expect(result.conversationDecision?.decision.reasonCode).toBe("spontaneous_disabled");
   });
@@ -151,7 +161,7 @@ describe("guarded turn acceptance", () => {
     if (scenario === "elsewhere" || scenario === "unclear") proposal.relationship = scenario;
     if (scenario === "low_confidence") proposal.recipientConfidence = 0.2;
     decision.generateCharacterData.mockResolvedValue(proposal);
-    const result = await service.run({ ...input, triggerMode: "spontaneous", contextualCandidate: true, historyReactionsEnabled: true }, (response) => Promise.resolve(response.text));
+    const result = await service.run({ ...input, triggerMode: "spontaneous", historyReactionsEnabled: true }, (response) => Promise.resolve(response.text));
     expect(reply).toHaveBeenCalledTimes(scenario === "followup" || scenario === "group" ? 1 : 0);
     if (scenario === "social_reaction") expect(result.reactionEmoji).toBe("👍");
     if (scenario === "followup" || scenario === "group") expect(records).toContainEqual(expect.objectContaining({
@@ -224,8 +234,8 @@ describe("guarded turn acceptance", () => {
       input.sourceMessageId = "answer";
     }
     const sent = vi.fn((response: ChatResponse) => { response.characterDeliveryProof = [{ messageId: "delivered", content: response.text }]; return Promise.resolve(response.text); });
-    const response = await service.run({ ...input, interactionMode, triggerMode, contextualCandidate: contextual && (triggerMode === "continuation" || triggerMode === "spontaneous"),
-      ...(contextual ? { participationFlowVersion: "contextual_v1" as const } : {}) }, sent);
+    const response = await service.run({ ...input, interactionMode, triggerMode,
+    }, sent);
     expect(reply).toHaveBeenCalledOnce(); expect(sent).toHaveBeenCalledOnce();
     const request = reply.mock.calls[0]![0];
     expect([...request.replyChain, ...request.channelHistory].map((event) => event.messageId)).toContain("question");

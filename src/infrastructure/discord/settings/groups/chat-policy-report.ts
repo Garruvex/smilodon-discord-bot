@@ -12,6 +12,7 @@ export function renderChatPolicy(context: Pick<NodeContext, "profile" | "text">,
   const { limits } = policy.participation;
   const overview = [t("common", { reasons: reasons(policy.commonReasons) }),
     `${text.label("participation.controls.flow-version")}: ${text.choice("participation.controls.flow-version", policy.participation.flowVersion ?? "legacy")}`,
+    t("pipeline", { mode: t(policy.turnPlan.context === "guarded_text" ? "guarded" : "legacy"), state: t(policy.turnPlan.state === "ready" ? "ready" : "blocked") }),
     ...policy.modes.map((mode) => `${t(mode.mode)}: ${t(mode.reasons.some((reason) => !reason.endsWith("_unknown")) ? "blocked" : mode.reasons.length ? "unverified" : mode.shadow ? "shadow" : "ready")}${mode.reasons.some((reason) => !policy.commonReasons.includes(reason)) ? ` (${reasons(mode.reasons.filter((reason) => !policy.commonReasons.includes(reason)))})` : ""}`),
     t("scope", { source: t(policy.observationInherited ? "inherited" : "explicit"), overrides: policy.participationOverrides.join(", ") || t("none"), context: t(policy.contextOverride ? "yes" : "no") }),
     t("ping", { ping: t(policy.participation.barePingMode), fallback: t(policy.participation.continuationFailureMode ?? "strict") }), t("views")];

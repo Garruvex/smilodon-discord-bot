@@ -1,4 +1,5 @@
 import type { GuardedConversationContext } from "./guarded-conversation-context.js";
+import type { ActiveConversationTurnPlan } from "./conversation-turn-plan.js";
 import type { ContextProvenance } from "./context-provenance.js";
 import type { ChatTool } from "./tools/chat-tool.js";
 import type { ConversationInteraction } from "./conversation-trigger.js";
@@ -11,6 +12,7 @@ import type { ChannelMemoryMode } from "../memory/memory-channel-policy.js";
 import type { ParticipationDecision } from "./participation-decision.js";
 
 export interface ChatRequest {
+  turnPlan?: ActiveConversationTurnPlan;
   contextLease?: GuardedConversationContext;
   interactionMode?: ConversationInteraction;
   characterGuardEnabled?: boolean;
@@ -20,9 +22,7 @@ export interface ChatRequest {
   characterEvaluation?: boolean;
   currentBurst?: readonly ChannelHistoryMessage[];
   optionalActionsAvailable?: { text: boolean; reaction: boolean };
-  contextualCandidate?: boolean;
   candidateId?: string;
-  participationFlowVersion?: "contextual_v1";
   turnSignal?: AbortSignal;
   turnDeadlineAt?: number;
   contextualActionAvailability?: { continuation: { text: boolean; reaction: boolean }; spontaneous: { text: boolean; reaction: boolean } };
