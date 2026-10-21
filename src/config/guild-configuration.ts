@@ -79,6 +79,10 @@ export interface GuildChannelConfiguration {
 }
 
 export interface GuildChatConfiguration {
+  // Collection consent is independent of interaction roles. Explicit exclusions
+  // apply to every source, including derived memories and reaction actors.
+  contextOptOutUserIds?: readonly string[];
+  contextOptOutRoleIds?: readonly string[];
   participation?: ParticipationSettings;
   personalityFile: string | null;
   personalityAsset: string | null;

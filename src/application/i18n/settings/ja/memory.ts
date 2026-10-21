@@ -8,6 +8,9 @@ const memoryModes = {
 };
 
 export const jaMemory: SettingsTextCatalog = {
+  "memory.context-opt-out": {"label": "コンテキストの除外", "description": "Discord チャンネルの閲覧権限でコンテキスト範囲を決定します。対話ロールは起動権限のみを制御します。"},
+  "memory.context-opt-out.roles": {"label": "除外ロール", "description": "これらのロールのメッセージとリアクション、および派生メモリーを除外します。"},
+  "memory.context-opt-out.users": {"label": "除外ユーザー ID", "description": "Discord ユーザー ID をカンマで区切ります。空欄で解除します。", "messages": {"invalid": "Discord ユーザー ID をカンマまたは空白で区切って入力してください。"}},
   "memory.impressions": {
     label: "印象と共有した出来事",
     description: "出典を利用できる間は、根拠のある過去の記憶を保持します。",

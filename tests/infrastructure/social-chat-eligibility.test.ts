@@ -41,6 +41,26 @@ function fixture(): { profile: GuildConfiguration; records: Map<string, MessageO
 }
 
 describe("social eligibility boundary", () => {
+  it("reads authorized channel context from people without chat roles, while trigger grants remain separate", async () => {
+    const { profile, policy, message } = fixture();
+    policy.bindGuardedForgetPolicy(() => Promise.resolve(false));
+    const source = message("participant");
+    Object.assign(source, { author: { id: "bystander", bot: false }, member: { id: "bystander", roles: { cache: new Map() } },
+      guild: { members: { me: {} } } });
+    Object.assign(source.channel, { permissionsFor: (): { has: () => boolean } => ({ has: (): boolean => true }) });
+    profile.channels.chatbot = new Set(["somewhere-else"]);
+    expect(await policy.canReadHistory(source)).toBe(true);
+    expect(await policy.checkGuardedSource(source, source.member, false)).toMatchObject({ eligible: true });
+    expect(await policy.check(source, "direct")).toMatchObject({ eligible: false, reason: "access_denied" });
+    profile.chat.contextOptOutUserIds = ["bystander"];
+    expect(await policy.checkGuardedSource(source, source.member, false)).toMatchObject({ eligible: false, reason: "context_opt_out" });
+    profile.chat.contextOptOutUserIds = []; profile.chat.contextOptOutRoleIds = ["private-role"];
+    source.member!.roles.cache.set("private-role", {} as never);
+    expect(await policy.checkGuardedSource(source, source.member, true)).toMatchObject({ eligible: false, reason: "context_opt_out" });
+    profile.chat.contextOptOutRoleIds = [];
+    Object.assign(source.channel, { permissionsFor: (): { has: () => boolean } => ({ has: (): boolean => false }) });
+    expect(await policy.canReadHistory(source)).toBe(false);
+  });
   it.each([false, true])("resolves admitted historical origins equally with warm cache=%s", async (warm) => {
     const { policy, message } = fixture();
     const target = message("old-human");
@@ -71,10 +91,10 @@ describe("social eligibility boundary", () => {
       .toMatchObject({ eligible: false, reason: "unverifiable_bot_context" });
     expect((await policy.check(bot, "observation")).eligible).toBe(true);
   });
-  it("does not treat historical resolution as access to a protected author or another channel", async () => {
+  it("does not confuse missing interaction membership with a collection opt-out or resolve across channels", async () => {
     const { policy, message } = fixture();
     const protectedMessage = message("restricted"); Object.assign(protectedMessage, { member: null });
-    expect((await policy.check(protectedMessage, "history", { remaining: 20, resolved: new Map() })).eligible).toBe(false);
+    expect((await policy.check(protectedMessage, "history", { remaining: 20, resolved: new Map() })).eligible).toBe(true);
     const cross = message("cross", false, "other"); Object.assign(cross, { reference: { messageId: "other", channelId: "private" } });
     const fetch = vi.spyOn(cross.channel.messages, "fetch");
     expect(await policy.check(cross, "history", { remaining: 20, resolved: new Map() }))

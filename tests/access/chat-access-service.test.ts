@@ -130,15 +130,29 @@ function member(roleIds: readonly string[]): GuildMember {
 }
 
 describe("ChatAccessService", () => {
+  it("collects channel participants independently of interaction roles and honors user/role opt-outs without owner bypass", () => {
+    const service = new ChatAccessService(configuration()); const p = profile();
+    expect(service.canUseMentionChat(p, member([]), "human", chatChannelId)).toBe(false);
+    expect(service.canCollectContext(p, "human", member([]))).toBe(true);
+    p.chat.contextOptOutUserIds = ["human", ownerId];
+    expect(service.canCollectContext(p, "human", member([]))).toBe(false);
+    expect(service.canCollectContext(p, ownerId, member([]))).toBe(false);
+    p.chat.contextOptOutUserIds = []; p.chat.contextOptOutRoleIds = [restrictedRoleId];
+    expect(service.canCollectContext(p, "human", member([restrictedRoleId]))).toBe(false);
+    expect(service.canCollectContext(p, "human", null)).toBe(false);
+    expect(service.canCollectContext(p, "human", member([]))).toBe(true);
+    p.chat.contextOptOutRoleIds = [p.guildId];
+    expect(service.canCollectContext(p, "human", member([]))).toBe(false);
+  });
   it("recognizes implicit @everyone for direct chat and context even when absent from the role cache", () => {
     const service = new ChatAccessService(configuration());
     const everyone = profile(); everyone.roles.chatbot = new Set([everyone.guildId]);
     expect(service.canUseMentionChat(everyone, member([]), "human", chatChannelId)).toBe(true);
-    expect(service.canObserve(everyone, member([]))).toBe(true);
+    expect(service.canCollectContext(everyone, "human", member([]))).toBe(true);
     expect(service.canUseMentionChat(everyone, null, "human", chatChannelId)).toBe(false);
-    expect(service.canObserve(everyone, null)).toBe(false);
+    expect(service.canCollectContext(everyone, "human", null)).toBe(true);
     expect(service.canUseMentionChat(everyone, member([restrictedRoleId]), "human", chatChannelId)).toBe(false);
-    expect(service.canObserve(everyone, member([restrictedRoleId]))).toBe(false);
+    expect(service.canCollectContext(everyone, "human", member([restrictedRoleId]))).toBe(true);
     expect(service.canUseMentionChat(everyone, member([]), "human", "elsewhere")).toBe(false);
   });
 
@@ -146,7 +160,7 @@ describe("ChatAccessService", () => {
     const service = new ChatAccessService(configuration());
     const restricted = profile(); restricted.roles.restricted = new Set([restricted.guildId]);
     expect(service.mentionChatAccessReason(restricted, member([chatbotRoleId]), "human", chatChannelId)).toBe("restricted_role");
-    expect(service.canObserve(restricted, member([chatbotRoleId]))).toBe(false);
+    expect(service.canCollectContext(restricted, "human", member([chatbotRoleId]))).toBe(true);
   });
   it("allows configured chatbot members in allowed channels", () => {
     const service = new ChatAccessService(configuration());

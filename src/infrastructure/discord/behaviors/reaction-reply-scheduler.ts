@@ -342,7 +342,7 @@ export class ReactionReplyScheduler {
     const eligibleIds = new Set<string>();
     for (const id of rawIds) {
       const member = await message.guild?.members.fetch(id).catch(() => null) ?? null;
-      if (this.chatAccess.canObserve(profile, member)) eligibleIds.add(id);
+      if (this.chatAccess.canCollectContext(profile, id, member)) eligibleIds.add(id);
     }
     const reactions = rawReactions
       .map((reaction) => ({ ...reaction, userIds: reaction.userIds.filter((id) => eligibleIds.has(id)) }))

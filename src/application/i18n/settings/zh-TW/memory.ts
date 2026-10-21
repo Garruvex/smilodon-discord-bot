@@ -8,6 +8,9 @@ const memoryModes = {
 };
 
 export const zhTWMemory: SettingsTextCatalog = {
+  "memory.context-opt-out": {"label": "上下文排除名單", "description": "以 Discord 頻道可見性決定上下文範圍；互動身分組僅決定誰能觸發機器人。"},
+  "memory.context-opt-out.roles": {"label": "排除身分組", "description": "不收集這些身分組的訊息與表情回應，也不使用包含其來源的記憶。"},
+  "memory.context-opt-out.users": {"label": "排除使用者 ID", "description": "以逗號分隔 Discord 使用者 ID；留空清除。", "messages": {"invalid": "請輸入以逗號或空白分隔的 Discord 使用者 ID。"}},
   "memory.impressions": {
     label: "印象與共同經歷",
     description: "來源仍可使用時，保留有依據的過往記憶。",

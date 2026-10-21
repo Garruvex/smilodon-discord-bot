@@ -161,6 +161,8 @@ const guildChatSchema = z.preprocess((value) => {
   // Unlisted channels default to "shared" — today's behavior, unchanged.
   channelMemoryModes: z.record(snowflake, z.enum(["shared", "isolated", "session_only", "disabled"])).default({}),
   sharedMemoryEnabled: z.boolean().default(false),
+  contextOptOutUserIds: snowflakeList,
+  contextOptOutRoleIds: snowflakeList,
   personaDriftEnabled: z.boolean().default(false),
   // Channel-context (Plan 2): contextScanChannelIds get one one-time
   // history scan; contextDailyChannelIds get an ongoing daily summary. A

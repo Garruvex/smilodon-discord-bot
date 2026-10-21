@@ -1,6 +1,6 @@
 import { allowsDurableWrites, resolveChannelMemoryMode } from "../../../application/memory/memory-channel-policy.js";
 import { hashContent } from "../../../application/assets/content-hash.js";
-import type { GuildMember, Message } from "discord.js";
+import { PermissionFlagsBits, type GuildMember, type Message } from "discord.js";
 import { characterSettings } from "../../../application/chat/character-settings.js";
 import type { MessageOriginRecord, MessageOriginStore } from "../../../application/chat/message-origin-store.js";
 import { ChatAccessService } from "../../../application/access/chat-access-service.js";
@@ -23,18 +23,21 @@ export class SocialChatEligibility {
   private readonly originCache = new Map<string, { expiresAt: number; value: Promise<MessageOriginRecord | null> }>();
   private readonly access: ChatAccessService;
   private forgottenSource: ((message: Message) => Promise<boolean>) | null = null;
+  private readonly privacyVersions = new Map<string, number>();
   public bindGuardedForgetPolicy(check: (message: Message) => Promise<boolean>): void { this.forgottenSource = check; }
+  public invalidateContext(guildId: string): void { this.privacyVersions.set(guildId, (this.privacyVersions.get(guildId) ?? 0) + 1); }
+  public async sourceForgotten(message: Message): Promise<boolean> { return !this.forgottenSource || await this.forgottenSource(message); }
   public async checkBackgroundSource(message: Message, member: GuildMember | null = message.member): Promise<SocialEligibility> {
     if (this.forgottenSource && await this.forgottenSource(message)) return { eligible: false, reason: "forgotten_source" };
     return this.check(message, "background_observation", undefined, member);
   }
   public contextPolicyVersion(message: Message): string {
     const profile = message.guildId ? this.profiles.find(message.guildId) : null;
-    return hashContent(JSON.stringify(profile, (_key, value: unknown) => value instanceof Set ? [...value].sort() : value));
+    return `${this.privacyVersions.get(message.guildId ?? "") ?? 0}:${hashContent(JSON.stringify(profile, (_key, value: unknown) => value instanceof Set ? [...value].sort() : value))}`;
   }
   public async checkGuardedActor(source: Message, member: GuildMember): Promise<boolean> {
     const profile = source.guildId ? this.profiles.find(source.guildId) : null;
-    return !!profile && this.access.canObserve(profile, member) && await this.canReadHistory(source);
+    return !!profile && this.access.canCollectContext(profile, member.id, member) && await this.canReadHistory(source);
   }
   public canPersistContext(message: Message): boolean {
     const profile = message.guildId ? this.profiles.find(message.guildId) : null;
@@ -55,7 +58,7 @@ export class SocialChatEligibility {
     if (!message.inGuild()) return reject("not_guild");
     const profile = this.profiles.find(message.guildId);
     if (!profile) return reject("chat_disabled");
-    if (!message.author.bot && !current && !this.access.canObserve(profile, member)) return reject("passive_access_denied");
+    if (!message.author.bot && !this.access.canCollectContext(profile, message.author.id, member)) return reject("context_opt_out");
     if (!current && !await this.canReadHistory(message, member)) return reject("passive_scope_denied");
     if (!message.author.bot && await this.forgottenSource(message)) return reject("source_forgotten");
     return this.check(message, "guarded_current", undefined, member);
@@ -92,11 +95,19 @@ export class SocialChatEligibility {
   }
 
   public async canReadHistory(message: Message, member: GuildMember | null = message.member): Promise<boolean> {
+    void member;
     if (!message.inGuild()) return false;
     const profile = this.profiles.find(message.guildId);
-    return !!profile?.features.chatbot && profile.features.channelHistory && passiveChannelAllowed(profile, message.channelId) &&
+    return !!profile?.features.chatbot && profile.features.channelHistory && this.botCanReadChannel(message) &&
       profile.chat.channelMemoryModes[message.channelId] !== "disabled" && characterSettings(profile).channelOverrides[message.channelId]?.contextEnabled !== false &&
-      (message.author.bot || this.access.canObserve(profile, member)) && !await isInGameChannel(message, this.isGameChannel);
+      !await isInGameChannel(message, this.isGameChannel);
+  }
+
+  public botCanReadChannel(message: Message): boolean {
+    if (!message.inGuild()) return false;
+    const me = message.guild?.members.me;
+    const permissions = me && "permissionsFor" in message.channel ? message.channel.permissionsFor(me) : null;
+    return !!permissions?.has(PermissionFlagsBits.ViewChannel) && permissions.has(PermissionFlagsBits.ReadMessageHistory);
   }
 
   public async check(message: Message, trigger: SocialTrigger = "direct", historyBudget?: HistoricalOriginBudget, member: GuildMember | null = message.member): Promise<SocialEligibility> {
@@ -108,10 +119,12 @@ export class SocialChatEligibility {
         profile.chat.channelMemoryModes[message.channelId] === "disabled")) return reject("needs_conversation_context");
     const passive = trigger !== "direct" && trigger !== "ambient" && trigger !== "guarded_current";
     const background = trigger === "background_observation";
+    const collection = trigger === "guarded_current" || trigger === "history" || background;
     if (background && !this.canReadBackground(message.guildId, message.channelId)) return reject("background_scope_denied");
-    if (passive && !background && (!passiveChannelAllowed(profile, message.channelId) || !profile.features.channelHistory ||
+    if (passive && !background && ((!collection && !passiveChannelAllowed(profile, message.channelId)) || !profile.features.channelHistory ||
         profile.chat.channelMemoryModes[message.channelId] === "disabled" || characterSettings(profile).channelOverrides[message.channelId]?.contextEnabled === false)) return reject("passive_scope_denied");
-    if (passive && !message.author.bot && !this.access.canObserve(profile, member)) return reject("passive_access_denied");
+    if (!message.author.bot && !this.access.canCollectContext(profile, message.author.id, member)) return reject("context_opt_out");
+    if (passive && !collection && !message.author.bot && !this.access.canUseMentionChat(profile, member, message.author.id, message.channelId)) return reject("passive_access_denied");
     if (await isInGameChannel(message, this.isGameChannel)) return reject("game_channel");
     const participation = resolveParticipation(profile.chat.participation, message.channelId);
     if (trigger === "continuation" && !participation.continuationEnabled) return reject("continuation_disabled");
@@ -125,8 +138,8 @@ export class SocialChatEligibility {
     if (message.author.bot) {
       const origin = await this.findOrigin(message.guildId, message.channelId, message.id).catch(() => null);
       if ((origin && origin.origin !== "chat") || (!origin && trigger !== "direct")) return reject("utility_or_unknown_bot_output");
-      if (!passive && profile.channels.chatbot.size > 0 && !profile.channels.chatbot.has(message.channelId)) return reject("channel_denied");
-    } else if (!passive && !this.access.canUseMentionChat(profile, member, message.author.id, message.channelId)) {
+      if (!passive && !collection && profile.channels.chatbot.size > 0 && !profile.channels.chatbot.has(message.channelId)) return reject("channel_denied");
+    } else if (!passive && !collection && !this.access.canUseMentionChat(profile, member, message.author.id, message.channelId)) {
       return reject("access_denied");
     }
     let current: Message = message;

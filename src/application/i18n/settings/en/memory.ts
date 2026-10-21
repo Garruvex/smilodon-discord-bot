@@ -8,6 +8,9 @@ const memoryModes = {
 };
 
 export const enMemory: SettingsTextCatalog = {
+  "memory.context-opt-out": {"label": "Context opt-outs", "description": "Channel visibility controls context access. Interaction roles only control who can trigger the bot."},
+  "memory.context-opt-out.roles": {"label": "Excluded roles", "description": "Messages and reactions from these roles are excluded from context and derived memory."},
+  "memory.context-opt-out.users": {"label": "Excluded user IDs", "description": "Comma-separated Discord user IDs; leave empty to clear.", "messages": {"invalid": "Enter Discord user IDs separated by commas or spaces."}},
   "memory.impressions": {
     label: "Impressions and shared history",
     description: "Keep past observations while their sources remain available.",

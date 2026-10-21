@@ -58,6 +58,8 @@ export interface UpdateGuildConfigurationInput {
   // never wholesale-replaced) — same "add" semantics as chatbotChannelIds.
   chatbotChannelMemoryModes?: Readonly<Record<string, "shared" | "isolated" | "session_only" | "disabled">>;
   chatbotSharedMemoryEnabled?: boolean;
+  contextOptOutUserIds?: readonly string[];
+  contextOptOutRoleIds?: readonly string[];
   chatbotPersonaDriftEnabled?: boolean;
   // The whole daily-summary list, as a settings list option sends it;
   // applied before the single-channel operations below.
@@ -333,6 +335,8 @@ export function applyGuildConfigurationUpdate(
     next.chat.channelMemoryModes = { ...next.chat.channelMemoryModes, ...input.chatbotChannelMemoryModes };
   }
   if (input.chatbotSharedMemoryEnabled !== undefined) next.chat.sharedMemoryEnabled = input.chatbotSharedMemoryEnabled;
+  if (input.contextOptOutUserIds !== undefined) next.chat.contextOptOutUserIds = [...new Set(input.contextOptOutUserIds)];
+  if (input.contextOptOutRoleIds !== undefined) next.chat.contextOptOutRoleIds = [...new Set(input.contextOptOutRoleIds)];
   if (input.chatbotDisabledToolNames !== undefined) next.chat.disabledTools = [...input.chatbotDisabledToolNames];
   if (input.chatbotPersonaDriftEnabled !== undefined) next.chat.personaDriftEnabled = input.chatbotPersonaDriftEnabled;
   if (input.contextDailyChannelIds !== undefined) next.chat.contextDailyChannelIds = [...new Set(input.contextDailyChannelIds)];

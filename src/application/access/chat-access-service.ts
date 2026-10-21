@@ -51,9 +51,12 @@ export class ChatAccessService {
     ) ? "allowed" : "missing_chat_role";
   }
 
-  public canObserve(profile: GuildConfiguration, member: GuildMember | null): boolean {
-    return !!member && !this.hasAnyRole(member.roles.cache, profile.roles.restricted, profile.guildId) &&
-      (this.hasAnyRole(member.roles.cache, profile.roles.chatbot, profile.guildId) || this.hasAnyRole(member.roles.cache, profile.roles.botAdministrator, profile.guildId));
+  public canCollectContext(profile: GuildConfiguration, userId: string, member: GuildMember | null): boolean {
+    if (profile.chat.contextOptOutUserIds?.includes(userId)) return false;
+    const roles = profile.chat.contextOptOutRoleIds ?? [];
+    // No membership lookup is necessary when there are no role exclusions.
+    if (!roles.length) return true;
+    return !!member && !this.hasAnyRole(member.roles.cache, new Set(roles), profile.guildId);
   }
 
   private hasAnyRole(

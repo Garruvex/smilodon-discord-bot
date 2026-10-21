@@ -1,5 +1,5 @@
 import { CHAT_LIMITS } from "../../../../config/guild-configuration-limits.js";
-import { action, channelList, group, integer, report, toggle } from "../registry/builders.js";
+import { action, channelList, group, integer, report, roleList, text, toggle } from "../registry/builders.js";
 import type { NodeContext } from "../registry/types.js";
 import { chatSetting, pausedSuffix } from "./chat.js";
 import { characterSettings } from "../../../../application/chat/character-settings.js";
@@ -22,6 +22,12 @@ export const memory = group("memory", [
   }),
   chatSetting("sharing", {
     enabled: toggle({ read: (p) => p.chat.sharedMemoryEnabled ?? false, write: (v) => ({ chatbotSharedMemoryEnabled: v }) }),
+  }),
+  chatSetting("context-opt-out", {
+    roles: roleList({ read: (p) => p.chat.contextOptOutRoleIds ?? [], write: (ids) => ({ contextOptOutRoleIds: [...ids] }) }),
+    users: text({ maxLength: 4000, read: (p) => (p.chat.contextOptOutUserIds ?? []).join(", "),
+      validate: (value, context) => value.trim() && !value.trim().split(/[\s,]+/u).every((id) => /^\d{17,20}$/u.test(id)) ? context.error("invalid") : null,
+      write: (value) => ({ contextOptOutUserIds: value.trim() ? [...new Set(value.trim().split(/[\s,]+/u))] : [] }) }),
   }),
   chatSetting("channel-history", {
     enabled: toggle({ read: (p) => p.features.channelHistory, write: (v) => ({ channelHistory: v }) }),
