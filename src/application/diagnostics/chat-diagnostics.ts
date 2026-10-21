@@ -24,7 +24,7 @@ const count = z.number().int().nonnegative();
 const duration = z.number().finite().nonnegative();
 const identifier = z.string().min(1).max(128).regex(/^[\w.:-]+$/u);
 const trigger = z.enum(["direct", "ambient", "continuation", "spontaneous", "reaction"]);
-export const decisionValidationFields: readonly string[] = ["root", "item", "addressing", "motivation", "recipientEvidence", "recipientConfidence", "targetConfidence", "contribution", "opening", "boundary", "target", "confidence", "reaction", "thoughts", "text", "adds", "label", "sourceMessageId", "recipientId", "relationship", "intent", "action", "targetKey"];
+export const decisionValidationFields: readonly string[] = ["root", "item", "addressing", "motivation", "recipientEvidence", "recipientConfidence", "targetConfidence", "contribution", "opening", "boundary", "target", "confidence", "reaction", "thoughts", "text", "adds", "label", "sourceMessageId", "recipientId", "relationship", "intent", "action", "targetKey", "referent"];
 export const eligibilityReason = z.enum(["not_guild", "chat_disabled", "needs_conversation_context", "background_scope_denied", "passive_scope_denied", "passive_access_denied", "game_channel", "continuation_disabled", "spontaneous_disabled", "history_reactions_disabled", "ambient_disabled", "reaction_disabled", "utility_or_unknown_bot_output", "channel_denied", "access_denied", "utility_interaction", "cyclic_reply_chain", "unknown_bot_output", "utility_reply", "cross_channel_reply", "unresolved_reply_origin", "reply_depth_limit", "unverifiable_bot_context", "origin_lookup_failed", "source_forgotten", "forget_policy_unavailable"]);
 
 export const failureCategory = z.enum([
@@ -52,6 +52,9 @@ const eventSchema = z.discriminatedUnion("event", [
   z.object({ event: z.literal("context.history.coverage"), requested: count, fetched: count, examined: count, eligible: count, pages: count,
     selectedIds: z.array(identifier).max(300), status: z.enum(["filled", "end", "scan_cap", "fetch_failed", "no_progress", "ineligible"]),
     omissions: z.object({ excluded: count, ineligible: count, unverifiable_bot: count, duplicate: count }) }),
+  z.object({ event: z.literal("chat.decision.proposed"), wireRevision: z.number().int().positive(),
+    relationship: z.enum(["followup", "group", "elsewhere", "unclear"]), referent: z.enum(["self_contained", "context_linked", "unresolved"]),
+    action: z.enum(["reply", "react", "silent"]), intent: z.enum(["answer", "clarify", "social", "closing", "contribute", "abstain"]), evidenceCount: count }),
   z.object({ event: z.literal("chat.decision.resolved"), stage: z.enum(["preflight", "generation"]), interaction: z.enum(["direct_mention", "explicit_reply", "bare_ping", "name_address", "implicit_followup", "group_conversation", "reaction"]), status: z.enum(["ready", "denied", "failed"]), recovery: z.enum(["none", "grounded_reply", "error_reply"]), decisionId: identifier, action: z.enum(["reply", "react", "reply_and_react", "silent"]), intent: z.enum(["answer", "clarify", "social", "closing", "contribute", "abstain"]), reason: identifier, contextVersion: identifier, policyVersion: identifier }),
   z.object({ event: z.literal("discord.rate_limit.summary"), caller: z.enum(["chat_text", "chat_reaction", "control_panel", "lyrics_panel", "queue_panel", "vote_panel", "now_playing_panel", "unknown"]), kind: z.enum(["response_429", "proactive_wait", "mixed"]), method: z.enum(["POST", "PATCH", "GET", "DELETE", "OTHER"]), channelId: identifier.optional(), targetMessageId: identifier.optional(), count, maxWaitMs: duration, overflow: z.boolean() }),
   z.object({ event: z.literal("chat.trace.interrupted"), reason: z.literal("previous_process_incomplete"), unfinishedSpans: count, unfinishedJobs: count, unfinishedOpportunities: count }),
@@ -72,6 +75,7 @@ const eventSchema = z.discriminatedUnion("event", [
   z.object({ event: z.literal("model.decision.attempt"), providerRole: z.enum(["primary", "fallback"]), attempt: count, status: z.enum(["valid", "failed"]), durationMs: duration, failure: failureCategory.optional(), httpStatus: z.number().int().min(100).max(599).optional(),
     stage: z.enum(["context_validation", "model"]).optional(), contextDurationMs: duration.optional(), timeoutMs: duration.optional(),
     contractVersion: z.enum(["legacy", "contextual_v1"]).optional(), targetMode: z.enum(["fixed", "selectable"]).optional(), targetCandidates: count.optional(),
+    wireRevision: z.number().int().positive().optional(),
     targetFailure: z.enum(["binding_missing", "choice_required", "unknown_choice"]).optional(),
     validationIssues: z.array(z.object({ field: z.string().min(1).max(128).refine((field) => field.split(".").every((part) => decisionValidationFields.includes(part))),
       code: z.enum(["invalid_type", "invalid_enum_value", "too_small", "too_big", "unrecognized_keys", "invalid"]) })).max(8).optional() }),

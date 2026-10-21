@@ -6,6 +6,16 @@ import { ChatScheduler, balancedChatLimits } from "../../src/application/chat/ch
 import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 
 describe("chat diagnostic boundary", () => {
+  it("retains only controlled labels for a contextual proposal", () => {
+    const { logger, records } = captureDiagnosticLogger();
+    emitChatDiagnostic(logger, { event: "chat.decision.proposed", wireRevision: 3, relationship: "group", referent: "unresolved",
+      action: "reply", intent: "clarify", evidenceCount: 1, text: "SECRET_MESSAGE", reasoning: "SECRET_REASONING" } as never);
+    expect(records).toContainEqual(expect.objectContaining({ event: "chat.decision.proposed", referent: "unresolved" }));
+    expect(JSON.stringify(records)).not.toContain("SECRET");
+    emitChatDiagnostic(logger, { event: "chat.decision.proposed", wireRevision: 3, relationship: "SECRET_RELATIONSHIP", referent: "unresolved",
+      action: "reply", intent: "clarify", evidenceCount: 1 } as never);
+    expect(records).toHaveLength(1);
+  });
   it("continues operational logging when diagnostic retention itself fails", () => {
     const { logger, records } = captureDiagnosticLogger();
     const store = new MemoryChatTraceStore();

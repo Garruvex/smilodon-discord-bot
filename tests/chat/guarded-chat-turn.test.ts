@@ -59,6 +59,18 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false): 
 }
 
 describe("guarded turn acceptance", () => {
+  it("suppresses generation for an unresolved referent after reading authorized context", async () => {
+    const { service, fixture, input, reply, decision, records } = await setup(5000, "alice", true);
+    fixture.add(guardedEvent("current", 4000, "好了嗎"));
+    decision.generateCharacterData.mockResolvedValue(contextualProposal({ relationship: "group", referent: "unresolved", recipientEvidence: ["question", "answer", "current"] }));
+    const result = await service.run({ ...input, triggerMode: "spontaneous", contextualCandidate: true }, (response) => Promise.resolve(response.text));
+    expect(decision.generateCharacterData).toHaveBeenCalledOnce();
+    expect(reply).not.toHaveBeenCalled();
+    expect(result.conversationDecision?.decision).toMatchObject({ action: "silent", reasonCode: "referent_unresolved" });
+    expect(records).toContainEqual(expect.objectContaining({ event: "model.decision.attempt", wireRevision: 3 }));
+    expect(records).toContainEqual(expect.objectContaining({ event: "chat.decision.proposed", action: "reply", referent: "unresolved", relationship: "group" }));
+    expect(records).toContainEqual(expect.objectContaining({ event: "chat.decision.resolved", action: "silent", reason: "referent_unresolved" }));
+  });
   it.each(["state", "generation"] as const)("ends a stalled contextual %s phase and prevents late delivery", async (phase) => {
     const { service, input, fixture, state, reply, decision, records } = await setup(5000, "alice", true);
     fixture.add(guardedEvent("current", 4000, "好了嗎"));

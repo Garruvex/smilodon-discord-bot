@@ -18,7 +18,7 @@ The release/evaluation checkpoint additionally provides synthetic replay tooling
 
 The suites include all seven interaction modes in both legacy and contextual settings, isolated short messages, continuous fragments, continuation-only scope, recipient correction, social reactions, substantive questions, privacy rejection, cold/older exchange evidence, invalid targets, candidate expiry, duplicate sources, stalled state/generation dependencies, abort propagation, queue recovery, and late-send prevention. Final verification counts are recorded in the implementation plan after the release checkpoint.
 
-Final local result: **4,779 passed / 7 skipped**. Typecheck, production TypeScript compilation, changed-file lint, settings metadata/registry validation and whitespace checks passed.
+Latest local result after the referent and proposal-diagnostics checkpoint: **4,790 passed / 7 skipped**. Typecheck, production TypeScript compilation, changed-file lint, settings metadata/registry validation and whitespace checks passed.
 
 Existing source/provenance gates, nonce/partial-send handling and restricted-role precedence remain in effect. The new flow defaults off. The thirty-second work budget starts when the chat turn starts; coalescing and a cooldown can add visible waiting before it. A dispatched Discord send cannot be atomically recalled, so timeout is not authorization to resend.
 
@@ -49,6 +49,12 @@ Revision-2 review: explicit human-recipient and open-group situations matched al
 The replay now also runs the real preflight decision engine against an in-memory synthetic authorization lease. Both participation modes and action budgets are available, isolating policy from scheduling, generation and Discord delivery. Per-case output distinguishes the raw proposal from the policy action, status and reason. Text-policy violations and required substantive-reply misses are separate counters; a provider failure remains a failure even when its final action is silent.
 
 The targeted wire-revision-2 baseline `contextual-live-unknown-policy-v2-2026-10-21.json` recorded 27/27 valid decisions, 4/27 expected raw-label checks and **1/27 disallowed text replies after preflight policy**. These synthetic counts are not a production interruption rate. Targeted runs cannot satisfy the 200-case release gate. Use `--scenario unknown` or `--language en` to select a subset before applying `--limit`.
+
+Wire revision 3 adds a required `referent` enum: `self_contained`, `context_linked`, or `unresolved`. The application suppresses optional output for unresolved referents and rejects claimed context links without an earlier authorized citation or the current-event citation. This happens after context assembly; explicit requests keep their existing response obligation, and message length or age does not determine admission. The prompt also separates a different participant's brief answer/thanks from an independent reference to the bot's behavior. The field remains a model claim: a wrong `self_contained` label or an unrelated earlier citation is not a semantic proof.
+
+The targeted revision-3 artifact `contextual-live-unknown-policy-v3-2026-10-21.json` recorded 26/27 valid decisions, 23/27 raw-label checks and **zero disallowed text replies after policy**. One response violated the contribution contract; it is a failure, not successful abstention. These are single stochastic runs with unchanged fixture revision 2, not a statistical guarantee or a passed release gate.
+
+`model.decision.attempt` identifies the wire revision. The new `chat.decision.proposed` event records only controlled relationship/referent/intent/action labels and the evidence count. Compare it with `chat.decision.resolved` to distinguish model interpretation from policy suppression. Message text, generated contribution text and model reasoning are excluded from this event.
 
 Inventory only, with no API calls:
 

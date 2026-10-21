@@ -18,6 +18,8 @@ Final local verification: **4,779 tests passed / 7 skipped**, TypeScript typeche
 
 ## Objective and non-negotiable rules
 
+Follow-up checkpoints on 2026-10-21: replay now measures the actual preflight policy using a synthetic authorized lease, alongside raw proposal labels, with targeted scenario/language filters. Wire revision 3 adds post-context referent resolution and rejects unresolved optional output or unsupported context links. Controlled proposal labels and wire revision are available in diagnostics without message content. The ambiguous-message targeted run moved from one disallowed preflight text reply in 27 revision-2 cases to zero in 27 revision-3 cases; one revision-3 response was invalid. Local checks: 4,790 passed / 7 skipped, typecheck, production compilation and changed-file lint passed. The final full-provider replay and release gates must be assessed separately; the flow remains opt-in.
+
 An eligible short message should be interpreted using authorized context before deciding whether it is a follow-up, a group contribution, or irrelevant to the bot. A bare ping may refer to earlier substantive text. Time gaps do not remove reference relevance. Speaker, recipient, reply destination and discussed subject remain distinct.
 
 - Eligibility for evaluation is not entitlement to a reply. Batch related events and enforce cost/concurrency limits without indefinite waiting.

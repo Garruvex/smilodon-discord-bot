@@ -29,9 +29,21 @@ describe("synthetic preflight policy measurement", () => {
     expect(await replayPolicyAssessment(fixture("unknown"), outcome("unknown")))
       .toMatchObject({ status: "denied", action: "silent", textPolicyMet: true });
   });
-  it("exposes unsupported group proposals that the prior policy accepted", async () => {
+  it("rejects linked group proposals without any supplied antecedent", async () => {
     expect(await replayPolicyAssessment(fixture("unknown"), outcome("unknown", { relationship: "group" })))
-      .toMatchObject({ action: "reply", textPolicyMet: false });
+      .toMatchObject({ action: "silent", reason: "referent_unresolved", textPolicyMet: true });
+  });
+  it("rejects an unresolved referent even when the proposal requests a group reply", async () => {
+    expect(await replayPolicyAssessment(fixture("unknown"), outcome("unknown", { relationship: "group", referent: "unresolved" })))
+      .toMatchObject({ action: "silent", reason: "referent_unresolved", textPolicyMet: true });
+  });
+  it("permits a self-contained group request without inventing prior context", async () => {
+    expect(await replayPolicyAssessment(fixture("group"), outcome("group", { relationship: "group", referent: "self_contained" })))
+      .toMatchObject({ action: "reply", textPolicyMet: true });
+  });
+  it("retains an older cross-participant correction grounded in the bot exchange", async () => {
+    expect(await replayPolicyAssessment(fixture("correction", "other"), outcome("correction", {}, "other")))
+      .toMatchObject({ action: "reply", requiredReplyMet: true });
   });
   it("retains recipient correction suppression even for a wrong group proposal", async () => {
     expect(await replayPolicyAssessment(fixture("closing"), outcome("closing", { relationship: "group" })))

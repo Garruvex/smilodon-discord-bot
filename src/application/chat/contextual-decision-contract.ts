@@ -2,11 +2,13 @@ import { z } from "zod";
 import { contributionLabels, type CharacterDecision } from "./character-decision.js";
 import type { ChannelHistoryMessage } from "./chat-provider.js";
 
+export const contextualDecisionWireRevision = 3;
 export interface ContextualInterpretation {
   version: "contextual_v1";
   relationship: "followup" | "group" | "elsewhere" | "unclear";
   intent: "answer" | "clarify" | "social" | "closing" | "contribute" | "abstain";
   action: "reply" | "react" | "silent";
+  referent: "self_contained" | "context_linked" | "unresolved";
 }
 
 // The wire contract has no Discord destination/author fields. Fixed bindings
@@ -28,6 +30,7 @@ export function contextualDecisionContract(events: readonly ChannelHistoryMessag
   const validator = z.object({
     relationship: z.enum(["followup", "group", "elsewhere", "unclear"]),
     intent: z.enum(["answer", "clarify", "social", "closing", "contribute", "abstain"]), action: z.enum(["reply", "react", "silent"]),
+    referent: z.enum(["self_contained", "context_linked", "unresolved"]),
     recipientEvidence: z.array(z.string()).max(8), recipientConfidence: probability, confidence: probability,
     opening: z.enum(["clear", "closed", "unclear"]), contribution: contribution.nullable(), reaction: z.string().nullable(),
     ...(!fixedTarget ? { targetKey: z.string().nullable() } : {}),
@@ -37,6 +40,7 @@ export function contextualDecisionContract(events: readonly ChannelHistoryMessag
     relationship: { type: "string", enum: ["followup", "group", "elsewhere", "unclear"] },
     intent: { type: "string", enum: ["answer", "clarify", "social", "closing", "contribute", "abstain"] },
     action: { type: "string", enum: ["reply", "react", "silent"] },
+    referent: { type: "string", enum: ["self_contained", "context_linked", "unresolved"] },
     recipientEvidence: { type: "array", items: { type: "string", enum: [...new Set(evidenceSources.map((source) => source.key))] }, maxItems: 8 },
     recipientConfidence: probabilityJson, confidence: probabilityJson,
     opening: { type: "string", enum: ["clear", "closed", "unclear"] }, reaction: { type: ["string", "null"] },
@@ -63,7 +67,7 @@ export function contextualDecisionContract(events: readonly ChannelHistoryMessag
         targetConfidence: result.confidence, confidence: result.confidence, opening: result.opening, boundary: "earlier", target: target?.messageId ?? "",
         contribution: { text: result.contribution?.text ?? "", adds: result.contribution?.adds ?? "", label: result.contribution?.label ?? "none",
           motivation: result.contribution?.motivation ?? 0, sourceMessageId: target?.messageId ?? "", recipientId: target?.authorId ?? "group" },
-        reaction: result.reaction, thoughts: [], contextual: { version: "contextual_v1", relationship: result.relationship, intent: result.intent, action: result.action } };
+        reaction: result.reaction, thoughts: [], contextual: { version: "contextual_v1", relationship: result.relationship, intent: result.intent, action: result.action, referent: result.referent } };
     } };
 }
 export class ContextualContractError extends Error {

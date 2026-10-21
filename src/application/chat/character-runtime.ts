@@ -1,6 +1,7 @@
 import { isGuardedContext, projectDecisionContext } from "./guarded-conversation-context.js";
 import { selectDecisionContext } from "./decision-context-selection.js";
 import { contextualFlow } from "./contextual-flow.js";
+import { contextualDecisionWireRevision } from "./contextual-decision-contract.js";
 import { z } from "zod";
 import { budgetEligibleHistory } from "./eligible-channel-history.js";
 import type { Logger } from "pino";
@@ -284,6 +285,9 @@ export class CharacterRuntime {
         emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "privacy_changed" });
         throw new SocialOutputSuppressed();
       }
+      if (decision?.contextual) emitChatDiagnostic(this.logger, { event: "chat.decision.proposed", wireRevision: contextualDecisionWireRevision,
+        relationship: decision.contextual.relationship, referent: decision.contextual.referent, intent: decision.contextual.intent,
+        action: decision.contextual.action, evidenceCount: decision.recipientEvidence.length });
       const assessment = this.decisionEngine.assess({ ...request, currentBurst: burst }, outcome, profile.chat.participation, true, turn.now, fingerprint);
       if (optional || request.triggerMode === "reaction") reportConversationDecision(this.logger, assessment.result, "preflight", resolveConversationTrigger(request).interaction);
       const local = assessment.local;

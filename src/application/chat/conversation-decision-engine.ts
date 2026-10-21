@@ -75,6 +75,11 @@ export class ConversationDecisionEngine {
       if (failure) return denied(failure, "failed");
       const interpretation = proposal.contextual;
       if (current && isRecipientCorrection(current.content)) return denied("addressed_elsewhere");
+      // This is a post-context semantic claim, not an ingress wording filter.
+      // A linked referent still needs a real earlier authorized citation.
+      if (!current || !proposal.recipientEvidence.includes(current.messageId) || interpretation.referent === "unresolved" ||
+          interpretation.referent === "context_linked" && !events.some((event) => event.timestampMs < current.timestampMs &&
+            proposal.recipientEvidence.includes(event.messageId))) return denied("referent_unresolved");
       const kind = interpretation.relationship === "followup" ? "continuation" : "spontaneous";
       const policy = resolveParticipation(settings, request.channelId);
       if (interpretation.relationship === "unclear") return denied("recipient_unclear");

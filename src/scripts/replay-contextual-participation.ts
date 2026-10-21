@@ -5,7 +5,7 @@ import { contextualReplayCases } from "../application/chat/contextual-replay.js"
 import { replayPolicyAssessment } from "../application/chat/contextual-replay-policy.js";
 import { CharacterDecisionService } from "../application/chat/character-decision.js";
 import type { DecisionOutcome } from "../application/chat/character-decision.js";
-import { contextualDecisionContract, ContextualContractError } from "../application/chat/contextual-decision-contract.js";
+import { contextualDecisionContract, contextualDecisionWireRevision, ContextualContractError } from "../application/chat/contextual-decision-contract.js";
 import { safeFailure } from "../application/diagnostics/chat-diagnostics.js";
 import { loadInstanceEnvironment } from "../config/instance-environment.js";
 import { loadConfiguration } from "../config/environment.js";
@@ -47,12 +47,12 @@ async function main(): Promise<void> {
     if (!primary) throw new Error("No configured structured provider");
   }
   const results: { id: string; language: string; scenario: string; status: string; durationMs: number; relationship: string | null; intent: string | null;
-    action: string | null; expectedMeaning: boolean | null; failures: string[]; policy: Awaited<ReturnType<typeof replayPolicyAssessment>> | null }[] = [];
+    action: string | null; referent: string | null; expectedMeaning: boolean | null; failures: string[]; policy: Awaited<ReturnType<typeof replayPolicyAssessment>> | null }[] = [];
   let cursor = 0;
   await Promise.all(Array.from({ length: live ? concurrency : 1 }, async () => {
     while (cursor < cases.length) {
       const fixture = cases[cursor++]!;
-      if (!live) { results.push({ id: fixture.id, language: fixture.language, scenario: fixture.scenario, status: "not_run", durationMs: 0, relationship: null, intent: null, action: null, expectedMeaning: null, failures: [], policy: null }); continue; }
+      if (!live) { results.push({ id: fixture.id, language: fixture.language, scenario: fixture.scenario, status: "not_run", durationMs: 0, relationship: null, intent: null, action: null, referent: null, expectedMeaning: null, failures: [], policy: null }); continue; }
       const started = Date.now();
       const service = new CharacterDecisionService(primary, fallback);
       let provider = primary;
@@ -78,14 +78,14 @@ async function main(): Promise<void> {
       const durationMs = Date.now() - started;
       const policy = await replayPolicyAssessment(fixture, result);
       results.push({ id: fixture.id, language: fixture.language, scenario: fixture.scenario, status: result.status, durationMs, policy,
-        relationship: interpretation?.relationship ?? null, intent: interpretation?.intent ?? null, action: interpretation?.action ?? null,
+        relationship: interpretation?.relationship ?? null, intent: interpretation?.intent ?? null, action: interpretation?.action ?? null, referent: interpretation?.referent ?? null,
         expectedMeaning: interpretation ? fixture.expectedRelationships.includes(interpretation.relationship) && (fixture.textAllowed || interpretation.action !== "reply") : false,
         failures: result.attempts.flatMap((attempt) => attempt.failure ? [attempt.failure] : []) });
     }
   }));
   const valid = results.filter((result) => result.status === "valid").length;
   const durations = results.map((result) => result.durationMs).sort((a, b) => a - b);
-  const summary = { mode: probeMs !== null ? "live_latency_probe" : live ? "live_synthetic_decision_replay" : "fixture_inventory_only", fixtureRevision: 2, wireRevision: 2, providerIdentity, probeTimeoutMs: probeMs, cases: cases.length, valid: live ? valid : null,
+  const summary = { mode: probeMs !== null ? "live_latency_probe" : live ? "live_synthetic_decision_replay" : "fixture_inventory_only", fixtureRevision: 2, wireRevision: contextualDecisionWireRevision, providerIdentity, probeTimeoutMs: probeMs, cases: cases.length, valid: live ? valid : null,
     filters: { scenario: scenario ?? null, language: language ?? null },
     expectedMeaning: live ? results.filter((result) => result.expectedMeaning).length : null,
     policyTextViolations: live ? results.filter((result) => result.policy && !result.policy.textPolicyMet).length : null,

@@ -6,6 +6,17 @@ import { branchHuman, branchBot, branchCurrent } from "../helpers/conversation-d
 import { contextualProposal } from "../helpers/contextual-decision-fixtures.js";
 const events = [branchHuman, branchBot, branchCurrent];
 describe("contextual decision binding", () => {
+  it("requires the same referent enum in the advertised and local contract", () => {
+    const contract = contextualDecisionContract(events, "bot", "current");
+    const validate = new Ajv().compile(contract.schema);
+    for (const referent of [undefined, "invented", 5]) {
+      const raw = contextualProposal({ referent });
+      expect(validate(raw)).toBe(false);
+      expect(() => contract.parse(raw)).toThrow();
+    }
+    expect(contract.parse(contextualProposal({ referent: "unresolved", action: "silent", contribution: null, recipientEvidence: [] })))
+      .toMatchObject({ contextual: { referent: "unresolved", action: "silent" } });
+  });
   it("maps short evidence keys back to authorized numeric source IDs", () => {
     const numericEvents = events.map((event, index) => ({ ...event, messageId: `100000000000000000${index}` }));
     const contract = contextualDecisionContract(numericEvents, "bot", numericEvents.at(-1)!.messageId);
