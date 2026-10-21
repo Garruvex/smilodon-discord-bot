@@ -14,6 +14,7 @@ import type {
   CandidateQuery,
   CandidateWithAsserters,
   ForgetQuery,
+  SourceForgetQuery,
   Memory,
   MemoryAudience,
   MemoryIdentity,
@@ -193,6 +194,21 @@ export class PostgresMemoryRepository implements MemoryRepository {
       or(eq(schema.memoryForgetCutoffs.slot, "*"), eq(schema.memoryForgetCutoffs.slot, input.slot)),
     ));
     return rows.some((row) => row.cutoff.getTime() >= input.sourceTimestampMs);
+  }
+  public async sourcesForgotten(inputs: readonly SourceForgetQuery[]): Promise<readonly boolean[]> {
+    if (!inputs.length) return [];
+    const first = inputs[0]!;
+    if (inputs.length > 500 || inputs.some((input) => input.guildId !== first.guildId || input.channelId !== first.channelId)) throw new Error("Forget batch must be bounded to one channel.");
+    const rows = await this.database.select().from(schema.memoryForgetCutoffs).where(and(
+      eq(schema.memoryForgetCutoffs.guildId, first.guildId),
+      inArray(schema.memoryForgetCutoffs.subjectId, [...new Set(inputs.map((input) => input.subjectId))]),
+      inArray(schema.memoryForgetCutoffs.scopeKey, ["*", first.channelId]),
+      inArray(schema.memoryForgetCutoffs.topic, [...new Set(["*", ...inputs.map((input) => input.topic)])]),
+      inArray(schema.memoryForgetCutoffs.slot, [...new Set(["*", ...inputs.map((input) => input.slot)])]),
+    ));
+    const forgotten = inputs.map((input) => rows.some((row) => row.subjectId === input.subjectId &&
+      (row.topic === "*" || row.topic === input.topic) && (row.slot === "*" || row.slot === input.slot) && row.cutoff.getTime() >= input.sourceTimestampMs));
+    return forgotten;
   }
   public constructor(private readonly database: PostgresJsDatabase<typeof schema>) {}
 

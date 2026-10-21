@@ -66,7 +66,9 @@ export class DiscordChannelHistoryReader implements ChannelHistoryReader {
     const channel = await this.client.channels.fetch(channelId).catch(() => null);
     if (!channel?.isTextBased() || channel.isDMBased() || channel.guildId !== guildId) return false;
     const message = await channel.messages.fetch(sourceMessageId).catch(() => null);
-    return Boolean(message && !message.author.bot && (!this.eligibility || (await this.eligibility.checkBackgroundSource(message)).eligible));
+    const member = message && this.eligibility?.hasContextRoleExclusions(message) && !message.member
+      ? await channel.guild.members.fetch(message.author.id).catch(() => null) : message?.member ?? null;
+    return Boolean(message && !message.author.bot && (!this.eligibility || (await this.eligibility.checkBackgroundSource(message, member)).eligible));
   }
 
   public async readBatch(request: ChannelHistoryReadRequest): Promise<ChannelHistoryReadResult> {
@@ -104,6 +106,7 @@ export class DiscordChannelHistoryReader implements ChannelHistoryReader {
     let oldestSeenMessageId: string | null = null;
     let reachedBoundary = false;
     let characters = 0;
+    const members = new Map<string, Promise<GuildMember | null>>();
 
     try {
       while (messages.length < request.maxMessages && characters < request.maxCharacters) {
@@ -123,8 +126,12 @@ export class DiscordChannelHistoryReader implements ChannelHistoryReader {
           }
 
           const content = message.content.trim().slice(0, request.maxCharactersPerMessage);
+          if (!message.author.bot && this.eligibility?.hasContextRoleExclusions(message) && !members.has(message.author.id)) {
+            members.set(message.author.id, message.member ? Promise.resolve(message.member) : channel.guild.members.fetch(message.author.id).catch(() => null));
+          }
+          const member = await (members.get(message.author.id) ?? Promise.resolve(message.member));
           const eligible = !message.author.bot && !message.system && content.length > 0 &&
-            (!this.eligibility || (await this.eligibility.checkBackgroundSource(message)).eligible);
+            (!this.eligibility || (await this.eligibility.checkBackgroundSource(message, member)).eligible);
           // Don't advance the cursor past a message we're deferring to the
           // next batch — only past ones we've fully consumed (pushed, or
           // permanently skipped as ineligible). Advancing on every message
@@ -144,7 +151,7 @@ export class DiscordChannelHistoryReader implements ChannelHistoryReader {
             guildId: request.guildId,
             channelId: request.channelId,
             authorId: message.author.id,
-            authorDisplayName: message.member?.displayName ?? message.author.username,
+            authorDisplayName: member?.displayName ?? message.author.username,
             content,
             createdAt: message.createdTimestamp,
           });

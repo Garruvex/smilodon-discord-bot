@@ -418,7 +418,7 @@ export class ChatConversationService {
       response.participationDecision = participationDecision(response, input.sourceMessageId ?? null, expiresAt);
       if (effects.action !== "silent" && !input.shadowMode && (!optional || this.now() < expiresAt!) &&
           (response.ambientAction === "reply" || (input.triggerMode !== "continuation" && input.triggerMode !== "spontaneous") || this.episodes.version(key) === contextVersion) &&
-          (!input.shouldDeliver || input.shouldDeliver()) && (!input.canExecute || await input.canExecute()) && (!response.contextLease || await response.contextLease.validate()) && (!response.characterCanDeliver || await response.characterCanDeliver())) await input.afterDecision?.(response);
+          (!input.shouldDeliver || input.shouldDeliver()) && (!input.canExecute || await input.canExecute()) && (!response.contextLease || await response.contextLease.validate("effect")) && (!response.characterCanDeliver || await response.characterCanDeliver())) await input.afterDecision?.(response);
       return response;
     }, expiresAt ?? Infinity).then((result) => result ?? silent);
   }

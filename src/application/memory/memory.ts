@@ -349,6 +349,8 @@ export interface SupersedeCommand {
   now: number;
 }
 
+export interface SourceForgetQuery { guildId: string; subjectId: string; topic: string; slot: string; channelId: string; sourceTimestampMs: number }
+
 export interface MemoryRepository {
   migrateRelationshipExpiries?(guildId: string): Promise<number>;
   deleteExpiredModuleData?(guildId: string, now: number, historyDays: number): Promise<number>;
@@ -362,7 +364,8 @@ export interface MemoryRepository {
   reclassifyPublicMemory(input: { guildId: string; memoryId: string; sourceMessageId: string; sourceChannelId: string;
     assertedByUserId: string; sourceQuote: string; mode: "shared" | "isolated"; sourceTimestampMs?: number; now: number }): Promise<boolean>;
   recordForgetCutoff(input: { guildId: string; subjectId: string; topic: string; slot: string; scopeKey: string; cutoff: number }): Promise<void>;
-  isSourceForgotten(input: { guildId: string; subjectId: string; topic: string; slot: string; channelId: string; sourceTimestampMs: number }): Promise<boolean>;
+  isSourceForgotten(input: SourceForgetQuery): Promise<boolean>;
+  sourcesForgotten?(inputs: readonly SourceForgetQuery[]): Promise<readonly boolean[]>;
   ingest(input: RepositoryIngestInput): Promise<Memory>;
   findRecallCandidates(input: CandidateQuery): Promise<RecallCandidates>;
   findById(guildId: string, id: string): Promise<Memory | null>;

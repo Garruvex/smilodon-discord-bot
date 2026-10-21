@@ -1,3 +1,5 @@
+import type { ExampleExchangeSelector } from "../../src/application/chat/example-exchange-selector.js";
+import type { PersonaLoreSelector } from "../../src/application/chat/persona-lore-selector.js";
 import { characterInternals } from "../helpers/character-runtime-internals.js";
 import { fixtureMemoryIngest } from "../helpers/approved-memory-fixture.js";
 import { mkdtempSync } from "node:fs";
@@ -35,7 +37,7 @@ import type { UserCustomizationStore } from "../../src/application/chat/user-cus
 const channelId = "500000000000000001";
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { vi.useRealTimers(); for (const cleanup of cleanups.splice(0)) await cleanup(); });
-async function setup(now = 5000, originalAuthor = "alice", contextual = false, nativeWebSearchSupported = false, tools: ChatToolRegistry | null = null, imageGenerationSupported = false, customization: UserCustomizationStore | null = null, utility: ChatProvider | null = null): Promise<{
+async function setup(now = 5000, originalAuthor = "alice", contextual = false, nativeWebSearchSupported = false, tools: ChatToolRegistry | null = null, imageGenerationSupported = false, customization: UserCustomizationStore | null = null, utility: ChatProvider | null = null, enrichment?: { examples: ExampleExchangeSelector; lore: PersonaLoreSelector }): Promise<{
   service: ChatConversationService; fixture: ReturnType<typeof guardedFixture>; input: ChatConversationInput;
   reply: ReturnType<typeof vi.fn<(request: ChatRequest) => Promise<ChatResponse>>>;
   engine: DefaultMemoryEngine; runtime: CharacterRuntime; state: SqliteChatStateStore;
@@ -57,7 +59,7 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
   const { logger, records } = captureDiagnosticLogger();
   const runtime = new CharacterRuntime(profiles, repository, null, { reply }, decision, null, () => now, logger);
   const engine = new DefaultMemoryEngine(repository, null, null, undefined, null, null, null, () => true);
-  const service = new ChatConversationService({ reply, nativeWebSearchSupported, applicationToolsSupported: true, imageGenerationSupported }, state, engine, undefined, undefined, undefined, customization, null, tools, logger, utility, null, null, null, runtime, () => now);
+  const service = new ChatConversationService({ reply, nativeWebSearchSupported, applicationToolsSupported: true, imageGenerationSupported }, state, engine, undefined, enrichment?.examples, enrichment?.lore, customization, null, tools, logger, utility, null, null, null, runtime, () => now);
   cleanups.push(async () => { service.stopScheduling(); await service.drain(); runtime.stop(); connection.close(); });
   const fixture = guardedFixture(guardedEvent("question", 1000, "Explain the carburetor mixture adjustment", originalAuthor), { guildId, channelId });
   const previous = await GuardedConversationContext.open(fixture.port, { count: 40, budget: 12000, burstIds: [] });
@@ -74,6 +76,23 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
 }
 
 describe("guarded turn acceptance", () => {
+  it.each(["silent", "react", "reply"] as const)("runs reply-only semantic retrieval after a contextual %s decision", async (action) => {
+    let decided = false;
+    const examples = { select: vi.fn<ExampleExchangeSelector["select"]>(() => { expect(decided).toBe(true); return Promise.resolve([]); }) };
+    const lore = { select: vi.fn<PersonaLoreSelector["select"]>(() => { expect(decided).toBe(true); return Promise.resolve([]); }) };
+    const { service, input, decision, reply } = await setup(5000, "alice", true, false, null, false, null, null, { examples, lore });
+    decision.generateCharacterData.mockImplementation(() => {
+      decided = true;
+      return Promise.resolve(contextualProposal({ relationship: "followup", referent: "context_linked", intent: action === "react" ? "social" : action === "silent" ? "abstain" : "answer",
+        action, linkKey: "speaker_1", recipientEvidence: ["current"], reaction: action === "react" ? "👍" : null,
+        ...(action !== "reply" ? { contribution: null } : {}) }));
+    });
+    await service.run({ ...input, triggerMode: "continuation", historyReactionsEnabled: true }, (response) => Promise.resolve(response.text));
+    expect(decision.generateCharacterData).toHaveBeenCalledOnce();
+    expect(examples.select).toHaveBeenCalledTimes(action === "reply" ? 1 : 0);
+    expect(lore.select).toHaveBeenCalledTimes(action === "reply" ? 1 : 0);
+    expect(reply).toHaveBeenCalledTimes(action === "reply" ? 1 : 0);
+  });
   it.each(["eligible", "restricted", "edited", "model_failure"] as const)("compacts only registered reply ancestry and handles optional failures: %s", async (scenario) => {
     const summarizeReplyChainOverflow = vi.fn<NonNullable<ChatProvider["summarizeReplyChainOverflow"]>>();
     const { service, input, fixture, reply } = await setup(5000, "alice", false, false, null, false, null, { reply: vi.fn(), summarizeReplyChainOverflow });

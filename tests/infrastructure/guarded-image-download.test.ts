@@ -13,8 +13,8 @@ async function download(value: Attachment): Promise<string | null> {
   const message = { id: "source", guildId: "guild", channelId: "channel", author: { id: "alice", bot: false },
     guild: { members: { fetch: (): Promise<null> => Promise.resolve(null) } }, attachments: new Map([[value.id, value]]),
     channel: { messages: { fetch: (): Promise<Message> => Promise.resolve(message as unknown as Message) } } };
-  const policy = { contextPolicyVersion: () => "fixture", canPersistContext: () => true, canShareContext: () => true,
-    contextRetention: () => "durable", checkGuardedSource: () => Promise.resolve({ eligible: true }) } as unknown as SocialChatEligibility;
+  const policy = { canUseContextChannel: () => Promise.resolve(true), contextPolicyVersion: () => "fixture", canPersistContext: () => true, canShareContext: () => true,
+    contextRetention: () => "durable", hasContextRoleExclusions: () => false, canReadHistory: () => Promise.resolve(true), checkGuardedSource: () => Promise.resolve({ eligible: true }) } as unknown as SocialChatEligibility;
   const support = new ChatTurnSupport({ warn: vi.fn() } as unknown as Logger, policy);
   return support.createContextPort(message as unknown as Message).loadAsset!("source", value.id, new AbortController().signal);
 }

@@ -22,6 +22,17 @@ function asInput(name: string, option: SettingOption, value: unknown): Parameter
 }
 
 describe("settings registry", () => {
+  it("saves context opt-outs, rejects invalid IDs and allows clearing the user list", async () => {
+    const fixture = engineFixture();
+    expect((await fixture.run("memory.context-opt-out", slashValues({ users: "111111111111111111, 222222222222222222" }))).kind).toBe("updated");
+    expect(fixture.profiles.current().chat.contextOptOutUserIds).toEqual(["111111111111111111", "222222222222222222"]);
+    expect((await fixture.run("memory.context-opt-out", slashValues({ users: "not-a-discord-id" }))).kind).toBe("rejected");
+    expect(fixture.profiles.current().chat.contextOptOutUserIds).toHaveLength(2);
+    await fixture.run("memory.context-opt-out", panelValues({ scalars: { users: "" } }));
+    expect(fixture.profiles.current().chat.contextOptOutUserIds).toEqual([]);
+    await fixture.run("memory.context-opt-out", panelValues({ lists: { roles: ["333333333333333333"] } }));
+    expect(fixture.profiles.current().chat.contextOptOutRoleIds).toEqual(["333333333333333333"]);
+  });
   it("persists an explicit eligible-text mode and can roll back without changing the history target", async () => {
     const fixture = engineFixture(); const setting = fixture.engine.find("character.context")!;
     const run = (mode: string): ReturnType<typeof fixture.engine.run> => fixture.engine.run(setting,

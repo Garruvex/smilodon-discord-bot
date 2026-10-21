@@ -646,7 +646,9 @@ export function createDependencies(
   const isGameChannel = (guildId: string, channelIds: readonly string[]): Promise<boolean> => campaign.isGameChannel(guildId, channelIds);
   const socialEligibility = new SocialChatEligibility(configuration, guildConfigurationProvider, messageOriginStore, isGameChannel);
   socialEligibility.bindGuardedForgetPolicy((message) => memoryRepository.isSourceForgotten({ guildId: message.guildId!,
-    subjectId: message.author.id, topic: "*", slot: `source:${message.id}`, channelId: message.channelId, sourceTimestampMs: message.createdTimestamp }));
+    subjectId: message.author.id, topic: "*", slot: `source:${message.id}`, channelId: message.channelId, sourceTimestampMs: message.createdTimestamp }),
+  memoryRepository.sourcesForgotten ? (messages): Promise<readonly boolean[]> => memoryRepository.sourcesForgotten!(messages.map((message) => ({ guildId: message.guildId!,
+    subjectId: message.author.id, topic: "*", slot: `source:${message.id}`, channelId: message.channelId, sourceTimestampMs: message.createdTimestamp }))) : undefined);
 
   // Prefers the cheaper utility model when configured, same preference as
   // ChatConversationService's own consolidation call. Null when no chat
@@ -780,7 +782,10 @@ export function createDependencies(
     commandRegistry.register(new CharacterEvalCommand(guildConfigurationProvider, messageOriginStore, evaluationStore, characterRuntime, evaluationRequest));
   }
   if (chatConversationService) for (const command of commandRegistry.getAll()) {
-    if (command instanceof MemoryCommand) command.bindConversationForget((guildId, userId) => chatConversationService.forgetConversation(guildId, userId));
+    if (command instanceof MemoryCommand) command.bindConversationForget((guildId, userId) => {
+      socialEligibility.invalidateContext(guildId);
+      return chatConversationService.forgetConversation(guildId, userId);
+    });
   }
   if (characterRuntime && chatConversationService) {
     characterRuntime.bindEvaluationAdmission({ run: (guildId, channelId, operation, cost) => chatConversationService.runCharacterEvaluation(guildId, channelId,

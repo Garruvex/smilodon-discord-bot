@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -45,6 +46,7 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
   decision: ReturnType<typeof vi.fn<(prompt: string) => Promise<unknown>>>;
   reply: ReturnType<typeof vi.fn<(request: ChatRequest) => Promise<ChatResponse>>>;
   sent: { target: string; content: string }[]; reacted: string[]; source: Message;
+  addMessage: (id: string, content: string, authorId?: string, at?: number, replyTo?: string) => Message; members: Map<string, GuildMember>;
   origins: SqliteMessageOriginStore; state: SqliteChatStateStore; fetch: ReturnType<typeof vi.fn>; profiles: ReturnType<typeof memoryProvider>;
 }> {
   const connection = createSqliteDatabaseConnection(mkdtempSync(join(tmpdir(), "adapter-paths-")));
@@ -52,7 +54,8 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
   const watches = new SqliteMessageReactionWatchStore(connection.database); const state = new SqliteChatStateStore(connection.database);
   const document = freshDocument(); document.branding.displayName = "Pinecone";
   Object.assign(document.features, { chatbot: true, channelHistory: historyEnabled, ambientReplies: true, reactionReplies: true, historyReactions: true, music: false });
-  document.roles.chatbot = [guildId]; document.roles.restricted = ["restricted"];
+  document.chat.contextOptOutRoleIds = ["900000000000000003"];
+  document.roles.chatbot = [guildId]; document.roles.restricted = ["900000000000000002"];
   document.channels.chatbot = [channelId]; document.chat.toolCallingEnabled = false; document.chat.webSearchMode = "off";
   document.chat.participation.continuationEnabled = true; document.chat.participation.spontaneousEnabled = true;
   document.chat.participation.spontaneousChannelIds = [channelId];
@@ -66,7 +69,8 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
   const eligibility = new SocialChatEligibility(config, profiles, origins, null); eligibility.bindGuardedForgetPolicy(() => Promise.resolve(false));
   const members = new Map<string, GuildMember>();
   const messages = new Collection<string, Message>(); const sent: { target: string; content: string }[] = []; const reacted: string[] = [];
-  const guild = { id: guildId, members: { me: null, fetch: vi.fn((value: string | { user: string }) => Promise.resolve(members.get(typeof value === "string" ? value : value.user) ?? null)) } };
+  const client = Object.assign(new EventEmitter(), { user: { id: botId }, isReady: (): boolean => true });
+  const guild = { id: guildId, members: { me: {} as GuildMember, cache: members, fetch: vi.fn((value: string | { user: string }) => Promise.resolve(members.get(typeof value === "string" ? value : value.user) ?? null)) } };
   const fetch = vi.fn((value: string | { message?: string; before?: string; after?: string; limit?: number }) => {
     if (typeof value === "string" || value.message) return Promise.resolve(messages.get(typeof value === "string" ? value : value.message!) ?? null);
     const before = value.before ? messages.get(value.before)?.createdTimestamp ?? Infinity : Infinity;
@@ -74,7 +78,7 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
     return Promise.resolve(new Collection([...messages].filter(([, item]) => item.createdTimestamp < before && item.createdTimestamp > after)
       .sort((a, b) => b[1].createdTimestamp - a[1].createdTimestamp).slice(0, value.limit ?? 100)));
   });
-  const channel = { id: channelId, guildId, nsfw: false, isThread: (): boolean => false, isTextBased: (): boolean => true, isDMBased: (): boolean => false,
+  const channel = { permissionsFor: (): { has: () => boolean } => ({ has: (): boolean => true }), id: channelId, guildId, nsfw: false, isThread: (): boolean => false, isTextBased: (): boolean => true, isDMBased: (): boolean => false,
     messages: { cache: new Collection<string, Message>(), fetch }, sendTyping: (): Promise<void> => Promise.resolve(),
     send: (payload: { content: string }): Promise<Message> => {
       sent.push({ target: "current", content: payload.content });
@@ -85,7 +89,7 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
     if (!members.has(authorId)) members.set(authorId, { id: authorId, user, displayName: authorId, guild, nickname: null,
       roles: { cache: new Collection() }, permissions: { has: () => false } } as unknown as GuildMember);
     const mentions = new Collection(content.includes(`<@${botId}>`) ? [[botId, { ...user, id: botId, bot: true }]] : []);
-    const message = { id, content, guildId, channelId, guild, channel, client: { user: { id: botId } }, createdTimestamp: at,
+    const message = { id, content, guildId, channelId, guild, channel, client, createdTimestamp: at,
       author: user, member: members.get(authorId), inGuild: () => true, attachments: new Collection(),
       reference: replyTo ? { messageId: replyTo, channelId } : null, mentions: { users: mentions, members: new Collection(), repliedUser: null },
       reactions: { cache: new Collection() }, react: (emoji: string) => { reacted.push(`${id}:${emoji}`); return Promise.resolve(); },
@@ -105,7 +109,7 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
   await origins.record({ messageId: bot.id, guildId, channelId, origin: "chat", sourceMessageId: original.id, createdAt: bot.createdTimestamp,
     contextProvenance: previous.provenance(bot.content) });
   const denied = makeMessage("private", "PRIVATE_SOURCE_TEXT", "denied", Date.now() - 500);
-  members.get(denied.author.id)!.roles.cache.set("restricted", { id: "restricted", name: "restricted" } as never);
+  members.get(denied.author.id)!.roles.cache.set("900000000000000003", { id: "900000000000000003", name: "900000000000000003" } as never);
   if (mode === "ping") makeMessage("pending", "Please explain the second option details.", actorId, Date.now() - 250);
   const text = mode === "mention" ? `<@${botId}> Please check the second option.` : mode === "ping" ? `<@${botId}>` :
     mode === "name" ? "Pinecone, please check the second option." : mode === "group" ? "The game update is out. Anyone tried it?" : "The second one";
@@ -140,7 +144,7 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
       const generation = [...request.channelHistory, ...request.replyChain, ...(request.currentBurst ?? [])];
       for (const event of projection.events) expect(generation.find((source) => source.messageId === event.evidenceKey)?.content).toBe(event.content);
     }
-    if (behavior === "revoked") members.get(actorId)!.roles.cache.set("restricted", { id: "restricted", name: "restricted" } as never);
+    if (behavior === "revoked") { members.get(actorId)!.roles.cache.set("900000000000000002", { id: "900000000000000002", name: "900000000000000002" } as never); client.emit("guildMemberUpdate", {}, { guild }); }
     return Promise.resolve(decisionResponse({ text: "The second option is ready for testing.", responseIntent: "answer", ambientAction: "reply",
       ...(behavior === "invalid_generation" ? { referentSourceIds: ["private"], reactionEmoji: "👍", historyReactions: [{ messageId: "private", emoji: "👍" }] } : {}) }));
   });
@@ -167,10 +171,35 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
       await vi.advanceTimersByTimeAsync(16000); await service.drain();
     }
   };
-  return { execute, records, decision, reply, sent, reacted, source, origins, state, fetch, profiles };
+  return { execute, records, decision, reply, sent, reacted, source, origins, state, fetch, profiles, addMessage: makeMessage, members };
 }
 
 describe("production Discord adapter to effect paths", () => {
+  it("keeps a non-triggering participant's messages in the authorized context", async () => {
+    const fixture = await setup("contextual", "mention");
+    const roleId = "900000000000000001";
+    await fixture.profiles.update(guildId, { chatbotRoleIds: [roleId] });
+    fixture.members.get(actorId)!.roles.cache.set(roleId, { id: roleId, name: "Chat" } as never);
+    fixture.addMessage("bystander", "PUBLIC_BYSTANDER_CONTEXT", "non-triggering", Date.now() - 50);
+    await fixture.execute();
+    expect(fixture.sent).toHaveLength(1);
+    expect(fixture.reply.mock.calls[0]![0].channelHistory).toContainEqual(expect.objectContaining({ authorId: "non-triggering", content: "PUBLIC_BYSTANDER_CONTEXT" }));
+  });
+  it("delivers a direct tag after repeated nested model checks without another Discord history scan", async () => {
+    const fixture = await setup("contextual", "mention");
+    fixture.reply.mockImplementation(async (request) => {
+      const reads = fixture.fetch.mock.calls.length;
+      for (let index = 0; index < 20; index++) await request.beforeModelAttempt!();
+      expect(fixture.fetch).toHaveBeenCalledTimes(reads);
+      return decisionResponse({ text: "Direct tag accepted.", responseIntent: "answer" });
+    });
+    await fixture.execute();
+    expect(fixture.sent).toHaveLength(1);
+    expect(fixture.sent[0]?.content).toContain("Direct tag accepted.");
+    expect(fixture.records.some((record) => record.event === "context.guard.work" && record.status === "deadline")).toBe(false);
+    expect(fixture.records.some((record) => record.event === "context.guard.validation" && record.mode === "snapshot")).toBe(true);
+    expect(fixture.records.some((record) => record.event === "context.guard.validation" && record.mode === "effect")).toBe(true);
+  });
   it.each(["mention", "reply", "ping", "name"] as const)("history opt-out still permits the authorized current %s", async (mode) => {
     const fixture = await setup("legacy_context", mode, "reply", 1, false); await fixture.execute();
     expect(fixture.reply).toHaveBeenCalledOnce();

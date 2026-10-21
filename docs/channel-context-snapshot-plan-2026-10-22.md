@@ -35,7 +35,30 @@ determine whose channel messages the bot may understand.
 
 - Policy separation and configurable role/user opt-outs: implemented; focused
   access, eligibility, settings and persistence tests pass.
-- Snapshot reuse, invalidation and reply-only work ordering: in progress.
+- Snapshot reuse, invalidation and reply-only semantic work ordering: implemented.
+  The direct-tag adapter regression delivers after 20 nested model checks with
+  no extra Discord scans; 80 lease checks reuse a 40-message snapshot.
+  Admission no longer walks reply ancestry.
+  SQLite/PostgreSQL forget checks support one bounded query per source batch.
+  Reaction collection includes non-triggering participants but requires an
+  authorized participant to initiate a turn.
 - Final regression/build verification and reconciliation: pending.
+
+## Operator settings and diagnostics
+
+`/settings-memory context-opt-out` and the Memory settings panel expose excluded
+roles and user IDs. `chat.contextOptOutRoleIds` and `chat.contextOptOutUserIds`
+are persisted as lists; existing files default to empty lists. Clear users in
+the panel with an empty field. Existing interaction restrictions remain in place.
+
+`context.guard.validation.mode` distinguishes `snapshot` (reuse without Discord
+history/member REST), `effect` (fresh forget checks plus snapshot/resource
+freshness), and `full` (fallback for source adapters without event snapshots).
+Logs contain IDs, counters, durations and policy status, never message bodies.
+
+Decision context retains authorized history, memory and authored lexical lore.
+Semantic example/lore retrieval is reply-only. Image input and bounded reply
+compaction can still run before decision when needed for the supplied context;
+the system does not make every semantic decision from the incoming text alone.
 
 No live Discord actions or paid provider evaluation are part of local validation.

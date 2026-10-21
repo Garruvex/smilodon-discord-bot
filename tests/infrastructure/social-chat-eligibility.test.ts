@@ -61,45 +61,20 @@ describe("social eligibility boundary", () => {
     Object.assign(source.channel, { permissionsFor: (): { has: () => boolean } => ({ has: (): boolean => false }) });
     expect(await policy.canReadHistory(source)).toBe(false);
   });
-  it.each([false, true])("resolves admitted historical origins equally with warm cache=%s", async (warm) => {
+  it.each([false, true])("admits a human's own event without resolving reply ancestry, warm cache=%s", async (warm) => {
     const { policy, message } = fixture();
-    const target = message("old-human");
-    const reply = message("reply", false, "old-human");
+    const target = message("old-human"); const reply = message("reply", false, "old-human");
     Object.assign(reply.channel.messages, { cache: new Map(warm ? [[target.id, target]] : []) });
     const fetch = vi.spyOn(reply.channel.messages, "fetch");
-    const budget = { remaining: 2, resolved: new Map<string, Message | null>() };
-    expect(await policy.check(reply, "history", budget)).toMatchObject({ eligible: true });
-    expect(fetch).toHaveBeenCalledOnce();
-    expect(budget.remaining).toBe(1);
-  });
-  it("bounds origin resolution across candidates and fails closed on missing origins", async () => {
-    const { policy, message } = fixture();
-    message("first-target"); message("second-target");
-    const first = message("first", false, "first-target");
-    const second = message("second", false, "second-target");
-    const budget = { remaining: 1, resolved: new Map<string, Message | null>() };
-    expect((await policy.check(first, "history", budget)).eligible).toBe(true);
-    expect(await policy.check(second, "history", budget)).toMatchObject({ eligible: false, reason: "reply_depth_limit" });
-    expect(await policy.check(message("missing", false, "deleted"), "history", { remaining: 1, resolved: new Map() }))
-      .toMatchObject({ eligible: false, reason: "unresolved_reply_origin" });
-  });
-  it("excludes legacy derived bot text on expanded history even with a chat origin", async () => {
-    const { profile, records, policy, message } = fixture();
-    const bot = message("derived", true);
-    records.set(bot.id, { messageId: bot.id, guildId: profile.guildId, channelId: "channel", origin: "chat", sourceMessageId: "human", createdAt: 1 });
-    expect(await policy.check(bot, "history", { remaining: 20, resolved: new Map() }))
-      .toMatchObject({ eligible: false, reason: "unverifiable_bot_context" });
-    expect((await policy.check(bot, "observation")).eligible).toBe(true);
-  });
-  it("does not confuse missing interaction membership with a collection opt-out or resolve across channels", async () => {
-    const { policy, message } = fixture();
-    const protectedMessage = message("restricted"); Object.assign(protectedMessage, { member: null });
-    expect((await policy.check(protectedMessage, "history", { remaining: 20, resolved: new Map() })).eligible).toBe(true);
-    const cross = message("cross", false, "other"); Object.assign(cross, { reference: { messageId: "other", channelId: "private" } });
-    const fetch = vi.spyOn(cross.channel.messages, "fetch");
-    expect(await policy.check(cross, "history", { remaining: 20, resolved: new Map() }))
-      .toMatchObject({ eligible: false, reason: "cross_channel_reply" });
+    expect(await policy.check(reply)).toMatchObject({ eligible: true });
+    expect(await policy.check(reply, "observation")).toMatchObject({ eligible: true });
     expect(fetch).not.toHaveBeenCalled();
+  });
+  it("keeps a cross-channel reply's human wording without fetching its inaccessible ancestor", async () => {
+    const { policy, message } = fixture(); const cross = message("cross", false, "other");
+    Object.assign(cross, { reference: { messageId: "other", channelId: "private" } });
+    const fetch = vi.spyOn(cross.channel.messages, "fetch");
+    expect(await policy.check(cross)).toMatchObject({ eligible: true }); expect(fetch).not.toHaveBeenCalled();
   });
   it("keeps owner explicit access while denying passive reading and history fetches outside scope", async () => {
     const { profile, policy, message } = fixture(); profile.channels.chatbot = new Set(["selected"]);
@@ -122,15 +97,16 @@ describe("social eligibility boundary", () => {
     profile.chat.channelMemoryModes = { thread: "disabled" };
     expect((await policy.check(current, "observation")).eligible).toBe(false);
   });
-  it("excludes direct mentions and multi-hop replies to utility output while allowing standalone conversation", async () => {
+  it("excludes utility events themselves without rejecting a human question that references them", async () => {
     const { profile, records, policy, message } = fixture();
     message("utility", true);
     records.set("utility", { messageId: "utility", guildId: profile.guildId, channelId: "channel", origin: "link_fix", sourceMessageId: null, createdAt: 1 });
     const first = message("first", false, "utility");
     const second = message("second", false, "first");
-    expect((await policy.check(first)).eligible).toBe(false);
-    expect((await policy.check(second)).eligible).toBe(false);
+    expect((await policy.check(first)).eligible).toBe(true);
+    expect((await policy.check(second)).eligible).toBe(true);
     expect((await policy.check(message("new"))).eligible).toBe(true);
+    expect((await policy.check(message("utility", true))).eligible).toBe(false);
   });
   it("allows direct pings on legacy or missing targets while optional turns fail closed", async () => {
     const { policy, message } = fixture();
@@ -143,7 +119,7 @@ describe("social eligibility boundary", () => {
     const { policy, message } = fixture();
     const event = message("observer", false, "uncached-target");
     const fetch = vi.spyOn(event.channel.messages, "fetch");
-    expect((await policy.check(event, "observation")).eligible).toBe(false);
+    expect((await policy.check(event, "observation")).eligible).toBe(true);
     expect(fetch).not.toHaveBeenCalled();
   });
   it("permits recorded chat output but rechecks master enable and authoritative ownership", async () => {

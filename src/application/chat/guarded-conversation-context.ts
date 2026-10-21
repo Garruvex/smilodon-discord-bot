@@ -26,6 +26,9 @@ export interface GuardedAssetDescriptor { id: string; contentType: string; size:
 export const guardedAssetsHash = (assets: readonly GuardedAssetDescriptor[]): string => hashContent(JSON.stringify(
   [...assets].map(({ id, contentType, size }) => ({ id, contentType, size })).sort((a, b) => a.id.localeCompare(b.id))));
 export interface GuardedContextPort {
+  // Reviewed Discord adapters may own one immutable, event-invalidated snapshot.
+  // Other adapters retain full source revalidation by default.
+  snapshotCurrent?: (effect: boolean, signal: AbortSignal, sourceIds: readonly string[]) => Promise<boolean>;
   retention?: "durable" | "session" | "none";
   shareMemory?: boolean;
   turnSignal?: AbortSignal;
@@ -35,7 +38,7 @@ export interface GuardedContextPort {
   persist?: boolean;
   audienceUserId?: string | null;
   coverage?: (report: GuardedContextReport) => void;
-  validation?: (status: "current" | "changed" | "deadline" | "bounded", reads: number) => void;
+  validation?: (status: "current" | "changed" | "deadline" | "bounded", reads: number, mode?: "full" | "snapshot" | "effect") => void;
   guildId: string; channelId: string; sourceMessageId: string; actorId: string | null;
   read: (messageId: string, signal: AbortSignal) => Promise<GuardedContextSource | null>;
   page: (before: string | null, signal: AbortSignal) => Promise<readonly string[]>;
@@ -126,7 +129,8 @@ export class GuardedConversationContext {
   }
   private async runPhase<T>(operation: () => Promise<T>, phase: GuardedContextPhase): Promise<T> {
     if (this.closed || !this.port.policyCurrent() || this.remainingMs <= 0) throw new SocialOutputSuppressed();
-    const controller = new AbortController(); this.signal = controller.signal; this.cache = new Map();
+    const controller = new AbortController(); this.signal = controller.signal;
+    if (!this.port.snapshotCurrent) this.cache = new Map();
     const started = Date.now(); let timer: ReturnType<typeof setTimeout> | undefined;
     let status: "completed" | "deadline" | "failed" = "failed";
     try {
@@ -651,9 +655,12 @@ export class GuardedConversationContext {
     }, "assets");
   }
 
-  public async validate(): Promise<boolean> {
-    if (++this.passes > guardedContextLimits.maxValidationPasses) { this.closed = true; this.port.validation?.("bounded", this.reads); return false; }
+  public async validate(freshness: "use" | "effect" = "use"): Promise<boolean> {
+    const mode = this.port.snapshotCurrent ? freshness === "effect" ? "effect" : "snapshot" : "full";
+    if (!this.port.snapshotCurrent && ++this.passes > guardedContextLimits.maxValidationPasses) { this.closed = true; this.port.validation?.("bounded", this.reads, mode); return false; }
     try { const valid = await this.phase(async () => {
+      if (this.port.snapshotCurrent) return await this.port.snapshotCurrent(freshness === "effect", this.signal, [...this.evidence.keys()]) &&
+        await this.validateResources({ resources: [...this.resources.values()] }) && this.port.policyCurrent();
       const entries = [...this.evidence];
       await this.port.prepareValidation?.(entries.map(([id]) => id), this.signal);
       for (let index = 0; index < entries.length; index += 4) {
@@ -670,8 +677,8 @@ export class GuardedConversationContext {
       return this.port.policyCurrent();
     }, "validation");
       if (!valid) this.closed = true;
-      this.port.validation?.(valid ? "current" : "changed", this.reads); return valid;
-    } catch { this.closed = true; this.port.validation?.(this.coverageReport.status === "deadline" ? "deadline" : "bounded", this.reads); return false; }
+      this.port.validation?.(valid ? "current" : "changed", this.reads, mode); return valid;
+    } catch { this.closed = true; this.port.validation?.(this.coverageReport.status === "deadline" ? "deadline" : "bounded", this.reads, mode); return false; }
   }
 
   private inheritPublicTools(proof: ContextProvenance | null | undefined): void {

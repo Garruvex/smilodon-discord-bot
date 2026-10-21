@@ -127,6 +127,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       const images: ChatConversationInput["images"] = [];
       const musicActor = this.turnSupport.resolveMusicActor(message, profile);
       const persona = await this.personaSource.resolve(profile);
+      const eligible = this.turnSupport.createEligibilityCheck(message, trigger);
       const response = await this.conversation.run({
         guildId: message.guildId,
         channelId: message.channelId,
@@ -134,7 +135,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         ...(candidateId ? { candidateId } : {}),
         channelHistoryEnabled: profile.features.channelHistory,
         currentEvent: this.turnSupport.toMessageEvent(message), botUserId: this.clientUserId(),
-        canExecute: async () => (opportunityVersion == null || this.conversation?.optionalOpportunityVersion(message.guildId, message.channelId) === opportunityVersion) && await this.turnSupport.isEligible(message, trigger),
+        canExecute: async () => (opportunityVersion == null || this.conversation?.optionalOpportunityVersion(message.guildId, message.channelId) === opportunityVersion) && await eligible(),
         activityLimits: participation.limits, shadowMode: participation.shadowMode,
         resolveActivityLimits: () => resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits,
         resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(message.guildId)?.chat.channelMemoryModes ?? {}, message.channelId),

@@ -24,7 +24,7 @@ import type { ChatToolRegistry } from "./tools/chat-tool-registry.js";
 import { conversationConfiguration } from "../context/conversation-configuration.js";
 import type { UserCustomizationStore } from "./user-customization-store.js";
 import type { ExampleExchangeSelector } from "./example-exchange-selector.js";
-import type { PersonaLoreSelector } from "./persona-lore-selector.js";
+import { RelevantPersonaLoreSelector, type PersonaLoreSelector } from "./persona-lore-selector.js";
 import type { ChatSessionExchange } from "./chat-state-store.js";
 import type { PersonaDriftStore } from "./persona-drift-store.js";
 import { personaDriftPayload } from "./persona-drift-provenance.js";
@@ -99,7 +99,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
     if (input.canExecute && !await input.canExecute() || prepared && !await dependencies.runtime!.validatePrepared(prepared)) throw new SocialOutputSuppressed();
     assertTurnActive(input.turnSignal);
   };
-  const check = async (): Promise<void> => { await access(); if (!await lease.validate()) throw new SocialOutputSuppressed(); };
+  const check = async (freshness: "use" | "effect" = "use"): Promise<void> => { await access(); if (!await lease.validate(freshness)) throw new SocialOutputSuppressed(); };
   const currentUser = lease.current.author ?? { id: lease.current.authorId, displayName: lease.current.authorDisplayName, roleNames: [] };
   const historyParticipants = [...lease.replyChain, ...lease.history, ...lease.burst].filter((event) => event.author).map((event) => event.author!);
   const mentionedIds = new Set(lease.currentEvent?.type === "message" ? lease.currentEvent.mentionedUserIds :
@@ -114,12 +114,10 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
       configuration.preferences && !await lease.resource({ kind: "user_preferences", id: currentUser.id })) throw new SocialOutputSuppressed();
   const recentHistory = new RecentPromptHistorySelector().select(sessions);
   const examplePool = configuration.persona.material.examples ?? []; const lorePool = configuration.persona.material.loreChunks ?? [];
-  const selectedExamples = (await dependencies.examples.select({ records: examplePool, currentUser, mentionedUsers: participants,
-    recentHistory, message: lease.current.content, replyChain: lease.replyChain, now: dependencies.now(), context: lease }))
-    .filter((item) => examplePool.some((source) => source.tags === item.tags && source.user === item.user && source.character === item.character));
-  const selectedLore = (await dependencies.lore.select({ chunks: lorePool, recentHistory,
-    message: lease.current.content, replyChain: lease.replyChain, now: dependencies.now(), context: lease }))
-    .filter((item) => lorePool.some((source) => source.heading === item.heading && source.text === item.text));
+  // Preflight needs authored facts, but not a semantic retrieval model call.
+  // Reply examples and semantic lore enrichment are selected only after admission.
+  const selectedLore = await new RelevantPersonaLoreSelector().select({ chunks: lorePool, recentHistory,
+    message: lease.current.content, replyChain: lease.replyChain, now: dependencies.now(), context: lease });
   const drift = input.personaDriftEnabled && allowsDurableWrites(mode) ? await dependencies.drift?.getScoped(input.guildId, input.channelId) : null;
   const personaHash = configuration.persona.material.personalitySourceHash ?? hashContent(configuration.persona.material.text);
   const personaDrift = drift && drift.personalitySourceHash === personaHash && await lease.derived(drift.contextProvenance, personaDriftPayload(drift), "character_state") &&
@@ -134,7 +132,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
     turnPlan: input.turnPlan,
     guildId: input.guildId, channelId: input.channelId, configurationContext: configuration.persona, personality: configuration.persona.material.text,
     characterPersonaHash: personaHash, personaLore: selectedLore.map(({ heading, text }) => ({ heading, text })), personaDrift,
-    exampleExchanges: selectedExamples.map(({ tags, user, character }) => ({ tags, user, character })), userCustomization: configuration.preferences?.material.text ?? null,
+    exampleExchanges: [], userCustomization: configuration.preferences?.material.text ?? null,
     currentUser, mentionedUsers: participants.filter((actor) => actor.id !== currentUser.id && actor.id !== input.botUserId && actor.kind !== "bot" && mentionedIds.has(actor.id)),
     recentHistory, memories: memoryClaims.filter((record) => record.audience === "private").map((record) => ({
       id: record.id, assertedByUserId: record.ownerUserId!, subjectUserId: record.subjectId, topic: record.topic, slot: record.slot,
@@ -182,6 +180,14 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
         contextLease: lease, replyTargetMessageId: prepared.targetMessageId ?? lease.current.messageId };
     }
   }
+  const selectedExamples = (await dependencies.examples.select({ records: examplePool, currentUser, mentionedUsers: participants,
+    recentHistory, message: lease.current.content, replyChain: lease.replyChain, now: dependencies.now(), context: lease }))
+    .filter((item) => examplePool.some((source) => source.tags === item.tags && source.user === item.user && source.character === item.character));
+  const replyLore = (await dependencies.lore.select({ chunks: lorePool, recentHistory,
+    message: lease.current.content, replyChain: lease.replyChain, now: dependencies.now(), context: lease }))
+    .filter((item) => lorePool.some((source) => source.heading === item.heading && source.text === item.text));
+  request = { ...request, exampleExchanges: selectedExamples.map(({ tags, user, character }) => ({ tags, user, character })),
+    personaLore: replyLore.map(({ heading, text }) => ({ heading, text })) };
   // Error recovery must stay grounded in the supplied text, and shadow turns
   // must never initiate searches. Native search does not enable application
   // tools or give access to additional Discord sources.
@@ -240,7 +246,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   if (decision.recovery === "error_reply") throw new ChatProviderError("Invalid contextual response", 502, "invalid_structured_output");
   if (decision.decision.action === "silent" || decision.decision.action === "react") return { ...response, text: "", ambientAction: "ignore" };
   response.ambientAction = "reply";
-  await check();
+  await check("effect");
   response.contextProvenance = allowsDurableWrites(mode) ? lease.provenance(response.text) : null;
   const delivered = await deliver(response);
   if (!input.shadowMode) await check();

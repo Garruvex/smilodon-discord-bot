@@ -40,7 +40,7 @@ export function guardedTools(registry: ChatToolRegistry | null, lease: GuardedCo
       tool instanceof DiscordServerLookupTool || ReviewedMusicTool.registered(tool) || tool instanceof GenerateSelfImageTool && scope.imageGenerationEnabled))
     .map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters, ...(tool.outputKind ? { outputKind: tool.outputKind } : {}),
       execute: async (args: unknown, context: ChatToolContext): Promise<ChatToolResult> => {
-        await check(); context.signal?.throwIfAborted();
+        await check(); if (!await lease.validate("effect")) throw new SocialOutputSuppressed(); context.signal?.throwIfAborted();
         if (context.guildId !== scope.guildId || context.channelId !== scope.channelId || context.currentUser.id !== scope.userId) throw new SocialOutputSuppressed();
         if (tool instanceof BirthdayMemberSetTool) {
           const id = typeof args === "object" && args !== null && "userId" in args ? args.userId : null;

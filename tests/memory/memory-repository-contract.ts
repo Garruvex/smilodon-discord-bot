@@ -36,6 +36,19 @@ export function memoryRepositoryContract(
   createRepository: () => Promise<MemoryRepository>,
 ): void {
   describe(`MemoryRepository contract (${label})`, () => {
+    it("batches source forget cutoffs with the same subject, slot, scope and timestamp semantics as individual checks", async () => {
+      const repository = await createRepository();
+      const base = { guildId: "batch-forget", subjectId: "alice", topic: "*", slot: "source:a", channelId: "channel", sourceTimestampMs: 1000 };
+      await repository.recordForgetCutoff({ guildId: base.guildId, subjectId: "alice", topic: "*", slot: "source:a", scopeKey: "channel", cutoff: 1000 });
+      await repository.recordForgetCutoff({ guildId: base.guildId, subjectId: "bob", topic: "*", slot: "*", scopeKey: "private-channel", cutoff: 9000 });
+      await repository.recordForgetCutoff({ guildId: base.guildId, subjectId: "carol", topic: "*", slot: "*", scopeKey: "*", cutoff: 2000 });
+      const inputs = [base, { ...base, sourceTimestampMs: 1001 }, { ...base, slot: "source:b" },
+        { ...base, subjectId: "bob" }, { ...base, subjectId: "carol" }, { ...base, subjectId: "unknown" }];
+      expect(await repository.sourcesForgotten!(inputs)).toEqual([true, false, false, false, true, false]);
+      expect(await repository.sourcesForgotten!(inputs)).toEqual(await Promise.all(inputs.map((input) => repository.isSourceForgotten(input))));
+      expect(await repository.sourcesForgotten!([])).toEqual([]);
+      await expect(Promise.resolve().then(() => repository.sourcesForgotten!([base, { ...base, channelId: "private" }]))).rejects.toThrow("one channel");
+    });
     it("conditionally updates metadata and preserves persistent callback quotas across instances", async () => {
       const repository = await createRepository();
       const fact = await repository.ingest(ingestInput());

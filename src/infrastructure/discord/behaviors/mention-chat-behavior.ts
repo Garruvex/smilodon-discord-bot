@@ -210,7 +210,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         sourceMessageId: message.id,
         channelHistoryEnabled: profile.features.channelHistory,
         currentEvent: this.turnSupport.toMessageEvent(message), botUserId: this.clientUserId(),
-        canExecute: () => this.turnSupport.isEligible(message),
+        canExecute: this.turnSupport.createEligibilityCheck(message),
         activityLimits: participation.limits,
         resolveActivityLimits: () => resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits,
         resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(message.guildId)?.chat.channelMemoryModes ?? {}, message.channelId),

@@ -243,11 +243,12 @@ export class ReactionReplyScheduler {
       return;
     }
 
-    const { reactorIds, reactions, complete } = await this.collectUniqueReactorIds(message, profile, watch.channelId);
+    const { reactorIds, reactions, complete, canTrigger } = await this.collectUniqueReactorIds(message, profile, watch.channelId);
     if (!complete) {
       await this.handleFetchFailure(watch, now, null, "Failed to fully fetch this message's reactor lists");
       return;
     }
+    if (!canTrigger) { await this.giveUp(watch, now, "interaction_access_denied"); return; }
     // Below chat.reactionReplyMinReactors distinct eligible human reactors,
     // the watch is marked done WITHOUT calling the model. Counts unique
     // reactors across every emoji on the message, not raw reaction-add events.
@@ -320,8 +321,8 @@ export class ReactionReplyScheduler {
   // list couldn't be fetched — the caller treats that as a transient
   // failure (retry) rather than evaluating a possibly-undercounted total.
   private async collectUniqueReactorIds(
-    message: Message, profile: GuildConfiguration, _channelId: string,
-  ): Promise<{ reactorIds: Set<string>; reactions: EmojiReaction[]; complete: boolean }> {
+    message: Message, profile: GuildConfiguration, channelId: string,
+  ): Promise<{ reactorIds: Set<string>; reactions: EmojiReaction[]; complete: boolean; canTrigger: boolean }> {
     const rawIds = new Set<string>();
     const rawReactions: EmojiReaction[] = [];
     let complete = true;
@@ -340,14 +341,18 @@ export class ReactionReplyScheduler {
       rawReactions.push({ emoji: emojiLabel(reaction.emoji), emojiId: reaction.emoji.id, userIds });
     }
     const eligibleIds = new Set<string>();
+    let canTrigger = false;
     for (const id of rawIds) {
       const member = await message.guild?.members.fetch(id).catch(() => null) ?? null;
-      if (this.chatAccess.canCollectContext(profile, id, member)) eligibleIds.add(id);
+      if (this.chatAccess.canCollectContext(profile, id, member)) {
+        eligibleIds.add(id);
+        if (this.chatAccess.canUseMentionChat(profile, member, id, channelId)) canTrigger = true;
+      }
     }
     const reactions = rawReactions
       .map((reaction) => ({ ...reaction, userIds: reaction.userIds.filter((id) => eligibleIds.has(id)) }))
       .filter((reaction) => reaction.userIds.length > 0);
-    return { reactorIds: eligibleIds, reactions, complete };
+    return { reactorIds: eligibleIds, reactions, complete, canTrigger };
   }
 
   private async replyToReactions(
@@ -393,7 +398,7 @@ export class ReactionReplyScheduler {
       const kept: Message[] = []; const overflow: Message[] = [];
       const response = await this.conversation.run({
         guildId, channelId: message.channelId, sourceMessageId: message.id,
-        canExecute: () => this.turnSupport.isEligible(message, "reaction"),
+        canExecute: this.turnSupport.createEligibilityCheck(message, "reaction"),
         activityLimits: resolveParticipation(profile.chat.participation, message.channelId).limits,
         resolveActivityLimits: () => resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).limits,
         resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(guildId)?.chat.channelMemoryModes ?? {}, message.channelId),

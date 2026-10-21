@@ -337,11 +337,10 @@ describe("ReactionReplyScheduler", () => {
     expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
   });
 
-  it("excludes a reactor without chatbot access from the threshold count and from mentionedUsers", async () => {
+  it("does not let reactions trigger the bot when no reactor has interaction access", async () => {
     const reply = vi.fn(() => Promise.resolve(response("That got a reaction!", "reply")));
     const conversation = testConversationService(reply);
-    // 2 raw reactors, but both lack the chatbot role — none are eligible,
-    // below the threshold of 1.
+    // Their reactions are readable context, but neither may trigger a turn.
     const message = fakeMessage(["r1", "r2"], { noAccessIds: ["r1", "r2"] });
     const { store, markDone } = fakeWatchStore([watch()]);
     const scheduler = new ReactionReplyScheduler(
@@ -355,10 +354,10 @@ describe("ReactionReplyScheduler", () => {
     expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
   });
 
-  it("still asks the model once enough reactors remain eligible after excluding access-denied ones", async () => {
+  it("includes readable reactions from non-triggering participants when an authorized reactor starts the turn", async () => {
     const reply = vi.fn(() => Promise.resolve(response("That got a reaction!", "reply")));
     const conversation = testConversationService(reply);
-    // 2 raw reactors, 1 lacks access — 1 remains, meeting the threshold.
+    // Both reactions are context; only r1 authorizes the turn.
     const message = fakeMessage(["r1", "r2"], { noAccessIds: ["r2"] });
     const { store, markDone } = fakeWatchStore([watch()]);
     const scheduler = new ReactionReplyScheduler(
@@ -369,10 +368,10 @@ describe("ReactionReplyScheduler", () => {
     await scheduler.checkNow(2_000);
 
     expect(reply).toHaveBeenCalledOnce();
-    // The model sees which emoji, and who used it — only the eligible reactor.
+    // Interaction restrictions do not hide readable channel context.
     const request = JSON.stringify((reply.mock.calls as unknown[][])[0]);
-    expect(request).toContain("reacted to your message \\\"hello!\\\": 😂 r1)");
-    expect(request).not.toContain("r2");
+    expect(request).toContain("r1");
+    expect(request).toContain("r2");
     expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
   });
 

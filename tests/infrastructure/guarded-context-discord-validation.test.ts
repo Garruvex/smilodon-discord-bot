@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { Collection, type GuildMember, type Message } from "discord.js";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { GuardedConversationContext, type GuardedContextPort } from "../../src/application/chat/guarded-conversation-context.js";
@@ -9,13 +10,15 @@ import { withSessionMessageOrigins } from "../../src/application/chat/session-me
 type MessageFetch = (options: { message?: string; before?: string; limit?: number }) => Promise<Message | Map<string, Message> | null>;
 afterEach(() => vi.useRealTimers());
 
-async function fixture(retention: "durable" | "session" = "durable"): Promise<{
+async function fixture(retention: "durable" | "session" = "durable", snapshots = false): Promise<{
   lease: GuardedConversationContext; messages: Map<string, Message>;
   fetch: Mock<MessageFetch>; memberFetch: ReturnType<typeof vi.fn>; denied: Set<string>;
   port: GuardedContextPort;
+  client: EventEmitter; forgotten: Set<string>;
   support: ChatTurnSupport; backendRecord: ReturnType<typeof vi.fn>;
 }> {
-  const messages = new Map<string, Message>(); const denied = new Set<string>();
+  const messages = new Map<string, Message>(); const denied = new Set<string>(); const forgotten = new Set<string>();
+  const client = Object.assign(new EventEmitter(), { user: { id: "bot" }, isReady: (): boolean => true });
   const member = { displayName: "Alice", roles: { cache: new Map() } } as unknown as GuildMember;
   const memberFetch = vi.fn().mockResolvedValue(member);
   const fetch = vi.fn<MessageFetch>((options) => {
@@ -27,11 +30,13 @@ async function fixture(retention: "durable" | "session" = "durable"): Promise<{
   for (let id = 1; id <= 41; id++) {
     messages.set(String(id), { id: String(id), guildId: "guild", channelId: "channel", createdTimestamp: id,
       author: { id: "alice", bot: false, username: "Alice", displayName: "Alice" }, member,
-      guild: { members: { fetch: memberFetch } }, channel, client: { user: { id: "bot" } }, content: `text ${id}`,
+      guild: { members: { fetch: memberFetch } }, channel, client: snapshots ? client : { user: { id: "bot" } }, content: `text ${id}`,
       attachments: new Map(), inGuild: () => true } as unknown as Message);
   }
   const eligibility = {
-    contextPolicyVersion: () => "current-policy", canPersistContext: () => retention === "durable", canShareContext: () => retention === "durable", contextRetention: () => retention,
+    canUseContextChannel: () => Promise.resolve(true), contextPolicyVersion: () => `policy:${[...denied].join(",")}`, botCanReadChannel: () => true, hasContextRoleExclusions: () => true,
+    sourceForgotten: (message: Message) => Promise.resolve(forgotten.has(message.id)),
+    sourcesForgotten: (batch: readonly Message[]) => Promise.resolve(batch.map((message) => forgotten.has(message.id))), canPersistContext: () => retention === "durable", canShareContext: () => retention === "durable", contextRetention: () => retention,
     check: () => Promise.resolve({ eligible: true, reason: "allowed" }), checkGuardedActor: () => Promise.resolve(true),
     canReadHistory: () => Promise.resolve(true),
     checkGuardedSource: (message: Message) => Promise.resolve({ eligible: !denied.has(message.id), reason: "passive_access_denied" }),
@@ -42,10 +47,10 @@ async function fixture(retention: "durable" | "session" = "durable"): Promise<{
   const port = support.createContextPort(messages.get("41")!);
   const lease = await GuardedConversationContext.open(port, { count: 40, budget: 24000, burstIds: [] });
   fetch.mockClear(); memberFetch.mockClear();
-  return { lease, messages, fetch, memberFetch, denied, port, support, backendRecord };
+  return { lease, messages, fetch, memberFetch, denied, port, support, backendRecord, client, forgotten };
 }
 
-describe("Discord guarded validation transport", () => {
+describe("Fallback guarded validation without Discord event snapshots", () => {
   it("continues a session-only exchange through actual delivery and fresh Discord source reads without a durable origin write", async () => {
     const { support, lease, messages, fetch, backendRecord } = await fixture("session");
     const current = messages.get("41")!;
@@ -128,5 +133,51 @@ describe("Discord guarded validation transport", () => {
     const { lease, fetch } = await fixture(); fetch.mockRejectedValue(new Error("Discord unavailable"));
     expect(await lease.validate()).toBe(false);
     expect(fetch).toHaveBeenCalledOnce();
+  });
+});
+
+
+describe("Discord one-pass context snapshots", () => {
+  it("reuses 40 filtered history messages across 80 nested checks without REST reads or membership scans", async () => {
+    const { lease, fetch, memberFetch } = await fixture("durable", true);
+    expect(lease.history).toHaveLength(40);
+    const reads = lease.report.sourceReads;
+    for (let index = 0; index < 80; index++) expect(await lease.validate()).toBe(true);
+    expect(await lease.validate("effect")).toBe(true);
+    expect(lease.report.sourceReads).toBe(reads);
+    expect(fetch).not.toHaveBeenCalled(); expect(memberFetch).not.toHaveBeenCalled();
+  });
+  it.each(["messageUpdate", "messageDelete", "messageDeleteBulk", "guildMemberUpdate", "roleUpdate", "channelUpdate", "threadUpdate", "shardDisconnect", "shardReconnecting", "shardResume"])(
+    "invalidates a snapshot on %s without fetching the entire channel again", async (event) => {
+      const { lease, client, fetch, messages } = await fixture("durable", true);
+      const guild = { id: "guild" }; const message = messages.get("10")!;
+      if (event === "messageUpdate") client.emit(event, message, message);
+      else if (event === "messageDelete") client.emit(event, message);
+      else if (event === "messageDeleteBulk") client.emit(event, new Map(), { id: "channel" });
+      else if (event === "guildMemberUpdate" || event === "roleUpdate") client.emit(event, {}, { guild });
+      else if (event === "channelUpdate" || event === "threadUpdate") client.emit(event, {}, { guildId: "guild" });
+      else client.emit(event);
+      expect(await lease.validate()).toBe(false); expect(fetch).not.toHaveBeenCalled();
+      expect(lease.provenance("answer")).toBeNull();
+    });
+  it("does not invalidate for a normal new message or an edit in an unrelated channel", async () => {
+    const { lease, client, fetch, messages } = await fixture("durable", true);
+    client.emit("messageCreate", messages.get("41"));
+    client.emit("messageUpdate", {}, { channelId: "other-channel" });
+    expect(await lease.validate()).toBe(true); expect(fetch).not.toHaveBeenCalled();
+  });
+  it("checks shared persistence forget tombstones at an effect boundary without a full REST scan", async () => {
+    const { lease, forgotten, fetch } = await fixture("durable", true);
+    forgotten.add("10");
+    expect(await lease.validate("effect")).toBe(false); expect(fetch).not.toHaveBeenCalled();
+  });
+  it("invalidates when configured opt-out policy changes during a model call", async () => {
+    const { lease, denied } = await fixture("durable", true); denied.add("10");
+    expect(await lease.validate()).toBe(false);
+  });
+  it("installs a single listener set for multiple turns", async () => {
+    const { support, messages, client } = await fixture("durable", true);
+    for (let index = 0; index < 20; index++) support.createContextPort(messages.get("41")!);
+    expect(client.listenerCount("messageUpdate")).toBe(1); expect(client.listenerCount("guildMemberUpdate")).toBe(1);
   });
 });
