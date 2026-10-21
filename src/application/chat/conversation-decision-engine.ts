@@ -68,23 +68,6 @@ export class ConversationDecisionEngine {
       result: this.result(request, trigger, now, policyVersion, reason, status, "silent", "abstain") });
     if (!admissible) return denied("scope_or_disabled");
     if (trigger.explicit) return { ...base, result: this.result(request, trigger, now, policyVersion, "explicit_request", "ready", "reply", "answer") };
-    if (request.triggerMode === "reaction" && request.turnPlan?.context === "legacy" && !isGuardedContext(request.contextLease)) {
-      // Explicit compatibility strategy: transport-filtered snapshot, one
-      // generation/action contract. Never ask the human-target decision schema
-      // to invent a human recipient for a bot message. Guarded turns below use
-      // typed semantic preflight and full source/actor revalidation instead.
-      const snapshot = request.currentEvent;
-      const actors = snapshot?.type === "reaction_snapshot" ? [...new Set(snapshot.reactions.flatMap((item) => item.actorIds))] : [];
-      if (snapshot?.type !== "reaction_snapshot" || snapshot.channelId !== request.channelId || snapshot.targetAuthorId !== botId ||
-          !snapshot.complete || !actors.length || actors.includes(botId) ||
-          request.mentionedUsers.some((user) => !actors.includes(user.id) || user.kind === "bot")) return denied("invalid_evidence", "failed");
-      // The scheduler authorizes the full actor list before this boundary;
-      // mentionedUsers is only its bounded display-name projection (max 20).
-      if (request.optionalActionsAvailable?.text === false && request.optionalActionsAvailable.reaction === false) return denied("action_unavailable");
-      const result = this.result(request, trigger, now, policyVersion, "legacy_reaction_generation", "ready", "reply", "contribute");
-      result.decision.responseToEventId = snapshot.targetMessageId; result.decision.recipientIds = actors;
-      return { ...base, result, targetMessageId: snapshot.targetMessageId, targetConfidence: 1 };
-    }
     if (proposal?.contextual?.action === "silent") return { ...base, result: this.result(request, trigger, now, policyVersion, "contextual_abstention", "ready", "silent", proposal.contextual.intent) };
     if (proposal?.contextual && request.currentEvent?.type === "reaction_snapshot" && isGuardedContext(request.contextLease)) {
       const snapshot = request.currentEvent; const interpretation = proposal.contextual; const link = interpretation.link;

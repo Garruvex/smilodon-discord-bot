@@ -12,9 +12,9 @@ describe("one effective conversation plan", () => {
     if (reason === "channel_context_disabled") profile.character.channelOverrides.channel = { contextEnabled: false, modules: {} };
     expect(resolveConversationTurnPlan(profile, "channel")).toMatchObject({ state: "blocked", flow: "contextual_v1", reason });
   });
-  it("distinguishes compatibility decisions inside guarded context from legacy context", () => {
+  it("uses one guarded boundary independently of participation rollout settings", () => {
     const profile = freshProfile();
-    expect(resolveConversationTurnPlan(profile, "channel")).toMatchObject({ state: "ready", context: "legacy", decision: "legacy" });
+    expect(resolveConversationTurnPlan(profile, "channel")).toMatchObject({ state: "ready", context: "guarded_text", decision: "legacy" });
     profile.character = { ...characterSettings(profile), context: { ...characterSettings(profile).context, enabled: true, retrievalMode: "eligible_count" } };
     expect(resolveConversationTurnPlan(profile, "channel")).toMatchObject({ state: "ready", context: "guarded_text", decision: "legacy", deadlineMs: 30000 });
     profile.chat.participation = { ...defaultParticipation, flowVersion: "contextual_v1" };

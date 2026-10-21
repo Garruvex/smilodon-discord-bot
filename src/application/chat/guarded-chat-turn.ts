@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 import { ChatStateCommitError, type GuardedChatConversationInput } from "./chat-conversation-service.js";
-import type { ChatRequest, ChatResponse, ChatResponseObserver } from "./chat-provider.js";
+import type { ChatRequest, ChatResponse, ChatResponseObserver, PersonalMemoryExtractionAction } from "./chat-provider.js";
 import type { ChatStateStore } from "./chat-state-store.js";
 import type { CharacterRuntime, CharacterPreparedTurn } from "./character-runtime.js";
 import { GuardedConversationContext } from "./guarded-conversation-context.js";
@@ -11,7 +11,9 @@ import { allowsDurableWrites } from "../memory/memory-channel-policy.js";
 import { emitChatDiagnostic, safeFailure } from "../diagnostics/chat-diagnostics.js";
 import { hashContent } from "../assets/content-hash.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
-import { ChatProviderError } from "./chat-provider.js";
+import { ChatProviderError, chatSafetyGuard } from "./chat-provider.js";
+import { chatMemoryInstructions } from "./chat-memory-policy.js";
+import { guildKnowledgeInstructions } from "./guild-knowledge-policy.js";
 import { assertTurnActive } from "./turn-work-budget.js";
 import { effectiveChatCapabilities } from "./chat-capabilities.js";
 import type { MemoryEngine, MemoryContext } from "../memory/memory.js";
@@ -36,12 +38,13 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   applicationToolsSupported?: boolean;
   imageGenerationSupported?: boolean;
   memory: MemoryEngine;
+  mutate: <T>(operation: () => Promise<T>) => Promise<T>;
   toolRegistry: ChatToolRegistry | null;
   customization: UserCustomizationStore | null;
   examples: ExampleExchangeSelector;
   lore: PersonaLoreSelector;
   drift: PersonaDriftStore | null;
-  postTurn: (dropped: readonly ChatSessionExchange[]) => void;
+  postTurn: (dropped: readonly ChatSessionExchange[], extraction: Promise<readonly PersonalMemoryExtractionAction[] | null>) => void;
   compact: (context: GuardedConversationContext) => Promise<string | null>;
   canCompact: boolean;
 }, deliver: (response: ChatResponse) => Promise<string>, observer?: ChatResponseObserver): Promise<ChatResponse> {
@@ -163,7 +166,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
       music: input.musicActor && input.musicResolveAccessSubjectFields ? { actor: input.musicActor, resolveAccessSubjectFields: input.musicResolveAccessSubjectFields,
         volumeMaximum: input.musicVolumeMaximum ?? 100, musicControllerRoleIds: input.musicControllerRoleIds ?? new Set(), botAdministratorRoleIds: input.musicBotAdministratorRoleIds ?? new Set() } : null,
     });
-  if (!dependencies.runtime && !resolveConversationTrigger(input).explicit) throw new SocialOutputSuppressed();
+  if (!dependencies.runtime && input.triggerMode !== "reaction" && !resolveConversationTrigger(input).explicit) throw new SocialOutputSuppressed();
   if (dependencies.runtime) {
     assertTurnActive(input.turnSignal);
     prepared = await dependencies.runtime.prepare(request);
@@ -184,12 +187,29 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
     shadow: input.shadowMode ?? false, recovery: prepared?.conversationDecision?.recovery === "grounded_reply" });
   await check();
   let response = await dependencies.reply(request);
+  const reactionIds = new Set<string>();
+  const historyReactions = response.historyReactions.filter((reaction) => {
+    if (!reaction.emoji || !known.has(reaction.messageId) || reaction.messageId === lease.current.messageId || reactionIds.has(reaction.messageId)) return false;
+    reactionIds.add(reaction.messageId); return true;
+  }).slice(0, 3);
   const memoryProposals = guardedMemoryProposals(request, response);
   const webSearchUsed = request.webSearchMode === "auto" && response.webSearchUsed;
   const sources = webSearchUsed ? lease.recordPublicWebSearch(response.sources) : [];
   // Provider output cannot add unguarded sources, capabilities or proof.
   response = { ...response, generatedImages: request.imageGenerationEnabled ? response.generatedImages.slice(0, 4) : [], sources: request.includeSources ? sources : [], userMemoryActions: [], guildKnowledgeCandidates: [], outputOrigin: "chat",
-    contextLease: lease, contextProvenance: null, webSearchUsed, historyReactions: response.historyReactions.filter((reaction) => known.has(reaction.messageId)) };
+    contextLease: lease, contextProvenance: null, webSearchUsed, historyReactions,
+    contextUsage: {
+      personalityChars: request.personality.length, personaLoreChars: JSON.stringify(request.personaLore).length,
+      userCustomizationChars: request.userCustomization?.length ?? 0, securityInstructionChars: chatSafetyGuard.length,
+      memoryInstructionChars: chatMemoryInstructions.length + guildKnowledgeInstructions.length,
+      historyMessages: request.recentHistory.length, historyChars: JSON.stringify(request.recentHistory).length,
+      memoryRecords: request.memories.length, memoryChars: JSON.stringify(request.memories.map(({ embedding: _embedding, ...record }) => record)).length,
+      guildKnowledgeRecords: request.guildKnowledge.length, guildKnowledgeChars: JSON.stringify(request.guildKnowledge.map(({ embedding: _embedding, ...record }) => record)).length,
+      exampleExchangeRecords: request.exampleExchanges.length, exampleExchangeChars: JSON.stringify(request.exampleExchanges).length,
+      replyChainMessages: request.replyChain.length, replyChainChars: JSON.stringify(request.replyChain).length,
+      channelHistoryMessages: request.channelHistory.length, channelHistoryChars: JSON.stringify(request.channelHistory).length,
+      currentMessageChars: request.message.length,
+    } };
   delete response.characterDeliveryProof; delete response.characterMessages;
   delete response.characterIsCurrent; delete response.characterCanDeliver;
   delete response.replyTargetMessageId; delete response.inferredAddressing;
@@ -226,13 +246,13 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   });
     if (allowsDurableWrites(mode) && memoryProposals.length) {
       await check();
-      const result = await dependencies.memory.ingest({ guildId: input.guildId, channelId: input.channelId, channelMode: mode, context: lease,
+      const result = await dependencies.mutate(() => dependencies.memory.ingest({ guildId: input.guildId, channelId: input.channelId, channelMode: mode, context: lease,
         assertedByUserId: input.currentUser.id, sourceMessageId: lease.current.messageId, source: "live", proposals: memoryProposals,
-        sourceTimestampMs: lease.current.timestampMs, now: dependencies.now() });
+        sourceTimestampMs: lease.current.timestampMs, now: dependencies.now() }));
       if (result.failed) throw new Error("Guarded memory persistence failed");
     }
-    if (allowsDurableWrites(mode)) dependencies.postTurn(committed.droppedExchanges);
+    if (allowsDurableWrites(mode)) dependencies.postTurn(committed.droppedExchanges,
+      prepared ? dependencies.runtime!.learnGuarded(response, prepared) : Promise.resolve(null));
   } catch (error) { throw new ChatStateCommitError(error); } }
-  if (!input.shadowMode && prepared && allowsDurableWrites(mode)) dependencies.runtime!.learnGuarded(response, prepared);
   return response;
 }

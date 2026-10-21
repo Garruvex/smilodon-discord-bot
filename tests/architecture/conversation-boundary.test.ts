@@ -70,7 +70,17 @@ describe("conversation execution ownership", () => {
     for (const file of adapters) {
       const source = fs.readFileSync(file, "utf8");
       expect(source, path.relative(root, file)).toContain("conversationEffects(result)");
+      expect(source, path.relative(root, file)).toContain("guardedContextPort: this.turnSupport.createContextPort(");
+      expect(source, path.relative(root, file)).not.toContain("usesGuardedContext");
+      expect(source, path.relative(root, file)).not.toMatch(/resolve(?:ReplyChain|ChannelHistory)\(/u);
       expect(source, path.relative(root, file)).not.toMatch(/result\.(?:reactionEmoji|historyReactions)/u);
     }
+  });
+  it("has one live context path independently of participation rollout", () => {
+    const service = fs.readFileSync(path.join(root, "application/chat/chat-conversation-service.ts"), "utf8");
+    expect(service).not.toContain("private runTurn(");
+    expect(service).not.toMatch(/context\s*===\s*"legacy"/u);
+    const plan = fs.readFileSync(path.join(root, "application/chat/conversation-turn-plan.ts"), "utf8");
+    expect(plan).not.toContain('context: "legacy"');
   });
 });

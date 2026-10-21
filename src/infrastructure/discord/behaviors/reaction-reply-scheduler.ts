@@ -3,7 +3,6 @@ import type { Logger } from "pino";
 import { chatDeliveryText } from "../../../application/i18n/chat-delivery.js";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
 import { characterSettings } from "../../../application/chat/character-settings.js";
-import { usesGuardedContext } from "../../../application/chat/conversation-turn-plan.js";
 import { conversationEffects } from "../../../application/chat/conversation-effects.js";
 
 import { ChatAccessService } from "../../../application/access/chat-access-service.js";
@@ -321,7 +320,7 @@ export class ReactionReplyScheduler {
   // list couldn't be fetched — the caller treats that as a transient
   // failure (retry) rather than evaluating a possibly-undercounted total.
   private async collectUniqueReactorIds(
-    message: Message, profile: GuildConfiguration, channelId: string,
+    message: Message, profile: GuildConfiguration, _channelId: string,
   ): Promise<{ reactorIds: Set<string>; reactions: EmojiReaction[]; complete: boolean }> {
     const rawIds = new Set<string>();
     const rawReactions: EmojiReaction[] = [];
@@ -343,8 +342,7 @@ export class ReactionReplyScheduler {
     const eligibleIds = new Set<string>();
     for (const id of rawIds) {
       const member = await message.guild?.members.fetch(id).catch(() => null) ?? null;
-      if (usesGuardedContext(profile, message.channelId)
-        ? this.chatAccess.canObserve(profile, member) : this.chatAccess.canUseMentionChat(profile, member, id, channelId)) eligibleIds.add(id);
+      if (this.chatAccess.canObserve(profile, member)) eligibleIds.add(id);
     }
     const reactions = rawReactions
       .map((reaction) => ({ ...reaction, userIds: reaction.userIds.filter((id) => eligibleIds.has(id)) }))
@@ -370,12 +368,7 @@ export class ReactionReplyScheduler {
     // "before message.id", since this turn is evaluated minutes after
     // `message` was sent and needs to see whatever was said in between
     // (see ChatTurnSupport.resolveChannelHistory's own doc comment).
-    const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory && !(usesGuardedContext(profile, message.channelId))
-      ? this.turnSupport.toChannelHistoryMessages(await this.turnSupport.resolveChannelHistory(
-          message, characterSettings(profile).context.enabled ? characterSettings(profile).context.maxMessages : profile.chat.channelHistoryLimit, new Set([message.id]), null,
-          characterSettings(profile).context.enabled ? characterSettings(profile).context.budget : chatMemoryLimits.maxChannelHistoryChars,
-        ))
-      : [];
+    const channelHistory: ChannelHistoryMessage[] = [];
     const currentUser = {
       ...this.turnSupport.toChatUser(author, message.member),
       id: author.id,
@@ -397,16 +390,15 @@ export class ReactionReplyScheduler {
     };
 
     try {
-      const { kept, overflow } = (usesGuardedContext(profile, message.channelId) ? { kept: [], overflow: [] } : await this.turnSupport.resolveReplyChain(message));
+      const kept: Message[] = []; const overflow: Message[] = [];
       const response = await this.conversation.run({
         guildId, channelId: message.channelId, sourceMessageId: message.id,
         canExecute: () => this.turnSupport.isEligible(message, "reaction"),
         activityLimits: resolveParticipation(profile.chat.participation, message.channelId).limits,
         resolveActivityLimits: () => resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).limits,
         resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
-        ...(usesGuardedContext(profile, message.channelId) ? { guardedContextPort: this.turnSupport.createContextPort(message, true),
-          guardedContextPolicy: { count: characterSettings(profile).context.maxMessages, budget: characterSettings(profile).context.budget, minReactors: profile.chat.reactionReplyMinReactors } } : {}),
-        refreshContextMessage: (event) => this.turnSupport.refreshHistoryEvent(message, event),
+        guardedContextPort: this.turnSupport.createContextPort(message, true),
+          guardedContextPolicy: { count: characterSettings(profile).context.maxMessages, budget: characterSettings(profile).context.budget, minReactors: profile.chat.reactionReplyMinReactors },
         shouldDeliver: () => !resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).shadowMode,
         shadowMode: resolveParticipation(profile.chat.participation, message.channelId).shadowMode,
         afterDecision: async (result) => {

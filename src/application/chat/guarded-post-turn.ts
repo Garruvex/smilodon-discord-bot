@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 import type { GuardedChatConversationInput } from "./chat-conversation-service.js";
-import type { ChatProvider } from "./chat-provider.js";
+import type { ChatProvider, PersonalMemoryExtractionAction } from "./chat-provider.js";
 import type { ChatSessionExchange } from "./chat-state-store.js";
 import type { MemoryEngine, ProposedMemory } from "../memory/memory.js";
 import { allowsDurableWrites } from "../memory/memory-channel-policy.js";
@@ -22,11 +22,12 @@ export async function runGuardedPostTurn(input: GuardedChatConversationInput, dr
   provider: ChatProvider; utility: ChatProvider | null; memory: MemoryEngine; customization: UserCustomizationStore | null;
   tools: ChatToolRegistry | null; drift: PersonaDriftStore | null; logger: Logger | null; now: () => number;
   mutate: (operation: () => Promise<void>) => Promise<void>;
+  extraction?: Promise<readonly PersonalMemoryExtractionAction[] | null>;
 }): Promise<void> {
   const mode = input.resolveMemoryMode?.() ?? input.channelMemoryModes?.[input.channelId] ?? "shared";
   if (!allowsDurableWrites(mode) || input.shadowMode || input.triggerMode === "reaction") return;
   const gateway = new ConversationModelGateway(dependencies.utility ?? dependencies.provider, dependencies.provider);
-  if (!gateway.canExtract && (!dropped.length || !gateway.canConsolidate && !(input.personaDriftEnabled && dependencies.drift && gateway.canEvolveDrift))) return;
+  if (!dependencies.extraction && !gateway.canExtract && (!dropped.length || !gateway.canConsolidate && !(input.personaDriftEnabled && dependencies.drift && gateway.canEvolveDrift))) return;
   const configuration = await conversationConfiguration(input.guildId, input.currentUser.id, input.configurationContext, dependencies.customization);
   const port = guardedToolResourcePort(input.guardedContextPort, dependencies.tools, { currentUser: input.currentUser,
     channelMode: mode, channelIsNsfw: input.channelIsNsfw ?? false, isOwner: input.isOwner ?? false }, undefined, configuration, dependencies.drift);
@@ -48,7 +49,10 @@ export async function runGuardedPostTurn(input: GuardedChatConversationInput, dr
   };
   try {
     if (!isRecipientCorrection(context.current.content)) {
-      const actions = await gateway.extractCurrent(context); const normalized = normalizeForGroundingCheck(context.current.content);
+      // Combined character extraction is untrusted output, with exactly the
+      // same fresh human quotation/subject checks as standalone extraction.
+      const combined = await dependencies.extraction?.catch(() => null);
+      const actions = combined ?? await gateway.extractCurrent(context); const normalized = normalizeForGroundingCheck(context.current.content);
       const validated = validateMemoryActions(actions.slice(0, 2).filter((action) => action.aboutSpeaker &&
         !!normalizeForGroundingCheck(action.sourceQuote) && normalized.includes(normalizeForGroundingCheck(action.sourceQuote))).map((action) => ({
         action: action.action, topic: action.topic, slot: action.slot, statement: action.statement, subjectUserId: context.current.authorId,

@@ -7,7 +7,7 @@ import { freshDocument, memoryProvider, guildId, actorUserId } from "../helpers/
 import { CharacterRuntime } from "../../src/application/chat/character-runtime.js";
 import { CharacterMemory } from "../../src/application/chat/character-memory.js";
 import { CharacterCallbacks, CallbackKnownFailure, callbackState, callbackDateUnresolved } from "../../src/application/chat/character-callbacks.js";
-import { ChatConversationService } from "../../src/application/chat/chat-conversation-service.js";
+import { AuthorizedConversationService as ChatConversationService } from "../helpers/authorized-conversation-service.js";
 import { ChatToolRegistry } from "../../src/application/chat/tools/chat-tool-registry.js";
 import { SqliteChatStateStore } from "../../src/infrastructure/persistence/sqlite-chat-state-store.js";
 import { CharacterModuleRegistry } from "../../src/application/chat/character-module-registry.js";

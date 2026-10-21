@@ -14,11 +14,7 @@
     "reply"
   ],
   "src/application/chat/chat-conversation-service.ts": [
-    "evolvePersonaDrift",
-    "extractPersonalMemories",
     "reply",
-    "summarizeDroppedExchanges",
-    "summarizeReplyChainOverflow",
     "verifyAttribution"
   ],
   "src/application/chat/embedding-batch.ts": [

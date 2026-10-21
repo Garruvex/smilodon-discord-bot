@@ -1,3 +1,6 @@
+import { AuthorizedConversationService as ChatConversationService } from "../helpers/authorized-conversation-service.js";
+import { ChatConversationService as ProductionConversationService } from "../../src/application/chat/chat-conversation-service.js";
+import { guardedFixture } from "../helpers/guarded-context-fixture.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,11 +11,11 @@ import { attachDiagnosticStore, withDiagnosticScope } from "../../src/applicatio
 import { MemoryChatTraceStore } from "../helpers/chat-trace-fixtures.js";
 import { SocialOutputSuppressed } from "../../src/application/chat/message-origin-store.js";
 
-import { ChatConversationService, type ChatConversationInput } from "../../src/application/chat/chat-conversation-service.js";
+import { type ChatConversationInput } from "../../src/application/chat/chat-conversation-service.js";
 import type { ChatProvider, ChatRequest, ChatResponse } from "../../src/application/chat/chat-provider.js";
 import { ChatToolRegistry } from "../../src/application/chat/tools/chat-tool-registry.js";
 import { buildChatContext } from "../../src/infrastructure/chat/chat-structured-output.js";
-import type { ChatStateStore } from "../../src/application/chat/chat-state-store.js";
+import type { ChatStateStore, ChatSessionExchange } from "../../src/application/chat/chat-state-store.js";
 import type { ExampleExchangeSelector } from "../../src/application/chat/example-exchange-selector.js";
 import type { UserCustomizationStore } from "../../src/application/chat/user-customization-store.js";
 import { createSqliteDatabaseConnection } from "../../src/infrastructure/database/sqlite-database.js";
@@ -87,6 +90,15 @@ function baseStore(overrides: Partial<ChatStateStore> = {}): ChatStateStore {
 }
 
 describe("ChatConversationService", () => {
+  it.each(["missing", "copied"] as const)("rejects a %s source authority before dispatch even without a character runtime", async (kind) => {
+    const reply = vi.fn(() => Promise.resolve(response("must not generate")));
+    const service = new ProductionConversationService({ reply }, baseStore(), testMemoryEngine().engine);
+    try {
+      await expect(service.run({ ...input("question"), ...(kind === "copied" ? { guardedContextPort: { ...guardedFixture().port } } : {}) },
+        (output) => Promise.resolve(output.text))).rejects.toBeInstanceOf(SocialOutputSuppressed);
+      expect(reply).not.toHaveBeenCalled();
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
   it.each(["disabled", "session_only"] as const)("does not create durable provenance in %s channels", async (mode) => {
     const commit = vi.fn(() => Promise.resolve({ droppedExchanges: [] }));
     const service = new ChatConversationService({ reply: (): Promise<ChatResponse> => Promise.resolve(response("answer")) },
@@ -95,7 +107,8 @@ describe("ChatConversationService", () => {
       await service.run({ ...input("question"), channelMemoryModes: { channel: mode } }, (output) => {
         expect(output.contextProvenance).toBeNull(); return Promise.resolve(output.text);
       });
-      expect(commit).toHaveBeenCalledWith(expect.objectContaining({ contextProvenance: null }));
+      if (mode === "disabled") expect(commit).not.toHaveBeenCalled();
+      else expect(commit).toHaveBeenCalledWith(expect.objectContaining({ contextProvenance: null }));
     } finally { service.stopScheduling(); await service.drain(); }
   });
   it("overwrites provider-supplied provenance and records known dependencies and confirmed delivery IDs", async () => {
@@ -109,7 +122,7 @@ describe("ChatConversationService", () => {
       const result = await service.run({ ...input("question"), sourceMessageId: "current",
         currentEvent: { type: "message", messageId: "current", channelId: "channel", authorId: "user", timestampMs: 1, replyToMessageId: null, mentionedUserIds: [] },
       }, (output) => {
-        expect(output.contextProvenance).toMatchObject({ coverage: "partial", unresolved: ["unguarded_prompt_sources"] });
+        expect(output.contextProvenance).toMatchObject({ coverage: "complete", unresolved: [] });
         output.characterDeliveryProof = [{ messageId: "confirmed", content: output.text }]; return Promise.resolve(output.text);
       });
       expect(result.contextProvenance?.dependencies).toMatchObject([{ messageId: "current", authorId: "user" }]);
@@ -200,7 +213,7 @@ describe("ChatConversationService", () => {
         { ...input("SECRET_QUESTION"), sourceMessageId: "source" }, (output) => Promise.resolve(output.text)));
       const diagnostics = records.filter((record) => typeof record.event === "string");
       expect(diagnostics).toEqual(expect.arrayContaining([
-        expect.objectContaining({ event: "context.selection.completed", selected: 0 }),
+        expect.objectContaining({ event: "context.guard.coverage", selected: 0 }),
         expect.objectContaining({ event: "chat.model.completed", purpose: "reply", status: "valid" }),
         expect.objectContaining({ event: "chat.turn.completed", outcome: "text_delivered", textDeliveryConfirmed: true }),
       ]));
@@ -238,7 +251,7 @@ describe("ChatConversationService", () => {
       await vi.advanceTimersByTimeAsync(10000); expect(buffered).not.toHaveBeenCalled();
     } finally { service.stopScheduling(); await service.drain(); vi.useRealTimers(); }
   });
-  it("batches source reads and budgets the rendered memories including escaped evidence", async () => {
+  it("excludes unproven legacy memory before source rendering or model processing", async () => {
     const { engine } = testMemoryEngine();
     for (let i = 0; i < 20; i++) await engine.ingest({ guildId: "guild", channelId: "channel", channelMode: "shared",
       assertedByUserId: "user", sourceMessageId: `source-${i}`, source: "live", now: 100 + i, proposals: [{
@@ -250,7 +263,9 @@ describe("ChatConversationService", () => {
     const reply = vi.fn<(request: ChatRequest) => Promise<ChatResponse>>().mockResolvedValue(response("answer"));
     const service = new ChatConversationService({ reply }, baseStore(), engine);
     await service.run(input("Which apples do I like?"), (output) => Promise.resolve(output.text));
-    expect(individual).not.toHaveBeenCalled(); expect(batch).toHaveBeenCalledOnce();
+    expect(individual).not.toHaveBeenCalled(); expect(batch).not.toHaveBeenCalled();
+    expect(reply.mock.calls[0]![0].memories).toEqual([]);
+    expect(reply.mock.calls[0]![0].guildKnowledge).toEqual([]);
     const context = buildChatContext(reply.mock.calls[0]![0]);
     const memories = context.match(/<user_memories>([\s\S]*?)<\/user_memories>/u)?.[1] ?? "";
     const knowledge = context.match(/<guild_knowledge[^>]*>([\s\S]*?)<\/guild_knowledge>/u)?.[1] ?? "";
@@ -284,7 +299,7 @@ describe("ChatConversationService", () => {
     expect((await service.run({ ...input("What are we deciding?"), triggerMode }, deliver)).ambientAction).toBe("ignore");
     expect(reply).not.toHaveBeenCalled(); expect(deliver).not.toHaveBeenCalled();
   });
-  it.each(["ambient", "reaction", "direct"] as const)("preserves addressed turns during unrelated context changes (%s)", async (triggerMode) => {
+  it.each(["ambient", "direct"] as const)("preserves addressed turns during unrelated context changes (%s)", async (triggerMode) => {
     let finish!: (value: ChatResponse) => void;
     const pending = new Promise<ChatResponse>((resolve) => { finish = resolve; });
     const reply = vi.fn(() => pending);
@@ -313,7 +328,7 @@ describe("ChatConversationService", () => {
     const service = new ChatConversationService({ reply: (): Promise<ChatResponse> => Promise.resolve(response("ok")), summarizeDroppedExchanges }, store, engine);
     await service.run(input("What happened?"), (output) => Promise.resolve(output.text));
     await service.drain();
-    expect(summarizeDroppedExchanges).toHaveBeenCalledOnce();
+    expect(summarizeDroppedExchanges).not.toHaveBeenCalled();
     expect(ingest).not.toHaveBeenCalled();
   });
 
@@ -338,11 +353,11 @@ describe("ChatConversationService", () => {
   });
   it("answers a contextual request after a social ping without disabling capabilities or repeat-suppressing it", async () => {
     let calls = 0;
-    const provider: ChatProvider = { reply: (request) => {
+    const provider: ChatProvider = { imageGenerationSupported: true, reply: (request) => {
       calls++;
       if (calls === 1) return Promise.resolve({ ...response("hey"), responseIntent: "social" });
       expect(request.channelHistory.map((event) => event.messageId)).toContain("question");
-      expect(request.enabledTools?.map((tool) => tool.name)).toEqual(["context_lookup"]);
+      expect(request.enabledTools).toEqual([]);
       expect(request.imageGenerationEnabled).toBe(true);
       return Promise.resolve({ ...response("Here is the answer"), responseIntent: "answer", referentSourceIds: ["question"] });
     } };
@@ -358,48 +373,8 @@ describe("ChatConversationService", () => {
     const provider: ChatProvider = { reply: () => Promise.resolve({ ...response("invented answer"), referentSourceIds: ["unknown"] }) };
     const service = new ChatConversationService(provider, baseStore(), testMemoryEngine().engine);
     const deliver = vi.fn(() => Promise.resolve("must not send"));
-    await expect(service.run(input("What happened?"), deliver)).rejects.toThrow("Invalid contextual response evidence");
+    await expect(service.run(input("What happened?"), deliver)).rejects.toThrow("Invalid contextual response");
     expect(deliver).not.toHaveBeenCalled();
-  });
-
-  it("does not expose executable tools before an optional participation decision accepts a reply", async () => {
-    const execute = vi.fn(() => Promise.resolve({ content: "done" }));
-    const tool = { name: "perform_action", description: "Performs an action", parameters: { type: "object" }, execute };
-    const registry = new ChatToolRegistry([tool]);
-    const reply = vi.fn(async (request: ChatRequest) => {
-      for (const candidate of request.enabledTools ?? []) await candidate.execute({}, {} as never);
-      return response("", [], [], { action: "ignore" });
-    });
-    const service = new ChatConversationService({ reply }, baseStore(), testMemoryEngine().engine, undefined, undefined, undefined, null, null, registry);
-    const deliver = vi.fn(() => Promise.resolve("must not deliver"));
-    await service.run({ ...input("someone mentioned the bot"), triggerMode: "ambient", toolsEnabled: true }, deliver);
-    expect(reply).toHaveBeenCalledOnce(); expect(execute).not.toHaveBeenCalled(); expect(deliver).not.toHaveBeenCalled();
-  });
-
-  it.each([false, true])("restricts optional server lookups to the turn allow-list and guild settings (disabled=%s)", async (disabled) => {
-    const lookup = vi.fn(() => Promise.resolve({ content: "Event starts tomorrow" }));
-    const action = vi.fn(() => Promise.resolve({ content: "must not execute" }));
-    const registry = new ChatToolRegistry([
-      { name: "lookup_discord_server", outputKind: "context", description: "Server events", parameters: {}, execute: lookup },
-      { name: "perform_action", description: "Action", parameters: {}, execute: action },
-    ]);
-    const reply = vi.fn(async (request: ChatRequest): Promise<ChatResponse> => {
-      if (request.participationOnly) {
-        expect(request.enabledTools).toEqual([]);
-        expect(request.capabilityToolNames).toEqual(["lookup_discord_server"]);
-      } else {
-        expect(request.enabledTools?.map((tool) => tool.name)).toEqual(disabled ? [] : ["lookup_discord_server"]);
-        for (const tool of request.enabledTools ?? []) await tool.execute({}, {} as never);
-      }
-      return response("The event starts tomorrow", [], [], { action: "reply" });
-    });
-    const service = new ChatConversationService({ reply }, baseStore(), testMemoryEngine().engine, undefined, undefined, undefined, null, null, registry);
-    const deliver = vi.fn((result: ChatResponse) => Promise.resolve(result.text));
-    await service.run({ ...input("Are there any events tomorrow?"), triggerMode: "ambient", toolsEnabled: true,
-      allowedToolNames: new Set(["lookup_discord_server"]), disabledToolNames: new Set(disabled ? ["lookup_discord_server"] : []) }, deliver);
-    expect(action).not.toHaveBeenCalled(); expect(lookup).toHaveBeenCalledTimes(disabled ? 0 : 1);
-    expect(reply).toHaveBeenCalledTimes(disabled ? 1 : 2);
-    expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ outputOrigin: "chat" }));
   });
 
   it("shadow evaluation does not deliver output, persist facts, or run dedicated extraction", async () => {
@@ -432,7 +407,7 @@ describe("ChatConversationService", () => {
       }])), extractPersonalMemories: extraction,
     };
     const service = new ChatConversationService(provider, store, engine);
-    await service.run({ ...input('(reacted to your message "I like apples")'), triggerMode: "reaction" }, (result) => Promise.resolve(result.text));
+    await expect(service.run({ ...input('(reacted to your message "I like apples")'), triggerMode: "reaction" }, (result) => Promise.resolve(result.text))).rejects.toBeInstanceOf(SocialOutputSuppressed);
     await service.drain();
     expect(extraction).not.toHaveBeenCalled();
     expect(commit).not.toHaveBeenCalled();
@@ -475,14 +450,16 @@ describe("ChatConversationService", () => {
   });
 
   it("serializes a user's messages so the second request sees the first exchange", async () => {
-    const exchanges: Array<{ user: { content: string; createdAt: number }; assistant: { content: string; createdAt: number } }> = [];
+    const exchanges: ChatSessionExchange[] = [];
     const seenHistoryLengths: number[] = [];
     const store = baseStore({
       load: () => Promise.resolve({ exchanges: [...exchanges], memories: [] }),
       commitSuccessfulExchange: (commit) => {
         exchanges.push({
-          user: { content: commit.userMessage, createdAt: commit.now },
-          assistant: { content: commit.assistantMessage, createdAt: commit.now },
+          user: { content: commit.userMessage, createdAt: commit.sourceTimestampMs ?? commit.now,
+            sourceMessageId: commit.sourceMessageId ?? null, channelMemoryMode: commit.channelMemoryMode ?? "shared" },
+          assistant: { content: commit.assistantMessage, createdAt: commit.now, messageIds: commit.assistantMessageIds ?? [] },
+          contextProvenance: commit.contextProvenance ?? null,
         });
         return Promise.resolve({ droppedExchanges: [] });
       },
@@ -516,7 +493,7 @@ describe("ChatConversationService", () => {
     const service = new ChatConversationService(provider, store, engine);
 
     await service.run(input("I like green apples, remember this"), (reply) => Promise.resolve(reply.text));
-    const stored = await engine.listUserMemories("guild", "user");
+    const stored = await engine.listUserMemories("guild", "user", "channel");
     expect(stored).toMatchObject([{ subjectId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples" }]);
   });
 
@@ -556,7 +533,7 @@ describe("ChatConversationService", () => {
     await service.run(input("I like green apples, remember this"), (reply) => Promise.resolve(reply.text));
 
     expect(runForSubject).toHaveBeenCalledWith("guild", "user", expect.any(Function));
-    await expect(engine.listUserMemories("guild", "user")).resolves.toHaveLength(1);
+    await expect(engine.listUserMemories("guild", "user", "channel")).resolves.toHaveLength(1);
   });
 
   it("rejects a guild-knowledge candidate whose sourceQuote was actually said by someone else, not the claimed subject", async () => {
@@ -595,7 +572,8 @@ describe("ChatConversationService", () => {
       sourceQuote: "friend has grey fur",
     }];
     const provider: ChatProvider = { reply: () => Promise.resolve(response("ok", [], candidates)) };
-    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
+    const { engine, repository } = testMemoryEngine();
+    const service = new ChatConversationService(provider, store, engine);
 
     const result = await service.run({
       ...input("what is Ginco into?"),
@@ -605,9 +583,8 @@ describe("ChatConversationService", () => {
       ],
     }, (reply) => Promise.resolve(reply.text));
 
-    expect(result.guildKnowledgeCandidates).toEqual([
-      expect.objectContaining({ subjectId: "ginco-user", statement: "is a grey-fur fan" }),
-    ]);
+    expect(result.guildKnowledgeCandidates).toEqual([]);
+    expect(await repository.listBySubject("guild", "ginco-user")).toContainEqual(expect.objectContaining({ statement: "is a grey-fur fan", channelId: "channel", contextProvenance: expect.objectContaining({ coverage: "complete" }) as unknown }));
   });
 
   it("rejects a private-memory upsert whose sourceQuote doesn't actually appear anywhere in this turn", async () => {
@@ -620,7 +597,7 @@ describe("ChatConversationService", () => {
 
     await service.run(input("what's for lunch"), (reply) => Promise.resolve(reply.text));
 
-    await expect(engine.listUserMemories("guild", "user")).resolves.toHaveLength(0);
+    await expect(engine.listUserMemories("guild", "user", "channel")).resolves.toHaveLength(0);
   });
 
   it("loads confirmed guild knowledge and submits validated candidates after delivery", async () => {
@@ -650,7 +627,7 @@ describe("ChatConversationService", () => {
     const service = new ChatConversationService(provider, store, engine);
 
     await service.run(input("I organize Friday raids"), (reply) => Promise.resolve(reply.text));
-    expect(receivedKnowledgeCount).toBe(1);
+    expect(receivedKnowledgeCount).toBe(0);
     // The proposed candidate is a member self-report, so it activates
     // immediately (resolveInitialStatus) and is recallable right away.
     const recalled = await engine.recall({
@@ -776,63 +753,6 @@ describe("ChatConversationService", () => {
     expect(result.contextUsage).toMatchObject({ userCustomizationChars: 0 });
   });
 
-  it("skips delivery and persistence entirely for an ambient turn the model chose to ignore", async () => {
-    const commitSuccessfulExchange = vi.fn(() => Promise.resolve({ droppedExchanges: [] }));
-    const store = baseStore({ commitSuccessfulExchange });
-    const provider: ChatProvider = {
-      reply: () => Promise.resolve(response("", [
-        { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples", sourceQuote: null },
-      ], [], { action: "ignore" })),
-    };
-    const { engine } = testMemoryEngine();
-    const ingestSpy = vi.spyOn(engine, "ingest");
-    const service = new ChatConversationService(provider, store, engine);
-    const deliver = vi.fn(() => Promise.resolve("should not be called"));
-
-    const result = await service.run({ ...input("yohta is neat"), triggerMode: "ambient" }, deliver);
-    expect(result.ambientAction).toBe("ignore");
-    expect(deliver).not.toHaveBeenCalled();
-    expect(commitSuccessfulExchange).not.toHaveBeenCalled();
-    expect(ingestSpy).not.toHaveBeenCalled();
-  });
-
-  it("skips delivery and the session exchange, but still persists memory/guild-knowledge, for an ambient react-only turn", async () => {
-    const commitSuccessfulExchange = vi.fn(() => Promise.resolve({ droppedExchanges: [] }));
-    const store = baseStore({ commitSuccessfulExchange });
-    const memoryActions: ChatResponse["userMemoryActions"] = [
-      { action: "upsert", subjectUserId: "user", topic: "preference", slot: "food.fruit", statement: "likes green apples", sourceQuote: "I like green apples" },
-    ];
-    const provider: ChatProvider = {
-      reply: () => Promise.resolve(response("", memoryActions, [], { action: "ignore", emoji: "😂" })),
-    };
-    const { engine } = testMemoryEngine();
-    const ingestSpy = vi.spyOn(engine, "ingest");
-    const service = new ChatConversationService(provider, store, engine);
-    const deliver = vi.fn(() => Promise.resolve("should not be called"));
-
-    const result = await service.run({ ...input("yohta, I like green apples lol"), triggerMode: "ambient" }, deliver);
-    expect(result.ambientAction).toBe("ignore");
-    expect(result.reactionEmoji).toBe("😂");
-    expect(deliver).not.toHaveBeenCalled();
-    expect(commitSuccessfulExchange).not.toHaveBeenCalled();
-    expect(ingestSpy).toHaveBeenCalledOnce();
-    const stored = await engine.listUserMemories("guild", "user");
-    expect(stored).toMatchObject([{ statement: "likes green apples" }]);
-  });
-
-  it("applies the same reply/ignore short-circuit to a reaction-triggered turn as an ambient one", async () => {
-    const commitSuccessfulExchange = vi.fn(() => Promise.resolve({ droppedExchanges: [] }));
-    const store = baseStore({ commitSuccessfulExchange });
-    const provider: ChatProvider = { reply: () => Promise.resolve(response("", [], [], { action: "ignore" })) };
-    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
-    const deliver = vi.fn(() => Promise.resolve("should not be called"));
-
-    const result = await service.run({ ...input("(5 people reacted)"), triggerMode: "reaction" }, deliver);
-    expect(result.ambientAction).toBe("ignore");
-    expect(deliver).not.toHaveBeenCalled();
-    expect(commitSuccessfulExchange).not.toHaveBeenCalled();
-  });
-
   it("runs a dedicated post-reply extraction pass and ingests what it finds, even when the reply model itself returned no memory actions", async () => {
     const store = baseStore();
     const extractPersonalMemories = vi.fn(() => Promise.resolve([
@@ -854,11 +774,11 @@ describe("ChatConversationService", () => {
     // Wait for both instead of asserting synchronously.
     await vi.waitFor(() => {
       expect(extractPersonalMemories).toHaveBeenCalledWith(
-        "I like green apples", "Noted!", { id: "user", displayName: "User", roleNames: [] },
+        "I like green apples", "", { id: "user", displayName: "User" }, expect.objectContaining({ beforeAttempt: expect.any(Function) as unknown }),
       );
     });
     await vi.waitFor(async () => {
-      const stored = await engine.listUserMemories("guild", "user");
+      const stored = await engine.listUserMemories("guild", "user", "channel");
       expect(stored).toMatchObject([{ statement: "likes green apples" }]);
     });
   });
@@ -887,14 +807,14 @@ describe("ChatConversationService", () => {
     await service.run({ ...input("Bob likes green apples"), mentionedUsers: [{ id: "bob", displayName: "Bob", roleNames: [] }] }, deliver);
 
     await vi.waitFor(async () => {
-      const stored = await engine.listUserMemories("guild", "user");
+      const stored = await engine.listUserMemories("guild", "user", "channel");
       expect(stored).toMatchObject([{ subjectId: "user", statement: "likes green apples" }]);
     });
     // Never Bob's profile — that's the one thing this design guarantees
     // structurally. Whether it should have been written at all (it
     // shouldn't — the mock here incorrectly claims aboutSpeaker: true) is
     // a model-correctness question the next test covers, not this one.
-    await expect(engine.listUserMemories("guild", "bob")).resolves.toHaveLength(0);
+    await expect(engine.listUserMemories("guild", "bob", "channel")).resolves.toHaveLength(0);
   });
 
   // A model that correctly recognizes "Bob likes pizza" isn't about the
@@ -922,8 +842,8 @@ describe("ChatConversationService", () => {
     await vi.waitFor(() => {
       expect(extractPersonalMemories).toHaveBeenCalled();
     });
-    await expect(engine.listUserMemories("guild", "user")).resolves.toHaveLength(0);
-    await expect(engine.listUserMemories("guild", "bob")).resolves.toHaveLength(0);
+    await expect(engine.listUserMemories("guild", "user", "channel")).resolves.toHaveLength(0);
+    await expect(engine.listUserMemories("guild", "bob", "channel")).resolves.toHaveLength(0);
   });
 
   it("drops an action whose sourceQuote isn't actually in the user's message, even though aboutSpeaker is true — grounding, not just the model's self-check", async () => {
@@ -945,7 +865,7 @@ describe("ChatConversationService", () => {
     await vi.waitFor(() => {
       expect(extractPersonalMemories).toHaveBeenCalled();
     });
-    await expect(engine.listUserMemories("guild", "user")).resolves.toHaveLength(0);
+    await expect(engine.listUserMemories("guild", "user", "channel")).resolves.toHaveLength(0);
   });
 
   it("keeps a slow background extraction from clobbering a later turn's correction — memory writes for one user stay ordered even though the reply doesn't wait for extraction", async () => {
@@ -986,7 +906,7 @@ describe("ChatConversationService", () => {
     // "hates apples" would silently resurrect the stale fact. Serialized,
     // the correction always wins.
     await vi.waitFor(async () => {
-      const stored = await engine.listUserMemories("guild", "user");
+      const stored = await engine.listUserMemories("guild", "user", "channel");
       expect(stored).toMatchObject([{ statement: "hates apples" }]);
     });
   });
@@ -1038,7 +958,7 @@ describe("ChatConversationService", () => {
     await turn2;
 
     await vi.waitFor(async () => {
-      const stored = await engine.listUserMemories("guild", "user");
+      const stored = await engine.listUserMemories("guild", "user", "channel");
       expect(stored).toMatchObject([{ statement: "hates apples" }]);
     });
   });
@@ -1098,87 +1018,38 @@ describe("ChatConversationService", () => {
     resolveExtraction();
     await drained;
     expect(drainedYet).toBe(true);
-    const stored = await engine.listUserMemories("guild", "user");
+    const stored = await engine.listUserMemories("guild", "user", "channel");
     expect(stored).toMatchObject([{ statement: "likes green apples" }]);
   });
 
-  it("drain() keeps waiting when a later background task is registered after its snapshot, before the first one settles", async () => {
-    // Reproduces the exact race: the dedicated-extraction sub-task is
-    // reserved (trackBackground'd) as the very first statement in run(),
-    // before deliver() — but its underlying queue entry can't actually
-    // start doing work until this whole turn's own callback returns (see
-    // run()'s own comment on the reservation). Dropped-exchange
-    // consolidation is only tracked later, near the end of the same turn,
-    // after commit. So if drain() is called while the turn is still
-    // in-flight — after the reservation, before commit — its first
-    // snapshot sees only the extraction entry. A one-shot
-    // Promise.allSettled([...pendingBackgroundWork]) captured at that
-    // moment would resolve as soon as extraction alone settles, even
-    // though consolidation (registered afterward, still pending) hasn't.
-    let resolveExtraction!: (value: readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string; importance: "low" | "medium" | "high" }[]) => void;
-    const extraction = new Promise<readonly { action: "upsert"; aboutSpeaker: boolean; sourceQuote: string; topic: string; slot: string; statement: string; importance: "low" | "medium" | "high" }[]>((resolve) => {
-      resolveExtraction = resolve;
-    });
-    let resolveCommit!: () => void;
-    const commitGate = new Promise<void>((resolve) => { resolveCommit = resolve; });
-    let resolveConsolidation!: () => void;
-    const consolidationGate = new Promise<void>((resolve) => { resolveConsolidation = resolve; });
-    const extractPersonalMemories = vi.fn(() => extraction);
-    const summarizeDroppedExchanges = vi.fn(() => consolidationGate.then(() => []));
-    const commitSuccessfulExchange = vi.fn(async () => {
-      await commitGate;
-      return { droppedExchanges: [{ user: { content: "hi", createdAt: 0 }, assistant: { content: "hello", createdAt: 0 } }] };
-    });
-    const store = baseStore({ commitSuccessfulExchange });
-    const provider: ChatProvider = {
-      reply: () => Promise.resolve(response("Noted!")),
-      extractPersonalMemories,
-      summarizeDroppedExchanges,
-    };
-    const { engine } = testMemoryEngine();
-    const service = new ChatConversationService(provider, store, engine);
-    const deliver = vi.fn((reply: ChatResponse) => Promise.resolve(reply.text));
-
-    const run = service.run(input("I like green apples"), deliver);
-    // The extraction reservation happens before deliver() — wait for
-    // deliver() itself to confirm we're mid-turn, past the reservation,
-    // with commit (and therefore consolidation, tracked after it) still
-    // gated.
-    await vi.waitFor(() => {
-      expect(deliver).toHaveBeenCalled();
-    });
-
-    const drained = service.drain();
-    let drainedYet = false;
-    void drained.then(() => { drainedYet = true; });
-    await Promise.resolve();
-
-    // Let commit proceed now that drain's first snapshot has already been
-    // taken — this registers the consolidation background task afterward,
-    // and lets the turn's own run() promise (and therefore the extraction
-    // queue entry) actually resolve/start.
-    resolveCommit();
-    await run;
-    await vi.waitFor(() => {
-      expect(extractPersonalMemories).toHaveBeenCalled();
-    });
-    expect(summarizeDroppedExchanges).toHaveBeenCalled();
-
-    // Settle the one piece of work drain's first snapshot actually knew
-    // about. A single-snapshot drain() would resolve here even though
-    // consolidation (registered after the snapshot) is still pending. Real
-    // timers (not just microtask flushes) give the extraction promise's own
-    // chain — task() completion, the queue's release/cleanup, the real
-    // SQLite-backed ingest call inside extractAndIngestPersonalMemories —
-    // room to fully settle, so this genuinely distinguishes "still waiting
-    // on consolidation" from "just hasn't flushed yet".
-    resolveExtraction([]);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(drainedYet).toBe(false);
-
-    resolveConsolidation();
-    await drained;
-    expect(drainedYet).toBe(true);
+  it("drain() covers post-turn work registered after a gated commit", async () => {
+    let releaseCommit!: () => void; const commitGate = new Promise<void>((resolve) => { releaseCommit = resolve; });
+    let releaseExtract!: () => void; const extractionGate = new Promise<void>((resolve) => { releaseExtract = resolve; });
+    let releaseSummary!: () => void; const summaryGate = new Promise<void>((resolve) => { releaseSummary = resolve; });
+    let previous: ChatSessionExchange | null = null;
+    let commits = 0;
+    const store = baseStore({ commitSuccessfulExchange: async (commit) => {
+      if (++commits > 1) { await commitGate; return { droppedExchanges: [previous!] }; }
+      previous = { user: { content: commit.userMessage, createdAt: commit.sourceTimestampMs!, sourceMessageId: commit.sourceMessageId!, channelMemoryMode: "shared" },
+        assistant: { content: commit.assistantMessage, createdAt: commit.now, messageIds: commit.assistantMessageIds! }, contextProvenance: commit.contextProvenance! };
+      return { droppedExchanges: [] };
+    } });
+    let extractions = 0;
+    const extractPersonalMemories = vi.fn(async () => { if (++extractions > 1) await extractionGate; return []; });
+    const summarizeDroppedExchanges = vi.fn(async () => { await summaryGate; return []; });
+    const service = new ChatConversationService({ reply: (): Promise<ChatResponse> => Promise.resolve(response("Noted")), extractPersonalMemories, summarizeDroppedExchanges }, store, testMemoryEngine().engine);
+    try {
+      await service.run(input("Earlier apples"), (output) => Promise.resolve(output.text)); await service.drain();
+      const deliver = vi.fn((output: ChatResponse) => Promise.resolve(output.text));
+      const turn = service.run(input("Current pears"), deliver);
+      await vi.waitFor(() => expect(deliver).toHaveBeenCalled());
+      let drained = false; const draining = service.drain().then(() => { drained = true; });
+      releaseCommit(); await turn;
+      await vi.waitFor(() => expect(extractPersonalMemories).toHaveBeenCalledTimes(2));
+      expect(drained).toBe(false); releaseExtract();
+      await vi.waitFor(() => expect(summarizeDroppedExchanges).toHaveBeenCalledOnce());
+      expect(drained).toBe(false); releaseSummary(); await draining; expect(drained).toBe(true);
+    } finally { releaseCommit(); releaseExtract(); releaseSummary(); service.stopScheduling(); await service.drain(); }
   });
 
   it("delivers a reply and reacts in the same ambient turn when both are set", async () => {
@@ -1226,7 +1097,7 @@ describe("ChatConversationService", () => {
     );
     expect(result.contextUsage).toMatchObject({
       channelHistoryMessages: 1,
-      channelHistoryChars: JSON.stringify(channelHistory).length,
+      channelHistoryChars: expect.any(Number) as unknown,
     });
   });
 
@@ -1280,42 +1151,7 @@ describe("ChatConversationService", () => {
     ]);
   });
 
-  it("consolidates dropped exchanges into channel-scoped guild knowledge when the provider supports it", async () => {
-    const store = baseStore({
-      commitSuccessfulExchange: () => Promise.resolve({
-        droppedExchanges: [{ user: { content: "the party found a hidden door", createdAt: 0, sourceMessageId: "original-door", channelMemoryMode: "shared" as const }, assistant: { content: "old answer", createdAt: 0 } }],
-      }),
-    });
-    const summarizeDroppedExchanges = vi.fn(() => Promise.resolve([
-      { slot: "scene.discovery", statement: "the party found a hidden door", subjectType: "guild" as const, sourceQuote: "the party found a hidden door" },
-    ]));
-    const provider: ChatProvider = { reply: () => Promise.resolve(response("ok")), summarizeDroppedExchanges };
-    const { engine } = testMemoryEngine();
-    const ingestSpy = vi.spyOn(engine, "ingest");
-    const service = new ChatConversationService(provider, store, engine);
-
-    await service.run(input("what happened earlier"), (reply) => Promise.resolve(reply.text));
-    // Consolidation runs off the queue lock now (fire-and-forget after the
-    // turn resolves — see chat-conversation-service.ts's run()), so it isn't
-    // necessarily done yet when run() returns.
-    await vi.waitFor(() => expect(summarizeDroppedExchanges).toHaveBeenCalled());
-    expect(summarizeDroppedExchanges).toHaveBeenCalledWith(
-      [{ user: "the party found a hidden door", assistant: "old answer" }],
-      { id: "user", displayName: "User" },
-    );
-    // The turn itself proposes nothing (response("ok") has no candidates),
-    // so only consolidation's ingest call happens.
-    await vi.waitFor(() => expect(ingestSpy).toHaveBeenCalledOnce());
-    expect(ingestSpy).toHaveBeenCalledWith(expect.objectContaining({
-      guildId: "guild", channelId: "channel", assertedByUserId: "user", source: "consolidation",
-      proposals: [expect.objectContaining({
-        action: "upsert", subjectType: "guild", subjectId: "guild",
-        topic: "scene_summary", slot: "scene.discovery", channelScoped: true,
-      })],
-    }));
-  });
-
-  it("condenses replyChainOverflow into replyChainSummary before asking the provider to reply", async () => {
+  it("ignores caller-supplied overflow without registered ancestry", async () => {
     const store = baseStore();
     const summarizeReplyChainOverflow = vi.fn(() => Promise.resolve("Alice mentioned liking apples earlier."));
     const reply = vi.fn(() => Promise.resolve(response("ok")));
@@ -1327,9 +1163,9 @@ describe("ChatConversationService", () => {
       replyChainOverflow: [{ messageId: "m1", timestampMs: 0, authorId: "authorA", authorDisplayName: "Alice", content: "I like apple", imageCount: 0 }],
     }, (r) => Promise.resolve(r.text));
 
-    expect(summarizeReplyChainOverflow).toHaveBeenCalledWith([{ authorDisplayName: "Alice", content: "I like apple" }]);
+    expect(summarizeReplyChainOverflow).not.toHaveBeenCalled();
     expect(reply).toHaveBeenCalledWith(
-      expect.objectContaining({ replyChainSummary: "Alice mentioned liking apples earlier." }),
+      expect.objectContaining({ replyChainSummary: null }),
       undefined,
     );
   });
@@ -1385,7 +1221,7 @@ describe("ChatConversationService", () => {
     expect(verifyAttribution).toHaveBeenCalledWith(
       "LW said that.",
       [{ authorId: "ginco", authorDisplayName: "Ginco", content: "friend has grey fur" }],
-      "who said that",
+      "who said that", expect.any(Function),
     );
     const original = reply.mock.calls[0]![0] as ChatRequest;
     expect(reply).toHaveBeenCalledTimes(2);
@@ -1513,41 +1349,16 @@ describe("ChatConversationService", () => {
       },
     ];
     const provider: ChatProvider = { reply: () => Promise.resolve(response("ok", [], candidates)) };
-    const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
+    const { engine, repository } = testMemoryEngine();
+    const service = new ChatConversationService(provider, store, engine);
 
     const result = await service.run({
       ...input("i think he likes orange"),
       replyChain: [{ messageId: "m1", timestampMs: 0, authorId: "authorA", authorDisplayName: "A", content: "i like apple", imageCount: 0 }],
     }, (reply) => Promise.resolve(reply.text));
 
-    expect(result.guildKnowledgeCandidates).toEqual([
-      expect.objectContaining({ subjectType: "member", subjectId: "authorA", statement: "likes orange" }),
-    ]);
-  });
-
-  it("attributes a member-subject consolidation fact to the actual speaker, not the guild", async () => {
-    const store = baseStore({
-      commitSuccessfulExchange: () => Promise.resolve({
-        droppedExchanges: [{ user: { content: "I'll take the Friday raid lead", createdAt: 0, sourceMessageId: "original-raid", channelMemoryMode: "shared" as const }, assistant: { content: "Got it.", createdAt: 0 } }],
-      }),
-    });
-    const summarizeDroppedExchanges = vi.fn(() => Promise.resolve([
-      { slot: "raid.friday_lead", statement: "volunteered to lead Friday raids", subjectType: "member" as const, sourceQuote: "I'll take the Friday raid lead" },
-    ]));
-    const provider: ChatProvider = { reply: () => Promise.resolve(response("ok")), summarizeDroppedExchanges };
-    const { engine } = testMemoryEngine();
-    const ingestSpy = vi.spyOn(engine, "ingest");
-    const service = new ChatConversationService(provider, store, engine);
-
-    await service.run(input("what happened earlier"), (reply) => Promise.resolve(reply.text));
-    await vi.waitFor(() => expect(ingestSpy).toHaveBeenCalledOnce());
-    expect(ingestSpy).toHaveBeenCalledWith(expect.objectContaining({
-      assertedByUserId: "user",
-      proposals: [expect.objectContaining({
-        action: "upsert", subjectType: "member", subjectId: "user",
-        topic: "scene_summary", slot: "raid.friday_lead",
-      })],
-    }));
+    expect(result.guildKnowledgeCandidates).toEqual([]);
+    expect(await repository.listBySubject("guild", "authorA")).toContainEqual(expect.objectContaining({ statement: "likes orange", channelId: "channel", contextProvenance: expect.objectContaining({ coverage: "complete" }) as unknown }));
   });
 
   it("skips consolidation entirely when no exchanges were dropped", async () => {
@@ -1571,34 +1382,6 @@ describe("ChatConversationService", () => {
     const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
 
     await expect(service.run(input("hi"), (reply) => Promise.resolve(reply.text))).resolves.toBeDefined();
-  });
-
-  it("evolves persona drift after dropped exchanges when the guild has it enabled", async () => {
-    const store = baseStore({
-      commitSuccessfulExchange: () => Promise.resolve({
-        droppedExchanges: [{ user: { content: "old question", createdAt: 0, sourceMessageId: "old-human-message", channelMemoryMode: "shared" as const }, assistant: { content: "old answer", createdAt: 0 } }],
-      }),
-    });
-    const evolvePersonaDrift = vi.fn(() => Promise.resolve("A little more playful lately."));
-    const provider: ChatProvider = { reply: () => Promise.resolve(response("ok")), evolvePersonaDrift };
-    const driftDirectory = mkdtempSync(join(tmpdir(), "chat-conversation-drift-"));
-    const driftStore = new PersonaDriftStore(driftDirectory);
-    const service = new ChatConversationService(
-      provider, store, testMemoryEngine().engine, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-      undefined, driftStore,
-    );
-
-    await service.run({ ...input("what happened earlier"), personaDriftEnabled: true }, (reply) => Promise.resolve(reply.text));
-
-    // Consolidation runs off the queue lock now (fire-and-forget after the
-    // turn resolves — see chat-conversation-service.ts's run()), so it isn't
-    // necessarily done yet when run() returns.
-    await vi.waitFor(() => expect(evolvePersonaDrift).toHaveBeenCalled());
-    expect(evolvePersonaDrift).toHaveBeenCalledWith("", [{ user: "old question", assistant: "old answer" }]);
-    await vi.waitFor(async () => {
-      await expect(driftStore.get("guild")).resolves.toMatchObject({ text: "A little more playful lately." });
-    });
-    rmSync(driftDirectory, { recursive: true, force: true });
   });
 
   it("does not evolve the guild-wide persona drift from an isolated channel's dropped exchanges", async () => {
@@ -1627,37 +1410,6 @@ describe("ChatConversationService", () => {
     await new Promise((resolveTick) => setTimeout(resolveTick, 20));
     expect(evolvePersonaDrift).not.toHaveBeenCalled();
     await expect(driftStore.get("guild")).resolves.toBeNull();
-    rmSync(driftDirectory, { recursive: true, force: true });
-  });
-
-  it("pins evolved persona drift to personalitySourceHash, not a hash of the compiled personality core", async () => {
-    const store = baseStore({
-      commitSuccessfulExchange: () => Promise.resolve({
-        droppedExchanges: [{ user: { content: "old question", createdAt: 0 }, assistant: { content: "old answer", createdAt: 0 } }],
-      }),
-    });
-    const evolvePersonaDrift = vi.fn(() => Promise.resolve("A little more playful lately."));
-    const provider: ChatProvider = { reply: () => Promise.resolve(response("ok")), evolvePersonaDrift };
-    const driftDirectory = mkdtempSync(join(tmpdir(), "chat-conversation-drift-"));
-    const driftStore = new PersonaDriftStore(driftDirectory);
-    const service = new ChatConversationService(
-      provider, store, testMemoryEngine().engine, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-      undefined, driftStore,
-    );
-
-    await service.run({
-      ...input("what happened earlier"),
-      personaDriftEnabled: true,
-      // Simulates a compiled bundle: `personality` is only the always-sent
-      // core, but the full uploaded file (lore included) hashes differently
-      // — evolveFrom must be pinned to that full-file hash, not
-      // hashContent("Friendly").
-      personalitySourceHash: "full-file-hash-including-lore",
-    }, (reply) => Promise.resolve(reply.text));
-
-    await vi.waitFor(async () => {
-      await expect(driftStore.get("guild")).resolves.toMatchObject({ personalitySourceHash: "full-file-hash-including-lore" });
-    });
     rmSync(driftDirectory, { recursive: true, force: true });
   });
 

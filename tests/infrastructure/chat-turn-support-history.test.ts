@@ -1,7 +1,6 @@
 import type { Message } from "discord.js";
 import type { Logger } from "pino";
 import { describe, expect, it, vi } from "vitest";
-import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 
 import { ChatTurnSupport } from "../../src/infrastructure/discord/behaviors/chat-turn-support.js";
 
@@ -9,25 +8,7 @@ function logger(): Logger {
   return { warn: vi.fn() } as unknown as Logger;
 }
 
-function fakeMessage(id: string, fetch: ReturnType<typeof vi.fn>): Message {
-  return {
-    id,
-    channel: { messages: { fetch } },
-    client: { user: { id: "bot-1" } },
-  } as unknown as Message;
-}
-
-describe("ChatTurnSupport.resolveChannelHistory", () => {
-  it("distinguishes inaccessible history retrieval from an empty successful fetch", async () => {
-    const { logger, records } = captureDiagnosticLogger();
-    const support = new ChatTurnSupport(logger);
-    await support.resolveChannelHistory(fakeMessage("first", vi.fn(() => Promise.reject(new Error("SECRET_ERROR")))) , 8, new Set());
-    await support.resolveChannelHistory(fakeMessage("second", vi.fn(() => Promise.resolve(new Map()))), 8, new Set());
-    expect(records.map((record) => ({ status: record.status, selected: record.selected }))).toEqual([
-      { status: "fetch_failed", selected: 0 }, { status: "complete", selected: 0 },
-    ]);
-    expect(JSON.stringify(records)).not.toContain("SECRET");
-  });
+describe("ChatTurnSupport event projection", () => {
   it("preserves the original addressee through a bot reply joined by another human", () => {
     const support = new ChatTurnSupport(logger());
     const common = { channelId: "channel", attachments: new Map(), channel: { messages: { cache: new Map() } }, createdTimestamp: 1000 };
@@ -55,24 +36,5 @@ describe("ChatTurnSupport.resolveChannelHistory", () => {
     expect(support.toChannelHistoryMessages([message])[0]).toMatchObject({
       hasReplyReference: true, replyToMessageId: "unavailable", replyToAuthorId: null,
     });
-  });
-  it("defaults to fetching the channel before the triggering message (a live mention/ambient turn)", async () => {
-    const support = new ChatTurnSupport(logger());
-    const fetch = vi.fn(() => Promise.resolve(new Map()));
-    const message = fakeMessage("trigger-1", fetch);
-
-    await support.resolveChannelHistory(message, 8, new Set());
-
-    expect(fetch).toHaveBeenCalledExactlyOnceWith({ limit: 32, before: "trigger-1" });
-  });
-
-  it("fetches the most recent channel activity, with no cutoff, when before is passed as null", async () => {
-    const support = new ChatTurnSupport(logger());
-    const fetch = vi.fn(() => Promise.resolve(new Map()));
-    const message = fakeMessage("old-reply-1", fetch);
-
-    await support.resolveChannelHistory(message, 8, new Set(), null);
-
-    expect(fetch).toHaveBeenCalledExactlyOnceWith({ limit: 32 });
   });
 });

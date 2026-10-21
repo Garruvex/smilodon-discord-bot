@@ -33,7 +33,7 @@ export function effectiveChatPolicy(profile: GuildConfiguration, channelId: stri
   const settings = characterSettings(profile); const context = settings.context;
   const participation = resolveParticipation(profile.chat.participation, channelId);
   const memoryMode = resolveChannelMemoryMode(profile.chat.channelMemoryModes, channelId);
-  const guarded = context.enabled && context.retrievalMode === "eligible_count";
+  const guarded = true;
   const turnPlan = resolveConversationTurnPlan(profile, channelId);
   const directSelected = profile.channels.chatbot.size === 0 || profile.channels.chatbot.has(channelId);
   const common: PolicyReason[] = [

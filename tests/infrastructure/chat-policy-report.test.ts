@@ -25,11 +25,11 @@ describe("effective chat policy", () => {
     expect(policy.modes.every((mode) => mode.reasons.includes("context_disabled"))).toBe(true);
     expect(renderChatPolicy({ profile: p, text: settingsText("en") }, channelId, readiness)).toContain("Effective pipeline:");
   });
-  it("does not invent a legacy direct-chat history prerequisite", () => {
+  it("requires readable current sources for every direct-chat configuration", () => {
     const p = profile(); p.character!.context.retrievalMode = "legacy";
     const policy = effectiveChatPolicy(p, channelId, { ...readiness, botRead: false });
     expect(policy.historyReasons).toContain("bot_cannot_read");
-    expect(policy.modes[0]?.reasons).not.toContain("bot_cannot_read");
+    expect(policy.modes[0]?.reasons).toContain("bot_cannot_read");
   });
 
   it("keeps thread selection exact, resolves inheritance, and does not grant observation from an empty direct allow-list", () => {

@@ -180,7 +180,6 @@ describe("AmbientChatBehavior.matches", () => {
 describe("AmbientChatBehavior outcome logs", () => {
   it("keeps a response/error path for a clear name address when generation fails", async () => {
     vi.spyOn(ChatTurnSupport.prototype, "isEligible").mockResolvedValue(true);
-    vi.spyOn(ChatTurnSupport.prototype, "resolveReplyChain").mockResolvedValue({ kept: [], overflow: [] });
     const run = vi.fn(() => Promise.reject(new Error("provider unavailable")));
     const subject = behavior(profile(), { run } as unknown as ChatConversationService);
     const reply = vi.fn(() => Promise.resolve({ id: "error-note" }));
@@ -201,7 +200,6 @@ describe("AmbientChatBehavior outcome logs", () => {
       { resolve: (): Promise<{ personality: string; loreChunks: []; examplePool: []; personaDrift: null; personalitySourceHash: string }> => Promise.resolve({ personality: "Test persona", loreChunks: [], examplePool: [], personaDrift: null, personalitySourceHash: "test-hash" }) },
       { warn: vi.fn(), error, info, debug: vi.fn() } as never);
     vi.spyOn(ChatTurnSupport.prototype, "isEligible").mockResolvedValue(true);
-    vi.spyOn(ChatTurnSupport.prototype, "resolveReplyChain").mockResolvedValue({ kept: [], overflow: [] });
     const source = { ...message(), id: "source", createdTimestamp: 1000, member: null, attachments: new Collection(),
       author: { id: "human", username: "Human", displayName: "Human", bot: false },
       mentions: { users: new Collection() } } as unknown as Message;

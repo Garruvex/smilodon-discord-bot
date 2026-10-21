@@ -39,7 +39,7 @@ type Mode = "mention" | "reply" | "ping" | "name" | "followup" | "group" | "reac
 // Only Discord transport and structured providers are simulated. Dispatch,
 // adapters, access, profile parsing, provenance, lease, runtime, policy,
 // scheduler, delivery support and persistence are the production components.
-async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react" | "failed" | "invalid_generation" | "revoked" | "shadow" = "reply", actorCount = 1): Promise<{
+async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react" | "failed" | "invalid_generation" | "revoked" | "shadow" = "reply", actorCount = 1, historyEnabled = true): Promise<{
   execute: () => Promise<void>; records: Record<string, unknown>[];
   decision: ReturnType<typeof vi.fn<(prompt: string) => Promise<unknown>>>;
   reply: ReturnType<typeof vi.fn<(request: ChatRequest) => Promise<ChatResponse>>>;
@@ -50,7 +50,7 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
   const repository = new SqliteMemoryRepository(connection.database); const origins = new SqliteMessageOriginStore(connection.database);
   const watches = new SqliteMessageReactionWatchStore(connection.database); const state = new SqliteChatStateStore(connection.database);
   const document = freshDocument(); document.branding.displayName = "Pinecone";
-  Object.assign(document.features, { chatbot: true, channelHistory: true, ambientReplies: true, reactionReplies: true, historyReactions: true, music: false });
+  Object.assign(document.features, { chatbot: true, channelHistory: historyEnabled, ambientReplies: true, reactionReplies: true, historyReactions: true, music: false });
   document.roles.chatbot = [guildId]; document.roles.restricted = ["restricted"];
   document.channels.chatbot = [channelId]; document.chat.toolCallingEnabled = false; document.chat.webSearchMode = "off";
   document.chat.participation.continuationEnabled = true; document.chat.participation.spontaneousEnabled = true;
@@ -119,7 +119,7 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
     expect(prompt).not.toContain("PRIVATE_SOURCE_TEXT");
     if (behavior === "failed") return Promise.reject(new Error("Synthetic provider failure"));
     const reaction = mode === "reaction"; const target = reaction ? bot.id : source.id;
-    if (strategy === "contextual" || reaction && strategy !== "legacy_context") return Promise.resolve(contextualProposal({
+    if (strategy === "contextual" || reaction) return Promise.resolve(contextualProposal({
       relationship: reaction || mode === "group" ? "group" : "followup", referent: mode === "group" ? "self_contained" : "context_linked",
       intent: behavior === "react" ? "social" : reaction || mode === "group" ? "contribute" : "answer",
       action: behavior === "react" ? "react" : "reply", reaction: behavior === "react" ? "👍" : null,
@@ -132,8 +132,8 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
   });
   const reply = vi.fn((request: ChatRequest) => {
     expect(JSON.stringify(request.channelHistory)).not.toContain("PRIVATE_SOURCE_TEXT");
-    if (mode === "ping") expect(request.channelHistory.some((event) => event.messageId === "pending")).toBe(true);
-    if (strategy !== "legacy_context") expect(request.contextLease).toBeDefined();
+    if (mode === "ping" && historyEnabled) expect(request.channelHistory.some((event) => event.messageId === "pending")).toBe(true);
+    expect(request.contextLease).toBeDefined();
     if (strategy === "contextual" && decision.mock.calls.length) {
       const projection = JSON.parse(decision.mock.calls[0]![0].split("Data: ")[1]!) as { events: { evidenceKey: string; content: string }[] };
       const generation = [...request.channelHistory, ...request.replyChain, ...(request.currentBurst ?? [])];
@@ -169,23 +169,31 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
 }
 
 describe("production Discord adapter to effect paths", () => {
+  it.each(["mention", "reply", "ping", "name"] as const)("history opt-out still permits the authorized current %s", async (mode) => {
+    const fixture = await setup("legacy_context", mode, "reply", 1, false); await fixture.execute();
+    expect(fixture.reply).toHaveBeenCalledOnce();
+    expect(fixture.reply.mock.calls[0]![0].channelHistory).toEqual([]);
+    expect(fixture.reply.mock.calls[0]![0].replyChain).toEqual([]);
+    expect(fixture.sent).toHaveLength(1);
+  });
+
   it("does not confuse the bounded reactor-name projection with the full authorized audience", async () => {
     const fixture = await setup("legacy_context", "reaction", "reply", 21); await fixture.execute();
-    expect(fixture.reply).toHaveBeenCalledOnce(); expect(fixture.reply.mock.calls[0]![0].mentionedUsers).toHaveLength(20);
+    expect(fixture.reply).toHaveBeenCalledOnce(); expect(fixture.reply.mock.calls[0]![0].mentionedUsers).toHaveLength(21);
     expect(fixture.sent).toHaveLength(1); expect(fixture.sent[0]?.target).toBe("answer");
   });
   for (const strategy of ["legacy_context", "guarded_legacy_decision", "contextual"] as const) {
     it.each(["mention", "reply", "ping", "name", "followup", "group", "reaction"] as const)(`${strategy}: %s reaches its planned lifecycle`, async (mode) => {
       const fixture = await setup(strategy, mode); await fixture.execute();
       expect(fixture.reply).toHaveBeenCalledOnce();
-      const optional = mode === "followup" || mode === "group" || mode === "reaction" && strategy !== "legacy_context";
+      const optional = mode === "followup" || mode === "group" || mode === "reaction";
       expect(fixture.decision).toHaveBeenCalledTimes(optional ? 1 : 0);
       expect(fixture.sent).toHaveLength(1); expect(fixture.sent[0]?.target).toBe(mode === "reaction" ? "answer" : "current");
       expect(fixture.records.filter((record) => record.event === "chat.turn.completed")).toHaveLength(1);
-      expect(fixture.records).toContainEqual(expect.objectContaining({ event: "chat.turn.plan", context: strategy === "legacy_context" ? "legacy" : "guarded_text", state: "ready" }));
+      expect(fixture.records).toContainEqual(expect.objectContaining({ event: "chat.turn.plan", context: "guarded_text", state: "ready" }));
       const stored = await fixture.origins.find(guildId, channelId, "delivered-1");
       expect(stored?.origin).toBe("chat");
-      if (strategy !== "legacy_context") expect(stored?.contextProvenance?.coverage).toBe("complete");
+      expect(stored?.contextProvenance?.coverage).toBe("complete");
     });
   }
   it.each(["followup", "reaction"] as const)("%s carries an approved emoji through the actual callback", async (mode) => {

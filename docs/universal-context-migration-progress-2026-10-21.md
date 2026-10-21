@@ -195,3 +195,23 @@ Session-only deliveries retain bounded, expiring origin manifests in process mem
 Origin metadata and asset descriptors are pinned alongside visible message versions, preventing a changed trigger/proof from passing merely because message text stayed unchanged. Dependency reads are batched per validation phase. Text-only histories do not trigger an unnecessary image-source refetch; admitted images from verified sessions remain available outside the selected baseline window.
 
 Validation: full suite **5,040 passed, 7 skipped, zero failed**, including actual Discord-adapter round-trip tests with fake message transport. Typecheck, production compilation, changed-file lint and diff checks passed. No paid request or live action occurred. Mandatory live enforcement and remaining runtime/evaluation consumers remain unfinished.
+
+## Checkpoint 23: one live conversation source boundary
+
+Every live Discord conversation now supplies a registered source port, including installations using older retrieval/participation settings. The turn plan always selects the guarded executor. Participation rollout remains separate: invalid contextual configurations still fail closed, and enabling the common boundary does not automatically enable contextual participation. Channel history/read-scope opt-outs remain effective; addressed current messages continue working with history disabled.
+
+Removed the duplicate chat executor and its raw extraction, consolidation, overflow and drift helpers, plus the unused Discord history/reply-chain resolvers. Compatibility input arrays cannot restore those paths. Current source, ancestry, history, sessions, images, aliases, memory, tools, configuration and character contributions use the existing common lease. Source and capability diagnostics remain metadata-only. Guarded history reactions now deduplicate, exclude the triggering event and cap at three; prompt-use metrics reflect the admitted projections.
+
+The migration exposed missing behavior in the guarded executor: live memory writes now use the shared subject mutation coordinator, and each user's turn queue remains reserved through background extraction/consolidation. Visible delivery resolves before background processing, but a following turn cannot overtake it. Canon's combined extraction results feed the same fresh human grounding checks as standalone extraction, avoiding a duplicate personal-extraction call. Member-subject proposals must quote the actual subject.
+
+Test migration review:
+
+| Retired expectation | Current coverage / behavior |
+| --- | --- |
+| Separate Discord depth/time/history resolvers | Common lease count/depth/character bounds and invalidation tests; production adapter tests cover all seven interactions under older and contextual settings |
+| Raw caller overflow or unproven stored sessions/facts become model context | Explicit exclusion assertions; positive source-backed compaction, session and post-turn tests remain |
+| Fake tools gain authority from a matching name, or raw optional generation precedes decision | Reviewed tool-instance/gateway tests and real runtime preflight/effect paths |
+| Unproven dropped exchanges create global drift/consolidated facts | Guarded post-turn/scoped-drift tests with confirmed source receipts; legacy records remain excluded |
+| Scheduler unit fixtures implicitly bypass source authorization | Explicit mocked application-result contract; full production adapter/guard/effect integration remains separate |
+
+Validation: full suite **5,020 passed, 7 skipped, zero failed**. The net test-count reduction is from retired duplicate-pipeline tests, with added mandatory-source rejection, architecture and history-disabled acceptance cases. Typecheck, production compilation, changed-file lint, migration and diff checks passed. No paid call or production action occurred. This closes the live legacy pipeline split; registered model-request serialization and remaining runtime/evaluation/embedding consumers are still required for universal gateway closure.

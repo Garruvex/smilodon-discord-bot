@@ -8,7 +8,6 @@ import type { Logger } from "pino";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
 import { emitChatDiagnostic } from "../../../application/diagnostics/chat-diagnostics.js";
 import { mentionInteraction } from "../../../application/chat/conversation-trigger.js";
-import { usesGuardedContext } from "../../../application/chat/conversation-turn-plan.js";
 import { conversationEffects } from "../../../application/chat/conversation-effects.js";
 import { MentionChatAccess } from "./mention-chat-access.js";
 import { resolvesReplyToBot } from "./direct-reply-resolver.js";
@@ -20,9 +19,8 @@ import { resolveChannelMemoryMode } from "../../../application/memory/memory-cha
 
 import { ChatAccessService } from "../../../application/access/chat-access-service.js";
 import { BehaviorEvent, BehaviorResult, type BotBehavior } from "../../../application/behaviors/behavior.js";
-import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
 import { ChatProviderError, type ChannelHistoryMessage, type ReplyChainMessage } from "../../../application/chat/chat-provider.js";
-import { ChatStateCommitError, type ChatConversationService } from "../../../application/chat/chat-conversation-service.js";
+import { ChatStateCommitError, type ChatConversationService, type ChatConversationInput } from "../../../application/chat/chat-conversation-service.js";
 import { ChannelTypingManager } from "../../../application/chat/channel-typing-manager.js";
 import type { PersonaSource } from "../../../application/chat/persona-source.js";
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
@@ -137,29 +135,10 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     const participation = resolveParticipation(profile.chat.participation, message.channelId);
     const lowSubstance = isLowSubstancePing(prompt, Boolean(message.reference?.messageId), message.attachments.size > 0);
     // Oldest ancestor first, ending just before `message` itself.
-    const { kept: replyChainMessages, overflow: replyChainOverflowMessages } = (usesGuardedContext(profile, message.channelId) ? { kept: [], overflow: [] } : await this.turnSupport.resolveReplyChain(message));
-    const ancestors = this.turnSupport.toChannelHistoryMessages([...replyChainOverflowMessages, ...replyChainMessages]);
-    const replyChain: ReplyChainMessage[] = ancestors.slice(replyChainOverflowMessages.length);
-    // Older ancestors are summarized without attaching their images. Preserve
-    // their original authors/addressees even when another human joins a reply.
-    const replyChainOverflow: ReplyChainMessage[] = ancestors.slice(0, replyChainOverflowMessages.length)
-      .map((hop) => ({ ...hop, imageCount: 0 }));
-    const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory && !(usesGuardedContext(profile, message.channelId))
-      ? this.turnSupport.toChannelHistoryMessages(await this.turnSupport.resolveChannelHistory(
-          message,
-          characterSettings(profile).context.enabled ? characterSettings(profile).context.maxMessages : profile.chat.channelHistoryLimit,
-          new Set(replyChainMessages.map((hop) => hop.id)),
-          undefined, characterSettings(profile).context.enabled ? characterSettings(profile).context.budget : chatMemoryLimits.maxChannelHistoryChars,
-        ))
-      : [];
-    const { selected: imageAttachments, droppedUnsupported, droppedOverLimit } = profile.chat.imageInputEnabled && !(usesGuardedContext(profile, message.channelId))
-      ? this.turnSupport.selectImageAttachments(
-          [...message.attachments.values()],
-          // Nearest-to-current hop first, so recency wins once truncated to the limit.
-          [...replyChainMessages].reverse().map((hop) => [...hop.attachments.values()]),
-          profile.chat.maxImagesPerRequest,
-        )
-      : { selected: [], droppedUnsupported: 0, droppedOverLimit: 0 };
+    const replyChain: ReplyChainMessage[] = [];
+    const replyChainOverflow: ReplyChainMessage[] = [];
+    const channelHistory: ChannelHistoryMessage[] = [];
+
     // An empty tag is still a valid request when it's a reply — "@bot" on
     // its own replying to someone else's message means "look at this", with
     // the replied-to message standing in for the question (see the reply
@@ -189,8 +168,9 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     };
     const previewState: { current: ScheduledChatPreview | null; closed: boolean } = { current: null, closed: false };
     try {
-      const { images, droppedFailed } = await this.turnSupport.loadImages(imageAttachments);
-      const droppedImageCount = droppedUnsupported + droppedOverLimit + droppedFailed;
+      const images: ChatConversationInput["images"] = [];
+      const droppedFailed = 0;
+      const droppedImageCount = droppedFailed;
       if (droppedImageCount > 0) {
         await this.sendNote(
           message.guildId,
@@ -234,9 +214,8 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         activityLimits: participation.limits,
         resolveActivityLimits: () => resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits,
         resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(message.guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
-        ...(usesGuardedContext(profile, message.channelId) ? { guardedContextPort: this.turnSupport.createContextPort(message, false),
-          guardedContextPolicy: { count: characterSettings(profile).context.maxMessages, budget: characterSettings(profile).context.budget } } : {}),
-        refreshContextMessage: (event) => this.turnSupport.refreshHistoryEvent(message, event),
+        guardedContextPort: this.turnSupport.createContextPort(message, false),
+          guardedContextPolicy: { count: characterSettings(profile).context.maxMessages, budget: characterSettings(profile).context.budget },
         allowSilentDirect: participation.barePingMode === "personality",
         afterDecision: async (result) => {
           const effects = conversationEffects(result); if (!effects) return;

@@ -1,17 +1,11 @@
+import { authorizeConversationEffects } from "../../src/application/chat/conversation-effects.js";
 import { defaultSecurity } from "../../src/config/guild-configuration-schema.js";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
 import { ReactionReplyScheduler } from "../../src/infrastructure/discord/behaviors/reaction-reply-scheduler.js";
-import { ChatConversationService } from "../../src/application/chat/chat-conversation-service.js";
-import { DefaultMemoryEngine } from "../../src/application/memory/memory-engine.js";
-import { SqliteMemoryRepository } from "../../src/infrastructure/persistence/sqlite-memory-repository.js";
-import { createSqliteDatabaseConnection } from "../../src/infrastructure/database/sqlite-database.js";
+import { type ChatConversationService, type ChatConversationInput } from "../../src/application/chat/chat-conversation-service.js";
 import type { ChatProvider, ChatResponse } from "../../src/application/chat/chat-provider.js";
-import type { ChatStateStore } from "../../src/application/chat/chat-state-store.js";
 import type { MessageReactionWatch, MessageReactionWatchStore } from "../../src/application/chat/message-reaction-watch.js";
 import type { ApplicationConfiguration } from "../../src/config/configuration.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
@@ -104,24 +98,27 @@ function response(text: string, ambient: ChatResponse["ambientAction"] = "reply"
   };
 }
 
+// Scheduler unit tests use an explicit application-result stub. Actual source
+// ports, provenance, preflight and delivery are covered by chat-conversation-paths.
 function testConversationService(reply: ChatProvider["reply"]): ChatConversationService {
-  const directory = mkdtempSync(join(tmpdir(), "reaction-reply-scheduler-"));
-  const connection = createSqliteDatabaseConnection(directory);
-  const repository = new SqliteMemoryRepository(connection.database);
-  const engine = new DefaultMemoryEngine(repository);
-  const store: ChatStateStore = {
-    initialize: () => Promise.resolve(),
-    load: () => Promise.resolve({ exchanges: [], memories: [] }),
-    commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
-    applyMemoryActions: () => Promise.resolve(),
-    forgetMemory: () => Promise.resolve(false),
-    forgetAllMemories: () => Promise.resolve(0),
-    getDmNotesEnabled: () => Promise.resolve(true),
-    setDmNotesEnabled: () => Promise.resolve(),
-    purgeUser: () => Promise.resolve(),
-  };
-  const provider: ChatProvider = { reply };
-  return new ChatConversationService(provider, store, engine);
+  return {
+    reserveReaction: () => () => {},
+    run: async (input: ChatConversationInput, deliver: (response: ChatResponse) => Promise<string>): Promise<ChatResponse> => {
+      const output = await reply({ ...input, recentHistory: [], memories: [], guildKnowledge: [], causalChains: [],
+        userCustomization: null, birthday: null, replyChainSummary: null, exampleExchanges: [], personaLore: [], enabledTools: [] });
+      const text = output.ambientAction !== "ignore" && !!output.text;
+      const reaction = !!output.reactionEmoji || output.historyReactions.length > 0;
+      output.conversationDecision = { status: "ready", recovery: "none", decision: {
+        decisionId: "scheduler-unit", action: text ? reaction ? "reply_and_react" : "reply" : reaction ? "react" : "silent",
+        intent: "social", responseToEventId: input.sourceMessageId ?? null, referentSourceIds: [], recipientIds: [],
+        reasonCode: "explicit_test_result", contextVersion: "test", policyVersion: "test", expiresAt: Infinity,
+      } };
+      authorizeConversationEffects(output, input.sourceMessageId ?? null);
+      if (text) await deliver(output);
+      await input.afterDecision?.(output);
+      return output;
+    },
+  } as unknown as ChatConversationService;
 }
 
 function fakeWatchStore(

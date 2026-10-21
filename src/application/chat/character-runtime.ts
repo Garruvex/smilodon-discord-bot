@@ -345,7 +345,7 @@ export class CharacterRuntime {
         targetConfidence = assessment.targetConfidence;
         textRejectionReason = participation.action === "reply" ? null : conversationDecision.decision.reasonCode;
       }
-      if (settings.context.retrievalMode !== "eligible_count" && decision && settings.context.enabled && !settings.context.shadow && decision.boundary !== "earlier") {
+      if (!guarded && settings.context.retrievalMode !== "eligible_count" && decision && settings.context.enabled && !settings.context.shadow && decision.boundary !== "earlier") {
         const index = events.findIndex((event) => event.messageId === decision.boundary);
         if (index >= 0) request = { ...request, channelHistory: events.slice(Math.min(index, Math.max(0, events.length - 8))) };
       }
@@ -367,7 +367,7 @@ export class CharacterRuntime {
           decisionConfidence: decision?.confidence ?? null, contributionMotivation: decision?.contribution.motivation ?? null,
           recovery: conversationDecision?.recovery, recipient: local }, "Optional participation decision");
       }
-      if (settings.context.retrievalMode !== "eligible_count" && settings.context.summary && settings.context.enabled && events.length >= settings.context.maxMessages) {
+      if (!guarded && settings.context.retrievalMode !== "eligible_count" && settings.context.summary && settings.context.enabled && events.length >= settings.context.maxMessages) {
         const overflow = events.slice(0, Math.max(0, events.length - 8));
         const ids = overflow.map((event) => event.messageId);
         const cached = this.summaries.get(key);
@@ -415,14 +415,15 @@ export class CharacterRuntime {
   public consolidate(reply: ChatResponse, prepared: CharacterPreparedTurn): Promise<void> {
     return this.stillEligible(prepared) ? this.registry.consolidate(reply, prepared.turn) : Promise.resolve();
   }
-  public learnGuarded(reply: ChatResponse, prepared: CharacterPreparedTurn): void {
+  public learnGuarded(reply: ChatResponse, prepared: CharacterPreparedTurn): Promise<readonly PersonalMemoryExtractionAction[] | null> {
     if (!isGuardedContext(prepared.request.contextLease)) throw new SocialOutputSuppressed();
-    this.trackJob((async (): Promise<void> => {
-      if (!this.stillEligible(prepared) || !await prepared.request.contextLease!.validate()) return;
+    const work = (async (): Promise<readonly PersonalMemoryExtractionAction[] | null> => {
+      if (!this.stillEligible(prepared) || !await prepared.request.contextLease!.validate()) return null;
       await this.registry.consolidate(reply, prepared.turn);
-      if (!await prepared.request.contextLease!.validate()) return;
-      await this.registry.extractMemories(prepared.request.message, reply, prepared.turn);
-    })());
+      if (!await prepared.request.contextLease!.validate()) return null;
+      return this.registry.extractMemories(prepared.request.message, reply, prepared.turn);
+    })();
+    this.trackJob(work); return work;
   }
   public extractConversationMemories(userMessage: string, reply: ChatResponse, prepared: CharacterPreparedTurn): Promise<readonly PersonalMemoryExtractionAction[] | null> {
     return this.stillEligible(prepared) ? this.registry.extractMemories(userMessage, reply, prepared.turn) : Promise.resolve(null);

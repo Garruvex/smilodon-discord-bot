@@ -24,7 +24,7 @@ export function guardedMemoryProposals(request: ChatRequest, response: ChatRespo
   });
   const community: ProposedMemory[] = validateGuildKnowledgeCandidates(response.guildKnowledgeCandidates, { guildId: request.guildId,
     currentChannelId: request.channelId, currentUserId: request.currentUser.id, allowedMemberIds: allowed }).flatMap((candidate): ProposedMemory[] => {
-    const source = quoteSource(candidate.sourceQuote);
+    const source = quoteSource(candidate.sourceQuote, candidate.subjectType === "member" ? candidate.subjectId : undefined);
     return source ? [{ action: "upsert", audience: "guild", kind: candidate.topic === "scene_summary" ? "episode" : "fact", ownerUserId: null, subjectType: candidate.subjectType, subjectId: candidate.subjectId,
       topic: candidate.topic, slot: candidate.slot, statement: candidate.statement, channelScoped: true,
       assertedByUserId: source.authorId, sourceMessageId: source.messageId, sourceTimestampMs: source.timestampMs, sourceQuote: candidate.sourceQuote }] : [];

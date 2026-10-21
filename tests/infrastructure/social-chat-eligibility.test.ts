@@ -88,7 +88,7 @@ describe("social eligibility boundary", () => {
     expect((await policy.check(current, "observation")).eligible).toBe(false);
     const fetch = vi.spyOn(current.channel.messages, "fetch");
     const support = new ChatTurnSupport({ warn: vi.fn() } as unknown as Logger, policy);
-    expect(await support.resolveChannelHistory(current, 10, new Set())).toEqual([]);
+    expect(await support.createContextPort(current).page(null, new AbortController().signal)).toEqual([]);
     expect(fetch).not.toHaveBeenCalled();
     profile.channels.chatbot = new Set();
     expect((await policy.check(current, "observation")).eligible).toBe(false);

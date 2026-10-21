@@ -6,15 +6,13 @@ import { SocialOutputSuppressed, type MessageOriginStore } from "../../../applic
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
 import { resolveParticipation } from "../../../application/chat/participation-policy.js";
 import { characterSettings } from "../../../application/chat/character-settings.js";
-import { usesGuardedContext } from "../../../application/chat/conversation-turn-plan.js";
 import { conversationEffects } from "../../../application/chat/conversation-effects.js";
 import { resolveChannelMemoryMode } from "../../../application/memory/memory-channel-policy.js";
 
 import { ChatAccessService } from "../../../application/access/chat-access-service.js";
 import { BehaviorEvent, BehaviorResult, type BotBehavior } from "../../../application/behaviors/behavior.js";
-import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
 import type { ChannelHistoryMessage, ReplyChainMessage } from "../../../application/chat/chat-provider.js";
-import { ChatStateCommitError, type ChatConversationService } from "../../../application/chat/chat-conversation-service.js";
+import { ChatStateCommitError, type ChatConversationService, type ChatConversationInput } from "../../../application/chat/chat-conversation-service.js";
 import type { PersonaSource } from "../../../application/chat/persona-source.js";
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
@@ -107,28 +105,10 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     const participation = resolveParticipation(profile.chat.participation, message.channelId);
 
 
-    const { kept: replyChainMessages, overflow: replyChainOverflowMessages } = (usesGuardedContext(profile, message.channelId) ? { kept: [], overflow: [] } : await this.turnSupport.resolveReplyChain(message));
-    const ancestors = this.turnSupport.toChannelHistoryMessages([...replyChainOverflowMessages, ...replyChainMessages]);
-    const replyChain: ReplyChainMessage[] = ancestors.slice(replyChainOverflowMessages.length);
-    // Older ancestors are summarized without attaching their images. Preserve
-    // their original authors/addressees even when another human joins a reply.
-    const replyChainOverflow: ReplyChainMessage[] = ancestors.slice(0, replyChainOverflowMessages.length)
-      .map((hop) => ({ ...hop, imageCount: 0 }));
-    const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory && !(usesGuardedContext(profile, message.channelId))
-      ? this.turnSupport.toChannelHistoryMessages(await this.turnSupport.resolveChannelHistory(
-          message,
-          characterSettings(profile).context.enabled ? characterSettings(profile).context.maxMessages : profile.chat.channelHistoryLimit,
-          new Set(replyChainMessages.map((hop) => hop.id)),
-          undefined, characterSettings(profile).context.enabled ? characterSettings(profile).context.budget : chatMemoryLimits.maxChannelHistoryChars,
-        ))
-      : [];
-    const { selected: imageAttachments, droppedUnsupported, droppedOverLimit } = profile.chat.imageInputEnabled && !(usesGuardedContext(profile, message.channelId))
-      ? this.turnSupport.selectImageAttachments(
-          [...message.attachments.values()],
-          [...replyChainMessages].reverse().map((hop) => [...hop.attachments.values()]),
-          profile.chat.maxImagesPerRequest,
-        )
-      : { selected: [], droppedUnsupported: 0, droppedOverLimit: 0 };
+    const replyChain: ReplyChainMessage[] = [];
+    const replyChainOverflow: ReplyChainMessage[] = [];
+    const channelHistory: ChannelHistoryMessage[] = [];
+
 
     const mentionedUsers = message.mentions.users
       .filter((user) => !user.bot && user.id !== message.author.id)
@@ -144,7 +124,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
 
     let textDelivered = false;
     try {
-      const { images } = await this.turnSupport.loadImages(imageAttachments);
+      const images: ChatConversationInput["images"] = [];
       const musicActor = this.turnSupport.resolveMusicActor(message, profile);
       const persona = await this.personaSource.resolve(profile);
       const response = await this.conversation.run({
@@ -158,9 +138,8 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         activityLimits: participation.limits, shadowMode: participation.shadowMode,
         resolveActivityLimits: () => resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits,
         resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(message.guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
-        ...(usesGuardedContext(profile, message.channelId) ? { guardedContextPort: this.turnSupport.createContextPort(message, false),
-          guardedContextPolicy: { count: characterSettings(profile).context.maxMessages, budget: characterSettings(profile).context.budget } } : {}),
-        refreshContextMessage: (event) => this.turnSupport.refreshHistoryEvent(message, event),
+        guardedContextPort: this.turnSupport.createContextPort(message, false),
+          guardedContextPolicy: { count: characterSettings(profile).context.maxMessages, budget: characterSettings(profile).context.budget },
         shouldDeliver: () => (opportunityVersion == null || this.conversation?.optionalOpportunityVersion(message.guildId, message.channelId) === opportunityVersion) && !resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).shadowMode,
         afterDecision: async (result) => {
           const effects = conversationEffects(result); if (!effects) return;
@@ -295,7 +274,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         reactionEmoji: response.reactionEmoji,
         historyReactionCount: response.historyReactions.length,
         imageCount: images.length,
-        droppedImageCount: droppedUnsupported + droppedOverLimit,
+        droppedImageCount: 0,
       }, `Ambient chat: ${outcome}`);
     } catch (error) {
       if (error instanceof SocialOutputSuppressed) return BehaviorResult.Continue;
