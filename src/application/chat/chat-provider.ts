@@ -469,6 +469,7 @@ export interface DroppedExchangeFact {
 export interface ChatReplyProvider {
   readonly nativeWebSearchSupported?: boolean;
   readonly applicationToolsSupported?: boolean;
+  readonly imageGenerationSupported?: boolean;
   reply(request: ChatRequest, observer?: ChatResponseObserver): Promise<ChatResponse>;
 }
 
@@ -554,6 +555,7 @@ export interface ReferenceImageGenerator {
   generateReferenceImage(
     prompt: string,
     reference: { data: Buffer; contentType: string },
+    options?: { signal?: AbortSignal; beforeAttempt?: () => Promise<void> },
   ): Promise<{ ok: true; images: readonly GeneratedChatImage[] } | { ok: false; reason: string }>;
 }
 

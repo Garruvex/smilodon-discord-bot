@@ -860,6 +860,7 @@ export class ChatConversationService {
         return this.queue.run(`${turn.guildId}:${turn.currentUser.id}`, () => withTurnAbort(turn.turnSignal, () => runGuardedChatTurn(guarded, { state: this.stateStore, runtime: this.characterRuntime,
           logger: this.logger, now: this.now, memory: this.memoryEngine, toolRegistry: this.toolRegistry,
           applicationToolsSupported: this.provider.applicationToolsSupported === true, nativeWebSearchSupported: this.provider.nativeWebSearchSupported === true, reply: (request, observer) => this.replyWithDiagnostics(request, observer),
+          imageGenerationSupported: this.provider.imageGenerationSupported === true,
           repair: (text, request) => this.verifyAttribution(text, request), admitSocialPing: () => this.admitSocialPing(turn) }, send, observe))); } : this.runTurn.bind(this);
       const contextualAvailability = input.turnPlan.decision === "contextual" && (input.triggerMode === "continuation" || input.triggerMode === "spontaneous") ? {
         continuation: { text: this.scheduler.outputAvailable(key, "text", { ...limits, continuation: true }), reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits) },

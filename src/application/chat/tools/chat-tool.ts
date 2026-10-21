@@ -12,6 +12,7 @@ export type ChatToolParameterSchema = Record<string, unknown>;
 
 export interface ChatToolContext {
   contextLease?: GuardedConversationContext;
+  beforeModelAttempt?: () => Promise<void>;
   knownSubjectIds?: readonly string[];
   guildId: string;
   channelId: string;

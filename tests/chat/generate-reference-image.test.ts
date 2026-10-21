@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { OpenAiResponsesChatProvider } from "../../src/infrastructure/chat/openai-responses-chat-provider.js";
 import { GeminiChatProvider } from "../../src/infrastructure/chat/gemini-chat-provider.js";
+import { ChatProviderError } from "../../src/application/chat/chat-provider.js";
 
 const generateContentMock = vi.fn();
 
@@ -23,6 +24,23 @@ function fakePng(payload: string): Buffer {
 }
 
 const reference = { data: Buffer.from("reference-bytes"), contentType: "image/png" };
+
+describe.each(["responses", "gemini"] as const)("%s guarded image attempts", (kind) => {
+  it("rechecks source authorization before fallback and stops before another dispatch", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { message: "retry", code: "rate_limit" } }), { status: 429 }));
+    vi.stubGlobal("fetch", fetchMock);
+    generateContentMock.mockRejectedValue(new ChatProviderError("rate limited", 429, "rate_limit"));
+    const provider = kind === "responses" ? new OpenAiResponsesChatProvider("https://example.test", "secret", ["first", "second"],
+      { reasoningEffort: "low", verbosity: "low", maxOutputTokens: 100 }) : new GeminiChatProvider("secret", ["first", "second"], { maxOutputTokens: 100, thinkingBudget: null });
+    let attempts = 0;
+    const result = await provider.generateReferenceImage("draw", reference, { beforeAttempt: (): Promise<void> => {
+      if (++attempts > 1) throw new Error("source_changed"); return Promise.resolve();
+    } });
+    expect(result.ok).toBe(false);
+    expect(attempts).toBe(2);
+    expect(kind === "responses" ? fetchMock : generateContentMock).toHaveBeenCalledOnce();
+  });
+});
 
 describe("OpenAiResponsesChatProvider.generateReferenceImage", () => {
   it("sends the reference image and prompt, forces the image tool, and decodes the result", async () => {

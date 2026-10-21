@@ -78,6 +78,7 @@ export class StatusCommand implements BotCommand {
     private readonly models: ChatModelSummary,
     private readonly nativeWebSearchSupported: () => boolean = () => false,
     private readonly applicationToolsSupported: () => boolean = () => false,
+    private readonly imageGenerationSupported: () => boolean = () => false,
   ) {}
 
   public async execute(context: CommandContext): Promise<void> {
@@ -161,6 +162,7 @@ export class StatusCommand implements BotCommand {
         const effective = effectiveChatCapabilities({ ...chat, toolsEnabled: chat.toolCallingEnabled }, {
           guarded: plan.context === "guarded_text", blocked: plan.state === "blocked" || !this.models.chat, nativeWebSearchSupported: this.nativeWebSearchSupported(),
           applicationToolsSupported: this.applicationToolsSupported(),
+          imageGenerationSupported: this.imageGenerationSupported(),
         });
         embed.addFields({ name: text.chat.effectiveTitle, value: [
           text.chat.tools({ webSearch: effective.webSearchMode === "auto" ? text.auto : text.off, tools: onOff(text, effective.toolsEnabled) }),

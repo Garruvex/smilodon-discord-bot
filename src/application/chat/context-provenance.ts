@@ -26,7 +26,7 @@ export const contextProvenanceSchema = z.object({
   // This records use and citation identity, not factual truth or a fresh crawl.
   publicWeb: z.object({ citationHashes: z.array(digest).max(128) }).strict().optional(),
   publicTools: z.array(z.object({ name: z.string().regex(/^[a-z_]{1,64}$/), outputHash: digest }).strict()).max(128).optional(),
-  resources: z.array(z.object({ kind: z.enum(["birthday", "server_metadata", "server_events"]), id,
+  resources: z.array(z.object({ kind: z.enum(["birthday", "server_metadata", "server_events", "self_reference_image"]), id,
     representationHash: digest }).strict()).max(32).optional(),
   unresolved: z.array(z.enum(["unguarded_prompt_sources", "missing_current_event", "missing_source_scope", "conflicting_source", "dependency_cap"])).max(5),
 }).strict().superRefine((value, context) => {

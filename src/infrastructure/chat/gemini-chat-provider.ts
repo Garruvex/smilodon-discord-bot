@@ -91,6 +91,7 @@ const toolBudgetExhaustedMessage = "Tool call budget exhausted. Do not call any 
 export class GeminiChatProvider implements ChatProvider {
   public readonly nativeWebSearchSupported = true;
   public readonly applicationToolsSupported = true;
+  public readonly imageGenerationSupported = true;
   private readonly modelChain: ModelFallbackChain;
   // Separate chain for the two standalone structured-output calls (own
   // prompt/schema, outside the main reply turn) — falls back to the primary
@@ -386,9 +387,10 @@ export class GeminiChatProvider implements ChatProvider {
   public async generateReferenceImage(
     prompt: string,
     reference: { data: Buffer; contentType: string },
+    options?: { signal?: AbortSignal; beforeAttempt?: () => Promise<void> },
   ): Promise<{ ok: true; images: readonly GeneratedChatImage[] } | { ok: false; reason: string }> {
     try {
-      const response = await this.modelChain.run((model) => this.client.models.generateContent({
+      const response = await this.modelChain.run(async (model) => { await options?.beforeAttempt?.(); options?.signal?.throwIfAborted(); return this.client.models.generateContent({
         model,
         contents: [{
           role: "user",
@@ -398,10 +400,10 @@ export class GeminiChatProvider implements ChatProvider {
           ],
         }],
         config: {
-          abortSignal: AbortSignal.timeout(50_000),
+          abortSignal: options?.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(50_000)]) : AbortSignal.timeout(50_000),
           responseModalities: ["TEXT", "IMAGE"],
         },
-      }));
+      }); });
       const images = (response.candidates?.[0]?.content?.parts ?? [])
         .filter((part): part is Part & { inlineData: { data: string; mimeType?: string } } =>
           Boolean(part.inlineData?.data))

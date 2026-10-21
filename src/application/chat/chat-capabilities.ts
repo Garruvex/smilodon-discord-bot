@@ -8,6 +8,7 @@ export interface ChatCapabilityScope {
   guarded: boolean;
   nativeWebSearchSupported: boolean;
   applicationToolsSupported?: boolean;
+  imageGenerationSupported?: boolean;
   shadow?: boolean;
   groundedRecovery?: boolean;
   blocked?: boolean;
@@ -19,11 +20,10 @@ export function effectiveChatCapabilities(settings: ChatCapabilitySettings, scop
   webSearchMode: "off" | "auto"; toolsEnabled: boolean; imageInputEnabled: boolean; imageGenerationEnabled: boolean;
 } {
   const external = !scope.blocked && !scope.shadow && !scope.groundedRecovery;
-  const migrated = external && !scope.guarded;
   return {
     webSearchMode: external && scope.nativeWebSearchSupported ? settings.webSearchMode : "off",
     toolsEnabled: external && (scope.applicationToolsSupported ?? !scope.guarded) && settings.toolsEnabled === true,
     imageInputEnabled: !scope.blocked && settings.imageInputEnabled === true,
-    imageGenerationEnabled: migrated && settings.imageGenerationEnabled,
+    imageGenerationEnabled: external && (scope.imageGenerationSupported ?? !scope.guarded) && settings.imageGenerationEnabled,
   };
 }

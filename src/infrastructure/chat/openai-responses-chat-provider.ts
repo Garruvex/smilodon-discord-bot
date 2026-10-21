@@ -148,6 +148,7 @@ interface FunctionCallOutputItem {
 export class OpenAiResponsesChatProvider implements ChatProvider {
   public readonly nativeWebSearchSupported = true;
   public readonly applicationToolsSupported = true;
+  public readonly imageGenerationSupported = true;
   private readonly modelChain: ModelFallbackChain;
   // Separate chain for the two standalone structured-output calls (own
   // prompt/schema, outside the main reply turn) — falls back to the primary
@@ -786,10 +787,12 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
   public async generateReferenceImage(
     prompt: string,
     reference: { data: Buffer; contentType: string },
+    options?: { signal?: AbortSignal; beforeAttempt?: () => Promise<void> },
   ): Promise<{ ok: true; images: readonly GeneratedChatImage[] } | { ok: false; reason: string }> {
     const referenceDataUrl = `data:${reference.contentType};base64,${reference.data.toString("base64")}`;
     try {
       const body = await this.modelChain.run(async (model) => {
+        await options?.beforeAttempt?.(); options?.signal?.throwIfAborted();
         const response = await fetch(`${this.baseUrl}/responses`, {
           method: "POST",
           headers: {
@@ -808,7 +811,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
             tools: [{ type: "image_generation" }],
             tool_choice: "required",
           }),
-          signal: AbortSignal.timeout(50_000),
+          signal: options?.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(50_000)]) : AbortSignal.timeout(50_000),
         });
         if (!response.ok) {
           const errorBody: unknown = await response.json().catch(() => null);
