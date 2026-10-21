@@ -1,4 +1,5 @@
 import type { GuardedConversationContext } from "./guarded-conversation-context.js";
+import { retrievalProjection } from "../context/retrieval-query.js";
 import { memoryModelOptions, checkMemoryContext } from "../memory/memory-context-guard.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { safeFailure } from "../diagnostics/chat-diagnostics.js";
@@ -6,7 +7,7 @@ import type { Logger } from "pino";
 
 import { exampleExchangeLimits } from "./example-exchange.js";
 import type { ExampleExchange } from "./example-exchange.js";
-import type { ChatHistoryMessage, ChatUser } from "./chat-provider.js";
+import type { ChatUser } from "./chat-provider.js";
 import {
   bm25Score,
   buildBm25Corpus,
@@ -24,7 +25,7 @@ export interface ExampleExchangeSelectionInput {
   records: readonly ExampleExchange[];
   currentUser: ChatUser;
   mentionedUsers: readonly ChatUser[];
-  recentHistory: readonly ChatHistoryMessage[];
+  recentHistory: readonly { content: string; role?: "user" | "assistant" }[];
   message: string;
   now: number;
   // Same role as PersonaLoreSelectionInput.replyChain — folded into the
@@ -116,6 +117,7 @@ export class RelevantExampleExchangeSelector implements ExampleExchangeSelector 
 
   public async select(input: ExampleExchangeSelectionInput): Promise<readonly ExampleExchange[]> {
     await checkMemoryContext(input.context);
+    if (input.context) input = { ...input, ...retrievalProjection(input.context), replyChain: input.context.replyChain };
     if (input.records.length === 0) return input.records;
     const context = buildRelevanceContext({
       message: input.message,

@@ -26,6 +26,13 @@ describe("conversation execution ownership", () => {
         if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) continue;
         const module = node.moduleSpecifier.text;
         const relative = path.relative(root, file).replaceAll(path.sep, "/");
+        if (module.endsWith("/retrieval-query.js") && !node.importClause?.isTypeOnly) {
+          const bindings = node.importClause?.namedBindings;
+          const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
+          const permitted = relative === "application/chat/guarded-tool-gateway.ts" ? ["toolRetrievalQuery"] :
+            ["application/memory/memory-engine.ts", "application/chat/example-exchange-selector.ts", "application/chat/persona-lore-selector.ts"].includes(relative) ? ["retrievalProjection"] : [];
+          if (imported.some((name) => !permitted.includes(name))) offenders.push(relative);
+        }
         if (module.endsWith("/guarded-evaluation-context.js") && !node.importClause?.isTypeOnly) {
           const bindings = node.importClause?.namedBindings;
           const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];

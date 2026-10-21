@@ -27,6 +27,7 @@ async function setup(shared = true, proven = true, label = "OldBob"): Promise<{
   return { engine, fixture, row };
 }
 async function recall(engine: DefaultMemoryEngine, fixture: ReturnType<typeof guardedFixture>, label = "OldBob"): ReturnType<DefaultMemoryEngine["recall"]> {
+  fixture.sources.get("query")!.event.content = `${label} likes what?`;
   const context = await GuardedConversationContext.open(fixture.port, { count: 0, budget: 4000, burstIds: [] });
   return engine.recall({ guildId: "guild", channelId: "channel", userId: fixture.port.actorId ?? "alice", channelMode: "shared", message: `${label} likes what?`, recentHistory: [], subjectIds: [], now: 2000, context });
 }

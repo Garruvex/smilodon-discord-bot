@@ -1,4 +1,6 @@
 import { fadingWeight } from "./fading.js";
+import { retrievalProjection } from "../context/retrieval-query.js";
+import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
 import type { Logger } from "pino";
 import { safeFailure } from "../diagnostics/chat-diagnostics.js";
 
@@ -231,6 +233,11 @@ export class DefaultMemoryEngine implements MemoryEngine {
 
   public async recall(input: MemoryRecallInput): Promise<MemoryContext> {
     await checkMemoryContext(input.context);
+    if (input.context) {
+      if (input.guildId !== input.context.scope.guildId || input.channelId !== input.context.scope.channelId ||
+        input.userId !== (input.context.scope.actorId ?? input.context.current.authorId)) throw new SocialOutputSuppressed();
+      input = { ...input, ...retrievalProjection(input.context, input.query) };
+    }
     if (input.channelMode === "disabled") return { memories: [], causalChains: [] };
     const aliasQuery = { guildId: input.guildId, channelId: input.channelId, userId: input.userId, now: input.now, message: input.message };
     const aliasObservation = input.context ? await input.context.aliases(await this.repository.findAliasSources?.(aliasQuery) ?? [], input.message, input.now)
@@ -306,10 +313,8 @@ export class DefaultMemoryEngine implements MemoryEngine {
     // them RRF credit they didn't earn on relevance.
     let embeddingOrder: readonly Memory[] = [];
     const cosineByMemory = new Map<Memory, number>();
-    if (this.embeddingsClient) {
-      const queryText = buildEmbeddingQueryText({
-        message: input.message, recentHistory: input.recentHistory, replyToContent: input.replyToContent,
-      });
+    const queryText = buildEmbeddingQueryText({ message: input.message, recentHistory: input.recentHistory, replyToContent: input.replyToContent });
+    if (this.embeddingsClient && queryText.trim()) {
       await checkMemoryContext(input.context);
       const queryEmbedding = await this.embeddingsClient.embed(queryText, memoryModelOptions(input.context, "recall_embedding")).catch(() => null);
       if (queryEmbedding) {

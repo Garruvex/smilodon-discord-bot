@@ -2,6 +2,7 @@ import type { ChatUser, GeneratedChatImage } from "../chat-provider.js";
 import type { GuardedConversationContext } from "../guarded-conversation-context.js";
 import type { PlaybackActor } from "../../music/playback-service.js";
 import type { ChannelMemoryMode } from "../../memory/memory-channel-policy.js";
+import type { GuardedRetrievalQuery } from "../../context/retrieval-query.js";
 
 // A JSON Schema object describing a tool's arguments, sent to the model
 // as-is. Kept loose (not the full JSON Schema type) since each tool author
@@ -11,6 +12,7 @@ import type { ChannelMemoryMode } from "../../memory/memory-channel-policy.js";
 export type ChatToolParameterSchema = Record<string, unknown>;
 
 export interface ChatToolContext {
+  retrievalQuery?: GuardedRetrievalQuery;
   contextLease?: GuardedConversationContext;
   beforeModelAttempt?: () => Promise<void>;
   knownSubjectIds?: readonly string[];

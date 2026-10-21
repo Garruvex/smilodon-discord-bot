@@ -4,6 +4,7 @@
 // expression, provenance, contradictory-claim loss, duplicated authorization).
 
 import type { ChannelMemoryMode } from "./memory-channel-policy.js";
+import type { GuardedRetrievalQuery } from "../context/retrieval-query.js";
 import type { ContextProvenance } from "../chat/context-provenance.js";
 import type { GuardedBackgroundContext } from "../context/guarded-background-context.js";
 import type { GuardedConversationContext } from "../chat/guarded-conversation-context.js";
@@ -418,6 +419,7 @@ export interface MemoryRepository {
 // --- Engine contract -----------------------------------------------------
 
 export interface MemoryRecallInput {
+  query?: GuardedRetrievalQuery;
   context?: GuardedConversationContext;
   filterSubjectIds?: readonly string[];
   guildId: string;

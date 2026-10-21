@@ -74,6 +74,7 @@ export class MemoryLookupTool implements ChatTool<MemoryLookupToolArgs> {
       ...(args.subjectUserId ? { filterSubjectIds: [subjectId] } : {}),
       channelMode: ctx.channelMode, requireTopicalMatch: !isList, onlySelfSubjectMemories: isList && subjectId === ctx.currentUser.id,
       ...(ctx.contextLease ? { context: ctx.contextLease } : {}),
+      ...(ctx.retrievalQuery ? { query: ctx.retrievalQuery } : {}),
     });
     const memories = ctx.contextLease ? await ctx.contextLease.memories(recalled.memories, true) : recalled.memories;
     // List results are subject-scoped and bounded by recall's character

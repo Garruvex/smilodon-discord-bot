@@ -19,6 +19,7 @@ import { immutableSnapshot } from "../context/immutable-snapshot.js";
 import type { ConversationConfiguration } from "../context/conversation-configuration.js";
 import { isConfigurationContext } from "../context/guarded-configuration-context.js";
 import type { PersonaDriftStore } from "./persona-drift-store.js";
+import { toolRetrievalQuery } from "../context/retrieval-query.js";
 
 // Only reviewed implementations can enter this boundary. A name or a model-
 // supplied "filtered" flag cannot turn an unknown tool into a source authority.
@@ -53,7 +54,10 @@ export function guardedTools(registry: ChatToolRegistry | null, lease: GuardedCo
             return { content: "The link must come from supplied authorized conversation context. Ask for the link." };
         }
         if (boundAuthority.music && (boundAuthority.music.actor.guildId !== scope.guildId || boundAuthority.music.actor.userId !== scope.userId)) throw new SocialOutputSuppressed();
-        const result = await tool.execute(args, { ...context, ...boundAuthority, currentUser: lease.current.author ?? { id: lease.current.authorId, displayName: lease.current.authorDisplayName, roleNames: [] },
+        const query = tool instanceof MemoryLookupTool && typeof args === "object" && args !== null && "query" in args && typeof args.query === "string"
+          ? toolRetrievalQuery(lease, args.query) : undefined;
+        const result = await tool.execute(args, { ...context, ...boundAuthority, ...(query ? { retrievalQuery: query } : {}),
+          currentUser: lease.current.author ?? { id: lease.current.authorId, displayName: lease.current.authorDisplayName, roleNames: [] },
           contextLease: lease, beforeModelAttempt: check, knownSubjectIds: [...new Set([...subjects, ...lease.admittedActorIds])] });
         context.signal?.throwIfAborted(); await check();
         if (tool instanceof ReadLinkTool || tool instanceof BooruSearchTool) lease.recordPublicTool(tool.name, result.content);

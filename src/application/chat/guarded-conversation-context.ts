@@ -99,6 +99,7 @@ export class GuardedConversationContext {
   private sourceHistory: ChannelHistoryMessage[] = [];
   private sourceReplyChain: ChannelHistoryMessage[] = [];
   private sourceReplyOverflow: ChannelHistoryMessage[] = [];
+  private readonly sessionQueries = new Map<string, { content: string; timestampMs: number }>();
   private sourceBurst: ChannelHistoryMessage[] = [];
   private sourceEvent: ConversationEvent | undefined;
   private reactionActors = new Map<string, ChatUser>();
@@ -110,6 +111,11 @@ export class GuardedConversationContext {
   public get history(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceHistory); }
   public get replyChain(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceReplyChain); }
   public get replyOverflow(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceReplyOverflow); }
+  public get retrievalHistory(): readonly { content: string }[] {
+    const messages = new Map(this.sourceHistory.map((event) => [event.messageId, { content: event.content, timestampMs: event.timestampMs }]));
+    for (const [id, event] of this.sessionQueries) messages.set(id, event);
+    return immutableSnapshot([...messages.values()].sort((left, right) => left.timestampMs - right.timestampMs).slice(-2).map(({ content }) => ({ content })));
+  }
   public get burst(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceBurst); }
   public get currentEvent(): ConversationEvent | undefined { return this.sourceEvent ? immutableSnapshot(this.sourceEvent) : undefined; }
   public get report(): GuardedContextReport { return immutableSnapshot(this.coverageReport); }
@@ -344,6 +350,9 @@ export class GuardedConversationContext {
           for (const entry of proof?.resources ?? []) this.resources.set(`${entry.kind}:${entry.id}`, entry);
           for (const dependency of proof?.dependencies ?? []) if (dependency.assetsHash) this.assetDependencies.set(dependency.messageId, dependency.assetsHash);
           selected.push(immutableSnapshot(exchange));
+          this.sessionQueries.set(sourceId, { content: exchange.user.content, timestampMs: exchange.user.createdAt });
+          this.sessionQueries.set(deliveryIds[0]!, { content: exchange.assistant.content, timestampMs: exchange.assistant.createdAt });
+          while (this.sessionQueries.size > 8) this.sessionQueries.delete(this.sessionQueries.keys().next().value!);
         }
       }
       return selected;

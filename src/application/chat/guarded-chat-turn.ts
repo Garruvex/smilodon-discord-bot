@@ -76,7 +76,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   const sessions = await lease.sessions(state.exchanges.slice(-4).filter((exchange) => !known.has(exchange.user.sourceMessageId ?? "") ||
     !exchange.assistant.messageIds?.length || !exchange.assistant.messageIds.every((id) => known.has(id))));
   const recalled: MemoryContext = mode === "disabled" || mode === "session_only" ? { memories: [], causalChains: [] } : await dependencies.memory.recall({
-    guildId: input.guildId, channelId: input.channelId, userId: input.currentUser.id, channelMode: mode, context: lease,
+    guildId: input.guildId, channelId: input.channelId, userId: lease.current.authorId, channelMode: mode, context: lease,
     message: lease.current.content, recentHistory: sessions.flatMap((exchange) => [exchange.user, exchange.assistant]),
     subjectIds: [...new Set([lease.current.authorId, ...lease.replyChain.map((event) => event.authorId)])], now: dependencies.now(),
   }).catch((error: unknown) => { if (error instanceof SocialOutputSuppressed) throw error; return { memories: [], causalChains: [] }; });
