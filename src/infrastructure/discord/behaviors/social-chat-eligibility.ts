@@ -43,6 +43,12 @@ export class SocialChatEligibility {
   public canShareContext(message: Message): boolean {
     return this.canPersistContext(message) && !!message.guildId && this.profiles.find(message.guildId)?.chat.sharedMemoryEnabled === true;
   }
+  public contextRetention(message: Message): "durable" | "session" | "none" {
+    const profile = message.guildId ? this.profiles.find(message.guildId) : null;
+    if (!profile) return "none";
+    const mode = resolveChannelMemoryMode(profile.chat.channelMemoryModes, message.channelId);
+    return allowsDurableWrites(mode) ? "durable" : mode === "session_only" ? "session" : "none";
+  }
   public async checkGuardedSource(message: Message, member: GuildMember | null, current: boolean): Promise<SocialEligibility> {
     const reject = (reason: string): SocialEligibility => ({ eligible: false, reason });
     if (!this.forgottenSource) return reject("forget_policy_unavailable");

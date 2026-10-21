@@ -15,6 +15,13 @@ describe("conversation execution ownership", () => {
     const offenders: string[] = [];
     for (const file of sources(root)) {
       const source = ts.createSourceFile(file, fs.readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
+      const relativeFile = path.relative(root, file).replaceAll(path.sep, "/");
+      const checkSessionIssuers = (node: ts.Node): void => {
+        const property = ts.isPropertyAccessExpression(node) ? node.name.text : ts.isElementAccessExpression(node) && node.argumentExpression && ts.isStringLiteral(node.argumentExpression) ? node.argumentExpression.text : null;
+        if ((property === "sessionProvenance" || property === "recordSession") && relativeFile !== "infrastructure/discord/behaviors/chat-turn-support.ts") offenders.push(relativeFile);
+        ts.forEachChild(node, checkSessionIssuers);
+      };
+      checkSessionIssuers(source);
       for (const node of source.statements) {
         if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) continue;
         const module = node.moduleSpecifier.text;

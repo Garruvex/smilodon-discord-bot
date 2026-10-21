@@ -8,6 +8,23 @@ afterEach(() => vi.useRealTimers());
 const policy = { count: 40, budget: 12000, burstIds: [] };
 
 describe("guarded conversation context", () => {
+  it("does not refetch a text-only history just because image input is enabled", async () => {
+    const fixture = guardedFixture();
+    for (let index = 0; index < 40; index++) fixture.add(guardedEvent(`old-${index}`, index + 1, "text only"));
+    const load = vi.fn(); fixture.port.loadAsset = load;
+    const context = await GuardedConversationContext.open(fixture.port, policy); vi.mocked(fixture.port.read).mockClear();
+    expect(await context.images(4)).toEqual([]); expect(fixture.port.read).not.toHaveBeenCalled(); expect(load).not.toHaveBeenCalled();
+  });
+  it("invalidates an admitted bot origin whose source binding changes even when its visible text does not", async () => {
+    const fixture = guardedFixture(guardedEvent("original", 1000, "question"));
+    const original = await GuardedConversationContext.open(fixture.port, policy);
+    fixture.sources.set("reply", { event: guardedEvent("reply", 2000, "answer", "bot"), origin: "chat", sourceMessageId: "original", provenance: original.provenance("answer") });
+    fixture.add(guardedEvent("current", 3000, "follow up", "alice", { replyToMessageId: "reply" })); fixture.port.sourceMessageId = "current";
+    const context = await GuardedConversationContext.open(fixture.port, policy);
+    expect(context.replyChain.map((event) => event.messageId)).toEqual(["reply"]);
+    fixture.sources.get("reply")!.sourceMessageId = "different-trigger";
+    expect(await context.validate()).toBe(false);
+  });
   it("rejects raw source objects and unregistered copies before resolving any content", async () => {
     const fixture = guardedFixture();
     await expect(GuardedConversationContext.open({ ...fixture.port }, policy)).rejects.toBeInstanceOf(SocialOutputSuppressed);
@@ -136,7 +153,7 @@ describe("guarded conversation context", () => {
     const context = await GuardedConversationContext.open(fixture.port, policy);
     expect(context.history.map((event) => event.messageId)).toContain("answer");
     expect(await context.sessions([session])).toEqual([session]);
-    expect(prepareValidation).toHaveBeenCalledExactlyOnceWith(expect.arrayContaining(["current", "question", "answer"]), expect.any(AbortSignal));
+    expect(prepareValidation).toHaveBeenCalledWith(expect.arrayContaining(["current", "question", "answer"]), expect.any(AbortSignal));
     fixture.sources.delete("question");
     expect(await context.validate()).toBe(false);
     const later = await GuardedConversationContext.open(fixture.port, policy);

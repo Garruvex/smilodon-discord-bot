@@ -10,6 +10,7 @@ import { ChatTurnSupport } from "../infrastructure/discord/behaviors/chat-turn-s
 import { guardedToolResourcePort } from "../application/chat/guarded-tool-gateway.js";
 import { ReviewedMusicTool } from "../infrastructure/discord/commands/music/reviewed-music-tool.js";
 import { conversationConfiguration } from "../application/context/conversation-configuration.js";
+import { withSessionMessageOrigins } from "../application/chat/session-message-origins.js";
 import { isGuardedContext } from "../application/chat/guarded-conversation-context.js";
 import { resolveChannelMemoryMode } from "../application/memory/memory-channel-policy.js";
 import { ConversationObservationBehavior } from "../infrastructure/discord/behaviors/conversation-observation-behavior.js";
@@ -592,6 +593,7 @@ export function createDependencies(
   messageOriginStore: MessageOriginStore,
   conversationEpisodeStore: ConversationEpisodeStore,
 ): ApplicationDependencies {
+  messageOriginStore = withSessionMessageOrigins(messageOriginStore);
   const {
     campaign,
     commandRegistry,

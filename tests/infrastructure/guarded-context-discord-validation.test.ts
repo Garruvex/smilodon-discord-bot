@@ -1,17 +1,19 @@
-import type { GuildMember, Message } from "discord.js";
+import { Collection, type GuildMember, type Message } from "discord.js";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { GuardedConversationContext, type GuardedContextPort } from "../../src/application/chat/guarded-conversation-context.js";
 import { ChatTurnSupport } from "../../src/infrastructure/discord/behaviors/chat-turn-support.js";
 import type { SocialChatEligibility } from "../../src/infrastructure/discord/behaviors/social-chat-eligibility.js";
 import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
+import { withSessionMessageOrigins } from "../../src/application/chat/session-message-origins.js";
 
 type MessageFetch = (options: { message?: string; before?: string; limit?: number }) => Promise<Message | Map<string, Message> | null>;
 afterEach(() => vi.useRealTimers());
 
-async function fixture(): Promise<{
+async function fixture(retention: "durable" | "session" = "durable"): Promise<{
   lease: GuardedConversationContext; messages: Map<string, Message>;
   fetch: Mock<MessageFetch>; memberFetch: ReturnType<typeof vi.fn>; denied: Set<string>;
   port: GuardedContextPort;
+  support: ChatTurnSupport; backendRecord: ReturnType<typeof vi.fn>;
 }> {
   const messages = new Map<string, Message>(); const denied = new Set<string>();
   const member = { displayName: "Alice", roles: { cache: new Map() } } as unknown as GuildMember;
@@ -29,18 +31,35 @@ async function fixture(): Promise<{
       attachments: new Map(), inGuild: () => true } as unknown as Message);
   }
   const eligibility = {
-    contextPolicyVersion: () => "current-policy", canPersistContext: () => true, canShareContext: () => true,
+    contextPolicyVersion: () => "current-policy", canPersistContext: () => retention === "durable", canShareContext: () => retention === "durable", contextRetention: () => retention,
+    check: () => Promise.resolve({ eligible: true, reason: "allowed" }), checkGuardedActor: () => Promise.resolve(true),
     canReadHistory: () => Promise.resolve(true),
     checkGuardedSource: (message: Message) => Promise.resolve({ eligible: !denied.has(message.id), reason: "passive_access_denied" }),
   } as unknown as SocialChatEligibility;
   const { logger } = captureDiagnosticLogger();
-  const port = new ChatTurnSupport(logger, eligibility).createContextPort(messages.get("41")!);
+  const backendRecord = vi.fn();
+  const support = new ChatTurnSupport(logger, eligibility, withSessionMessageOrigins({ record: backendRecord, find: vi.fn().mockResolvedValue(null) }));
+  const port = support.createContextPort(messages.get("41")!);
   const lease = await GuardedConversationContext.open(port, { count: 40, budget: 24000, burstIds: [] });
   fetch.mockClear(); memberFetch.mockClear();
-  return { lease, messages, fetch, memberFetch, denied, port };
+  return { lease, messages, fetch, memberFetch, denied, port, support, backendRecord };
 }
 
 describe("Discord guarded validation transport", () => {
+  it("continues a session-only exchange through actual delivery and fresh Discord source reads without a durable origin write", async () => {
+    const { support, lease, messages, fetch, backendRecord } = await fixture("session");
+    const current = messages.get("41")!;
+    const sent = { ...current, id: "42", createdTimestamp: 42, content: "SESSION_ONLY_REPLY", author: { id: "bot", bot: true, username: "Bot" }, attachments: new Collection() } as unknown as Message;
+    messages.set("42", sent);
+    await support.deliverChatResponse({ sender: { first: () => Promise.resolve(sent), rest: vi.fn() }, text: sent.content, images: [], sources: [],
+      emptyFallbackContent: "empty", maxImageAggregateBytes: 1024, contextLease: lease, sourceMessage: current });
+    expect(backendRecord).not.toHaveBeenCalled();
+    const nextMessage = { ...current, id: "43", createdTimestamp: 43, content: "continue" } as Message; messages.set("43", nextMessage); fetch.mockClear();
+    const next = await GuardedConversationContext.open(support.createContextPort(nextMessage), { count: 0, budget: 0, burstIds: [] });
+    expect(await next.sessions([{ user: { content: "text 41", sourceMessageId: "41", createdAt: 41, channelMemoryMode: "session_only" },
+      assistant: { content: sent.content, messageIds: ["42"], createdAt: 42 }, contextProvenance: null }])).toHaveLength(1);
+    expect(await next.validate()).toBe(true); expect(fetch.mock.calls.length).toBeLessThanOrEqual(5);
+  });
   it("batches distant dependency groups with simulated REST delay and multiple authors", async () => {
     const { port, fetch, messages, memberFetch } = await fixture(); vi.useFakeTimers();
     const template = messages.get("41")!;

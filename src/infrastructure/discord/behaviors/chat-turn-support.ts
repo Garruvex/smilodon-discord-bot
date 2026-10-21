@@ -3,6 +3,7 @@ import { retryAfterMs } from "../../../application/concurrency/retry-after.js";
 import { chatDeliveryText } from "../../../application/i18n/chat-delivery.js";
 import type { GuardedConversationContext, GuardedContextPort, GuardedContextSource } from "../../../application/chat/guarded-conversation-context.js";
 import { registerConversationSource } from "../../../application/context/conversation-source-registry.js";
+import { withSessionMessageOrigins, type SessionMessageOriginStore } from "../../../application/chat/session-message-origins.js";
 import { guardedAssetsHash, type GuardedAssetDescriptor } from "../../../application/chat/guarded-conversation-context.js";
 import { bindProvenanceOutput, type ContextProvenance } from "../../../application/chat/context-provenance.js";
 import type { Attachment, Message, User, GuildMember } from "discord.js";
@@ -11,7 +12,7 @@ import type { Logger } from "pino";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
 import { eligibilityReason, emitChatDiagnostic, safeFailure } from "../../../application/diagnostics/chat-diagnostics.js";
 import type { SocialChatEligibility, SocialTrigger } from "./social-chat-eligibility.js";
-import { SocialOutputSuppressed, type MessageOriginStore, type MessageOrigin } from "../../../application/chat/message-origin-store.js";
+import { SocialOutputSuppressed, type MessageOriginStore, type MessageOrigin, type MessageOriginRecord } from "../../../application/chat/message-origin-store.js";
 
 import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
 import type { ChannelHistoryMessage, ChatImage, ChatSource, GeneratedChatImage } from "../../../application/chat/chat-provider.js";
@@ -76,12 +77,13 @@ async function sendWithRetry<T>(send: () => Promise<T>): Promise<T> {
 // extracted from MentionChatBehavior so the two triggers share the exact
 // same tuned logic instead of forking it.
 export class ChatTurnSupport {
+  private readonly origins: SessionMessageOriginStore | null;
   public constructor(
     private readonly logger: Logger,
     private readonly eligibility: SocialChatEligibility | null = null,
-    private readonly origins: MessageOriginStore | null = null,
+    origins: MessageOriginStore | null = null,
     private readonly onUtilitySource: ((message: Message) => void) | null = null,
-  ) {}
+  ) { this.origins = origins ? withSessionMessageOrigins(origins) : null; }
 
   public toChatUser(user: User, member: GuildMember | null = null): ChatUser {
     return {
@@ -118,6 +120,7 @@ export class ChatTurnSupport {
     return registerConversationSource({
       guildId: source.guildId!, channelId: source.channelId, sourceMessageId: source.id, actorId: reaction ? null : source.author.id, persist: eligibility?.canPersistContext(source) ?? false,
       shareMemory: eligibility?.canShareContext(source) ?? false,
+      retention: eligibility?.contextRetention(source) ?? "none",
       coverage: (report) => emitChatDiagnostic(this.logger, { event: "context.guard.coverage", ...report }),
       work: (phase, status, durationMs) => emitChatDiagnostic(this.logger, { event: "context.guard.work", phase, status, durationMs }),
       validation: (status, reads) => emitChatDiagnostic(this.logger, { event: "context.guard.validation", status, reads }),
@@ -137,7 +140,7 @@ export class ChatTurnSupport {
         // Batch dense dependencies, including distant sessions, with at most
         // three fresh pages. Tiny sets use individual reads instead. A page
         // omission still needs an individual read; it never proves deletion.
-        let pending = [...new Set(ids.filter((id) => /^\d{1,20}$/u.test(id)))].map((id) => BigInt(id)).sort((a, b) => a > b ? -1 : a < b ? 1 : 0);
+        let pending = [...new Set(ids.filter((id) => /^\d{1,20}$/u.test(id) && !state(signal).messages.has(id)))].map((id) => BigInt(id)).sort((a, b) => a > b ? -1 : a < b ? 1 : 0);
         for (let pages = 0; pending.length >= 4 && pages < 3 && !signal.aborted; pages++) {
           const newest = pending[0]!;
           const fetched = await source.channel.messages.fetch({ limit: 100, before: String(newest + 1n), cache: false });
@@ -170,7 +173,7 @@ export class ChatTurnSupport {
         if (message.author.bot && origin?.origin !== "chat") return null;
         const user = this.toChatUser(message.author, actor);
         const event = { ...this.toChannelHistoryMessages([message])[0]!, author: { ...user, roleNames: [...user.roleNames].sort() }, content: message.content, imageCount: 0, replyToAuthorId: null, replyToAuthorDisplayName: null };
-        return { event, assets: this.imageAssetDescriptors(message), origin: message.author.bot ? "chat" : "human", provenance: origin?.contextProvenance ?? null };
+        return { event, sourceMessageId: origin?.sourceMessageId ?? null, assets: this.imageAssetDescriptors(message), origin: message.author.bot ? "chat" : "human", provenance: origin?.contextProvenance ?? null };
       },
       page: async (before, signal): Promise<readonly string[]> => {
         if (!eligibility || signal.aborted || !await eligibility.canReadHistory(source, source.author.bot ? null : await member(source.author.id, signal))) return [];
@@ -671,6 +674,8 @@ export class ChatTurnSupport {
     let deliveredParts = 0;
     let partial = false;
     const assertCurrent = async (): Promise<void> => {
+      if (params.contextLease && params.sourceMessage && (params.contextLease.scope.guildId !== params.sourceMessage.guildId ||
+          params.contextLease.scope.channelId !== params.sourceMessage.channelId || params.contextLease.current.messageId !== params.sourceMessage.id)) throw new SocialOutputSuppressed();
       if (params.contextLease && !await params.contextLease.validate()) throw new SocialOutputSuppressed();
       if (params.characterIsCurrent && !params.characterIsCurrent()) throw new SocialOutputSuppressed();
       if (params.characterCanDeliver && !await params.characterCanDeliver()) throw new SocialOutputSuppressed();
@@ -683,17 +688,19 @@ export class ChatTurnSupport {
       try { params.recordDelivery?.(sent); }
       catch (error) { emitChatDiagnostic(this.logger, { event: "chat.delivery.bookkeeping_failed", stage: "proof", ...safeFailure(error, "operation_error") }); }
       if (this.origins && params.sourceMessage?.guildId) {
-        try { await this.origins.record({
+        try {
+          const durableProof = params.contextLease ? params.contextLease.provenance(sent.content) : bindProvenanceOutput(params.contextProvenance, sent.content, {
+            guildId: params.sourceMessage.guildId, channelId: params.sourceMessage.channelId,
+          });
+          const sessionProof = durableProof ? null : params.contextLease?.sessionProvenance(sent.content);
+          const proof = durableProof ?? sessionProof ?? null; const assets = this.imageAssetDescriptors(sent);
+          const record: MessageOriginRecord = {
           guildId: params.sourceMessage.guildId, channelId: params.sourceMessage.channelId, messageId: sent.id,
           origin: params.origin ?? "chat", sourceMessageId: params.sourceMessage.id, createdAt: Date.now(),
-          contextProvenance: params.contextLease ? ((): ContextProvenance | null => {
-            const proof = params.contextLease.provenance(sent.content);
-            const assets = this.imageAssetDescriptors(sent);
-            return proof && assets.length ? { ...proof, outputAssetsHash: guardedAssetsHash(assets) } : proof;
-          })() : bindProvenanceOutput(params.contextProvenance, sent.content, {
-            guildId: params.sourceMessage.guildId, channelId: params.sourceMessage.channelId,
-          }),
-        }); } catch (error) { emitChatDiagnostic(this.logger, { event: "chat.delivery.bookkeeping_failed", stage: "origin", ...safeFailure(error, "operation_error") }); }
+          contextProvenance: (params.origin ?? "chat") === "chat" ? proof && assets.length ? { ...proof, outputAssetsHash: guardedAssetsHash(assets) } : proof : null,
+          };
+          if (sessionProof && record.origin === "chat") await this.origins.recordSession(record); else await this.origins.record(record);
+        } catch (error) { emitChatDiagnostic(this.logger, { event: "chat.delivery.bookkeeping_failed", stage: "origin", ...safeFailure(error, "operation_error") }); }
       }
       return sent;
     };
