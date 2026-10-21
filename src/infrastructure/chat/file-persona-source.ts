@@ -32,7 +32,7 @@ export class FilePersonaSource implements PersonaSource {
   public constructor(
     private readonly runtimeDataDirectory: string,
     private readonly logger: Logger,
-    private readonly personaDriftStore: PersonaDriftStore | null = null,
+    _personaDriftStore: PersonaDriftStore | null = null,
     // Compared against a loaded bundle's embeddingModel on every resolve
     // (not just at compile/upload time) — a provider/model change takes
     // effect immediately for reads even before the next reupload, instead
@@ -44,9 +44,8 @@ export class FilePersonaSource implements PersonaSource {
 
   public async resolve(profile: GuildConfiguration): Promise<ResolvedPersona> {
     const { personality, loreChunks, sourceHash } = this.loadPersonaMaterial(profile);
-    const personaDrift = profile.chat.personaDriftEnabled && this.personaDriftStore
-      ? await this.resolvePersonaDrift(profile.guildId, sourceHash)
-      : null;
+    // Learned drift is admitted by the conversation lease, never authored configuration.
+    const personaDrift = null;
     const examplePool = this.loadExampleExchanges(profile);
     const material = { text: personality, personalitySourceHash: sourceHash, loreChunks, examples: examplePool };
     const fingerprint = configurationMaterialHash(material);
@@ -65,18 +64,6 @@ export class FilePersonaSource implements PersonaSource {
       personaDrift,
       personalitySourceHash: sourceHash,
     };
-  }
-
-  // A drift entry evolved against a since-edited personality can no longer
-  // be trusted to agree with the character (see PersonaDriftStore's
-  // personalitySourceHash) — hash mismatch means discard it, same as a
-  // guild that never had any drift. `sourceHash` covers the complete
-  // uploaded file (lore included), not just the compiled core, so a
-  // lore-only edit invalidates drift too — see ResolvedPersona.personalitySourceHash.
-  private async resolvePersonaDrift(guildId: string, sourceHash: string): Promise<string | null> {
-    const stored = await this.personaDriftStore?.get(guildId);
-    if (!stored || stored.personalitySourceHash !== sourceHash) return null;
-    return stored.text.trim() || null;
   }
 
   private loadPersonaMaterial(

@@ -1,3 +1,6 @@
+import { ConfigurationModelGateway } from "../context/configuration-model-gateway.js";
+import { isEvaluationContext, type GuardedEvaluationContext } from "../context/guarded-evaluation-context.js";
+import { isConfigurationContext, type GuardedConfigurationContext } from "../context/guarded-configuration-context.js";
 import { GuardedConversationContext, isGuardedContext, projectDecisionContext, type GuardedContextPort } from "./guarded-conversation-context.js";
 import { ConversationModelGateway } from "../context/conversation-model-gateway.js";
 import { repairConversationRequest } from "../context/approved-conversation-request.js";
@@ -61,7 +64,8 @@ export class CharacterRuntime {
   private evaluationStore: CharacterEvaluationStore | null = null;
   private probeTimer: ReturnType<typeof setInterval> | null = null;
   private probeRunning = false;
-  private probeFactory: ((guildId: string, channelId: string, question: string) => Promise<ChatRequest>) | null = null;
+  private probeFactory: ((guildId: string, channelId: string, question: string) => Promise<GuardedEvaluationContext>) | null = null;
+  private callbackPersona: ((guildId: string) => Promise<GuardedConfigurationContext>) | null = null;
   private stopped = false;
   private readonly pendingJobs = new Set<Promise<unknown>>();
   private readonly botIds = new Set<string>();
@@ -223,7 +227,7 @@ export class CharacterRuntime {
     try { await Promise.race([Promise.allSettled([...this.pendingJobs]), new Promise<void>((resolve) => { timer = setTimeout(resolve, timeoutMs); timer.unref?.(); })]); }
     finally { if (timer) clearTimeout(timer); }
   }
-  public bindProbeSchedule(factory: (guildId: string, channelId: string, question: string) => Promise<ChatRequest>): void {
+  public bindProbeSchedule(factory: (guildId: string, channelId: string, question: string) => Promise<GuardedEvaluationContext>): void {
     this.probeFactory = factory;
     this.probeTimer = setInterval(() => this.trackJob(this.tickProbes()), 60_000); this.probeTimer.unref?.();
   }
@@ -452,35 +456,39 @@ export class CharacterRuntime {
         { request, backgroundContext: context, settings: characterSettings(this.profiles.require(guildId)), capabilities: this.capabilities(profile, channelId), now: this.now() });
     }
   }
-  public async probe(request: ChatRequest): Promise<string> {
-    const run = (): Promise<string> => this.probeUnadmitted(request);
-    return (await (this.evaluationAdmission ? this.evaluationAdmission.run(request.guildId, request.channelId, run, 1) : run())) ?? "Evaluation postponed: cooldown or optional-call budget.";
+  public async probe(context: GuardedEvaluationContext): Promise<string> {
+    if (!isEvaluationContext(context)) throw new SocialOutputSuppressed(); await context.check();
+    const run = (): Promise<string> => new ConfigurationModelGateway(this.replyProvider).probe(context, true, () => !this.stopped);
+    return (await (this.evaluationAdmission ? this.evaluationAdmission.run(context.scope.guildId, context.scope.channelId, run, 1) : run())) ?? "Evaluation postponed: cooldown or optional-call budget.";
   }
-  private async probeUnadmitted(request: ChatRequest): Promise<string> {
-    request = { ...request, characterEvaluation: true, enabledTools: [], imageGenerationEnabled: false, webSearchMode: "off" };
-    const prepared = await this.prepare(request);
-    const response = await this.replyProvider.reply(prepared?.request ?? request);
-    return prepared ? (await this.process(response, prepared)).text : response.text;
-  }
-  public async probeMany(requests: readonly ChatRequest[]): Promise<readonly { question: string; answer: string }[]> {
-    const first = requests[0]; if (!first) return [];
+  public async probeMany(contexts: readonly GuardedEvaluationContext[]): Promise<readonly { question: string; answer: string }[]> {
+    const first = contexts[0]; if (!first) return [];
+    if (contexts.length > 16 || !isEvaluationContext(first)) throw new SocialOutputSuppressed();
+    for (const context of contexts) {
+      if (!isEvaluationContext(context) || JSON.stringify(context.scope) !== JSON.stringify(first.scope)) throw new SocialOutputSuppressed();
+      await context.check();
+    }
     const run = async (): Promise<{ question: string; answer: string }[]> => {
       const outputs: { question: string; answer: string }[] = [];
-      for (const request of requests) outputs.push({ question: request.message, answer: await this.probeUnadmitted(request) });
+      const gateway = new ConfigurationModelGateway(this.replyProvider);
+      for (const context of contexts) outputs.push({ question: context.question, answer: await gateway.probe(context, true, () => !this.stopped) });
       return outputs;
     };
-    return (await (this.evaluationAdmission ? this.evaluationAdmission.run(first.guildId, first.channelId, run, requests.length) : run())) ??
-      requests.map((request) => ({ question: request.message, answer: "Evaluation postponed: cooldown or optional-call budget." }));
+    return (await (this.evaluationAdmission ? this.evaluationAdmission.run(first.scope.guildId, first.scope.channelId, run, contexts.length) : run())) ??
+      contexts.map((context) => ({ question: context.question, answer: "Evaluation postponed: cooldown or optional-call budget." }));
   }
-  public async probePair(request: ChatRequest): Promise<{ A: string; B: string; candidate: "A" | "B" }> {
+  public async probePair(context: GuardedEvaluationContext): Promise<{ A: string; B: string; candidate: "A" | "B" }> {
+    if (!isEvaluationContext(context)) throw new SocialOutputSuppressed(); await context.check();
     const run = async (): Promise<{ A: string; B: string; candidate: "A" | "B" }> => {
-      const baseline = (await this.replyProvider.reply({ ...request, characterEvaluation: true, characterContext: [], enabledTools: [], imageGenerationEnabled: false, webSearchMode: "off" })).text;
-      const candidate = await this.probeUnadmitted(request); const first = Math.random() < 0.5;
+      const gateway = new ConfigurationModelGateway(this.replyProvider);
+      const baseline = await gateway.probe(context, false, () => !this.stopped);
+      const candidate = await gateway.probe(context, true, () => !this.stopped); const first = Math.random() < 0.5;
       return { A: first ? candidate : baseline, B: first ? baseline : candidate, candidate: first ? "A" : "B" };
     };
-    return (await (this.evaluationAdmission ? this.evaluationAdmission.run(request.guildId, request.channelId, run, 2) : run())) ??
+    return (await (this.evaluationAdmission ? this.evaluationAdmission.run(context.scope.guildId, context.scope.channelId, run, 2) : run())) ??
       { A: "Evaluation postponed: cooldown or optional-call budget.", B: "Evaluation postponed: cooldown or optional-call budget.", candidate: "A" };
   }
+  public bindCallbackPersona(factory: (guildId: string) => Promise<GuardedConfigurationContext>): void { this.callbackPersona = factory; }
   public describeStatus(profile: GuildConfiguration, channelId: string): string {
     const settings = characterSettings(profile); const capabilities = this.capabilities(profile, channelId);
     const labels = { master_disabled: "character master switch is off", module_disabled: "module is off", excluded: "chat disabled or memory excluded",
@@ -579,14 +587,22 @@ export class CharacterRuntime {
               await this.callbackDelivery!.check(guildId, activity.channelId, activity.messageId);
           };
           const sent = await this.callbackDelivery.run(guildId, activity.channelId, async () => {
-            const persona = await this.probeFactory?.(guildId, activity.channelId, "");
-            if (!persona) { await this.callbacks.failBeforeSend(claim, this.now()); return false; }
-            const beforeModelAttempt = async (): Promise<void> => { if (!await eligible(claim)) throw new SocialOutputSuppressed(); };
+            const persona = await this.callbackPersona?.(guildId);
+            if (!isConfigurationContext(persona, "persona") || persona.scope.guildId !== guildId) { await this.callbacks.failBeforeSend(claim, this.now()); return false; }
+            const beforeModelAttempt = async (): Promise<void> => {
+              await persona.check({ kind: "persona", guildId, ownerUserId: null });
+              if (!await eligible(claim) || await context.resource({ kind: "persona_configuration", id: "current" }) !== persona.fingerprint) throw new SocialOutputSuppressed();
+            };
             await beforeModelAttempt();
-            const turn: CharacterTurn = { request: { ...persona, contextLease: context, beforeModelAttempt }, settings,
+            const turn: CharacterTurn = { request: { guildId, channelId: activity.channelId, personality: persona.material.text,
+              configurationContext: persona, contextLease: context, beforeModelAttempt,
+              personaLore: (persona.material.loreChunks ?? []).map(({ heading, text }) => ({ heading, text })), exampleExchanges: [], personaDrift: null,
+              userCustomization: null, currentUser: { id: userId, displayName: "", roleNames: [] }, mentionedUsers: [], recentHistory: [], memories: [],
+              guildKnowledge: [], causalChains: [], message: "", replyChain: [], replyChainSummary: null, channelHistory: [], birthday: null, images: [],
+              webSearchMode: "off", imageGenerationEnabled: false, includeSources: false, triggerMode: "direct" }, settings,
               capabilities: this.capabilities(profile, activity.channelId), now };
             const text = await this.text(`Write one short welcome follow-up after this member's dated event. Ask how it went, don't assert it happened. Match persona, no invented shared past or real-world action. Data: ${JSON.stringify({ event: memory.statement, memberId: userId, character: profile.displayName,
-              personality: persona.personality, lore: persona.personaLore }).replaceAll("<", "\\u003c")}`, turn);
+              personality: persona.material.text, lore: (persona.material.loreChunks ?? []).map(({ heading, text }) => ({ heading, text })) }).replaceAll("<", "\\u003c")}`, turn);
             if (!text) { await this.callbacks.failBeforeSend(claim, this.now()); return false; }
             return this.callbacks.send(claim, this.now(), eligible, async (sending) => {
               if (!await eligible(sending)) throw new Error("Callback final eligibility failed");

@@ -163,7 +163,7 @@ describe("FilePersonaSource", () => {
     expect(resolved.examplePool).toEqual([{ tags: "greeting", user: "hi", character: "hey there" }]);
   });
 
-  it("injects the evolved persona-drift text when the guild has it enabled", async () => {
+  it("excludes unproven global drift even when enabled and its persona hash matches", async () => {
     const runtimeDirectory = mkdtempSync(join(tmpdir(), "persona-source-"));
     temporaryDirectories.push(runtimeDirectory);
     const driftStore = new PersonaDriftStore(runtimeDirectory);
@@ -173,7 +173,7 @@ describe("FilePersonaSource", () => {
 
     const resolved = await source.resolve(profile({ personaDriftEnabled: true }));
 
-    expect(resolved.personaDrift).toBe("A little more playful lately.");
+    expect(resolved.personaDrift).toBeNull();
   });
 
   it("omits persona drift when the guild has it disabled, even if evolved state exists", async () => {

@@ -1,3 +1,7 @@
+import { GuardedEvaluationContext } from "../application/context/guarded-evaluation-context.js";
+import { interviewProbes } from "../application/chat/character-evaluation.js";
+import { CommandModule } from "../application/commands/command.js";
+import { settingsAccessPolicy } from "../infrastructure/discord/settings/engine/settings-engine.js";
 import { defaultLanguage } from "../application/i18n/language.js";
 import { instrumentModel, modelGenerationHealth } from "../application/diagnostics/model-diagnostics.js";
 import { diagnosticPipelineStatus } from "../application/diagnostics/chat-diagnostics.js";
@@ -104,7 +108,7 @@ import { LinkGuardService } from "../infrastructure/discord/security/link-guard-
 import { RaidService } from "../infrastructure/discord/security/raid-service.js";
 import { SpamService } from "../infrastructure/discord/security/spam-service.js";
 import { TrapService } from "../infrastructure/discord/security/trap-service.js";
-import type { ChatProvider, ChatRequest } from "../application/chat/chat-provider.js";
+import type { ChatProvider } from "../application/chat/chat-provider.js";
 import { OpenAiCompatibleChatProvider } from "../infrastructure/chat/openai-compatible-chat-provider.js";
 import { OpenAiResponsesChatProvider } from "../infrastructure/chat/openai-responses-chat-provider.js";
 import { GeminiChatProvider } from "../infrastructure/chat/gemini-chat-provider.js";
@@ -748,16 +752,27 @@ export function createDependencies(
     const evaluationStore = new CharacterEvaluationStore(configuration.runtimeDataDirectory);
     characterRuntime.bindEvaluationStore(evaluationStore);
     commandRegistry.register(new FeltLikeBotCommand(guildConfigurationProvider, messageOriginStore, evaluationStore));
-    const evaluationRequest = async (guildId: string, channelId: string, userId: string, question: string): Promise<ChatRequest> => {
-        const profile = guildConfigurationProvider.require(guildId); const persona = await personaSource.resolve(profile);
-        return { guildId, channelId, personality: persona.personality, characterPersonaHash: persona.personalitySourceHash, characterStyleExamples: persona.examplePool,
-          personaLore: persona.loreChunks.map((chunk) => ({ heading: chunk.heading, text: chunk.text })),
-          personaDrift: persona.personaDrift, exampleExchanges: persona.examplePool.slice(0, 4), userCustomization: null,
-          currentUser: { id: userId, displayName: "Reviewer", roleNames: [] }, mentionedUsers: [], recentHistory: [],
-          memories: [], guildKnowledge: [], causalChains: [],
-          message: question, replyChain: [], replyChainSummary: null, channelHistory: [], birthday: null, images: [],
-          webSearchMode: "off", imageGenerationEnabled: false, includeSources: false, triggerMode: "direct", botUserId: discordClient.user?.id ?? null };
-      };
+    const evaluationRequest = async (guildId: string, channelId: string, userId: string, question: string): Promise<GuardedEvaluationContext> => {
+      const profile = guildConfigurationProvider.require(guildId); const persona = await personaSource.resolve(profile);
+      if (!persona.configurationContext) throw new Error("Evaluation persona authority unavailable");
+      const fingerprint = (): string => JSON.stringify(guildConfigurationProvider.find(guildId),
+        (_key, value: unknown) => value instanceof Set ? [...value].sort() : value);
+      const expected = fingerprint();
+      return GuardedEvaluationContext.open({ guildId, channelId, reviewerId: userId }, persona.configurationContext, question, characterSettings(profile), async () => {
+        const current = guildConfigurationProvider.find(guildId);
+        if (!current || fingerprint() !== expected || !characterSettings(current).modules.evaluation.enabled) return false;
+        if (userId === "character-evaluation") return characterSettings(current).modules.evaluation.probes && interviewProbes.some((probe) => probe === question);
+        const guild = discordClient.guilds.cache.get(guildId) ?? await discordClient.guilds.fetch(guildId).catch(() => null);
+        const member = await guild?.members.fetch({ user: userId, force: true }).catch(() => null);
+        if (!member) return false;
+        return accessPolicyService.evaluateMember(settingsAccessPolicy, CommandModule.Diagnostics, { guildId, channelId, userId,
+          roleIds: [...member.roles.cache.keys()], memberPermissions: member.permissions.bitfield, botPermissions: guild?.members.me?.permissions.bitfield ?? null }).allowed;
+      });
+    };
+    characterRuntime.bindCallbackPersona(async (guildId) => {
+      const persona = await personaSource.resolve(guildConfigurationProvider.require(guildId));
+      if (!persona.configurationContext) throw new Error("Callback persona authority unavailable"); return persona.configurationContext;
+    });
     characterRuntime.bindProbeSchedule((guildId, channelId, question) => evaluationRequest(guildId, channelId, "character-evaluation", question));
     channelSummaryScheduler?.bindCharacterConsolidation((context, subjectIds) => characterRuntime.afterMemoryConsolidation(context, subjectIds));
     commandRegistry.register(new CharacterEvalCommand(guildConfigurationProvider, messageOriginStore, evaluationStore, characterRuntime, evaluationRequest));

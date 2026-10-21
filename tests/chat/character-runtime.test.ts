@@ -1,3 +1,5 @@
+import { GuardedEvaluationContext } from "../../src/application/context/guarded-evaluation-context.js";
+import { configurationFixture } from "../helpers/configuration-context-fixture.js";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -31,6 +33,10 @@ function request(): ChatRequest { return { guildId, channelId, personality: "A f
   exampleExchanges: [{ tags: "chat", user: "hi", character: "hey" }], userCustomization: null, currentUser: { id: actorUserId, displayName: "Alice", roleNames: [] },
   mentionedUsers: [], recentHistory: [], memories: [], guildKnowledge: [], causalChains: [], message: "hey", replyChain: [], replyChainSummary: null,
   channelHistory: [], birthday: null, images: [], webSearchMode: "off", imageGenerationEnabled: false, includeSources: false, triggerMode: "direct", botUserId: "bot" }; }
+async function evaluation(question = "hey"): Promise<GuardedEvaluationContext> {
+  return GuardedEvaluationContext.open({ guildId, channelId, reviewerId: actorUserId },
+    await configurationFixture("A fictional character who likes cats", "persona", () => true, guildId), question, characterSettingsSchema.parse({}), () => true);
+}
 function record(overrides: Partial<RepositoryIngestInput> = {}): RepositoryIngestInput { return { guildId, kind: "fact", audience: "guild", ownerUserId: null,
   channelId: null, isolationChannelId: null, subjectType: "member", subjectId: actorUserId, topic: "schedule", slot: "exam", statement: "exam on 2026-10-15",
   status: "active", source: "live", importance: 1, embedding: null, embeddingModel: null, expiresAt: null, now: 1000,
@@ -150,11 +156,20 @@ describe("character module integration", () => {
     runtime.bindEvaluationAdmission({ run: (guild, channel, operation, cost) => conversation.runCharacterEvaluation(guild, channel,
       { ...balancedChatLimits, optionalTurnsPerWindow: 9 }, operation, cost) });
     try {
-      expect((await runtime.probeMany(Array.from({ length: 7 }, () => request()))).every((answer) => answer.answer === "hey")).toBe(true);
-      expect(reply).toHaveBeenCalledTimes(7); await runtime.probePair(request()); expect(reply).toHaveBeenCalledTimes(7);
-      now += 30_000; await runtime.probePair(request()); expect(reply).toHaveBeenCalledTimes(9);
-      now += 30_000; await runtime.probe(request()); expect(reply).toHaveBeenCalledTimes(9);
+      expect((await runtime.probeMany(await Promise.all(Array.from({ length: 7 }, () => evaluation())))).every((answer) => answer.answer === "hey")).toBe(true);
+      expect(reply).toHaveBeenCalledTimes(7); await runtime.probePair(await evaluation()); expect(reply).toHaveBeenCalledTimes(7);
+      now += 30_000; await runtime.probePair(await evaluation()); expect(reply).toHaveBeenCalledTimes(9);
+      now += 30_000; await runtime.probe(await evaluation()); expect(reply).toHaveBeenCalledTimes(9);
     } finally { conversation.stopScheduling(); }
+  });
+  it("rejects mixed evaluation scopes and stopped runtimes before dispatch", async () => {
+    const { runtime, provider } = setup(); const reply = vi.spyOn(provider, "reply");
+    const context = await evaluation();
+    const other = await GuardedEvaluationContext.open({ ...context.scope, reviewerId: "other" }, context.persona,
+      context.question, context.settings, () => true);
+    await expect(runtime.probeMany([context, other])).rejects.toBeInstanceOf(Error);
+    runtime.stop(); await expect(runtime.probe(context)).rejects.toBeInstanceOf(Error);
+    expect(reply).not.toHaveBeenCalled();
   });
   it("keeps direct requests available with lightweight restraint instructions and no utility work", async () => {
     const { runtime, provider } = setup(); const prepared = await runtime.prepare(request());
@@ -231,7 +246,7 @@ describe("character module integration", () => {
   it("keeps interview probes free of character writes and tools", async () => {
     const { runtime, repository, profiles, provider } = setup(); const replySpy = vi.spyOn(provider, "reply");
     await profiles.update(guildId, { character: { enabled: true, modules: { canon: { enabled: true }, mood: { enabled: true }, evaluation: { enabled: true } } } });
-    expect(await runtime.probe({ ...request(), message: "lol, tell me about yourself" })).toBe("hey");
+    expect(await runtime.probe(await evaluation("lol, tell me about yourself"))).toBe("hey");
     expect(replySpy).toHaveBeenCalledWith(expect.objectContaining({ characterEvaluation: true, enabledTools: [], webSearchMode: "off", imageGenerationEnabled: false }));
     expect((await repository.findModuleCandidates({ guildId, channelId, userId: actorUserId, now: Date.now(), moduleId: "mood" })).memories).toEqual([]);
     expect((await repository.findModuleCandidates({ guildId, channelId, userId: actorUserId, now: Date.now(), moduleId: "canon" })).memories).toEqual([]);

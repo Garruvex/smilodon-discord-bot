@@ -12,7 +12,7 @@ import { createSqliteDatabaseConnection } from "../../src/infrastructure/databas
 import { SqliteMemoryRepository } from "../../src/infrastructure/persistence/sqlite-memory-repository.js";
 import { guardedEvent, guardedFixture } from "../helpers/guarded-context-fixture.js";
 import { freshDocument, guildId, memoryProvider } from "../helpers/settings-fixtures.js";
-import { decisionRequest, decisionResponse } from "../helpers/conversation-decision-fixtures.js";
+import { decisionResponse } from "../helpers/conversation-decision-fixtures.js";
 import { conversationConfiguration } from "../../src/application/context/conversation-configuration.js";
 import { configurationFixture } from "../helpers/configuration-context-fixture.js";
 import { guardedToolResourcePort } from "../../src/application/chat/guarded-tool-gateway.js";
@@ -56,7 +56,7 @@ describe("scheduled callback source authorization", () => {
       return { text: "How did the exam go?" };
     });
     runtime = new CharacterRuntime(profiles, repository, { generateCharacterData }, { reply: (): Promise<ChatResponse> => Promise.resolve(decisionResponse()) }, undefined, null, () => 5000);
-    runtime.bindProbeSchedule(() => Promise.resolve(decisionRequest({ guildId, channelId: channelId, channelHistory: [], currentBurst: [] })));
+    runtime.bindCallbackPersona(() => Promise.resolve(configuration.persona));
     const send = vi.fn<CharacterCallbackDelivery["send"]>(() => Promise.resolve("sent"));
     runtime.bindCallbackDelivery({ context: () => Promise.resolve(port), check: () => Promise.resolve(true),
       run: (_guild, _channel, operation) => operation(), send });

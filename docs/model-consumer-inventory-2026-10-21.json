@@ -39,7 +39,8 @@
   ],
   "src/application/context/configuration-model-gateway.ts": [
     "analyzeUserCustomization",
-    "compilePersonaBundle"
+    "compilePersonaBundle",
+    "reply"
   ],
   "src/application/context/conversation-model-gateway.ts": [
     "evolvePersonaDrift",

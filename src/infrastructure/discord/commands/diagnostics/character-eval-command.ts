@@ -6,7 +6,7 @@ import type { GuildConfigurationProvider } from "../../../../config/guild-config
 import { characterSettings } from "../../../../application/chat/character-settings.js";
 import type { MessageOriginStore } from "../../../../application/chat/message-origin-store.js";
 import type { CharacterRuntime } from "../../../../application/chat/character-runtime.js";
-import type { ChatRequest } from "../../../../application/chat/chat-provider.js";
+import type { GuardedEvaluationContext } from "../../../../application/context/guarded-evaluation-context.js";
 import { settingsAccessPolicy } from "../../settings/engine/settings-engine.js";
 
 export class CharacterEvalCommand implements BotCommand {
@@ -27,7 +27,7 @@ export class CharacterEvalCommand implements BotCommand {
   ] } satisfies BotCommand["definition"];
   public constructor(private readonly profiles: GuildConfigurationProvider, private readonly origins: MessageOriginStore,
     private readonly store: CharacterEvaluationStore, private readonly runtime: CharacterRuntime,
-    private readonly requestFor: (guildId: string, channelId: string, userId: string, question: string) => Promise<ChatRequest>) {}
+    private readonly requestFor: (guildId: string, channelId: string, userId: string, question: string) => Promise<GuardedEvaluationContext>) {}
   public async execute(context: CommandContext): Promise<void> {
     const interaction = context.interaction; if (!interaction.guildId || !interaction.channelId) return;
     const profile = this.profiles.find(interaction.guildId);
@@ -58,7 +58,7 @@ export class CharacterEvalCommand implements BotCommand {
       const id = await this.store.record(interaction.guildId, "pair", { question, ...pair, reviewerId: interaction.user.id });
       await context.responses.edit(`Pair ${id}\nA: ${pair.A}\nB: ${pair.B}\nUse /character-eval label to record your preference.`); return;
     }
-    const requests: ChatRequest[] = [];
+    const requests: GuardedEvaluationContext[] = [];
     for (const question of interviewProbes) {
       const request = await this.requestFor(interaction.guildId, interaction.channelId, interaction.user.id, question);
       requests.push(request);

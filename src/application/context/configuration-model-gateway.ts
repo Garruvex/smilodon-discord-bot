@@ -1,4 +1,9 @@
-import type { ChatProvider, UserCustomizationAnalysisResult } from "../chat/chat-provider.js";
+import type { ChatProvider, ChatRequest, UserCustomizationAnalysisResult } from "../chat/chat-provider.js";
+import { isEvaluationContext, type GuardedEvaluationContext } from "./guarded-evaluation-context.js";
+import { immutableSnapshot } from "./immutable-snapshot.js";
+import { deriveStyleProfile, trimVoice, voiceViolations } from "../chat/character-voice.js";
+import { characterInactiveReason } from "../chat/character-settings.js";
+import { serious, truthfulQuestion } from "../chat/character-modules/shared.js";
 import type { EmbeddingsClient } from "../chat/embeddings-client.js";
 import { embedTextsBestEffort } from "../chat/embedding-batch.js";
 import { personaEmbeddingSources } from "../chat/persona-bundle-compilation.js";
@@ -14,6 +19,39 @@ export class ConfigurationModelGateway {
   public get canCompile(): boolean { return !!this.provider?.compilePersonaBundle; }
   public get canAnalyze(): boolean { return !!this.provider?.analyzeUserCustomization; }
   public get embeddingModelId(): string | null { return this.embeddings?.modelId ?? null; }
+  public async probe(context: GuardedEvaluationContext, candidate = true, active: () => boolean = () => true): Promise<string> {
+    if (!isEvaluationContext(context) || !this.provider) throw new SocialOutputSuppressed();
+    const check = async (): Promise<void> => { if (!active()) throw new SocialOutputSuppressed(); await context.check(); if (!active()) throw new SocialOutputSuppressed(); };
+    await check();
+    const material = context.persona.material;
+    const controls = context.settings;
+    const request: ChatRequest = Object.freeze({ ...immutableSnapshot({
+      guildId: context.scope.guildId, channelId: context.scope.channelId, personality: material.text,
+      characterEvaluation: true, personaLore: (material.loreChunks ?? []).map(({ heading, text }) => ({ heading, text })),
+      exampleExchanges: (material.examples ?? []).slice(0, 4).map(({ tags, user, character }) => ({ tags, user, character })),
+      personaDrift: null, userCustomization: null, currentUser: { id: "synthetic-reviewer", displayName: "Reviewer", roleNames: [] },
+      mentionedUsers: [], recentHistory: [], memories: [], guildKnowledge: [], causalChains: [], message: context.question,
+      replyChain: [], replyChainSummary: null, channelHistory: [], birthday: null, images: [], enabledTools: [],
+      webSearchMode: "off" as const, imageGenerationEnabled: false, includeSources: false, triggerMode: "direct" as const,
+      characterContext: candidate ? [{ moduleId: "synthetic-evaluation", text:
+        "Answer this hypothetical character interview using authored persona configuration only. No participant history, memories or learned state is available. Do not invent remembered interactions. Answer explicit questions normally, keep acknowledgments brief, and do not prolong a closing with generic help." }] : [],
+    }), beforeModelAttempt: check });
+    let response = await this.provider.reply(request); await check();
+    const voice = !characterInactiveReason(controls, "voice", context.scope.channelId,
+      { context: false, decision: false, memorySharing: false, continuation: false, spontaneous: false, excluded: false });
+    if (candidate && voice && !serious(context.question) && !truthfulQuestion(context.question)) {
+      const text = trimVoice(response.text) || response.text;
+      const substantive = context.question.length > 100 || /explain|how to|解釋|說明|教我|説明/iu.test(context.question);
+      const flags = voiceViolations(text, deriveStyleProfile(request.exampleExchanges), substantive);
+      if (controls.modules.voice.strictness === "regenerate" && (flags.includes("markdown") || flags.includes("length"))) {
+        response = await this.provider.reply(Object.freeze({ ...request, attributionRepair: Object.freeze({ draft: text,
+          notes: "Repair only casual voice/formatting. Match the authored examples, preserve factual content and truthful bot disclosures." }) }));
+        await check(); return response.text.trim() || text;
+      }
+      return text;
+    }
+    return response.text;
+  }
   public async compile(context: GuardedConfigurationContext): Promise<readonly number[]> {
     if (!isConfigurationContext(context, "persona_upload") || !this.provider?.compilePersonaBundle) throw new SocialOutputSuppressed();
     await context.check();

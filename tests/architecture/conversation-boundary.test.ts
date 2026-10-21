@@ -26,6 +26,13 @@ describe("conversation execution ownership", () => {
         if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) continue;
         const module = node.moduleSpecifier.text;
         const relative = path.relative(root, file).replaceAll(path.sep, "/");
+        if (module.endsWith("/guarded-evaluation-context.js") && !node.importClause?.isTypeOnly) {
+          const bindings = node.importClause?.namedBindings;
+          const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
+          const permitted = relative === "bootstrap/dependencies.ts" ? ["GuardedEvaluationContext"] :
+            ["application/chat/character-runtime.ts", "application/context/configuration-model-gateway.ts"].includes(relative) ? ["isEvaluationContext"] : [];
+          if (imported.some((name) => !permitted.includes(name))) offenders.push(relative);
+        }
         if (module.endsWith("/approved-conversation-request.js") && !node.importClause?.isTypeOnly) {
           const bindings = node.importClause?.namedBindings;
           const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
