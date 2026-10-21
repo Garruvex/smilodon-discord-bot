@@ -46,6 +46,8 @@ const eventSchema = z.discriminatedUnion("event", [
     selectedIds: z.array(identifier).max(128), oldestTimestampMs: duration.nullable(), newestTimestampMs: duration.nullable(), eligible: count, selected: count, pages: count, targetedPages: count,
     omitted: count, truncated: count, sourceReads: count, status: z.enum(["filled", "end", "scan_cap", "deadline", "fetch_failed", "source_ineligible", "ineligible_reaction", "no_progress"]) }),
   z.object({ event: z.literal("context.guard.sources"), sessions: count, unavailable: z.array(z.enum(["legacy_derived", "memory", "summaries", "learned_character", "images", "context_tools", "profile_fields"])) }),
+  z.object({ event: z.literal("chat.capabilities.resolved"), webSearchConfigured: z.enum(["off", "auto"]), webSearchEffective: z.enum(["off", "auto"]),
+    nativeWebSearchSupported: z.boolean(), shadow: z.boolean(), recovery: z.boolean() }),
   z.object({ event: z.literal("context.derived.excluded"), source: z.enum(["session", "bot_output"]), count, reason: z.literal("unverified_provenance") }),
   z.object({ event: z.literal("context.history.revalidated"), requested: count, selected: count, status: z.enum(["refreshed", "underfilled", "budget_exhausted", "changed"]) }),
   z.object({ event: z.literal("context.history.budget"), candidates: count, selected: count, truncated: count, omitted: count, budget: count, chars: count }),

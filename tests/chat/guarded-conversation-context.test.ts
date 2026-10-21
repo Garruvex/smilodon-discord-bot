@@ -8,6 +8,24 @@ afterEach(() => vi.useRealTimers());
 const policy = { count: 40, budget: 12000, burstIds: [] };
 
 describe("guarded conversation context", () => {
+  it("preserves public search lineage through reused answers without widening protected-source access", async () => {
+    const fixture = guardedFixture(guardedEvent("question", 1000, "Find public information"));
+    const original = await GuardedConversationContext.open(fixture.port, policy);
+    original.recordPublicWebSearch([{ title: "Source", url: "https://example.com/source" }]);
+    const proof = original.provenance("searched answer")!;
+    expect(proof.publicWeb?.citationHashes).toHaveLength(1);
+    expect(JSON.stringify(proof)).not.toContain("https://example.com");
+    fixture.sources.set("answer", { event: guardedEvent("answer", 2000, "searched answer", "bot"), origin: "chat", provenance: proof });
+    fixture.add(guardedEvent("current", 3000, "What did you find?")); fixture.port.sourceMessageId = "current";
+    const followup = await GuardedConversationContext.open(fixture.port, policy);
+    expect(followup.history.map((event) => event.messageId)).toContain("answer");
+    expect(followup.provenance("followup")?.publicWeb).toEqual(proof.publicWeb);
+    fixture.denied.add("question");
+    expect(await followup.validate()).toBe(false);
+    const next = await GuardedConversationContext.open(fixture.port, policy);
+    expect(next.history.map((event) => event.messageId)).not.toContain("answer");
+  });
+
   it("uses a fresh shared baseline across long gaps and excludes unreadable authors without spending X", async () => {
     const fixture = guardedFixture(guardedEvent("current", 10_000_000, "@bot"));
     for (let index = 1; index <= 150; index++) {

@@ -146,6 +146,7 @@ interface FunctionCallOutputItem {
 }
 
 export class OpenAiResponsesChatProvider implements ChatProvider {
+  public readonly nativeWebSearchSupported = true;
   private readonly modelChain: ModelFallbackChain;
   // Separate chain for the two standalone structured-output calls (own
   // prompt/schema, outside the main reply turn) — falls back to the primary

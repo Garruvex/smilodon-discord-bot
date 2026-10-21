@@ -89,6 +89,7 @@ const toolBudgetExhaustedMessage = "Tool call budget exhausted. Do not call any 
 // requests to that model simply return no inlineData parts.
 
 export class GeminiChatProvider implements ChatProvider {
+  public readonly nativeWebSearchSupported = true;
   private readonly modelChain: ModelFallbackChain;
   // Separate chain for the two standalone structured-output calls (own
   // prompt/schema, outside the main reply turn) — falls back to the primary

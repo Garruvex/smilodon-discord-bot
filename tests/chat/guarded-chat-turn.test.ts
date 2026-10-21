@@ -22,7 +22,7 @@ import { balancedChatLimits } from "../../src/application/chat/chat-scheduler.js
 const channelId = "500000000000000001";
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { vi.useRealTimers(); for (const cleanup of cleanups.splice(0)) await cleanup(); });
-async function setup(now = 5000, originalAuthor = "alice", contextual = false): Promise<{
+async function setup(now = 5000, originalAuthor = "alice", contextual = false, nativeWebSearchSupported = false): Promise<{
   service: ChatConversationService; fixture: ReturnType<typeof guardedFixture>; input: ChatConversationInput;
   reply: ReturnType<typeof vi.fn<(request: ChatRequest) => Promise<ChatResponse>>>;
   engine: DefaultMemoryEngine; runtime: CharacterRuntime; state: SqliteChatStateStore;
@@ -44,7 +44,7 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false): 
   const { logger, records } = captureDiagnosticLogger();
   const runtime = new CharacterRuntime(profiles, repository, null, { reply }, decision, null, () => now, logger);
   const engine = new DefaultMemoryEngine(repository, null, null, undefined, null, null, null, () => true);
-  const service = new ChatConversationService({ reply }, state, engine, undefined, undefined, undefined, null, null, null, logger, null, null, null, null, runtime, () => now);
+  const service = new ChatConversationService({ reply, nativeWebSearchSupported }, state, engine, undefined, undefined, undefined, null, null, null, logger, null, null, null, null, runtime, () => now);
   cleanups.push(async () => { service.stopScheduling(); await service.drain(); runtime.stop(); connection.close(); });
   const fixture = guardedFixture(guardedEvent("question", 1000, "Explain the carburetor mixture adjustment", originalAuthor), { guildId, channelId });
   const previous = await GuardedConversationContext.open(fixture.port, { count: 40, budget: 12000, burstIds: [] });
@@ -60,6 +60,56 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false): 
 }
 
 describe("guarded turn acceptance", () => {
+  it.each(["enabled", "disabled", "unsupported", "shadow"] as const)("resolves native web search without enabling unguarded application tools: %s", async (scenario) => {
+    const { service, input, reply, records } = await setup(5000, "alice", false, scenario !== "unsupported");
+    reply.mockImplementation((request) => {
+      expect(request.webSearchMode).toBe(scenario === "enabled" ? "auto" : "off");
+      expect(request.enabledTools).toEqual([]); expect(request.images).toEqual([]);
+      expect(request.imageGenerationEnabled).toBe(false); expect(request.includeSources).toBe(true);
+      return Promise.resolve(decisionResponse({ webSearchUsed: true, sources: [
+        { title: "Public source", url: "https://example.com/source" },
+        { title: "Unsafe", url: "http://127.0.0.1/secret" },
+        { title: "Private Discord", url: "https://discord.com/channels/1/2/3" },
+      ] }));
+    });
+    const send = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
+    const response = await service.run({ ...input, includeSources: true, shadowMode: scenario === "shadow",
+      webSearchMode: scenario === "disabled" ? "off" : "auto" }, send);
+    expect(reply).toHaveBeenCalledOnce();
+    expect(response.webSearchUsed).toBe(scenario === "enabled");
+    expect(response.sources).toEqual(scenario === "enabled" ? [{ title: "Public source", url: "https://example.com/source" }] : []);
+    if (scenario === "enabled") {
+      expect(response.contextProvenance?.publicWeb?.citationHashes).toHaveLength(1);
+      expect(JSON.stringify(response.contextProvenance)).not.toContain("https://example.com");
+    }
+    expect(send).toHaveBeenCalledTimes(scenario === "shadow" ? 0 : 1);
+    expect(records).toContainEqual(expect.objectContaining({ event: "chat.capabilities.resolved",
+      webSearchEffective: scenario === "enabled" ? "auto" : "off" }));
+  });
+
+  it("cancels searched output when its protected context changes", async () => {
+    const { service, input, reply, fixture } = await setup(5000, "alice", false, true);
+    reply.mockImplementation(() => {
+      fixture.denied.add("question");
+      return Promise.resolve(decisionResponse({ webSearchUsed: true }));
+    });
+    const send = vi.fn(() => Promise.resolve("sent"));
+    await expect(service.run(input, send)).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("invalidates an in-flight turn when the web-search setting changes", async () => {
+    const { service, input, reply, profiles } = await setup(5000, "alice", false, true);
+    reply.mockImplementation(async (request) => {
+      await profiles.update(guildId, { chatbotWebSearchMode: profiles.current().chat.webSearchMode === "auto" ? "off" : "auto" });
+      await request.beforeModelAttempt?.();
+      return decisionResponse();
+    });
+    const send = vi.fn(() => Promise.resolve("sent"));
+    await expect(service.run(input, send)).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("excludes unverified session quotations and cached bot episodes through the active lease", async () => {
     const { service, input, reply, state, records } = await setup();
     await state.commitSuccessfulExchange({ guildId, userId: "alice", channelId, sourceMessageId: "unverified",

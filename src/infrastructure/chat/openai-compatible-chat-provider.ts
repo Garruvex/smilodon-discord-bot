@@ -48,6 +48,7 @@ const errorResponseSchema = z.object({
 });
 
 export class OpenAiCompatibleChatProvider implements ChatProvider {
+  public readonly nativeWebSearchSupported = false;
   private readonly warnedGuilds = new Set<string>();
   private readonly modelChain: ModelFallbackChain;
   // Separate chain for the standalone analyzeUserCustomization call — falls

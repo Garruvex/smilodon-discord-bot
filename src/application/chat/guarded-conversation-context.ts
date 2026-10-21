@@ -1,5 +1,6 @@
 import { hashContent } from "../assets/content-hash.js";
-import type { ChannelHistoryMessage, ChatRequest, ChatUser, ConversationEvent } from "./chat-provider.js";
+import type { ChannelHistoryMessage, ChatRequest, ChatSource, ChatUser, ConversationEvent } from "./chat-provider.js";
+import { publicWebSources } from "./public-web-sources.js";
 import type { ChatSessionExchange } from "./chat-state-store.js";
 import { budgetEligibleHistory } from "./eligible-channel-history.js";
 import { contextProvenanceLimits, parseContextProvenance, parseScopedContextProvenance, type ContextProvenance } from "./context-provenance.js";
@@ -58,6 +59,8 @@ export class GuardedConversationContext {
   private cache = new Map<string, Promise<GuardedContextSource | null>>();
   private signal = new AbortController().signal;
   private readonly evidence = new Map<string, ChannelHistoryMessage>();
+  private publicWebUsed = false;
+  private readonly publicWebCitations = new Set<string>();
   public readonly report: GuardedContextReport = { replyChain: 0, replyBounded: false, burst: 0, eligibleReactors: 0, omittedReactors: 0, requested: 40, fetched: 0, examined: 0, duplicates: 0, unverifiedBot: 0, invalidatedDerived: 0, selectedIds: [], oldestTimestampMs: null, newestTimestampMs: null, eligible: 0, selected: 0, pages: 0, targetedPages: 0,
     omitted: 0, truncated: 0, sourceReads: 0, status: "end" };
   public current!: ChannelHistoryMessage;
@@ -131,6 +134,16 @@ export class GuardedConversationContext {
     if (!await add(source)) {
       for (const key of this.evidence.keys()) if (!before.has(key)) this.evidence.delete(key);
       this.report.omitted++; return null;
+    }
+    // Keep external-source lineage when reusing a previously guarded answer.
+    // Its protected Discord dependencies are still revalidated independently.
+    for (const id of this.evidence.keys()) {
+      if (before.has(id)) continue;
+      const proof = (await this.read(id))?.provenance;
+      if (proof?.publicWeb) {
+        this.publicWebUsed = true;
+        for (const digest of proof.publicWeb.citationHashes) this.publicWebCitations.add(digest);
+      }
     }
     return compact(source.event);
   }
@@ -285,12 +298,20 @@ export class GuardedConversationContext {
     } catch { this.closed = true; this.port.validation?.(this.report.status === "deadline" ? "deadline" : "bounded", this.reads); return false; }
   }
 
+  public recordPublicWebSearch(sources: readonly ChatSource[]): ChatSource[] {
+    this.publicWebUsed = true;
+    const selected = publicWebSources(sources);
+    for (const source of selected) this.publicWebCitations.add(hashContent(source.url));
+    return selected;
+  }
+
   public provenance(output: string): ContextProvenance | null {
     if (this.port.persist === false || this.closed || !this.port.policyCurrent() || !this.evidence.size || this.evidence.size > contextProvenanceLimits.dependencies) return null;
     return parseContextProvenance({ version: 1, coverage: "complete", audience: { guildId: this.port.guildId, channelId: this.port.channelId, userId: null },
       outputHash: hashContent(output), dependencies: [...this.evidence.values()].map((source) => ({ guildId: this.port.guildId,
         channelId: this.port.channelId, messageId: source.messageId, authorId: source.authorId, timestampMs: source.timestampMs,
-        representationHash: contextSourceHash(source) })), actors: [...this.reactionActors.values()].map((actor) => ({ userId: actor.id, representationHash: hashContent(JSON.stringify(actor)) })), unresolved: [] });
+        representationHash: contextSourceHash(source) })), actors: [...this.reactionActors.values()].map((actor) => ({ userId: actor.id, representationHash: hashContent(JSON.stringify(actor)) })),
+      ...(this.publicWebUsed ? { publicWeb: { citationHashes: [...this.publicWebCitations].sort() } } : {}), unresolved: [] });
   }
 }
 

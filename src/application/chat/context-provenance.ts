@@ -18,6 +18,9 @@ export const contextProvenanceSchema = z.object({
     representationHash: digest,
   }).strict()).max(contextProvenanceLimits.dependencies),
   actors: z.array(z.object({ userId: id, representationHash: digest }).strict()).max(100).optional(),
+  // Public provider-managed search is separate from protected Discord inputs.
+  // This records use and citation identity, not factual truth or a fresh crawl.
+  publicWeb: z.object({ citationHashes: z.array(digest).max(128) }).strict().optional(),
   unresolved: z.array(z.enum(["unguarded_prompt_sources", "missing_current_event", "missing_source_scope", "conflicting_source", "dependency_cap"])).max(5),
 }).strict().superRefine((value, context) => {
   if (value.coverage === "complete" && (value.unresolved.length > 0 || value.dependencies.length === 0))

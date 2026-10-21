@@ -145,7 +145,8 @@ export class CharacterRuntime {
     return selected;
   }
   private fingerprint(profile: GuildConfiguration, channelId: string): string {
-    return hash(JSON.stringify([characterSettings(profile), this.capabilities(profile, channelId), profile.chat.channelMemoryModes, profile.chat.participation, [...profile.channels.chatbot]]));
+    return hash(JSON.stringify([characterSettings(profile), this.capabilities(profile, channelId), profile.chat.channelMemoryModes, profile.chat.participation,
+      profile.chat.webSearchMode, profile.chat.toolCallingEnabled, profile.chat.imageInputEnabled, profile.chat.imageGenerationEnabled, [...profile.channels.chatbot]]));
   }
   public stillEligible(prepared: CharacterPreparedTurn): boolean {
     if (this.stopped && (prepared.turn.settings.enabled || prepared.turn.settings.context.enabled)) return false;

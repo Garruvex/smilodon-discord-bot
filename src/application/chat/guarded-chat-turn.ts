@@ -19,6 +19,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   reply: (request: ChatRequest, observer?: ChatResponseObserver) => Promise<ChatResponse>;
   repair: (text: string, request: ChatRequest) => Promise<string>;
   admitSocialPing?: () => boolean;
+  nativeWebSearchSupported?: boolean;
 }, deliver: (response: ChatResponse) => Promise<string>, observer?: ChatResponseObserver): Promise<ChatResponse> {
   const port = input.guardedContextPort;
   assertTurnActive(input.turnSignal);
@@ -61,7 +62,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
     message: lease.currentEvent?.type === "reaction_snapshot" ? `Respond only if useful to this authorized reaction snapshot: ${JSON.stringify(lease.currentEvent)}` : lease.current.content,
     replyChain: lease.currentEvent?.type === "reaction_snapshot" ? [...lease.replyChain, lease.current] : lease.replyChain, replyChainSummary: null, channelHistory: lease.history, currentBurst: lease.burst,
     ...(lease.currentEvent ? { currentEvent: lease.currentEvent } : {}),
-    birthday: null, images: [], webSearchMode: "off", imageGenerationEnabled: false, includeSources: false,
+    birthday: null, images: [], webSearchMode: !input.shadowMode && dependencies.nativeWebSearchSupported ? input.webSearchMode : "off", imageGenerationEnabled: false, includeSources: input.includeSources,
     triggerMode: input.triggerMode, botUserId: input.botUserId ?? null,
     ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
     allowSilentDirect: input.allowSilentDirect ?? false, characterShadow: input.shadowMode ?? false,
@@ -84,11 +85,20 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
         contextLease: lease, replyTargetMessageId: prepared.targetMessageId ?? lease.current.messageId };
     }
   }
+  // Error recovery must stay grounded in the supplied text, and shadow turns
+  // must never initiate searches. Native search does not enable application
+  // tools or give access to additional Discord sources.
+  if (prepared?.conversationDecision?.recovery === "grounded_reply") request = { ...request, webSearchMode: "off" };
+  emitChatDiagnostic(dependencies.logger, { event: "chat.capabilities.resolved", webSearchConfigured: input.webSearchMode,
+    webSearchEffective: request.webSearchMode, nativeWebSearchSupported: dependencies.nativeWebSearchSupported === true,
+    shadow: input.shadowMode ?? false, recovery: prepared?.conversationDecision?.recovery === "grounded_reply" });
   await check();
   let response = await dependencies.reply(request, observer);
+  const webSearchUsed = request.webSearchMode === "auto" && response.webSearchUsed;
+  const sources = webSearchUsed ? lease.recordPublicWebSearch(response.sources) : [];
   // Provider output cannot add unguarded sources, capabilities or proof.
-  response = { ...response, generatedImages: [], sources: [], userMemoryActions: [], guildKnowledgeCandidates: [], outputOrigin: "chat",
-    contextLease: lease, contextProvenance: null, webSearchUsed: false, historyReactions: response.historyReactions.filter((reaction) => known.has(reaction.messageId)) };
+  response = { ...response, generatedImages: [], sources: request.includeSources ? sources : [], userMemoryActions: [], guildKnowledgeCandidates: [], outputOrigin: "chat",
+    contextLease: lease, contextProvenance: null, webSearchUsed, historyReactions: response.historyReactions.filter((reaction) => known.has(reaction.messageId)) };
   delete response.characterDeliveryProof; delete response.characterMessages;
   delete response.characterIsCurrent; delete response.characterCanDeliver;
   delete response.replyTargetMessageId; delete response.inferredAddressing;
