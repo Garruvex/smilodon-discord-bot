@@ -61,7 +61,7 @@ export class ConversationDecisionEngine {
       authorDisplayName: request.currentUser.displayName, content: request.message, imageCount: request.images.length,
       replyToMessageId: request.currentEvent.replyToMessageId } : undefined);
     let local = current ? localAddressing(events, current, botId, true, 120_000, request.aliasCandidates) : "unclear";
-    const elsewhere = !!current && addressedElsewhere(current, events, botId, request.aliasCandidates);
+    const elsewhere = !!current && addressedElsewhere(current, events, botId, request.aliasCandidates, !!outcome.decision?.contextual);
     const proposal = outcome.decision;
     const base = { contribution: null, targetMessageId: null, targetConfidence: 0, reaction: null, exchangeId: current ? exchangeBranch(events, current, botId) : null, local };
     const denied = (reason: string, status: ConversationDecisionResult["status"] = "denied"): ParticipationAssessment => ({ ...base,
@@ -94,7 +94,7 @@ export class ConversationDecisionEngine {
         proposal.confidence >= 0.7 && proposal.recipientConfidence >= 0.7 && proposal.opening === "clear" ? proposal.reaction : null;
       if (interpretation.action === "react" && !reaction) return denied(substantive ? "substantive_requires_text" : "reaction_unavailable");
       const rejection = interpretation.action === "reply" ? optionalParticipationRejection(kind,
-        kind === "continuation" ? "continuing" : "others", proposal, false, contributionPolicy(settings)) : null;
+        kind === "continuation" ? "continuing" : "others", proposal, false, contributionPolicy(settings), !(kind === "continuation" && substantive)) : null;
       if (rejection) return denied(rejection);
       if (interpretation.action === "reply" && availability?.text === false) return denied("text_unavailable");
       const result = this.result(request, trigger, now, policyVersion, reaction ? "reaction_only" : "accepted_contribution", "ready", reaction ? "react" : "reply", interpretation.intent, proposal.recipientEvidence);
@@ -146,12 +146,14 @@ export class ConversationDecisionEngine {
     if (references.some((id) => !ids.has(id))) return this.result(request, trigger, now, policyVersion, "invalid_evidence", "failed", "silent", "abstain", [], trigger.explicit ? "error_reply" : "none");
     if (prior && prior.decision.action === "silent") return prior;
     let reply = prior?.decision.action !== "react" && (trigger.explicit || response.ambientAction === "reply");
-    const intent = response.responseIntent ?? (trigger.explicit || prior?.recovery === "grounded_reply" ? "answer" : "contribute");
+    const intent = response.responseIntent ?? prior?.decision.intent ?? (trigger.explicit ? "answer" : "contribute");
     if (trigger.explicit && response.ambientAction === "ignore" && request.allowSilentDirect && (intent === "social" || intent === "closing")) reply = false;
     if (prior?.recovery === "grounded_reply") reply = true;
     if (prior?.recovery === "grounded_reply" && intent !== "answer" && intent !== "clarify") return this.result(request, trigger, now, policyVersion, "fallback_requires_answer_or_clarification", "failed", "silent", "abstain");
     if (reply && !response.text.trim() && !response.generatedImages.length) return this.result(request, trigger, now, policyVersion, "empty_generated_reply", "failed", "silent", "abstain", [], trigger.explicit ? "error_reply" : "none");
-    const rejectedContribution = prior?.decision.action === "reply" && !trigger.explicit && prior.recovery !== "grounded_reply" &&
+    const groundedAnswer = prior?.decision.participationKind === "continuation" && (prior.decision.intent === "answer" || prior.decision.intent === "clarify");
+    if (reply && groundedAnswer && intent !== "answer" && intent !== "clarify") return this.result(request, trigger, now, policyVersion, "substantive_requires_answer", "failed", "silent", "abstain");
+    const rejectedContribution = prior?.decision.action === "reply" && !trigger.explicit && prior.recovery !== "grounded_reply" && !groundedAnswer &&
       !generatedContributionAllowed(response.text, [...request.channelHistory, ...request.replyChain], request.botUserId);
     if (rejectedContribution) reply = false;
     const react = response.reactionEmoji !== null || response.historyReactions.length > 0;

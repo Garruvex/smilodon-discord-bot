@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import pino from "pino";
 import { contextualReplayCases } from "../application/chat/contextual-replay.js";
-import { replayPolicyAssessment } from "../application/chat/contextual-replay-policy.js";
+import { contextualReplayPolicyRevision, replayPolicyAssessment } from "../application/chat/contextual-replay-policy.js";
 import { CharacterDecisionService } from "../application/chat/character-decision.js";
 import type { DecisionOutcome } from "../application/chat/character-decision.js";
 import { contextualDecisionContract, contextualDecisionWireRevision, ContextualContractError } from "../application/chat/contextual-decision-contract.js";
@@ -85,7 +85,7 @@ async function main(): Promise<void> {
   }));
   const valid = results.filter((result) => result.status === "valid").length;
   const durations = results.map((result) => result.durationMs).sort((a, b) => a - b);
-  const summary = { mode: probeMs !== null ? "live_latency_probe" : live ? "live_synthetic_decision_replay" : "fixture_inventory_only", fixtureRevision: 2, wireRevision: contextualDecisionWireRevision, providerIdentity, probeTimeoutMs: probeMs, cases: cases.length, valid: live ? valid : null,
+  const summary = { mode: probeMs !== null ? "live_latency_probe" : live ? "live_synthetic_decision_replay" : "fixture_inventory_only", fixtureRevision: 2, wireRevision: contextualDecisionWireRevision, policyRevision: contextualReplayPolicyRevision, providerIdentity, probeTimeoutMs: probeMs, cases: cases.length, valid: live ? valid : null,
     filters: { scenario: scenario ?? null, language: language ?? null },
     expectedMeaning: live ? results.filter((result) => result.expectedMeaning).length : null,
     policyTextViolations: live ? results.filter((result) => result.policy && !result.policy.textPolicyMet).length : null,

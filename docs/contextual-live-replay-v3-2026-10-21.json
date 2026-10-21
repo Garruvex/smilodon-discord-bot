@@ -1,0 +1,4353 @@
+{
+  "summary": {
+    "mode": "live_synthetic_decision_replay",
+    "fixtureRevision": 2,
+    "wireRevision": 3,
+    "providerIdentity": {
+      "provider": "openai-responses",
+      "models": [
+        "gpt-5-nano"
+      ],
+      "reasoningEffort": "low"
+    },
+    "probeTimeoutMs": null,
+    "cases": 216,
+    "valid": 216,
+    "filters": {
+      "scenario": null,
+      "language": null
+    },
+    "expectedMeaning": 168,
+    "policyTextViolations": 0,
+    "policyRequiredReplyMisses": 59,
+    "policyScope": "Actual preflight engine with a synthetic authorized lease and both action budgets available; excludes scheduling, generation and delivery. Provider failures are reported separately from abstention.",
+    "p50Ms": 5895,
+    "p95Ms": 9702,
+    "validityGateMet": true,
+    "semanticReview": "Controlled expected-label checks; independent review and a scoped live pilot remain required.",
+    "tokenUsage": "unavailable",
+    "discordSends": 0
+  },
+  "results": [
+    {
+      "id": "en-answer-172800000-interleaved",
+      "language": "en",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 5740,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-answer-172800000-other",
+      "language": "en",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 6400,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "en-answer-172800000-same",
+      "language": "en",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 8129,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_empty",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-answer-3000-interleaved",
+      "language": "en",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 3829,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-answer-3000-other",
+      "language": "en",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 6958,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "en-answer-3000-same",
+      "language": "en",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 6201,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-answer-960000-interleaved",
+      "language": "en",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 3709,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-answer-960000-other",
+      "language": "en",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 11402,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_label_rejected",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "en-answer-960000-same",
+      "language": "en",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 7776,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-closing-172800000-interleaved",
+      "language": "en",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 5251,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "clarify",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "en-closing-172800000-other",
+      "language": "en",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 7226,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "clarify",
+      "action": "silent",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-closing-172800000-same",
+      "language": "en",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 4145,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-closing-3000-interleaved",
+      "language": "en",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 4585,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "clarify",
+      "action": "silent",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-closing-3000-other",
+      "language": "en",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 3922,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "social",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-closing-3000-same",
+      "language": "en",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 6500,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "clarify",
+      "action": "silent",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-closing-960000-interleaved",
+      "language": "en",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 5254,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "clarify",
+      "action": "silent",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-closing-960000-other",
+      "language": "en",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 3634,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-closing-960000-same",
+      "language": "en",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 6817,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-correction-172800000-interleaved",
+      "language": "en",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 6175,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-correction-172800000-other",
+      "language": "en",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 11828,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_label_rejected",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-correction-172800000-same",
+      "language": "en",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 8985,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_empty",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-correction-3000-interleaved",
+      "language": "en",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 5164,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_label_rejected",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "clarify",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-correction-3000-other",
+      "language": "en",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 6669,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_label_rejected",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "contribute",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-correction-3000-same",
+      "language": "en",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 8256,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-correction-960000-interleaved",
+      "language": "en",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 3844,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "en-correction-960000-other",
+      "language": "en",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 8462,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-correction-960000-same",
+      "language": "en",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 7711,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "clarify",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-elsewhere-172800000-interleaved",
+      "language": "en",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 5286,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-elsewhere-172800000-other",
+      "language": "en",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 11334,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "answer",
+      "action": "silent",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-elsewhere-172800000-same",
+      "language": "en",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 9534,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "clarify",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-elsewhere-3000-interleaved",
+      "language": "en",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 6015,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-elsewhere-3000-other",
+      "language": "en",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 4860,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-elsewhere-3000-same",
+      "language": "en",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 4083,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-elsewhere-960000-interleaved",
+      "language": "en",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 4933,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-elsewhere-960000-other",
+      "language": "en",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 7103,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-elsewhere-960000-same",
+      "language": "en",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 9702,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "en-group-172800000-interleaved",
+      "language": "en",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 5287,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "referent_unresolved",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-group-172800000-other",
+      "language": "en",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 5247,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "silent",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-group-172800000-same",
+      "language": "en",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 4852,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-group-3000-interleaved",
+      "language": "en",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 5141,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "target_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-group-3000-other",
+      "language": "en",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 4840,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-group-3000-same",
+      "language": "en",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 4474,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-group-960000-interleaved",
+      "language": "en",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 5678,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-group-960000-other",
+      "language": "en",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 3896,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "referent_unresolved",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-group-960000-same",
+      "language": "en",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 5090,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_empty",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-repair-172800000-interleaved",
+      "language": "en",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 5827,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-repair-172800000-other",
+      "language": "en",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 5982,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-repair-172800000-same",
+      "language": "en",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 6949,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-repair-3000-interleaved",
+      "language": "en",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 5553,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-repair-3000-other",
+      "language": "en",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 5988,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "en-repair-3000-same",
+      "language": "en",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 7484,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-repair-960000-interleaved",
+      "language": "en",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 4674,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "target_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-repair-960000-other",
+      "language": "en",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 6511,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-repair-960000-same",
+      "language": "en",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 6844,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_empty",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-thanks-172800000-interleaved",
+      "language": "en",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 4823,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "react",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-thanks-172800000-other",
+      "language": "en",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 7180,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-thanks-172800000-same",
+      "language": "en",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 5184,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "en-thanks-3000-interleaved",
+      "language": "en",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 5759,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "target_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "closing",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "en-thanks-3000-other",
+      "language": "en",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 8387,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "closing",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "en-thanks-3000-same",
+      "language": "en",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 4760,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "en-thanks-960000-interleaved",
+      "language": "en",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 4876,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "closing",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "en-thanks-960000-other",
+      "language": "en",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 9035,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "closing",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "en-thanks-960000-same",
+      "language": "en",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 10841,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "social",
+      "action": "react",
+      "referent": "self_contained",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "en-unknown-172800000-interleaved",
+      "language": "en",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 4016,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "en-unknown-172800000-other",
+      "language": "en",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 5468,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "answer",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-unknown-172800000-same",
+      "language": "en",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 3825,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "en-unknown-3000-interleaved",
+      "language": "en",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 5737,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-unknown-3000-other",
+      "language": "en",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 3464,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-unknown-3000-same",
+      "language": "en",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 4657,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-unknown-960000-interleaved",
+      "language": "en",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 6896,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "referent_unresolved",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "unresolved",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "en-unknown-960000-other",
+      "language": "en",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 4257,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "en-unknown-960000-same",
+      "language": "en",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 6844,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-answer-172800000-interleaved",
+      "language": "ja",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 4316,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_empty",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-answer-172800000-other",
+      "language": "ja",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 7916,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "motivation_below_threshold",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "ja-answer-172800000-same",
+      "language": "ja",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 11146,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_empty",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-answer-3000-interleaved",
+      "language": "ja",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 4830,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-answer-3000-other",
+      "language": "ja",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 7102,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "ja-answer-3000-same",
+      "language": "ja",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 5932,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_empty",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-answer-960000-interleaved",
+      "language": "ja",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 5192,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_empty",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-answer-960000-other",
+      "language": "ja",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 5535,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "ja-answer-960000-same",
+      "language": "ja",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 6335,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-closing-172800000-interleaved",
+      "language": "ja",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 5807,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "ja-closing-172800000-other",
+      "language": "ja",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 7567,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-closing-172800000-same",
+      "language": "ja",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 6226,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-closing-3000-interleaved",
+      "language": "ja",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 7072,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-closing-3000-other",
+      "language": "ja",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 9846,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "clarify",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "ja-closing-3000-same",
+      "language": "ja",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 10529,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "clarify",
+      "action": "silent",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-closing-960000-interleaved",
+      "language": "ja",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 7622,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "ja-closing-960000-other",
+      "language": "ja",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 5439,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "clarify",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-closing-960000-same",
+      "language": "ja",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 6531,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "clarify",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "ja-correction-172800000-interleaved",
+      "language": "ja",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 7759,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-correction-172800000-other",
+      "language": "ja",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 9788,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-correction-172800000-same",
+      "language": "ja",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 8867,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-correction-3000-interleaved",
+      "language": "ja",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 6412,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-correction-3000-other",
+      "language": "ja",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 7928,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "ja-correction-3000-same",
+      "language": "ja",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 11797,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_empty",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "clarify",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-correction-960000-interleaved",
+      "language": "ja",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 5895,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-correction-960000-other",
+      "language": "ja",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 6064,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-correction-960000-same",
+      "language": "ja",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 8042,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-elsewhere-172800000-interleaved",
+      "language": "ja",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 5060,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "clarify",
+      "action": "silent",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-elsewhere-172800000-other",
+      "language": "ja",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 7291,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-elsewhere-172800000-same",
+      "language": "ja",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 6904,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-elsewhere-3000-interleaved",
+      "language": "ja",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 6275,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-elsewhere-3000-other",
+      "language": "ja",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 4745,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-elsewhere-3000-same",
+      "language": "ja",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 6062,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-elsewhere-960000-interleaved",
+      "language": "ja",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 7015,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-elsewhere-960000-other",
+      "language": "ja",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 4281,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-elsewhere-960000-same",
+      "language": "ja",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 4212,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-group-172800000-interleaved",
+      "language": "ja",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 5155,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-group-172800000-other",
+      "language": "ja",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 5074,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-group-172800000-same",
+      "language": "ja",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 5035,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-group-3000-interleaved",
+      "language": "ja",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 4683,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_empty",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-group-3000-other",
+      "language": "ja",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 5158,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-group-3000-same",
+      "language": "ja",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 6937,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "target_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-group-960000-interleaved",
+      "language": "ja",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 5041,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-group-960000-other",
+      "language": "ja",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 6296,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-group-960000-same",
+      "language": "ja",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 6492,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "referent_unresolved",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-repair-172800000-interleaved",
+      "language": "ja",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 5448,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-repair-172800000-other",
+      "language": "ja",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 7086,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-repair-172800000-same",
+      "language": "ja",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 5860,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-repair-3000-interleaved",
+      "language": "ja",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 6468,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-repair-3000-other",
+      "language": "ja",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 6352,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-repair-3000-same",
+      "language": "ja",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 6760,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-repair-960000-interleaved",
+      "language": "ja",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 6575,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-repair-960000-other",
+      "language": "ja",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 5858,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-repair-960000-same",
+      "language": "ja",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 6738,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-thanks-172800000-interleaved",
+      "language": "ja",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 4720,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "ja-thanks-172800000-other",
+      "language": "ja",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 4927,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-thanks-172800000-same",
+      "language": "ja",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 7996,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "closing",
+      "action": "silent",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-thanks-3000-interleaved",
+      "language": "ja",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 6558,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "ja-thanks-3000-other",
+      "language": "ja",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 5925,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "social",
+      "action": "react",
+      "referent": "self_contained",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "ja-thanks-3000-same",
+      "language": "ja",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 7891,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "react",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-thanks-960000-interleaved",
+      "language": "ja",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 5899,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_label_rejected",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "social",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "ja-thanks-960000-other",
+      "language": "ja",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 10088,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "closing",
+      "action": "react",
+      "referent": "self_contained",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "ja-thanks-960000-same",
+      "language": "ja",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 6907,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "closing",
+      "action": "react",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-unknown-172800000-interleaved",
+      "language": "ja",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 3711,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-unknown-172800000-other",
+      "language": "ja",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 4694,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-unknown-172800000-same",
+      "language": "ja",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 4533,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "answer",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-unknown-3000-interleaved",
+      "language": "ja",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 3652,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-unknown-3000-other",
+      "language": "ja",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 3732,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-unknown-3000-same",
+      "language": "ja",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 3821,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-unknown-960000-interleaved",
+      "language": "ja",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 5717,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-unknown-960000-other",
+      "language": "ja",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 3540,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "ja-unknown-960000-same",
+      "language": "ja",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 6088,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "referent_unresolved",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "unresolved",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-answer-172800000-interleaved",
+      "language": "zh-TW",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 2771,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-answer-172800000-other",
+      "language": "zh-TW",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 7173,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-answer-172800000-same",
+      "language": "zh-TW",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 4874,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-answer-3000-interleaved",
+      "language": "zh-TW",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 3758,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-answer-3000-other",
+      "language": "zh-TW",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 6558,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-answer-3000-same",
+      "language": "zh-TW",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 5634,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-answer-960000-interleaved",
+      "language": "zh-TW",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 3396,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_empty",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-answer-960000-other",
+      "language": "zh-TW",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 4972,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-answer-960000-same",
+      "language": "zh-TW",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 6711,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-closing-172800000-interleaved",
+      "language": "zh-TW",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 4763,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "clarify",
+      "action": "silent",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-closing-172800000-other",
+      "language": "zh-TW",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 4656,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "clarify",
+      "action": "silent",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-closing-172800000-same",
+      "language": "zh-TW",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 5368,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "clarify",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-closing-3000-interleaved",
+      "language": "zh-TW",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 3942,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-closing-3000-other",
+      "language": "zh-TW",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 4800,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-closing-3000-same",
+      "language": "zh-TW",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 5003,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-closing-960000-interleaved",
+      "language": "zh-TW",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 7104,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-closing-960000-other",
+      "language": "zh-TW",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 5531,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "clarify",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-closing-960000-same",
+      "language": "zh-TW",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 7627,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-correction-172800000-interleaved",
+      "language": "zh-TW",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 6004,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-correction-172800000-other",
+      "language": "zh-TW",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 7815,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-correction-172800000-same",
+      "language": "zh-TW",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 8378,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-correction-3000-interleaved",
+      "language": "zh-TW",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 5090,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-correction-3000-other",
+      "language": "zh-TW",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 8074,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-correction-3000-same",
+      "language": "zh-TW",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 8377,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-correction-960000-interleaved",
+      "language": "zh-TW",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 3939,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-correction-960000-other",
+      "language": "zh-TW",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 6073,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-correction-960000-same",
+      "language": "zh-TW",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 7343,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-elsewhere-172800000-interleaved",
+      "language": "zh-TW",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 4930,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "clarify",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-elsewhere-172800000-other",
+      "language": "zh-TW",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 7005,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-elsewhere-172800000-same",
+      "language": "zh-TW",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 6547,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "clarify",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-elsewhere-3000-interleaved",
+      "language": "zh-TW",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 5108,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-elsewhere-3000-other",
+      "language": "zh-TW",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 6431,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-elsewhere-3000-same",
+      "language": "zh-TW",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 4982,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-elsewhere-960000-interleaved",
+      "language": "zh-TW",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 3334,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "closing",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-elsewhere-960000-other",
+      "language": "zh-TW",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 6340,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "clarify",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-elsewhere-960000-same",
+      "language": "zh-TW",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 5346,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-group-172800000-interleaved",
+      "language": "zh-TW",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 4177,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-group-172800000-other",
+      "language": "zh-TW",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 6005,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-group-172800000-same",
+      "language": "zh-TW",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 3092,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "referent_unresolved",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-group-3000-interleaved",
+      "language": "zh-TW",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 5311,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-group-3000-other",
+      "language": "zh-TW",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 4576,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-group-3000-same",
+      "language": "zh-TW",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 4521,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "referent_unresolved",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-group-960000-interleaved",
+      "language": "zh-TW",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 4602,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "referent_unresolved",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-group-960000-other",
+      "language": "zh-TW",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 3749,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-group-960000-same",
+      "language": "zh-TW",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 5227,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-repair-172800000-interleaved",
+      "language": "zh-TW",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 5960,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-repair-172800000-other",
+      "language": "zh-TW",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 6661,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-repair-172800000-same",
+      "language": "zh-TW",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 7590,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_empty",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-repair-3000-interleaved",
+      "language": "zh-TW",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 3498,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-repair-3000-other",
+      "language": "zh-TW",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 8217,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "referent_unresolved",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-repair-3000-same",
+      "language": "zh-TW",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 6274,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_empty",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-repair-960000-interleaved",
+      "language": "zh-TW",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 4824,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-repair-960000-other",
+      "language": "zh-TW",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 7920,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": false
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-repair-960000-same",
+      "language": "zh-TW",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 6376,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-thanks-172800000-interleaved",
+      "language": "zh-TW",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 5135,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "closing",
+      "action": "react",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-thanks-172800000-other",
+      "language": "zh-TW",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 8113,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "closing",
+      "action": "react",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-thanks-172800000-same",
+      "language": "zh-TW",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 8277,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "social",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-thanks-3000-interleaved",
+      "language": "zh-TW",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 5742,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_label_rejected",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "closing",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-thanks-3000-other",
+      "language": "zh-TW",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 8676,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "closing",
+      "action": "react",
+      "referent": "context_linked",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-thanks-3000-same",
+      "language": "zh-TW",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 7090,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "closing",
+      "action": "react",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-thanks-960000-interleaved",
+      "language": "zh-TW",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 5098,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "contribution_label_rejected",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "closing",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-thanks-960000-other",
+      "language": "zh-TW",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 7875,
+      "policy": {
+        "status": "ready",
+        "action": "react",
+        "reason": "reaction_only",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "social",
+      "action": "react",
+      "referent": "self_contained",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-thanks-960000-same",
+      "language": "zh-TW",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 8679,
+      "policy": {
+        "status": "ready",
+        "action": "react",
+        "reason": "reaction_only",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "closing",
+      "action": "react",
+      "referent": "self_contained",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-unknown-172800000-interleaved",
+      "language": "zh-TW",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 5467,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-unknown-172800000-other",
+      "language": "zh-TW",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 5171,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-unknown-172800000-same",
+      "language": "zh-TW",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 5990,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "referent_unresolved",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "unresolved",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-unknown-3000-interleaved",
+      "language": "zh-TW",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 3800,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_confidence_low",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "group",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-unknown-3000-other",
+      "language": "zh-TW",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 3297,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-unknown-3000-same",
+      "language": "zh-TW",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 5935,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-unknown-960000-interleaved",
+      "language": "zh-TW",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 3706,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "unclear",
+      "intent": "abstain",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-unknown-960000-other",
+      "language": "zh-TW",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 4864,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-unknown-960000-same",
+      "language": "zh-TW",
+      "scenario": "unknown",
+      "status": "valid",
+      "durationMs": 5184,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "recipient_unclear",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": false,
+      "failures": []
+    }
+  ]
+}

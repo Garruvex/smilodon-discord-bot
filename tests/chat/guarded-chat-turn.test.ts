@@ -59,6 +59,28 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false): 
 }
 
 describe("guarded turn acceptance", () => {
+  it.each(["followup", "group", "low_confidence", "social_generation"] as const)("distinguishes requested confirmation from unsolicited contribution: %s", async (scenario) => {
+    const { service, fixture, input, reply, decision } = await setup(5000, "alice", true);
+    fixture.add(guardedEvent("current", 4000, "第二個"));
+    decision.generateCharacterData.mockResolvedValue(contextualProposal({ relationship: scenario === "group" ? "group" : "followup",
+      recipientEvidence: ["question", "answer", "current"], recipientConfidence: scenario === "low_confidence" ? 0.2 : 0.95,
+      contribution: { text: "", adds: "", label: "acknowledgment-only", motivation: 0.1 } }));
+    reply.mockResolvedValue(decisionResponse({ text: "Okay", responseIntent: scenario === "social_generation" ? "social" : "answer" }));
+    const send = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
+    const result = await service.run({ ...input, triggerMode: "spontaneous", contextualCandidate: true }, send);
+    expect(reply).toHaveBeenCalledTimes(scenario === "followup" || scenario === "social_generation" ? 1 : 0);
+    expect(send).toHaveBeenCalledTimes(scenario === "followup" ? 1 : 0);
+    if (scenario === "followup") expect(result.conversationDecision?.decision).toMatchObject({ action: "reply", intent: "answer", participationKind: "continuation" });
+    if (scenario === "social_generation") expect(result.conversationDecision?.decision.reasonCode).toBe("substantive_requires_answer");
+  });
+  it.each(["ordinary_clause", "known_recipient"] as const)("requires recipient evidence rather than an arbitrary comma prefix: %s", async (scenario) => {
+    const { service, fixture, input, reply, decision } = await setup(963000, "bob", true);
+    fixture.add(guardedEvent("current", 962000, scenario === "ordinary_clause" ? "我是在修你ㄟ，你剛剛壞掉了不回他，跟生日沒關係" : "bob，你剛剛選了哪個？"));
+    decision.generateCharacterData.mockResolvedValue(contextualProposal({ recipientEvidence: ["question", "answer", "current"] }));
+    const result = await service.run({ ...input, triggerMode: "spontaneous", contextualCandidate: true }, (response) => Promise.resolve(response.text));
+    expect(reply).toHaveBeenCalledTimes(scenario === "ordinary_clause" ? 1 : 0);
+    if (scenario === "known_recipient") expect(result.conversationDecision?.decision.reasonCode).toBe("addressed_elsewhere");
+  });
   it("suppresses generation for an unresolved referent after reading authorized context", async () => {
     const { service, fixture, input, reply, decision, records } = await setup(5000, "alice", true);
     fixture.add(guardedEvent("current", 4000, "好了嗎"));

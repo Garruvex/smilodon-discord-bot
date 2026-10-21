@@ -107,7 +107,7 @@ function unresolvedPersonalAddress(text: string): boolean {
     /^(?:(?:hey|so|well|but|and)[,\s]+)?(?:(?:(?:what|how|why|when|where)\s+)?(?:are|do|did|have|will|would|can|could|should|were)\s+)?you\b(?!\s+(?:all|guys|folks|both|two)\b)/iu.test(start) ||
     /^(?:あなた|君|きみ|お前)(?!たち|達)/u.test(start);
 }
-export function namedRecipient(text: string, events: readonly ChannelHistoryMessage[], aliases: readonly RecipientAliases[] = []): string | null {
+export function namedRecipient(text: string, events: readonly ChannelHistoryMessage[], aliases: readonly RecipientAliases[] = [], knownNamesOnly = false): string | null {
   const names = new Map<string, Set<string>>();
   for (const entry of [...events.map((event) => ({ alias: event.authorDisplayName, subjectIds: [event.authorId] })), ...aliases]) {
     const name = entry.alias.trim().toLocaleLowerCase(); if (!name) continue;
@@ -118,7 +118,7 @@ export function namedRecipient(text: string, events: readonly ChannelHistoryMess
     if (lower.startsWith(name) && /^(?:[,，、:：]|(?:你|您)|\s+(?:did|do|are|can|could|would|will|have|what|how|why|你|您))/iu.test(lower.slice(name.length)))
       return ids.size === 1 ? [...ids][0]! : "unclear";
   }
-  return /^[\p{L}\p{N}_-]{1,32}\s*[,，、:：]\s*\S/u.test(text.trim()) ? "unclear" : null;
+  return !knownNamesOnly && /^[\p{L}\p{N}_-]{1,32}\s*[,，、:：]\s*\S/u.test(text.trim()) ? "unclear" : null;
 }
 // Reconstruct from confirmed delivered replies only. A source human message
 // authorizes its first reply window; duplicate/extra bot output cannot renew it.
@@ -147,14 +147,14 @@ export function localAddressing(events: readonly ChannelHistoryMessage[], curren
       event.replyToMessageId && event.replyToMessageId !== last.messageId || namedRecipient(event.content, history, aliases))) return "unclear";
   return "continuing";
 }
-export function addressedElsewhere(current: ChannelHistoryMessage, events: readonly ChannelHistoryMessage[], botId: string, aliases: readonly RecipientAliases[] = []): boolean {
+export function addressedElsewhere(current: ChannelHistoryMessage, events: readonly ChannelHistoryMessage[], botId: string, aliases: readonly RecipientAliases[] = [], knownNamesOnly = false): boolean {
   if ([...current.content.matchAll(/<@!?(\d+)>/gu)].some((match) => match[1] === botId)) return false;
   const replyAuthor = current.replyToAuthorId ?? events.find((event) => event.messageId === current.replyToMessageId)?.authorId;
   if (replyAuthor) return replyAuthor !== botId;
   if (current.replyToMessageId) return true;
   const mentions = [...current.content.matchAll(/<@!?(\d+)>/gu)].map((match) => match[1]);
   if (mentions.length) return !mentions.includes(botId);
-  const name = namedRecipient(current.content, events, aliases);
+  const name = namedRecipient(current.content, events, aliases, knownNamesOnly);
   return name !== null && name !== botId;
 }
 export function exchangeBranch(events: readonly ChannelHistoryMessage[], current: ChannelHistoryMessage, botId: string): string {
@@ -176,7 +176,7 @@ export function exchangeBranch(events: readonly ChannelHistoryMessage[], current
 export function eligibleContribution(candidate: ContributionCandidate, trigger: "continuation" | "spontaneous", policy: ContributionPolicy): boolean {
   return eligibleLabels.has(candidate.label) && !!candidate.adds.trim() && !!candidate.text.trim() && candidate.motivation >= policy[trigger === "spontaneous" ? "spontaneousThreshold" : "continuationThreshold"];
 }
-export function optionalParticipationRejection(trigger: "continuation" | "spontaneous", local: CharacterDecision["addressing"], decision: CharacterDecision | null, explicitlyElsewhere: boolean, policy: ContributionPolicy = contributionPolicy(undefined)): string | null {
+export function optionalParticipationRejection(trigger: "continuation" | "spontaneous", local: CharacterDecision["addressing"], decision: CharacterDecision | null, explicitlyElsewhere: boolean, policy: ContributionPolicy = contributionPolicy(undefined), requireContribution = true): string | null {
   if (!decision) return "no_valid_decision";
   if (explicitlyElsewhere) return "addressed_elsewhere";
   if (local === "unclear" || decision.addressing === "unclear") return "recipient_unclear";
@@ -186,6 +186,9 @@ export function optionalParticipationRejection(trigger: "continuation" | "sponta
   if (decision.confidence < 0.7) return "decision_confidence_low";
   if ((decision.addressing === "bot" || decision.addressing === "continuing") && local !== "bot" && local !== "continuing") return "recipient_mismatch";
   if (trigger === "continuation" && (local !== "bot" && local !== "continuing" || decision.addressing === "others")) return "not_a_continuation";
+  // A grounded request may need confirmation or clarification rather than a
+  // novel unsolicited contribution. Recipient/confidence/opening checks stay.
+  if (!requireContribution) return null;
   if (!eligibleLabels.has(decision.contribution.label)) return "contribution_label_rejected";
   if (!decision.contribution.adds.trim() || !decision.contribution.text.trim()) return "contribution_empty";
   if (decision.contribution.motivation < policy[trigger === "spontaneous" ? "spontaneousThreshold" : "continuationThreshold"]) return "motivation_below_threshold";

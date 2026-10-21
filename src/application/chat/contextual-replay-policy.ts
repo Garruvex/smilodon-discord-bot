@@ -5,6 +5,7 @@ import { ConversationDecisionEngine } from "./conversation-decision-engine.js";
 import { GuardedConversationContext, type GuardedContextPort, type GuardedContextSource } from "./guarded-conversation-context.js";
 import { defaultParticipation } from "./participation-policy.js";
 
+export const contextualReplayPolicyRevision = 2;
 // Synthetic, in-memory authorization premise. Exercise the real registered
 // lease and policy engine; do not impersonate a lease or connect to Discord.
 export async function replayPolicyAssessment(fixture: ContextualReplayCase, outcome: DecisionOutcome): Promise<{
