@@ -10,15 +10,18 @@ Do not claim to be a moderator and direct moderation disputes to server staff.`;
 
 export interface ConversationConfiguration { persona: GuardedConfigurationContext; preferences: GuardedConfigurationContext | null }
 export async function conversationConfiguration(guildId: string, userId: string | null, persona: GuardedConfigurationContext | undefined,
-  store: UserCustomizationStore | null): Promise<ConversationConfiguration> {
+  store: UserCustomizationStore | null, pinForTurn = false): Promise<ConversationConfiguration> {
   if (persona && !isConfigurationContext(persona, "persona")) throw new SocialOutputSuppressed();
   persona ??= await GuardedConfigurationContext.open({ kind: "persona", guildId, ownerUserId: null }, { text: defaultPersonality }, () => true);
   await persona.check({ kind: "persona", guildId, ownerUserId: null });
+  // Authorize configuration once, then keep this turn's immutable authored
+  // material. Editing persona prose changes future turns, not read permission.
+  if (pinForTurn) persona = await GuardedConfigurationContext.open(persona.scope, persona.material, () => true);
   let preferences: GuardedConfigurationContext | null = null;
   if (store && userId) {
     const text = await store.load(guildId, userId);
     if (text && validateUserCustomization(text).ok) preferences = await GuardedConfigurationContext.open({ kind: "user_preferences", guildId, ownerUserId: userId },
-      { text }, async () => await store.load(guildId, userId) === text);
+      { text }, async () => pinForTurn ? !!await store.load(guildId, userId) : await store.load(guildId, userId) === text);
   }
   return { persona, preferences };
 }

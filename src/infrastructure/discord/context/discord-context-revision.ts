@@ -12,7 +12,8 @@ const limit = 4096;
 // Updates invalidate active snapshots; ordinary new chat does not. Reconnection
 // invalidates everything because events may have been missed while disconnected.
 export function discordContextSnapshotCurrent(client: Client, guildId: string, channelId: string, sourceIds?: () => Iterable<string>,
-  invalidated?: (change: DiscordSnapshotChange, messageId?: string) => void): (() => boolean) | null {
+  invalidated?: (change: DiscordSnapshotChange, messageId?: string) => void,
+  policy?: { current: () => boolean; ignoreMessageUpdates?: boolean }): (() => boolean) | null {
   if (typeof client.on !== "function" || typeof client.isReady !== "function") return null;
   let state = clients.get(client);
   if (!state) {
@@ -32,7 +33,15 @@ export function discordContextSnapshotCurrent(client: Client, guildId: string, c
       if (revisions.messages.size >= limit && !revisions.messages.has(`${channelId}:${messageId}`)) { revisions.epoch++; revisions.epochCause = "revision_capacity"; revisions.messages.clear(); }
       revisions.messages.set(`${channelId}:${messageId}`, { sequence: ++revisions.sequence, change });
     };
-    client.on("messageUpdate", (_old, message) => messageChanged(message.channelId, message.id, "message_update"));
+    client.on("messageUpdate", (old, message) => {
+      // Discord also emits embed hydration updates. Only changed evidence
+      // requires reassembly; presentation metadata is not conversation text.
+      if (typeof old.content === "string" && old.content === message.content && old.author?.id === message.author?.id &&
+          old.reference?.messageId === message.reference?.messageId && old.attachments && message.attachments &&
+          JSON.stringify([...old.attachments.values()].map(({ id, contentType, size }) => [id, contentType, size]).sort()) ===
+          JSON.stringify([...message.attachments.values()].map(({ id, contentType, size }) => [id, contentType, size]).sort())) return;
+      messageChanged(message.channelId, message.id, "message_update");
+    });
     client.on("messageDelete", (message) => messageChanged(message.channelId, message.id, "message_delete"));
     client.on("messageDeleteBulk", (messages, source) => { for (const id of messages.keys()) messageChanged(source.id, id, "message_delete_bulk"); });
     client.on("guildMemberUpdate", (_old, member) => guild(member.guild.id, "guild_member_update"));
@@ -51,7 +60,7 @@ export function discordContextSnapshotCurrent(client: Client, guildId: string, c
     client.on("shardResume", () => { revisions.epoch++; revisions.epochCause = "shard_resume"; });
   }
   const sequence = state.sequence;
-  const epoch = state.epoch; const guildVersion = state.guilds.get(guildId) ?? 0;
+  const epoch = state.epoch; let guildVersion = state.guilds.get(guildId) ?? 0;
   const version = `${state.epoch}:${state.guilds.get(guildId) ?? 0}:${sourceIds ? 0 : state.channels.get(channelId) ?? 0}`;
   let reported = false;
   const reject = (change: DiscordSnapshotChange, messageId?: string): false => {
@@ -60,11 +69,14 @@ export function discordContextSnapshotCurrent(client: Client, guildId: string, c
   return (): boolean => {
     if (!client.isReady()) return reject("connection_unavailable");
     if (state.epoch !== epoch) return reject(state.epochCause);
-    if ((state.guilds.get(guildId) ?? 0) !== guildVersion) return reject(state.guildCauses.get(guildId) ?? "revision_capacity");
+    if ((state.guilds.get(guildId) ?? 0) !== guildVersion) {
+      if (!policy?.current()) return reject(state.guildCauses.get(guildId) ?? "revision_capacity");
+      guildVersion = state.guilds.get(guildId) ?? 0;
+    }
     if (sourceIds) for (const id of sourceIds()) {
       const changed = state.messages.get(`${channelId}:${id}`);
-      if (changed && changed.sequence > sequence) return reject(changed.change, id);
+      if (changed && changed.sequence > sequence && !(policy?.ignoreMessageUpdates && changed.change === "message_update")) return reject(changed.change, id);
     }
-    return version === `${state.epoch}:${state.guilds.get(guildId) ?? 0}:${sourceIds ? 0 : state.channels.get(channelId) ?? 0}`;
+    return sourceIds ? true : version === `${state.epoch}:${state.guilds.get(guildId) ?? 0}:${state.channels.get(channelId) ?? 0}`;
   };
 }

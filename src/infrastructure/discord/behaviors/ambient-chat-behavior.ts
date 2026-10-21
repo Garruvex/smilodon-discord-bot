@@ -97,7 +97,6 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
 
   public async execute(message: Message, trigger: "ambient" | "continuation" | "spontaneous" = "ambient", burst: readonly Message[] = [], candidateId?: string): Promise<BehaviorResult> {
     if (trigger === "ambient" && message.guildId) this.conversation?.cancelOptionalOpportunity?.(message.guildId, message.channelId, "addressed_request");
-    const opportunityVersion = trigger === "ambient" || !message.guildId ? null : this.conversation?.optionalOpportunityVersion?.(message.guildId, message.channelId);
     if (!message.inGuild() || !this.conversation) return BehaviorResult.Continue;
     const profile = this.profiles.find(message.guildId);
     if (!profile) return BehaviorResult.Continue;
@@ -135,13 +134,13 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         ...(candidateId ? { candidateId } : {}),
         channelHistoryEnabled: profile.features.channelHistory,
         currentEvent: this.turnSupport.toMessageEvent(message), botUserId: this.clientUserId(),
-        canExecute: async () => (opportunityVersion == null || this.conversation?.optionalOpportunityVersion(message.guildId, message.channelId) === opportunityVersion) && await eligible(),
+        canExecute: eligible,
         activityLimits: participation.limits, shadowMode: participation.shadowMode,
         resolveActivityLimits: () => resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits,
         resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(message.guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
         guardedContextPort: this.turnSupport.createContextPort(message, false),
           guardedContextPolicy: { count: characterSettings(profile).context.maxMessages, budget: characterSettings(profile).context.budget },
-        shouldDeliver: () => (opportunityVersion == null || this.conversation?.optionalOpportunityVersion(message.guildId, message.channelId) === opportunityVersion) && !resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).shadowMode,
+        shouldDeliver: () => !resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).shadowMode,
         afterDecision: async (result) => {
           const effects = conversationEffects(result); if (!effects) return;
           if (result.characterIsCurrent && !result.characterIsCurrent() || result.characterCanDeliver && !await result.characterCanDeliver()) return;

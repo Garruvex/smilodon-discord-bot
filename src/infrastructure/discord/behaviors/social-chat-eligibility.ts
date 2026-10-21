@@ -23,11 +23,9 @@ export class SocialChatEligibility {
   private readonly access: ChatAccessService;
   private forgottenSource: ((message: Message) => Promise<boolean>) | null = null;
   private forgottenSources: ((messages: readonly Message[]) => Promise<readonly boolean[]>) | null = null;
-  private readonly privacyVersions = new Map<string, number>();
   public bindGuardedForgetPolicy(check: (message: Message) => Promise<boolean>, batch?: (messages: readonly Message[]) => Promise<readonly boolean[]>): void {
     this.forgottenSource = check; this.forgottenSources = batch ?? null;
   }
-  public invalidateContext(guildId: string): void { this.privacyVersions.set(guildId, (this.privacyVersions.get(guildId) ?? 0) + 1); }
   public async sourceForgotten(message: Message): Promise<boolean> { return !this.forgottenSource || await this.forgottenSource(message); }
   public async sourcesForgotten(messages: readonly Message[]): Promise<readonly boolean[]> {
     const result = this.forgottenSources ? await this.forgottenSources(messages) : await mapWithConcurrency(messages, 8, (message) => this.sourceForgotten(message));
@@ -40,8 +38,10 @@ export class SocialChatEligibility {
   }
   public contextPolicyVersion(message: Message): string {
     const profile = message.guildId ? this.profiles.find(message.guildId) : null;
-    return `${this.privacyVersions.get(message.guildId ?? "") ?? 0}:${hashContent(JSON.stringify(profile, (_key, value: unknown) => value instanceof Set ? [...value].sort() : value))}`;
+    return hashContent(JSON.stringify(profile ? { chatbot: profile.features.chatbot, history: profile.features.channelHistory,
+      memoryMode: this.contextMemoryMode(message), contextEnabled: characterSettings(profile).channelOverrides[message.channelId]?.contextEnabled !== false } : null));
   }
+  public contextMemoryMode(message: Message): string { return resolveChannelMemoryMode(this.profiles.find(message.guildId ?? "")?.chat.channelMemoryModes ?? {}, message.channelId); }
   public hasContextRoleExclusions(source: Message): boolean { return !!(source.guildId && this.profiles.find(source.guildId)?.chat.contextOptOutRoleIds?.length); }
   public async checkGuardedActor(source: Message, member: GuildMember, channelAuthorized = false): Promise<boolean> {
     const profile = source.guildId ? this.profiles.find(source.guildId) : null;
@@ -127,11 +127,21 @@ export class SocialChatEligibility {
   public botCanReadChannel(message: Message, history = true): boolean {
     if (!message.inGuild()) return false;
     const me = message.guild?.members.me;
-    const permissions = me && "permissionsFor" in message.channel ? message.channel.permissionsFor(me) : null;
+    const permissions = me && message.channel && "permissionsFor" in message.channel ? message.channel.permissionsFor(me) : null;
     return !!permissions?.has(PermissionFlagsBits.ViewChannel) && (!history || permissions.has(PermissionFlagsBits.ReadMessageHistory));
   }
 
-  public async check(message: Message, trigger: SocialTrigger = "direct", member: GuildMember | null = message.member): Promise<SocialEligibility> {
+  public collectionPolicyCurrent(message: Message, authorIds: readonly string[], history: boolean, memoryMode: string): boolean {
+    const profile = message.guildId ? this.profiles.find(message.guildId) : null;
+    if (!profile?.features.chatbot || resolveChannelMemoryMode(profile.chat.channelMemoryModes, message.channelId) !== memoryMode || !this.botCanReadChannel(message, history)) return false;
+    if (history && (!profile.features.channelHistory || characterSettings(profile).channelOverrides[message.channelId]?.contextEnabled === false)) return false;
+    return authorIds.every((id) => this.access.canCollectContext(profile, id,
+      message.guild?.members.cache?.get(id) ?? (id === message.author.id ? message.member : null)));
+  }
+
+  // Synchronous policy only: gateway caches carry current roles/permissions.
+  // Origin, game ownership and initial source admission are resolved once.
+  public interactionPolicy(message: Message, trigger: SocialTrigger = "direct", member: GuildMember | null = message.member): SocialEligibility {
     const reject = (reason: string): SocialEligibility => ({ eligible: false, reason });
     if (!message.inGuild()) return reject("not_guild");
     const profile = this.profiles.find(message.guildId);
@@ -146,7 +156,6 @@ export class SocialChatEligibility {
         profile.chat.channelMemoryModes[message.channelId] === "disabled" || characterSettings(profile).channelOverrides[message.channelId]?.contextEnabled === false)) return reject("passive_scope_denied");
     if (!message.author.bot && !this.access.canCollectContext(profile, message.author.id, member)) return reject("context_opt_out");
     if (passive && !collection && !message.author.bot && !this.access.canUseMentionChat(profile, member, message.author.id, message.channelId)) return reject("passive_access_denied");
-    if (await isInGameChannel(message, this.isGameChannel)) return reject("game_channel");
     const participation = resolveParticipation(profile.chat.participation, message.channelId);
     if (trigger === "continuation" && !participation.continuationEnabled) return reject("continuation_disabled");
     if (trigger === "spontaneous" && !participation.spontaneousEnabled) return reject("spontaneous_disabled");
@@ -159,6 +168,15 @@ export class SocialChatEligibility {
     } else if (!passive && !collection && !this.access.canUseMentionChat(profile, member, message.author.id, message.channelId)) {
       return reject("access_denied");
     }
+    return { eligible: true, reason: "eligible" };
+  }
+
+  public async check(message: Message, trigger: SocialTrigger = "direct", member: GuildMember | null = message.member): Promise<SocialEligibility> {
+    const policy = this.interactionPolicy(message, trigger, member);
+    if (!policy.eligible) return policy;
+    const reject = (reason: string): SocialEligibility => ({ eligible: false, reason });
+    if (!message.inGuild()) return reject("not_guild");
+    if (await isInGameChannel(message, this.isGameChannel)) return reject("game_channel");
     if (this.recentUtilitySources.has(`${message.guildId}:${message.channelId}:${message.id}`)) return reject("utility_interaction");
     const origin = await this.findOrigin(message.guildId, message.channelId, message.id).catch(() => undefined);
     if (origin === undefined) return reject("origin_lookup_failed");

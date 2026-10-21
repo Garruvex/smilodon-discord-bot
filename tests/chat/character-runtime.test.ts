@@ -455,7 +455,7 @@ describe("decision windows and continuation timing", () => {
       expect(result.ambientAction).toBe("ignore"); expect(deliver).not.toHaveBeenCalled(); expect(generation).not.toHaveBeenCalled();
     } finally { service.stopScheduling(); await service.drain(); }
   });
-  it.each(["continuation", "spontaneous"] as const)("cancels %s when another human takes over during generation", async (triggerMode) => {
+  it.each(["continuation", "spontaneous"] as const)("keeps an authorized generated %s when another human speaks", async (triggerMode) => {
     let now = 4000; const { runtime, provider, profiles, repository, connection } = setup(() => now);
     await profiles.update(guildId, { chatParticipation: { continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
     const human = { messageId: "human", timestampMs: 1000, authorId: actorUserId, authorDisplayName: "Alice", content: "Compare these two ideas", imageCount: 0 };
@@ -474,7 +474,7 @@ describe("decision windows and continuation timing", () => {
       await vi.waitFor(() => expect(generation).toHaveBeenCalled());
       now = 5000; service.observe(guildId, channelId, { ...current, messageId: "new-recipient", authorId: "bob", timestampMs: now, content: "Carol, my question is for you" });
       finish(response("The second option is cheaper"));
-      expect(await outcome).toBe("suppressed"); expect(deliver).not.toHaveBeenCalled();
+      expect(await outcome).toBe("delivered"); expect(deliver).toHaveBeenCalledOnce();
     } finally { service.stopScheduling(); await service.drain(); }
   });
   it("keeps reservoir thresholds and shadow controls subordinate to the baseline labelled policy", async () => {

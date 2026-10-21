@@ -26,12 +26,13 @@ determine whose channel messages the bot may understand.
 4. A silent/reaction decision skips reply-only enrichment and text generation.
 5. At model boundaries use lightweight snapshot/policy invalidation, rather than
    REST-refetching the complete history and membership for every nested helper.
-6. Before visible effects check snapshot freshness and forget state. Discord
-   updates/deletions, permission/membership changes, disconnects and policy
-   changes invalidate in-flight snapshots. Edits to unrelated utility panels
-   are ignored; edits/deletions of admitted source IDs invalidate the snapshot.
-   New messages alone do not invalidate
-   the immutable context already collected.
+6. Before visible effects check current authorization and forget state. Guild
+   events require policy reassessment, not automatic cancellation. Actual access
+   withdrawal, contributing-source deletion and opt-outs block delivery. Source
+   edits request bounded reassembly/regeneration; ordinary new messages,
+   presentation updates and persona/style changes do not cancel a valid answer.
+   See the [delivery policy revision](chat-delivery-policy-plan-2026-10-22.md)
+   for the complete matrix, retry boundaries, and operational limits.
 
 ## Checkpoints
 

@@ -140,9 +140,14 @@ describe("Fallback guarded validation without Discord event snapshots", () => {
 
 describe("Discord one-pass context snapshots", () => {
   it("reports the event that invalidates a trigger without exposing message content", async () => {
-    const { support, messages, client, records } = await fixture("durable", true);
+    const { support, messages, client, records, denied } = await fixture("durable", true);
     const eligible = support.createEligibilityCheck(messages.get("41")!);
     expect(await eligible()).toBe(true);
+    messages.get("41")!.content = "updated question";
+    client.emit("messageUpdate", {}, messages.get("41"));
+    expect(await eligible()).toBe(true);
+    // An actual policy denial, not the role event itself, invalidates access.
+    denied.add("41");
     client.emit("roleUpdate", {}, { guild: { id: "guild" } });
     expect(await eligible()).toBe(false);
     expect(await eligible()).toBe(false);
@@ -161,11 +166,11 @@ describe("Discord one-pass context snapshots", () => {
     expect(lease.report.sourceReads).toBe(reads);
     expect(fetch).not.toHaveBeenCalled(); expect(memberFetch).not.toHaveBeenCalled();
   });
-  it.each(["messageUpdate", "messageDelete", "messageDeleteBulk", "guildMemberUpdate", "roleUpdate", "channelUpdate", "threadUpdate", "shardDisconnect", "shardReconnecting", "shardResume"])(
+  it.each(["messageUpdate", "messageDelete", "messageDeleteBulk", "shardDisconnect", "shardReconnecting", "shardResume"])(
     "invalidates a snapshot on %s without fetching the entire channel again", async (event) => {
       const { lease, client, fetch, messages, records } = await fixture("durable", true);
       const guild = { id: "guild" }; const message = messages.get("10")!;
-      if (event === "messageUpdate") client.emit(event, message, message);
+      if (event === "messageUpdate") client.emit(event, { ...message, content: "before edit" }, message);
       else if (event === "messageDelete") client.emit(event, message);
       else if (event === "messageDeleteBulk") client.emit(event, new Map([[message.id, message]]), { id: "channel" });
       else if (event === "guildMemberUpdate" || event === "roleUpdate") client.emit(event, {}, { guild });
@@ -179,9 +184,16 @@ describe("Discord one-pass context snapshots", () => {
   it("does not invalidate for a normal new message or an edit in an unrelated channel", async () => {
     const { lease, client, fetch, messages } = await fixture("durable", true);
     client.emit("messageCreate", messages.get("41"));
+    client.emit("messageUpdate", messages.get("41"), messages.get("41"));
     client.emit("messageUpdate", {}, { channelId: "other-channel" });
     client.emit("messageUpdate", {}, { channelId: "channel", id: "unrelated-utility-panel" });
     expect(await lease.validate()).toBe(true); expect(fetch).not.toHaveBeenCalled();
+  });
+  it.each(["guildMemberUpdate", "roleUpdate", "channelUpdate", "threadUpdate"])("rechecks policy without cancelling on harmless %s", async (event) => {
+    const { lease, client, fetch } = await fixture("durable", true);
+    client.emit(event, {}, { guild: { id: "guild" }, guildId: "guild" });
+    expect(await lease.validate("effect")).toBe(true);
+    expect(fetch).not.toHaveBeenCalled();
   });
   it("checks shared persistence forget tombstones at an effect boundary without a full REST scan", async () => {
     const { lease, forgotten, fetch } = await fixture("durable", true);

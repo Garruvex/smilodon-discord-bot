@@ -311,10 +311,9 @@ export class ReactionReplyScheduler {
   }
 
   // Excludes the bot's own id (it never counts toward its own threshold),
-  // any other bot, and anyone the guild's normal chat-access policy
-  // (role/channel allow-list) wouldn't let talk to the bot at all — a
-  // restricted member's emoji shouldn't be able to trigger or shape a
-  // reply any more than their words could. Fetches each emoji's reactor
+  // any other bot, and explicit collection opt-outs. Non-triggering people
+  // may contribute context, but at least one eligible reactor must retain
+  // interaction access. Fetches each emoji's reactor
   // list rather than trusting `.count`/cache alone — a reaction on a
   // message the bot wasn't actively watching when it landed is routinely
   // not fully cached. `complete: false` means at least one emoji's reactor
@@ -363,6 +362,14 @@ export class ReactionReplyScheduler {
     if (!profile) return "feature_disabled";
     const author = message.author;
     const reactorList = [...reactorIds].filter((id) => id !== author.id);
+    const eligible = this.turnSupport.createEligibilityCheck(message, "reaction");
+    const canTrigger = (): boolean => {
+      const current = this.profiles.find(guildId);
+      return !!current && reactorList.some((id) => {
+        const member = message.guild?.members.cache?.get(id) ?? null;
+        return this.chatAccess.canCollectContext(current, id, member) && this.chatAccess.canUseMentionChat(current, member, id, message.channelId);
+      });
+    };
     const mentionedUsers = await Promise.all(reactorList.slice(0, 20).map(async (id) => {
       const member = await message.guild?.members.fetch(id).catch(() => null);
       return { id, displayName: member?.displayName ?? id, username: member?.user?.username ?? null,
@@ -398,7 +405,7 @@ export class ReactionReplyScheduler {
       const kept: Message[] = []; const overflow: Message[] = [];
       const response = await this.conversation.run({
         guildId, channelId: message.channelId, sourceMessageId: message.id,
-        canExecute: this.turnSupport.createEligibilityCheck(message, "reaction"),
+        canExecute: async () => canTrigger() && await eligible(),
         activityLimits: resolveParticipation(profile.chat.participation, message.channelId).limits,
         resolveActivityLimits: () => resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).limits,
         resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(guildId)?.chat.channelMemoryModes ?? {}, message.channelId),

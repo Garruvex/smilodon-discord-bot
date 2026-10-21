@@ -100,7 +100,6 @@ export class ChatConversationService {
   private nextOpportunityVersion = 0;
   private readonly recentPings = new Map<string, { at: number; messageId: string }>();
   private readonly forgottenBefore = new Map<string, number>();
-  private readonly privacyVersions = new Map<string, number>();
   private readonly episodeCleanupTimer: ReturnType<typeof setInterval> | null;
   private readonly queue = new KeyedSerialQueue();
   // Every fire-and-forget background write this service starts (dedicated
@@ -330,12 +329,15 @@ export class ChatConversationService {
       return Promise.resolve(silent);
     }
     return this.scheduler.run(key, optional, limits, async () => {
+      const forgetAtStart = new Map(this.forgottenBefore);
+      const changedForgetCutoff = (id: string): number | undefined => {
+        const subject = `${input.guildId}:${id}`; const cutoff = this.forgottenBefore.get(subject);
+        return cutoff !== undefined && cutoff > (forgetAtStart.get(subject) ?? -Infinity) ? cutoff : undefined;
+      };
       if (input.canExecute && !await input.canExecute()) {
         emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "execution_ineligible" });
         throw new SocialOutputSuppressed();
       }
-      const contextVersion = this.episodes.version(key);
-      const privacyVersion = this.privacyVersions.get(input.guildId) ?? 0;
       const runTurn = (turn: PlannedChatConversationInput, send: (response: ChatResponse) => Promise<string>, observe?: ChatResponseObserver): Promise<ChatResponse> => {
         if (!turn.guardedContextPort) throw new SocialOutputSuppressed();
         const guarded: GuardedChatConversationInput = { ...turn, guardedContextPort: turn.guardedContextPort };
@@ -378,27 +380,17 @@ export class ChatConversationService {
           text: contextualAvailability ? contextualAvailability.continuation.text || contextualAvailability.spontaneous.text : this.scheduler.outputAvailable(key, "text", limits),
           reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits),
         } } : {}),
-        canExecute: async () => (this.privacyVersions.get(input.guildId) ?? 0) === privacyVersion && (!input.canExecute || await input.canExecute()),
+        canExecute: async () => !input.canExecute || await input.canExecute(),
       }, async (result) => {
         const effects = authorizeConversationEffects(result, input.sourceMessageId ?? null);
         if (effects.action !== "reply" && effects.action !== "reply_and_react") throw new SocialOutputSuppressed();
-        if ((this.privacyVersions.get(input.guildId) ?? 0) !== privacyVersion) {
+        if (result.contextLease?.hasForgottenSource(changedForgetCutoff)) {
           emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "privacy_changed" });
           throw new SocialOutputSuppressed();
         }
         if (input.shadowMode) {
           emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "shadow" });
           await this.characterRuntime?.recordDelivery(input.guildId, input.sourceMessageId ?? null, false, true); return "";
-        }
-        if (result.outputOrigin !== "tool" && optional) {
-          if (this.now() >= expiresAt!) {
-            emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "opportunity_expired" });
-            throw new SocialOutputSuppressed();
-          }
-          if ((input.triggerMode === "continuation" || input.triggerMode === "spontaneous") && this.episodes.version(key) !== contextVersion) {
-            emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "context_changed" });
-            throw new SocialOutputSuppressed();
-          }
         }
         if (input.shouldDeliver && !input.shouldDeliver()) {
           emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "delivery_cancelled" });
@@ -416,8 +408,7 @@ export class ChatConversationService {
       }, observer);
       const effects = authorizeConversationEffects(response, input.sourceMessageId ?? null);
       response.participationDecision = participationDecision(response, input.sourceMessageId ?? null, expiresAt);
-      if (effects.action !== "silent" && !input.shadowMode && (!optional || this.now() < expiresAt!) &&
-          (response.ambientAction === "reply" || (input.triggerMode !== "continuation" && input.triggerMode !== "spontaneous") || this.episodes.version(key) === contextVersion) &&
+      if (effects.action !== "silent" && !input.shadowMode && !response.contextLease?.hasForgottenSource(changedForgetCutoff) &&
           (!input.shouldDeliver || input.shouldDeliver()) && (!input.canExecute || await input.canExecute()) && (!response.contextLease || await response.contextLease.validate("effect")) && (!response.characterCanDeliver || await response.characterCanDeliver())) await input.afterDecision?.(response);
       return response;
     }, expiresAt ?? Infinity).then((result) => result ?? silent);
@@ -441,7 +432,6 @@ export class ChatConversationService {
     this.characterRuntime?.forget(guildId, userId);
     if (this.forgottenBefore.size >= 1000) this.forgottenBefore.delete(this.forgottenBefore.keys().next().value!);
     this.forgottenBefore.set(`${guildId}:${userId}`, this.now());
-    this.privacyVersions.set(guildId, (this.privacyVersions.get(guildId) ?? 0) + 1);
     this.episodes.forget(guildId, userId);
     const contextCleanup = Promise.resolve().then(() => this.recordContextForget?.(guildId, userId, this.now())).then(() => true, () => false);
     // Traces can reference multiple participants. Drop this guild's bounded

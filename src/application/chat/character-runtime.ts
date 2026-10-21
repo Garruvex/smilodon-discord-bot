@@ -126,6 +126,9 @@ export class CharacterRuntime {
     return !!profile && this.fingerprint(profile, prepared.request.channelId) === prepared.fingerprint;
   }
   public async validatePrepared(prepared: CharacterPreparedTurn): Promise<boolean> {
+    // Conversational style and opportunity age are pinned for the turn.
+    // The source lease and ingress policy own current privacy/access checks.
+    if (isGuardedContext(prepared.request.contextLease)) return this.profiles.find(prepared.request.guildId)?.features.chatbot === true;
     const reject = (reason: "character_profile_changed" | "grounded_continuation_expired" | "persona_changed" | "target_preferences_changed" | "character_memory_changed"): false => {
       emitChatDiagnostic(this.logger, { event: "chat.guard.rejected", gate: "character", reason }); return false;
     };
@@ -305,7 +308,7 @@ export class CharacterRuntime {
       const outcome = shouldDecide ? await this.decisions.evaluate(guarded ? approveDecisionInput(decisionInput) : decisionInput) : { status: "skipped" as const, decision: null };
       const decision = outcome.decision; decisionStatus = outcome.status;
       const liveProfile = this.profiles.find(request.guildId);
-      if (!liveProfile || this.fingerprint(liveProfile, request.channelId) !== fingerprint || (this.privacyVersions.get(request.guildId) ?? 0) !== privacyVersion) {
+      if (!liveProfile || !liveProfile.features.chatbot || !guarded && (this.fingerprint(liveProfile, request.channelId) !== fingerprint || (this.privacyVersions.get(request.guildId) ?? 0) !== privacyVersion)) {
         this.registry.reset(request.guildId);
         emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "privacy_changed" });
         throw new SocialOutputSuppressed();
@@ -385,7 +388,8 @@ export class CharacterRuntime {
   }
   private async processCore(reply: ChatResponse, prepared: CharacterPreparedTurn): Promise<ChatResponse> {
     const processed = await this.registry.postProcess(reply, prepared.turn);
-    return { ...processed, ...(prepared.exchangeId ? { participationExchangeId: prepared.exchangeId } : {}), characterIsCurrent: () => this.stillEligible(prepared),
+    return { ...processed, ...(prepared.exchangeId ? { participationExchangeId: prepared.exchangeId } : {}), characterIsCurrent: () => isGuardedContext(prepared.request.contextLease) ?
+      this.profiles.find(prepared.request.guildId)?.features.chatbot === true : this.stillEligible(prepared),
       characterCanDeliver: () => this.validatePrepared(prepared),
       ...(prepared.targetMessageId ? { replyTargetMessageId: prepared.targetMessageId,
         inferredAddressing: { label: "inferred" as const, confidence: prepared.targetConfidence, messageId: prepared.targetMessageId } } : {}) };

@@ -108,9 +108,21 @@ export class ChatTurnSupport {
   public createContextPort(source: Message, reaction = false): GuardedContextPort {
     const eligibility = this.eligibility;
     const version = eligibility?.contextPolicyVersion(source);
+    const memoryMode = eligibility?.contextMemoryMode?.(source);
+    const sharing = eligibility?.canShareContext(source) ?? false;
     const dependencies = new Set([source.id]);
+    const admittedSources = new Set<string>();
+    const actors = new Set<string>();
+    let changedEvidence = false;
+    let currentCollection = (): boolean => false;
     const revisionCurrent = source.client ? discordContextSnapshotCurrent(source.client, source.guildId!, source.channelId, () => dependencies,
-      (change, changedMessageId) => emitChatDiagnostic(this.logger, { event: "chat.snapshot.invalidated", gate: "context", change, ...(changedMessageId ? { changedMessageId } : {}) })) : null;
+      (change, changedMessageId) => {
+        changedEvidence = change === "message_update";
+        emitChatDiagnostic(this.logger, { event: "chat.snapshot.invalidated", gate: "context", change, ...(changedMessageId ? { changedMessageId } : {}) });
+      }, { current: () => currentCollection() }) : null;
+    const policyRevisionCurrent = source.client ? discordContextSnapshotCurrent(source.client, source.guildId!, source.channelId, () => dependencies,
+      (change, changedMessageId) => emitChatDiagnostic(this.logger, { event: "chat.snapshot.invalidated", gate: "context", change, ...(changedMessageId ? { changedMessageId } : {}) }),
+      { current: () => currentCollection(), ignoreMessageUpdates: true }) : null;
     type Snapshot = { messages: Map<string, Message>; members: Map<string, Promise<GuildMember | null>>; filtered: Map<string, Promise<GuardedContextSource | null>>; forgotten: Map<string, boolean> };
     const makeState = (): Snapshot => ({ messages: new Map(), members: new Map(), filtered: new Map(), forgotten: new Map() });
     const snapshot = makeState();
@@ -144,8 +156,20 @@ export class ChatTurnSupport {
       const forgotten = await eligibility.sourcesForgotten(human);
       if (!signal.aborted) human.forEach((message, index) => cache.set(message.id, forgotten[index]!));
     };
-    const policyCurrent = (): boolean => !!eligibility && eligibility.contextPolicyVersion(source) === version &&
-      (!revisionCurrent || revisionCurrent() && eligibility.botCanReadChannel(source, false));
+    currentCollection = (): boolean => !!eligibility && (memoryMode !== undefined && eligibility.collectionPolicyCurrent ?
+      eligibility.collectionPolicyCurrent(source, [...new Set([...actors, ...[...dependencies].flatMap((id) => {
+        const message = snapshot.messages.get(id); return admittedSources.has(id) && message && !message.author.bot ? [message.author.id] : [];
+      })])], [...dependencies].some((id) => id !== source.id), memoryMode) : eligibility.contextPolicyVersion(source) === version) &&
+      (!sharing || eligibility.canShareContext(source)) && (!revisionCurrent || eligibility.botCanReadChannel(source, false));
+    let policyRejected = false;
+    const policyCurrent = (): boolean => {
+      const allowed = currentCollection() && (!policyRevisionCurrent || policyRevisionCurrent());
+      if (!allowed && !policyRejected) {
+        policyRejected = true;
+        emitChatDiagnostic(this.logger, { event: "chat.guard.rejected", gate: "context", reason: "policy_changed" });
+      }
+      return allowed;
+    };
     return registerConversationSource({
       guildId: source.guildId!, channelId: source.channelId, sourceMessageId: source.id, actorId: reaction ? null : source.author.id, persist: eligibility?.canPersistContext(source) ?? false,
       shareMemory: eligibility?.canShareContext(source) ?? false,
@@ -154,16 +178,30 @@ export class ChatTurnSupport {
       work: (phase, status, durationMs) => emitChatDiagnostic(this.logger, { event: "context.guard.work", phase, status, durationMs }),
       validation: (status, reads, mode) => emitChatDiagnostic(this.logger, { event: "context.guard.validation", status, reads, mode }),
       policyCurrent,
+      evidenceChanged: () => changedEvidence,
+      refresh: async (): Promise<GuardedContextPort> => {
+        const fresh = await source.channel.messages.fetch({ message: source.id, force: true });
+        if (!fresh || fresh.guildId !== source.guildId || fresh.channelId !== source.channelId || fresh.author.id !== source.author.id) throw new SocialOutputSuppressed();
+        return this.createContextPort(fresh, reaction);
+      },
       ...(revisionCurrent ? { snapshotCurrent: async (effect: boolean, signal: AbortSignal, sourceIds: readonly string[]): Promise<boolean> => {
-        if (signal.aborted || !policyCurrent()) return false;
+        dependencies.clear(); sourceIds.forEach((id) => dependencies.add(id));
+        if (signal.aborted || !policyCurrent() || !revisionCurrent()) return false;
         // Collection is done once. At visible effects consult forget tombstones
         // again, including changes made by another process sharing persistence.
         if (effect) {
+          if (!await eligibility!.canUseContextChannel(source, [...dependencies].some((id) => id !== source.id))) return false;
           const admitted = await Promise.all(sourceIds.map((id) => snapshot.filtered.get(id) ?? Promise.resolve(null)));
           if (admitted.some((item) => !item)) return false;
           const messages = admitted.filter((item) => item?.origin === "human").map((item) => snapshot.messages.get(item!.event.messageId));
           if (messages.some((message) => !message)) return false;
-          if ((await eligibility!.sourcesForgotten(messages as Message[])).some(Boolean)) return false;
+          const forgotten = await eligibility!.sourcesForgotten(messages as Message[]);
+          if (forgotten.some(Boolean)) {
+            forgotten.forEach((excluded, index) => {
+              if (excluded) emitChatDiagnostic(this.logger, { event: "context.eligibility.denied", sourceMessageId: messages[index]!.id, purpose: "guarded_current", reason: "source_forgotten" });
+            });
+            return false;
+          }
         }
         return !signal.aborted && policyCurrent();
       } } : {}),
@@ -221,6 +259,7 @@ export class ChatTurnSupport {
             return null;
           }
           dependencies.add(id);
+          admittedSources.add(id);
           const origin = message.author.bot ? await this.origins?.find(source.guildId!, source.channelId, id).catch(() => null) : null;
           if (message.author.bot && origin?.origin !== "chat") return null;
           const user = this.toChatUser(message.author, actor);
@@ -241,6 +280,7 @@ export class ChatTurnSupport {
         const actor = await member(id, signal, true); if (!actor || actor.user.bot || !eligibility) return null;
         // Use the same author rule without importing any of the member's messages.
         const allowed = await eligibility.checkGuardedActor(source, actor, await readable());
+        if (allowed) actors.add(id);
         return allowed ? this.toChatUser(actor.user, actor) : null;
       },
     });
@@ -256,15 +296,17 @@ export class ChatTurnSupport {
   }
 
   public createEligibilityCheck(message: Message, trigger: SocialTrigger = "direct"): () => Promise<boolean> {
+    const policy = (): boolean => !!this.eligibility && (this.eligibility.interactionPolicy ?
+      this.eligibility.interactionPolicy(message, trigger).eligible : this.eligibility.contextPolicyVersion(message) === version) && this.eligibility.botCanReadChannel(message, false);
     const current = message.client ? discordContextSnapshotCurrent(message.client, message.guildId!, message.channelId, () => [message.id],
-      (change, changedMessageId) => emitChatDiagnostic(this.logger, { event: "chat.snapshot.invalidated", gate: "trigger", change, ...(changedMessageId ? { changedMessageId } : {}) })) : null;
+      (change, changedMessageId) => emitChatDiagnostic(this.logger, { event: "chat.snapshot.invalidated", gate: "trigger", change, ...(changedMessageId ? { changedMessageId } : {}) }),
+      { current: policy, ignoreMessageUpdates: true }) : null;
     const version = this.eligibility?.contextPolicyVersion(message);
     let admission: Promise<boolean> | null = null;
     return async (): Promise<boolean> => {
       if (!current) return this.isEligible(message, trigger);
       const fresh = (): boolean => {
-        const reason = !current() ? "discord_revision_changed" : !this.eligibility || this.eligibility.contextPolicyVersion(message) !== version ? "policy_changed" :
-          !this.eligibility.botCanReadChannel(message, false) ? "channel_access_changed" : null;
+        const reason = !current() ? "discord_revision_changed" : !policy() ? "policy_changed" : null;
         if (reason) emitChatDiagnostic(this.logger, { event: "chat.guard.rejected", gate: "trigger", reason });
         return reason === null;
       };

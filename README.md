@@ -661,8 +661,12 @@ author's content is excluded. Existing forgetting and retention rules remain
 in force; changing an exclusion list is not a bulk deletion operation.
 
 Each turn collects and filters a bounded snapshot, then reuses it for decision
-and reply. Gateway changes invalidate affected snapshots; model boundaries
-check freshness, and effects also refresh persistent forget checks. Adapters
+and reply. Gateway events recheck actual policy; an unrelated member update or
+persona/style change does not discard an authorized answer. Relevant access
+withdrawal, collection opt-outs, deletion, and forgetting still block delivery.
+An edited source triggers one fresh assembly and generation before sending,
+without replaying a tool effect or a started delivery. Effects refresh persistent
+forget checks and current channel/game scope. Adapters
 without snapshot notifications retain full validation. Reply-only semantic
 example/lore selection is skipped for silence and emoji decisions; required
 images, memory recall, and reply-chain compaction can still precede a decision.
@@ -695,6 +699,18 @@ identify the gate and observed Discord invalidation event without logging
 conversation text. Guard rejections are classified as `guard_rejected`, not
 provider failures. These diagnostic changes do not relax access checks or
 establish that the missing-reply issue is fixed.
+
+The subsequent [delivery policy revision](docs/chat-delivery-policy-plan-2026-10-22.md)
+implements the narrower rules above. It also stops conversation-window expiry,
+another person's new message, and unrelated forgetting from cancelling an
+already generated answer. Reactions still require at least one reactor with
+current interaction permission. Provider errors, transport/work limits, and
+unstable evidence remain possible failures. Local checks do not confirm a
+successful reply on the deployed server.
+
+This policy revision passes **5,184 tests with 7 skipped**, plus typecheck, full
+build, and changed-file lint. See the linked plan for the regression scope and
+the limits on automatic regeneration.
 
 ## Channel-context memory
 

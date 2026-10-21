@@ -419,3 +419,28 @@ Regression tests cover completed generation followed by trigger/persona
 invalidation, event categories, and the supplied result-gate trace shape.
 Full suite: **5,157 passed, 7 skipped, zero failed**. No new live request,
 production deployment, or paid evaluation was performed in this checkpoint.
+
+## Checkpoint 44: relevant-policy cancellation and bounded evidence refresh
+
+The user-approved [delivery policy](chat-delivery-policy-plan-2026-10-22.md)
+replaces broad guild/profile/opportunity vetoes for active conversation turns.
+Cached current interaction and collection rules determine actual access;
+unrelated guild events, persona/style changes, ordinary new messages, and
+forgetting unrelated subjects do not cancel a generated answer. Relevant
+channel/interaction revocation, opt-outs, deletion, and forgetting still block
+disclosure. Reaction turns must retain at least one authorized initiator.
+
+The executor reopens edited evidence and reruns assembly/decision/generation
+once, including edits found during recall. It retains the original turn deadline
+and authorized authored snapshot. Effects are marked before execution and
+delivery before sending, so regeneration cannot replay either. Embed hydration
+with unchanged evidence does not trigger regeneration. Background callbacks,
+post-turn processing, and configuration writes retain stricter freshness checks.
+
+Final verification: **5,184 passed, 7 skipped, zero failed**; typecheck, full
+Activity/application build, changed-file ESLint and whitespace checks pass.
+Actual adapter regressions exercise all seven trigger modes, relevant versus
+unrelated forgetting, source edits, bounded retries, and reactor authorization.
+The README, current plans, audit, and system flow describe the same rules.
+The exact invalidator in the older production trace remains unknown; no new
+production deployment, paid provider request, or live reply confirmation occurred.

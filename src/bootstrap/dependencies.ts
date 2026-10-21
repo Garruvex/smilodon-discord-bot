@@ -783,7 +783,6 @@ export function createDependencies(
   }
   if (chatConversationService) for (const command of commandRegistry.getAll()) {
     if (command instanceof MemoryCommand) command.bindConversationForget((guildId, userId) => {
-      socialEligibility.invalidateContext(guildId);
       return chatConversationService.forgetConversation(guildId, userId);
     });
   }

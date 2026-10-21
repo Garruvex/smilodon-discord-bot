@@ -26,6 +26,8 @@ export interface GuardedAssetDescriptor { id: string; contentType: string; size:
 export const guardedAssetsHash = (assets: readonly GuardedAssetDescriptor[]): string => hashContent(JSON.stringify(
   [...assets].map(({ id, contentType, size }) => ({ id, contentType, size })).sort((a, b) => a.id.localeCompare(b.id))));
 export interface GuardedContextPort {
+  evidenceChanged?: () => boolean;
+  refresh?: () => Promise<GuardedContextPort>;
   // Reviewed Discord adapters may own one immutable, event-invalidated snapshot.
   // Other adapters retain full source revalidation by default.
   snapshotCurrent?: (effect: boolean, signal: AbortSignal, sourceIds: readonly string[]) => Promise<boolean>;
@@ -76,6 +78,9 @@ const compact = (event: ChannelHistoryMessage): ChannelHistoryMessage => ({ ...e
 // complete text provenance only for the closed, whitelisted assembly below.
 // It is deliberately narrower than the separately planned universal gateway.
 export class GuardedConversationContext {
+  public hasForgottenSource(cutoff: (userId: string) => number | undefined): boolean {
+    return [...this.evidence.values()].some((source) => source.timestampMs <= (cutoff(source.authorId) ?? -Infinity));
+  }
   public get durableWritesAllowed(): boolean { return !this.closed && this.port.persist !== false && this.port.policyCurrent(); }
   public get sharedMemoryAllowed(): boolean { return this.durableWritesAllowed && this.port.shareMemory === true; }
   public get scope(): Readonly<{ guildId: string; channelId: string; actorId: string | null }> { return Object.freeze({ guildId: this.port.guildId, channelId: this.port.channelId, actorId: this.port.actorId }); }

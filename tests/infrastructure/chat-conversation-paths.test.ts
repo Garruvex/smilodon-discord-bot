@@ -48,6 +48,7 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
   sent: { target: string; content: string }[]; reacted: string[]; source: Message;
   addMessage: (id: string, content: string, authorId?: string, at?: number, replyTo?: string) => Message; members: Map<string, GuildMember>;
   origins: SqliteMessageOriginStore; state: SqliteChatStateStore; fetch: ReturnType<typeof vi.fn>; profiles: ReturnType<typeof memoryProvider>;
+  client: EventEmitter; service: ChatConversationService;
 }> {
   const connection = createSqliteDatabaseConnection(mkdtempSync(join(tmpdir(), "adapter-paths-")));
   const repository = new SqliteMemoryRepository(connection.database); const origins = new SqliteMessageOriginStore(connection.database);
@@ -171,10 +172,79 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
       await vi.advanceTimersByTimeAsync(16000); await service.drain();
     }
   };
-  return { execute, records, decision, reply, sent, reacted, source, origins, state, fetch, profiles, addMessage: makeMessage, members };
+  return { execute, records, decision, reply, sent, reacted, source, origins, state, fetch, profiles, addMessage: makeMessage, members, client, service };
 }
 
 describe("production Discord adapter to effect paths", () => {
+  it.each([false, true])("requires a currently authorized reactor, while allowing another reactor to lose interaction access (remaining=%s)", async (remaining) => {
+    const fixture = await setup("contextual", "reaction", "reply", remaining ? 2 : 1);
+    fixture.reply.mockImplementation(() => {
+      fixture.members.get(actorId)!.roles.cache.set("900000000000000002", { id: "900000000000000002", name: "Restricted" } as never);
+      fixture.client.emit("guildMemberUpdate", {}, { guild: { id: guildId } });
+      return Promise.resolve(decisionResponse({ text: "A reaction answer.", responseIntent: "answer" }));
+    });
+    await fixture.execute();
+    expect(fixture.reply).toHaveBeenCalledOnce();
+    expect(fixture.sent).toHaveLength(remaining ? 1 : 0);
+  });
+  it.each(["mention", "reply", "ping", "name", "followup", "group", "reaction"] as const)("keeps a generated %s through an unrelated guild update", async (mode) => {
+    const fixture = await setup("contextual", mode);
+    fixture.reply.mockImplementation(async (request) => {
+      const reads = fixture.fetch.mock.calls.length;
+      fixture.client.emit("guildMemberUpdate", {}, { guild: { id: guildId } });
+      fixture.client.emit("channelUpdate", {}, { guildId });
+      await request.beforeModelAttempt!();
+      expect(fixture.fetch).toHaveBeenCalledTimes(reads);
+      return decisionResponse({ text: "Authorized answer survives unrelated changes.", responseIntent: "answer" });
+    });
+    await fixture.execute();
+    expect(fixture.sent).toHaveLength(1);
+  });
+  it.each(["mention", "reply", "ping", "name", "followup", "group", "reaction"] as const)("blocks a generated %s after a contributing user opts out", async (mode) => {
+    const fixture = await setup("contextual", mode);
+    fixture.reply.mockImplementation(async () => {
+      await fixture.profiles.update(guildId, { contextOptOutUserIds: [actorId] });
+      return decisionResponse({ text: "Must not deliver excluded content.", responseIntent: "answer" });
+    });
+    await fixture.execute();
+    expect(fixture.reply).toHaveBeenCalledOnce();
+    expect(fixture.sent).toHaveLength(0);
+  });
+  it.each(["current", "history"] as const)("reassembles edited %s evidence before delivering a direct answer", async (kind) => {
+    const fixture = await setup("contextual", "mention");
+    let attempts = 0;
+    fixture.reply.mockImplementation((request) => {
+      attempts++;
+      if (attempts === 1) {
+        const edited = fixture.addMessage(kind === "current" ? fixture.source.id : "question", `<@${botId}> Please use the corrected question.`, actorId,
+          kind === "current" ? fixture.source.createdTimestamp : request.channelHistory.find((event) => event.messageId === "question")!.timestampMs);
+        fixture.client.emit("messageUpdate", {}, edited);
+        return Promise.resolve(decisionResponse({ text: "STALE_UNSENT_ANSWER", responseIntent: "answer" }));
+      }
+      expect(kind === "current" ? request.message : JSON.stringify(request.channelHistory)).toContain("corrected question");
+      return Promise.resolve(decisionResponse({ text: "Answer to the corrected question.", responseIntent: "answer" }));
+    });
+    await fixture.execute();
+    expect(fixture.reply).toHaveBeenCalledTimes(2);
+    expect(fixture.sent).toHaveLength(1);
+    expect(fixture.sent[0]!.content).toContain("corrected question");
+    expect(fixture.sent[0]!.content).not.toContain("STALE_UNSENT_ANSWER");
+    expect(fixture.records).toContainEqual(expect.objectContaining({ event: "chat.context.refreshed", reason: "source_edited", attempt: 1 }));
+  });
+  it("bounds regeneration if the source keeps changing", async () => {
+    const fixture = await setup("contextual", "mention");
+    let attempts = 0;
+    fixture.reply.mockImplementation(() => {
+      attempts++;
+      const edited = fixture.addMessage(fixture.source.id, `<@${botId}> revision ${attempts}`, actorId, fixture.source.createdTimestamp);
+      fixture.client.emit("messageUpdate", {}, edited);
+      return Promise.resolve(decisionResponse({ text: "Unstable draft.", responseIntent: "answer" }));
+    });
+    await fixture.execute();
+    expect(fixture.reply).toHaveBeenCalledTimes(2);
+    expect(fixture.sent).toHaveLength(0);
+    expect(fixture.records.filter((record) => record.event === "chat.context.refreshed")).toHaveLength(1);
+  });
   it("keeps a non-triggering participant's messages in the authorized context", async () => {
     const fixture = await setup("contextual", "mention");
     const roleId = "900000000000000001";

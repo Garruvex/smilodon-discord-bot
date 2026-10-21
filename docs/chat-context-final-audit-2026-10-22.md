@@ -14,9 +14,11 @@ Earlier local completion evidence did not certify this production case.
 
 The next production report, now running `4425dd74`, reaches a completed reply
 model call but rejects its result at the application gate without delivery.
-The precise invalidator was not logged and remains unresolved. The latest
-diagnostic checkpoint adds gate/event reasons and correct suppression
-classification; it is not a confirmed fix for that production behavior.
+The precise historical invalidator was not logged and remains unresolved.
+Diagnostic checkpoint 43 adds gate/event reasons and correct suppression
+classification. The subsequent [delivery policy revision](chat-delivery-policy-plan-2026-10-22.md)
+removes broad guild/style/opportunity vetoes and adds bounded evidence refresh.
+It is locally verified; successful delivery on the server is not yet confirmed.
 
 The local source and consumer migration is implemented. All production Discord chat entry points use the registered source engine; all configured chat, utility, dedicated decision, image and embedding capabilities are exposed through mandatory frozen model facades. The production memory engine is also behind a frozen mandatory facade. There is no active context-free chat/model fallback selected by a missing port or legacy retrieval setting.
 
@@ -42,8 +44,9 @@ flowchart TD
   R --> J[Immutable approved reply request]
   J --> K[Frozen mandatory model facade]
   K --> L[Provider attempts and reviewed tool continuations]
-  L --> M[Snapshot invalidation, fresh forget check and immutable effect permit]
-  M --> N[Confirmed text and/or emoji delivery]
+  L --> M[Current access/privacy checks, fresh forget check and immutable effect permit]
+  M -->|Authorized| N[Confirmed text and/or emoji delivery]
+  M -->|Source edited, no effects started| D
   N --> O[Session commit and approved memory mutation batches]
   O --> P[Fresh guarded post-turn consolidation and extraction]
 ```
@@ -73,7 +76,7 @@ History uses eligible counts and bounded evidence selection. Quiet gaps alone do
 | Relationships, aliases and identity | Endpoint/support proofs, eligible actors and independently validated observed labels. No hidden intermediate graph nodes or legacy alias promotion. `guarded-memory-relations`, `guarded-observed-aliases`, `guarded-character-memory` tests. |
 | Learned character state and callbacks | Source-backed `CharacterMemory`, guarded utility operations, scoped drift epochs and fresh callback evidence. Module-owned records do not enter ordinary memory recall. Global drift APIs and the obsolete window-summary cache were removed. |
 | Authored ledger replacements | Settings-authorized explicit text, current persona, destination, revision fingerprint and matching admin source record. Verified parent restrictions survive; legacy text/metadata and embeddings are not promoted. A protected configuration resource invalidates old revisions. `authored-character-configuration` tests include the final generation payload. |
-| Persona, lore, examples and preferences | Registered immutable configuration, fresh file/owner/fingerprint checks and closed compile/analyze/index serializers. Authored configuration is separate from learned participant claims. Configuration-only evaluation cannot import participant histories or learned state. |
+| Persona, lore, examples and preferences | Registered configuration with initial file/owner/fingerprint authorization and closed compile/analyze/index serializers. Live replies pin authored material; style edits affect future turns. Explicit personal-preference removal still withdraws that material. Background jobs and configuration mutations retain revision checks. Configuration-only evaluation cannot import participant histories or learned state. |
 | Attachments and reference images | Fresh source/actor checks, pinned asset descriptors, bounded approved Discord downloads, exact image bytes and registered image operations. No unapproved partial image previews. |
 | Memory/link/server/birthday/image/music tools | Reviewed implementations and action-specific authorization, bounded guarded results, public-fetch restrictions and source/resource dependencies before provider continuations. Music uses the real command/access boundary. |
 | Provider-managed public search | Effective setting and actual transport support are shared with status. Public web lineage is separate from protected Discord sources. Native provider queries are a provider-managed boundary; the application does not claim per-query interception or factual verification. |
@@ -102,11 +105,12 @@ privacy checks or label internal suppression as a model refusal.
 
 The direct-tag adapter regression delivers after 20 nested model checks with no
 new history fetch. Another regression reuses 40 history messages across 80 checks
-without member/Discord REST. Source edits/deletions, membership/role/channel/thread
-changes, disconnect/reconnect, explicit forget invalidation and configuration
-changes stop stale snapshots. New ordinary messages do not invalidate them.
-Edits of admitted message IDs invalidate context; unrelated utility-panel edits
-do not cancel a reply. Cross-process forget changes are checked against
+without member/Discord REST. Membership/role/channel/thread events recheck actual
+policy rather than vetoing every active guild turn. Relevant source edits request
+one fresh assembly/generation before delivery; source deletions and access/privacy
+withdrawal block the affected reply. Persona/style edits and new ordinary messages
+do not cancel it. Connection loss still prevents trusting missed events.
+Unrelated utility-panel and embed-only updates are ignored. Cross-process forget changes are checked against
 persistence at effect boundaries.
 SQL forget batches are bounded to one guild/channel and preserve individual
 subject, topic, slot and timestamp semantics in SQLite and PostgreSQL.
@@ -118,14 +122,15 @@ requires an authorized participant. Daily scans/summaries use the same exclusion
 policy, including revalidation when role/user consent changes.
 
 `context.guard.validation.mode` records `snapshot`, `effect` or `full`. Snapshots
-avoid full history/member REST during nested checks; protected resource revisions
-are still verified. Generic/non-notifying sources retain the full validation path.
+avoid full history/member REST during nested checks. Live resource values are
+snapshots with current participant authorization; background and authored
+mutations retain protected revision checks. Generic/non-notifying sources retain the full validation path.
 The event tracker uses one bounded metadata-only listener set per Discord client.
 It is conservative: a relevant guild permission/membership change can cancel a turn.
 
 ## Closing verification and limits
 
-- Full suite: **5,150 passed, 7 skipped, zero failed**. Full TypeScript checking, production TypeScript compilation, complete Activity/application build, migration consistency, changed-file ESLint and whitespace checks passed.
+- Latest delivery-policy suite: **5,184 passed, 7 skipped, zero failed**. Full TypeScript checking, production TypeScript compilation, complete Activity/application build, changed-file ESLint and whitespace checks passed. No schema changes were needed; migration consistency was verified in the earlier snapshot checkpoint.
 - The actual adapter-to-effect suite now runs behind the production model and memory facades. Fake HTTP tests capture final serialized requests, retries and revocation behavior. SQLite tests exercise persisted facts, temporal revisions, forgetting and invalidation.
 - Earlier package/lock validation: `npm ci --dry-run --ignore-scripts --offline --no-audit --no-fund` passed against the current package/lock state. This verifies the local install plan, not a clean Linux/Alpine native-module build or the user's server. The original server excerpt omitted the preceding npm root error; no different cause is invented here.
 - Earlier compiled-entry validation: both contextual and lifecycle inventory commands passed without `tsx` or provider calls; character replay's compiled help entry point passed too.

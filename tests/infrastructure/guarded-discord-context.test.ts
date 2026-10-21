@@ -30,7 +30,11 @@ function fixture(warm: boolean): {
   policy.bindGuardedForgetPolicy((message) => repository.isSourceForgotten({ guildId: profile.guildId, subjectId: message.author.id,
     topic: "*", slot: `source:${message.id}`, channelId: message.channelId, sourceTimestampMs: message.createdTimestamp }));
   const members = new Map<string, GuildMember>(); const messages = new Map<string, Message>();
-  const fetchMember = vi.fn((input: { user: string }) => Promise.resolve(members.get(input.user) ?? null));
+  const fetchMember = vi.fn((input: { user: string }) => {
+    const member = members.get(input.user) ?? null;
+    if (member) current.guild!.members.cache.set(input.user, member);
+    return Promise.resolve(member);
+  });
   const client = Object.assign(new EventEmitter(), { user: { id: "bot" }, isReady: (): boolean => true });
   const guild = { id: profile.guildId, members: { me: {} as GuildMember, cache: members, fetch: fetchMember } };
   const channel = { permissionsFor: (): { has: () => boolean } => ({ has: (): boolean => true }), messages: { cache: new Map(), fetch: vi.fn((input: { message?: string; before?: string }) => {
@@ -52,6 +56,14 @@ function fixture(warm: boolean): {
 }
 
 describe("Discord context guard", () => {
+  it.each(["channel_access", "chat_disabled"] as const)("blocks delivery authority after %s is revoked", async (kind) => {
+    const { support, current, profile, client } = fixture(true);
+    const context = await GuardedConversationContext.open(support.createContextPort(current), { count: 40, budget: 12000, burstIds: [] });
+    if (kind === "chat_disabled") profile.features.chatbot = false;
+    else Object.assign(current.channel, { permissionsFor: () => ({ has: (): boolean => false }) });
+    client.emit("channelUpdate", {}, { guildId: profile.guildId });
+    expect(await context.validate("effect")).toBe(false);
+  });
   it("resolves uncached exclusion-role membership once per author and shares it across phases", async () => {
     const { support, current, profile, fetchMember } = fixture(false);
     profile.chat.contextOptOutRoleIds = ["private-role"];

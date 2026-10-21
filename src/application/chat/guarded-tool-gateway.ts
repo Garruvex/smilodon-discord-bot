@@ -56,12 +56,13 @@ export function guardedTools(registry: ChatToolRegistry | null, lease: GuardedCo
         if (boundAuthority.music && (boundAuthority.music.actor.guildId !== scope.guildId || boundAuthority.music.actor.userId !== scope.userId)) throw new SocialOutputSuppressed();
         const query = tool instanceof MemoryLookupTool && typeof args === "object" && args !== null && "query" in args && typeof args.query === "string"
           ? toolRetrievalQuery(lease, args.query) : undefined;
+        // A failed/uncertain effect must never be replayed during reassembly.
+        if (tool.outputKind !== "context") executed();
         const result = await tool.execute(args, { ...context, ...boundAuthority, ...(query ? { retrievalQuery: query } : {}),
           currentUser: lease.current.author ?? { id: lease.current.authorId, displayName: lease.current.authorDisplayName, roleNames: [] },
           contextLease: lease, beforeModelAttempt: check, knownSubjectIds: [...new Set([...subjects, ...lease.admittedActorIds])] });
         context.signal?.throwIfAborted(); await check();
         if (tool instanceof ReadLinkTool || tool instanceof BooruSearchTool) lease.recordPublicTool(tool.name, result.content);
-        if (tool.outputKind !== "context") executed();
         return { content: result.content.slice(0, 12000) };
       },
     }));
@@ -93,10 +94,11 @@ export async function resolveGuardedToolResource(registry: ChatToolRegistry | nu
 export function guardedToolResourcePort(port: GuardedContextPort, registry: ChatToolRegistry | null,
   context: { currentUser: ChatUser; channelMode: ChatToolContext["channelMode"]; channelIsNsfw: boolean; isOwner: boolean }, turnSignal?: AbortSignal,
     configuration?: ConversationConfiguration, drift?: Pick<PersonaDriftStore, "readScopedEpoch"> | null,
-    characterConfiguration?: (id: string) => Promise<string | null>): GuardedContextPort {
+    characterConfiguration?: (id: string) => Promise<string | null>, pinForTurn = false): GuardedContextPort {
   const source = { ...port }; const destination = { ...context };
   const persona = configuration?.persona; const preferences = configuration?.preferences;
-  return extendConversationSource(port, { ...(turnSignal ? { turnSignal } : {}), resource: async (key, signal): Promise<string | null> => {
+  const pinned = new Map<string, Promise<string | null>>();
+  const resource = async (key: GuardedResourceKey, signal: AbortSignal): Promise<string | null> => {
     signal.throwIfAborted();
     if (key.kind === "character_configuration") return source.persist === false || !characterConfiguration ? null : characterConfiguration(key.id);
     if (key.kind === "persona_drift") {
@@ -114,5 +116,16 @@ export function guardedToolResourcePort(port: GuardedContextPort, registry: Chat
     return resolveGuardedToolResource(registry, key, {
       ...destination, guildId: source.guildId, channelId: source.channelId, music: null, pendingGeneratedImages: [], signal,
     }, async (id) => (await source.actor(id, signal))?.id === id);
+  };
+  return extendConversationSource(port, { ...(turnSignal ? { turnSignal } : {}), resource: async (key, signal): Promise<string | null> => {
+    // Values are evidence snapshots. Current user access and explicit removal
+    // of personal preferences are still authorization checks, not value equality.
+    if (!pinForTurn || key.kind === "user_preferences") return resource(key, signal);
+    if (!["persona_configuration", "character_configuration", "persona_drift"].includes(key.kind)) {
+      if (await resource(key, signal) === null) return null;
+    }
+    const id = `${key.kind}:${key.id}`;
+    if (!pinned.has(id)) pinned.set(id, resource(key, signal));
+    return pinned.get(id)!;
   } });
 }

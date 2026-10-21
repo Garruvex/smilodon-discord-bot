@@ -76,6 +76,35 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
 }
 
 describe("guarded turn acceptance", () => {
+  it("reassembles evidence edited during recall before any generation or tool effect", async () => {
+    const { service, input, reply, fixture, engine } = await setup();
+    let changed = false; let recalls = 0;
+    fixture.port.snapshotCurrent = (): Promise<boolean> => Promise.resolve(!changed);
+    fixture.port.evidenceChanged = (): boolean => changed;
+    fixture.port.refresh = (): Promise<typeof fixture.port> => {
+      changed = false; fixture.sources.get("current")!.event.content = "A corrected request";
+      return Promise.resolve(fixture.port);
+    };
+    vi.spyOn(engine, "recall").mockImplementation(async ({ context }) => {
+      if (++recalls === 1) { changed = true; await context!.validate(); throw new SocialOutputSuppressed(); }
+      return { memories: [], causalChains: [] };
+    });
+    const send = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
+    await service.run(input, send);
+    expect(recalls).toBe(2); expect(reply).toHaveBeenCalledOnce(); expect(send).toHaveBeenCalledOnce();
+    expect(reply.mock.calls[0]![0].message).toBe("A corrected request");
+  });
+  it.each(["alice", "bob", "unrelated"] as const)("only cancels a generated answer if forgotten subject %s contributed evidence", async (subject) => {
+    const { service, input, reply } = await setup(5000, "bob");
+    let forgotten: Promise<void> | undefined;
+    reply.mockImplementation(() => { forgotten = service.forgetConversation(guildId, subject); return Promise.resolve(decisionResponse()); });
+    const send = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
+    const turn = service.run(input, send);
+    if (subject === "unrelated") await turn;
+    else await expect(turn).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    await forgotten;
+    expect(send).toHaveBeenCalledTimes(subject === "unrelated" ? 1 : 0);
+  });
   it("identifies a trigger gate that rejects an otherwise completed direct reply", async () => {
     const { service, input, reply, records } = await setup();
     let eligible = true;
@@ -87,7 +116,7 @@ describe("guarded turn acceptance", () => {
     expect(records).toContainEqual(expect.objectContaining({ event: "chat.guard.rejected", gate: "trigger", reason: "trigger_ineligible" }));
     expect(records).toContainEqual(expect.objectContaining({ event: "chat.model.completed", failure: "guard_rejected" }));
   });
-  it("identifies persona invalidation after a completed direct reply", async () => {
+  it("keeps a completed direct reply when only the persona version changes", async () => {
     const { service, input, reply, runtime, records } = await setup();
     let persona = "current";
     input.configurationContext = await GuardedConfigurationContext.open({ kind: "persona", guildId, ownerUserId: null },
@@ -95,9 +124,9 @@ describe("guarded turn acceptance", () => {
     runtime.bindPersonaVersion(() => Promise.resolve(persona));
     reply.mockImplementation(() => { persona = "changed"; return Promise.resolve(decisionResponse()); });
     const deliver = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
-    await expect(service.run(input, deliver)).rejects.toBeInstanceOf(SocialOutputSuppressed);
-    expect(reply).toHaveBeenCalledOnce(); expect(deliver).not.toHaveBeenCalled();
-    expect(records).toContainEqual(expect.objectContaining({ event: "chat.guard.rejected", gate: "character", reason: "persona_changed" }));
+    await service.run(input, deliver);
+    expect(reply).toHaveBeenCalledOnce(); expect(deliver).toHaveBeenCalledOnce();
+    expect(records).not.toContainEqual(expect.objectContaining({ event: "chat.guard.rejected", reason: "persona_changed" }));
   });
   it("delivers a direct turn with production music role sets across both request approvals", async () => {
     const { service, input, reply } = await setup();
@@ -160,7 +189,7 @@ describe("guarded turn acceptance", () => {
     else { await call; expect(reply.mock.calls[0]![0].replyChainSummary).toBe(scenario === "model_failure" ? null : "AUTHORIZED_RECAP"); }
     expect(send).toHaveBeenCalledTimes(scenario === "edited" ? 0 : 1);
   });
-  it.each(["eligible", "changed"] as const)("uses owner-scoped style preferences and rechecks before delivery: %s", async (scenario) => {
+  it.each(["eligible", "changed", "removed"] as const)("pins owner style but honors explicit removal: %s", async (scenario) => {
     let value = "- Tone: concise OWNER_STYLE";
     const load = vi.fn<UserCustomizationStore["load"]>(() => Promise.resolve(value));
     const store: UserCustomizationStore = { initialize: vi.fn(), load, save: vi.fn(), clear: vi.fn() };
@@ -169,19 +198,20 @@ describe("guarded turn acceptance", () => {
       expect(request.userCustomization).toBe(value);
       expect(buildChatInstructions(request, "Safety instructions")).toContain("OWNER_STYLE");
       if (scenario === "changed") value = "- Tone: changed";
+      if (scenario === "removed") value = "";
       return Promise.resolve(decisionResponse());
     });
     const send = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
     const call = service.run(input, send);
-    if (scenario === "changed") await expect(call).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    if (scenario === "removed") await expect(call).rejects.toBeInstanceOf(SocialOutputSuppressed);
     else { const result = await call;
       expect(result.contextProvenance?.resources).toContainEqual(expect.objectContaining({ kind: "user_preferences", id: "alice" }));
       expect(JSON.stringify(result.contextProvenance)).not.toContain("OWNER_STYLE");
     }
-    expect(send).toHaveBeenCalledTimes(scenario === "eligible" ? 1 : 0);
+    expect(send).toHaveBeenCalledTimes(scenario === "removed" ? 0 : 1);
     expect(load.mock.calls.every(([scope, owner]) => scope === guildId && owner === "alice")).toBe(true);
   });
-  it.each(["eligible", "changed"] as const)("uses registered persona material and rejects changes before delivery: %s", async (scenario) => {
+  it.each(["eligible", "changed"] as const)("pins authorized persona material for the current turn: %s", async (scenario) => {
     const { service, input, fixture, reply, decision } = await setup(5000, "alice", true); let current = true;
     fixture.sources.get("current")!.event.content = "Tell me about the forest";
     fixture.sources.get("current")!.event.replyToMessageId = null;
@@ -202,8 +232,8 @@ describe("guarded turn acceptance", () => {
     });
     const send = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
     const call = service.run({ ...input, triggerMode: "spontaneous" }, send);
-    if (scenario === "changed") await expect(call).rejects.toBeInstanceOf(SocialOutputSuppressed); else await call;
-    expect(send).toHaveBeenCalledTimes(scenario === "eligible" ? 1 : 0);
+    await call;
+    expect(send).toHaveBeenCalledOnce();
     expect(JSON.stringify(decision.generateCharacterData.mock.calls)).toContain("AUTHORIZED_LORE");
   });
   it.each(["verified", "unproven", "revoked"] as const)("independently projects alias evidence for decision and generation: %s", async (scenario) => {
@@ -295,6 +325,21 @@ describe("guarded turn acceptance", () => {
     const send = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
     await service.run(input, send); expect(send).toHaveBeenCalledOnce();
   });
+  it("never repeats a tool effect when evidence is edited after execution", async () => {
+    const { service, input, reply, fixture } = await setup(5000, "alice", false, false, new ChatToolRegistry([new DiceRollTool()]));
+    let changed = false;
+    fixture.port.snapshotCurrent = (): Promise<boolean> => Promise.resolve(!changed);
+    fixture.port.evidenceChanged = (): boolean => changed;
+    const refresh = vi.fn(() => Promise.resolve(fixture.port)); fixture.port.refresh = refresh;
+    reply.mockImplementation(async (request) => {
+      await request.enabledTools![0]!.execute({ count: 1, sides: 6 }, { guildId, channelId, currentUser: request.currentUser,
+        channelMode: "shared", channelIsNsfw: false, isOwner: false, music: null, pendingGeneratedImages: [] });
+      changed = true; return decisionResponse();
+    });
+    const send = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
+    await expect(service.run(input, send)).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    expect(reply).toHaveBeenCalledOnce(); expect(refresh).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled();
+  });
   it.each(["eligible", "changed"] as const)("uses lease-authorized image input and suppresses stale image output: %s", async (scenario) => {
     const { service, fixture, input, reply } = await setup();
     fixture.sources.get("current")!.assets = [{ id: "image", contentType: "image/png", size: 10 }];
@@ -384,7 +429,7 @@ describe("guarded turn acceptance", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it("invalidates an in-flight turn when the web-search setting changes", async () => {
+  it("does not discard a generated answer when an unused capability setting changes", async () => {
     const { service, input, reply, profiles } = await setup(5000, "alice", false, true);
     reply.mockImplementation(async (request) => {
       await profiles.update(guildId, { chatbotWebSearchMode: profiles.current().chat.webSearchMode === "auto" ? "off" : "auto" });
@@ -392,8 +437,8 @@ describe("guarded turn acceptance", () => {
       return decisionResponse();
     });
     const send = vi.fn(() => Promise.resolve("sent"));
-    await expect(service.run(input, send)).rejects.toBeInstanceOf(SocialOutputSuppressed);
-    expect(send).not.toHaveBeenCalled();
+    await service.run(input, send);
+    expect(send).toHaveBeenCalledOnce();
   });
 
   it("excludes unverified session quotations and cached bot episodes through the active lease", async () => {
