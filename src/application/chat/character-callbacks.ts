@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Memory, MemoryRepository } from "../memory/memory.js";
+import { contextProvenanceSchema } from "./context-provenance.js";
+import { memoryClaimPayload } from "../memory/memory-claim-provenance.js";
+import { isGuardedContext, type GuardedConversationContext } from "./guarded-conversation-context.js";
+import { SocialOutputSuppressed } from "./message-origin-store.js";
 
 const callbackSchema = z.object({
   dueAt: z.number(), expiresAt: z.number(), status: z.enum(["pending", "claimed", "sending", "delivered", "uncertain", "cancelled"]),
@@ -9,8 +13,13 @@ const callbackSchema = z.object({
   quotaDayStart: z.number().optional(),
   sourceIds: z.array(z.string()).default([]),
   eventMessageId: z.string().nullable().default(null),
+  contextProvenance: contextProvenanceSchema.optional(),
 });
 export type CharacterCallbackState = z.infer<typeof callbackSchema>;
+export function callbackProofPayload(memory: Memory, state: CharacterCallbackState): string {
+  return JSON.stringify({ claim: memoryClaimPayload(memory), memoryId: memory.id, revision: state.revision, dueAt: state.dueAt,
+    expiresAt: state.expiresAt, channelId: state.deliveryChannelId, eventMessageId: state.eventMessageId, sourceIds: [...state.sourceIds].sort() });
+}
 export function callbackDateUnresolved(memory: Memory): boolean {
   const metadata = memory.structuredValue;
   return !!metadata && typeof metadata === "object" && "callbackDateUnresolved" in metadata && metadata.callbackDateUnresolved === memory.updatedAt;
@@ -48,13 +57,22 @@ export class CharacterCallbacks {
       updatedAt: memory.updatedAt, expected: memory.structuredValue, value });
     return changed ? { ...memory, structuredValue: value } : null;
   }
-  public async plan(memory: Memory, dueAt: number, channelId: string): Promise<Memory | null> {
+  public async plan(memory: Memory, dueAt: number, channelId: string, context?: GuardedConversationContext): Promise<Memory | null> {
     if (callbackState(memory) || memory.moduleId || memory.subjectType !== "member" || !Number.isFinite(dueAt)) return null;
-    const sources = await this.repository.findSources(memory.id);
+    if (context && (!isGuardedContext(context) || !(await context.memories([memory], true)).length || !await context.validate())) throw new SocialOutputSuppressed();
+    const storedSources = await this.repository.findSources(memory.id);
+    const sources = context ? await context.humanQuotes(storedSources.filter((source) => source.assertedByUserId === memory.subjectId)) : storedSources;
+    if (context && !sources.length) return null;
     const sourceIds = sources.map((source) => source.id);
     const eventMessageId = sources.filter((source) => source.sourceChannelId === channelId && source.assertedByUserId === memory.subjectId && source.sourceQuote).at(-1)?.sourceMessageId ?? null;
-    return this.update(memory, { dueAt, expiresAt: dueAt + 3 * 86_400_000, status: "pending", revision: memory.updatedAt,
-      attempts: 0, attemptId: null, leaseUntil: null, messageId: null, nextAttemptAt: dueAt, deliveryChannelId: channelId, sourceIds, eventMessageId });
+    const state: CharacterCallbackState = { dueAt, expiresAt: dueAt + 3 * 86_400_000, status: "pending", revision: memory.updatedAt,
+      attempts: 0, attemptId: null, leaseUntil: null, messageId: null, nextAttemptAt: dueAt, deliveryChannelId: channelId, sourceIds, eventMessageId };
+    if (context) {
+      if (!await context.validate()) throw new SocialOutputSuppressed();
+      const proof = context.provenance(callbackProofPayload(memory, state), "character_state");
+      if (!proof) throw new SocialOutputSuppressed(); state.contextProvenance = proof;
+    }
+    return this.update(memory, state);
   }
   public async claim(memory: Memory, now: number, maxPerDay = 1, dayStart = Math.floor(now / 86_400_000) * 86_400_000): Promise<Memory | null> {
     const callback = callbackState(memory);

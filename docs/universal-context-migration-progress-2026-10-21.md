@@ -91,3 +91,13 @@ Decision and generation receive the same admitted character contributions. Exist
 The validation pass ceiling now accommodates tool/character phases (64 passes); physical source-read, phase, total source-work and turn budgets remain unchanged. Module-failure logging uses metadata-only safe failures.
 
 Validation: **4,927 passed, 7 skipped, zero failed**, typecheck, production compilation and changed-file lint. Tests cover durable learned-state reload, canonical JSON ordering, metadata tampering, source revocation and actual decision/reply payloads. No paid provider call or production action was performed.
+
+## Checkpoint 10: scheduled callback source closure
+
+Scheduled callbacks now persist a separate manifest binding the event claim, schedule, destination, revision and human source identities. Before a model call they reconstruct a registered context from fresh Discord sources, authorize the memory and schedule, and recheck before every fallback and final send. Unproven legacy schedules, changed sources and tampered schedules never dispatch a model call. Confirmed callback replies retain complete source provenance for later reuse. Existing claim/CAS, quota and uncertain-send protections remain in place.
+
+Bot, session, memory and callback proof checks now share one dependency validator for current sources, actors, assets, structured resources and destination audience. Private source proofs require a private destination; matching the requester alone cannot authorize a public disclosure. Actor/resource lineage survives derived reuse, and manifests reject duplicate actor/resource identities. Tool resource resolution is shared between ordinary turns and callbacks.
+
+Configuration-only evaluation request construction no longer performs participant-memory recall. The remaining evaluation/runtime and configuration consumers still need their explicit-purpose gateway migration; this checkpoint does not certify them merely because their request now omits personal memory.
+
+Validation: **4,933 passed, 7 skipped, zero failed**, typecheck, production compilation and changed-file lint. New tests exercise the real scheduled callback worker with verified, legacy, revoked, tampered and changed-during-generation records, plus a same-requester private-to-public derived-text regression. No paid provider calls or Discord sends occurred.

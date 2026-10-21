@@ -42,7 +42,7 @@ export class CallbackPlanningModule implements CharacterModule {
       const currentSources = new Set((await this.services.repository.findSources(memory.id)).map((source) => source.id));
       if (sources.some((source) => !currentSources.has(source.id))) continue;
       if (lease && !await lease.validate()) throw new Error("Callback sources changed");
-      if (this.services.ready(turn, "callbacks")) await this.services.callbacks.plan(memory, end + turn.settings.modules.callbacks.minDelayMinutes * 60_000, turn.request.channelId);
+      if (this.services.ready(turn, "callbacks")) await this.services.callbacks.plan(memory, end + turn.settings.modules.callbacks.minDelayMinutes * 60_000, turn.request.channelId, lease ?? undefined);
     }
   }
 }

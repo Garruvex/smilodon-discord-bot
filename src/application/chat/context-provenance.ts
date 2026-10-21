@@ -35,6 +35,9 @@ export const contextProvenanceSchema = z.object({
   const keys = value.dependencies.map((source) => `${source.guildId}:${source.channelId}:${source.messageId}`);
   if (new Set(keys).size !== keys.length)
     context.addIssue({ code: z.ZodIssueCode.custom, message: "Duplicate dependencies" });
+  if (new Set(value.actors?.map((actor) => actor.userId)).size !== (value.actors?.length ?? 0) ||
+      new Set(value.resources?.map((resource) => `${resource.kind}:${resource.id}`)).size !== (value.resources?.length ?? 0))
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Duplicate actor or resource dependencies" });
 });
 export type ContextProvenance = z.infer<typeof contextProvenanceSchema>;
 

@@ -6,6 +6,10 @@ import type { Logger } from "pino";
 import type { MessageOriginStore } from "../application/chat/message-origin-store.js";
 import type { ConversationEpisodeStore } from "../application/chat/conversation-episode-store.js";
 import { SocialChatEligibility } from "../infrastructure/discord/behaviors/social-chat-eligibility.js";
+import { ChatTurnSupport } from "../infrastructure/discord/behaviors/chat-turn-support.js";
+import { guardedToolResourcePort } from "../application/chat/guarded-tool-gateway.js";
+import { isGuardedContext } from "../application/chat/guarded-conversation-context.js";
+import { resolveChannelMemoryMode } from "../application/memory/memory-channel-policy.js";
 import { ConversationObservationBehavior } from "../infrastructure/discord/behaviors/conversation-observation-behavior.js";
 import { ProactiveChatBehavior } from "../infrastructure/discord/behaviors/proactive-chat-behavior.js";
 
@@ -741,15 +745,11 @@ export function createDependencies(
     commandRegistry.register(new FeltLikeBotCommand(guildConfigurationProvider, messageOriginStore, evaluationStore));
     const evaluationRequest = async (guildId: string, channelId: string, userId: string, question: string): Promise<ChatRequest> => {
         const profile = guildConfigurationProvider.require(guildId); const persona = await personaSource.resolve(profile);
-        const memories = await memoryEngine.recall({ guildId, channelId, userId, message: question, recentHistory: [], subjectIds: [userId],
-          onlySelfSubjectMemories: true, now: Date.now(), channelMode: profile.chat.channelMemoryModes[channelId] ?? "shared" });
         return { guildId, channelId, personality: persona.personality, characterPersonaHash: persona.personalitySourceHash, characterStyleExamples: persona.examplePool,
           personaLore: persona.loreChunks.map((chunk) => ({ heading: chunk.heading, text: chunk.text })),
           personaDrift: persona.personaDrift, exampleExchanges: persona.examplePool.slice(0, 4), userCustomization: null,
           currentUser: { id: userId, displayName: "Reviewer", roleNames: [] }, mentionedUsers: [], recentHistory: [],
-          memories: memories.memories.filter((memory) => memory.subjectType === "member" && memory.audience !== "private").map((memory) => ({ id: memory.id,
-            assertedByUserId: memory.ownerUserId ?? "unknown", subjectUserId: memory.subjectId, topic: memory.topic, slot: memory.slot,
-            statement: memory.statement, updatedAt: memory.updatedAt, embedding: null })), guildKnowledge: [], causalChains: [],
+          memories: [], guildKnowledge: [], causalChains: [],
           message: question, replyChain: [], replyChainSummary: null, channelHistory: [], birthday: null, images: [],
           webSearchMode: "off", imageGenerationEnabled: false, includeSources: false, triggerMode: "direct", botUserId: discordClient.user?.id ?? null };
       };
@@ -770,18 +770,28 @@ export function createDependencies(
       const message = await channel.messages.fetch(sourceMessageId).catch(() => null);
       return message && (await socialEligibility.check(message, "continuation")).eligible ? message : null;
     };
+    const callbackSources = new ChatTurnSupport(logger.child({ component: "callback-context" }), socialEligibility, messageOriginStore);
     characterRuntime.bindCallbackDelivery({
+      context: async (guildId, channelId, sourceMessageId) => {
+        const source = await resolveCallbackSource(guildId, channelId, sourceMessageId); if (!source) return null;
+        return guardedToolResourcePort(callbackSources.createContextPort(source), chatToolRegistry, {
+          currentUser: callbackSources.toChatUser(source.author, source.member), channelMode: resolveChannelMemoryMode(guildConfigurationProvider.require(guildId).chat.channelMemoryModes, channelId),
+          channelIsNsfw: "nsfw" in source.channel && source.channel.nsfw, isOwner: configuration.ownerUserIds.has(source.author.id),
+        });
+      },
       run: (guildId, channelId, operation) => chatConversationService.runCallback(guildId, channelId,
         resolveParticipation(guildConfigurationProvider.find(guildId)?.chat.participation, channelId).limits, operation),
       check: async (guildId, channelId, sourceMessageId) => !!await resolveCallbackSource(guildId, channelId, sourceMessageId),
-      send: async (guildId, channelId, sourceMessageId, text, replyToMessageId) => {
+      send: async (guildId, channelId, sourceMessageId, text, replyToMessageId, context) => {
         const source = await resolveCallbackSource(guildId, channelId, sourceMessageId);
         if (!source) throw new SocialOutputSuppressed();
         const eventSource = replyToMessageId ? await resolveCallbackSource(guildId, channelId, replyToMessageId) : null;
         const replyTarget = eventSource?.author.id === source.author.id ? eventSource : null;
         const payload = { content: text, allowedMentions: { parse: [], repliedUser: false } };
+        if (!isGuardedContext(context) || !await context.validate()) throw new SocialOutputSuppressed();
+        const contextProvenance = context.provenance(text); if (!contextProvenance) throw new SocialOutputSuppressed();
         const sent = replyTarget ? await replyTarget.reply(payload) : await source.channel.send(payload);
-        await messageOriginStore.record({ guildId, channelId, messageId: sent.id, origin: "chat", sourceMessageId, createdAt: Date.now() });
+        await messageOriginStore.record({ guildId, channelId, messageId: sent.id, origin: "chat", sourceMessageId, createdAt: Date.now(), contextProvenance });
         chatConversationService.observe(guildId, channelId, { messageId: sent.id, timestampMs: Date.now(), authorId: discordClient.user!.id,
           authorDisplayName: guildConfigurationProvider.require(guildId).displayName, content: text, imageCount: 0,
           ...(replyTarget ? { replyToMessageId: replyTarget.id, replyToAuthorId: replyTarget.author.id } : {}),

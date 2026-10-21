@@ -7,7 +7,8 @@ import { GenerateSelfImageTool } from "./tools/generate-self-image-tool.js";
 import { DiscordServerLookupTool } from "../../infrastructure/discord/discord-server-lookup-tool.js";
 import type { ChatTool, ChatToolContext, ChatToolResult } from "./tools/chat-tool.js";
 import type { ChatToolRegistry } from "./tools/chat-tool-registry.js";
-import { isGuardedContext, type GuardedConversationContext, type GuardedResourceKey } from "./guarded-conversation-context.js";
+import { isGuardedContext, type GuardedConversationContext, type GuardedResourceKey, type GuardedContextPort } from "./guarded-conversation-context.js";
+import type { ChatUser } from "./chat-provider.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
 
 // Only reviewed implementations can enter this boundary. A name or a model-
@@ -54,4 +55,11 @@ export async function resolveGuardedToolResource(registry: ChatToolRegistry | nu
   if (key.id !== "current") return null;
   const tool = registry?.list().find((candidate) => candidate instanceof DiscordServerLookupTool);
   return tool instanceof DiscordServerLookupTool ? tool.readResource(key.kind === "server_events" ? "events" : "server", context) : null;
+}
+
+export function guardedToolResourcePort(port: GuardedContextPort, registry: ChatToolRegistry | null,
+  context: { currentUser: ChatUser; channelMode: ChatToolContext["channelMode"]; channelIsNsfw: boolean; isOwner: boolean }): GuardedContextPort {
+  return { ...port, resource: (key, signal): Promise<string | null> => resolveGuardedToolResource(registry, key, {
+    ...context, guildId: port.guildId, channelId: port.channelId, music: null, pendingGeneratedImages: [], signal,
+  }) };
 }

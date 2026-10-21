@@ -1,4 +1,4 @@
-import { isGuardedContext, projectDecisionContext } from "./guarded-conversation-context.js";
+import { GuardedConversationContext, isGuardedContext, projectDecisionContext, type GuardedContextPort } from "./guarded-conversation-context.js";
 import { selectDecisionContext } from "./decision-context-selection.js";
 import { resolveConversationTurnPlan, type ConversationTurnPlan } from "./conversation-turn-plan.js";
 import { contextualDecisionWireRevision } from "./contextual-decision-contract.js";
@@ -20,7 +20,7 @@ import { addressedElsewhere, CharacterDecisionService, localAddressing, possible
 import { createCharacterModules } from "./character-modules/index.js";
 import { hash, personaFingerprint, serious } from "./character-modules/shared.js";
 import { resolveParticipation, contributionPolicy, passiveChannelAllowed } from "./participation-policy.js";
-import { CharacterCallbacks, callbackState } from "./character-callbacks.js";
+import { CharacterCallbacks, callbackState, callbackProofPayload } from "./character-callbacks.js";
 import { startOfLocalDay } from "./character-calendar.js";
 import type { CharacterEvaluationStore } from "./character-evaluation.js";
 import { ConversationDecisionEngine, reportConversationDecision, type ConversationDecisionResult } from "./conversation-decision-engine.js";
@@ -33,9 +33,10 @@ export interface CharacterPreparedTurn { conversationDecision?: ConversationDeci
   decisionStatus: DecisionOutcome["status"] | "skipped"; acceptedContribution: CharacterDecision["contribution"] | null; exchangeId: string | null;
   participation: { action: "reply" | "ignore"; reaction: string | null } | null; styleUserId: string | null; styleSignature: string | null; targetConfidence: number }
 export interface CharacterCallbackDelivery {
+  context(guildId: string, channelId: string, sourceMessageId: string): Promise<GuardedContextPort | null>;
   run(guildId: string, channelId: string, operation: () => Promise<boolean>): Promise<boolean>;
   check(guildId: string, channelId: string, sourceMessageId: string): Promise<boolean>;
-  send(guildId: string, channelId: string, sourceMessageId: string, text: string, replyToMessageId: string | null): Promise<string>;
+  send(guildId: string, channelId: string, sourceMessageId: string, text: string, replyToMessageId: string | null, context: GuardedConversationContext): Promise<string>;
 }
 export interface CharacterEvaluationAdmission {
   run<T>(guildId: string, channelId: string, operation: () => Promise<T>, cost: number): Promise<T | null>;
@@ -530,6 +531,13 @@ export class CharacterRuntime {
         const due = await this.repository.findDueCallbackCandidates?.({ ...query, subjectIds: [userId] });
         const memories = (due?.memories ?? []).filter((memory) => callbackState(memory)?.deliveryChannelId === activity.channelId);
         for (const memory of memories) {
+          const schedule = callbackState(memory); if (!schedule?.contextProvenance) continue;
+          const port = await this.callbackDelivery.context(guildId, activity.channelId, activity.messageId);
+          if (!port || port.guildId !== guildId || port.channelId !== activity.channelId || port.actorId !== userId) continue;
+          const context = await GuardedConversationContext.open(port, { count: 0, budget: 0, burstIds: [] }).catch(() => null);
+          if (!context || !(await context.memories([memory], true, now)).length ||
+              !await context.derived(schedule.contextProvenance, callbackProofPayload(memory, schedule), "character_state")) continue;
+          const schedulePayload = callbackProofPayload(memory, schedule);
           const claim = await this.callbacks.claim(memory, now, settings.modules.callbacks.maxPerDay, startOfLocalDay(now, profile.timezone)); if (!claim) continue;
           const eligible = async (fact: Memory): Promise<boolean> => {
             const live = this.profiles.find(guildId);
@@ -538,21 +546,27 @@ export class CharacterRuntime {
             if (!current || current.status !== "active" || current.updatedAt !== fact.updatedAt || !state || !expected ||
                 state.attemptId !== expected.attemptId || !["claimed", "sending"].includes(state.status) ||
                 (state.leaseUntil ?? 0) <= this.now() || state.expiresAt <= this.now()) return false;
+            if (callbackProofPayload(current, state) !== schedulePayload || JSON.stringify(state.contextProvenance) !== JSON.stringify(schedule.contextProvenance)) return false;
             const sourceIds = new Set((await this.repository.findSources(current.id)).map((source) => source.id));
             if (!state.sourceIds.length || state.sourceIds.some((id) => !sourceIds.has(id))) return false;
             return !this.stopped && !!live && (this.seriousChannels.get(`${guildId}:${activity.channelId}`) ?? 0) <= this.now() &&
               !characterInactiveReason(characterSettings(live), "callbacks", activity.channelId, this.capabilities(live, activity.channelId)) &&
-              this.now() - (this.activity.get(key)?.at ?? 0) < 15 * 60_000 && await this.memory.sourceEligible(current, live, { ...query, now: this.now() }) &&
+              this.now() - (this.activity.get(key)?.at ?? 0) < 15 * 60_000 && await context.validate() && await this.memory.sourceEligible(current, live, { ...query, now: this.now(), sourceContext: context }) &&
               await this.callbackDelivery!.check(guildId, activity.channelId, activity.messageId);
           };
           const sent = await this.callbackDelivery.run(guildId, activity.channelId, async () => {
             const persona = await this.probeFactory?.(guildId, activity.channelId, "");
+            if (!persona) { await this.callbacks.failBeforeSend(claim, this.now()); return false; }
+            const beforeModelAttempt = async (): Promise<void> => { if (!await eligible(claim)) throw new SocialOutputSuppressed(); };
+            await beforeModelAttempt();
+            const turn: CharacterTurn = { request: { ...persona, contextLease: context, beforeModelAttempt }, settings,
+              capabilities: this.capabilities(profile, activity.channelId), now };
             const text = await this.text(`Write one short welcome follow-up after this member's dated event. Ask how it went, don't assert it happened. Match persona, no invented shared past or real-world action. Data: ${JSON.stringify({ event: memory.statement, memberId: userId, character: profile.displayName,
-              personality: persona?.personality ?? "", lore: persona?.personaLore ?? [] }).replaceAll("<", "\\u003c")}`);
+              personality: persona.personality, lore: persona.personaLore }).replaceAll("<", "\\u003c")}`, turn);
             if (!text) { await this.callbacks.failBeforeSend(claim, this.now()); return false; }
             return this.callbacks.send(claim, this.now(), eligible, async (sending) => {
               if (!await eligible(sending)) throw new Error("Callback final eligibility failed");
-              return this.callbackDelivery!.send(guildId, activity.channelId, activity.messageId, text, callbackState(sending)?.eventMessageId ?? null);
+              return this.callbackDelivery!.send(guildId, activity.channelId, activity.messageId, text, callbackState(sending)?.eventMessageId ?? null, context);
             });
           }).catch(async () => { await this.callbacks.failBeforeSend(claim, this.now()); return false; });
           if (sent) this.callbackCounts.set(guildId, { day, count: count?.day === day ? count.count + 1 : 1 });

@@ -120,20 +120,10 @@ export class GuardedConversationContext {
       if (source.origin === "chat") {
         const proof = parseScopedContextProvenance(source.provenance, { guildId: this.port.guildId, channelId: this.port.channelId,
           ...(this.port.actorId ? { userId: this.port.actorId } : {}) });
-        if (!proof || proof.purpose && proof.purpose !== "reply" || proof.coverage !== "complete" || proof.audience.userId !== null && proof.audience.userId !== this.port.actorId) { this.report.unverifiedBot++; return null; }
+        if (!proof || proof.purpose && proof.purpose !== "reply" || proof.coverage !== "complete") { this.report.unverifiedBot++; return null; }
         if (proof.outputHash !== hashContent(source.event.content)) { this.report.invalidatedDerived++; return null; }
         if (proof.outputAssetsHash && proof.outputAssetsHash !== guardedAssetsHash(source.assets ?? [])) return null;
-        if (!await this.validateResources(proof)) return null;
-        for (const dependency of proof.actors ?? []) {
-          const actor = await this.port.actor(dependency.userId, this.signal);
-          if (!actor || hashContent(JSON.stringify(actor)) !== dependency.representationHash) { this.report.invalidatedDerived++; return null; }
-        }
-        for (const dependency of proof.dependencies) {
-          if (dependency.guildId !== this.port.guildId || dependency.channelId !== this.port.channelId) return null;
-          const original = await this.read(dependency.messageId, next);
-          if (!original || !dependencyMatchesSource(dependency, original.event, contextSourceHash(original.event)) ||
-              dependency.assetsHash && dependency.assetsHash !== guardedAssetsHash(original.assets ?? [])) { this.report.invalidatedDerived++; return null; }
-        }
+        if (!await this.proofSourcesCurrent(proof, next)) { this.report.invalidatedDerived++; return null; }
       }
       return source;
     })();
@@ -150,6 +140,7 @@ export class GuardedConversationContext {
         const original = await this.read(dependency.messageId); if (!original || !await add(original)) return false;
         if (dependency.assetsHash) this.assetDependencies.set(dependency.messageId, dependency.assetsHash);
       }
+      if (item.provenance && !await this.retainActors(item.provenance)) return false;
       for (const entry of item.provenance?.resources ?? []) this.resources.set(`${entry.kind}:${entry.id}`, entry);
       return true;
     };
@@ -283,19 +274,14 @@ export class GuardedConversationContext {
       for (const { exchange, proof, sourceId, deliveryIds } of candidates) {
         const human = await this.read(sourceId);
         if (!human || human.event.authorId !== this.port.actorId || !human.event.content.startsWith(exchange.user.content)) continue;
-        let valid = await this.validateResources(proof);
-        for (const dependency of proof.dependencies) {
-          if (dependency.guildId !== this.port.guildId || dependency.channelId !== this.port.channelId) { valid = false; break; }
-          const source = await this.read(dependency.messageId);
-          if (!source || !dependencyMatchesSource(dependency, source.event, contextSourceHash(source.event)) ||
-              dependency.assetsHash && dependency.assetsHash !== guardedAssetsHash(source.assets ?? [])) { valid = false; break; }
-        }
+        let valid = await this.proofSourcesCurrent(proof);
         let delivered = "";
         for (const id of deliveryIds) { const source = await this.read(id); if (!source || source.origin !== "chat") { valid = false; break; } delivered += source.event.content; }
         const normalized = (value: string): string => value.replace(/\s+/gu, "");
         if (!valid || !normalized(delivered).includes(normalized(exchange.assistant.content))) continue;
         for (const id of [...proof.dependencies.map((source) => source.messageId), ...deliveryIds, sourceId]) if (!await this.retain(id)) valid = false;
         if (valid) {
+          if (!await this.retainActors(proof)) continue;
           for (const entry of proof.resources ?? []) this.resources.set(`${entry.kind}:${entry.id}`, entry);
           for (const dependency of proof.dependencies) if (dependency.assetsHash) this.assetDependencies.set(dependency.messageId, dependency.assetsHash);
           selected.push(exchange);
@@ -327,15 +313,10 @@ export class GuardedConversationContext {
               : !canRecallOrdinaryMemory(record, { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.actorId ?? "" }, now))) continue;
         const subject = record.subjectType === "member" ? await this.port.actor(record.subjectId, this.signal) : null;
         if (record.subjectType === "member" && !subject) continue;
-        let valid = await this.validateResources(proof);
-        for (const dependency of proof.dependencies) {
-          if (dependency.guildId !== this.port.guildId || dependency.channelId !== this.port.channelId) { valid = false; break; }
-          const source = await this.read(dependency.messageId);
-          if (!source || !dependencyMatchesSource(dependency, source.event, contextSourceHash(source.event)) ||
-              dependency.assetsHash && dependency.assetsHash !== guardedAssetsHash(source.assets ?? [])) { valid = false; break; }
-        }
+        let valid = await this.proofSourcesCurrent(proof);
         if (!valid) continue;
         if (retain) {
+          if (!await this.retainActors(proof)) continue;
           for (const entry of proof.resources ?? []) this.resources.set(`${entry.kind}:${entry.id}`, entry);
           const before = new Set(this.evidence.keys());
           for (const dependency of proof.dependencies) if (!await this.retain(dependency.messageId)) valid = false;
@@ -354,8 +335,53 @@ export class GuardedConversationContext {
     }, "memory");
   }
 
+  private async retainActors(proof: ContextProvenance): Promise<boolean> {
+    for (const entry of proof.actors ?? []) {
+      const actor = await this.port.actor(entry.userId, this.signal);
+      if (!actor || hashContent(JSON.stringify(actor)) !== entry.representationHash) return false;
+      const prior = this.reactionActors.get(actor.id);
+      if (prior && JSON.stringify(prior) !== JSON.stringify(actor)) return false;
+      this.reactionActors.set(actor.id, actor);
+    }
+    return true;
+  }
+
+  private async proofSourcesCurrent(proof: ContextProvenance, path = new Set<string>()): Promise<boolean> {
+    if (proof.coverage !== "complete" || proof.audience.guildId !== this.port.guildId || proof.audience.channelId !== this.port.channelId ||
+        proof.audience.userId !== null && proof.audience.userId !== this.port.audienceUserId || !await this.validateResources(proof)) return false;
+    for (const dependency of proof.actors ?? []) {
+      const actor = await this.port.actor(dependency.userId, this.signal);
+      if (!actor || hashContent(JSON.stringify(actor)) !== dependency.representationHash) return false;
+    }
+    for (const dependency of proof.dependencies) {
+      if (dependency.guildId !== this.port.guildId || dependency.channelId !== this.port.channelId) return false;
+      const source = await this.read(dependency.messageId, path);
+      if (!source || !dependencyMatchesSource(dependency, source.event, contextSourceHash(source.event)) ||
+          dependency.assetsHash && dependency.assetsHash !== guardedAssetsHash(source.assets ?? [])) return false;
+    }
+    return true;
+  }
+
+  public async derived(value: unknown, output: string, purpose: "character_state"): Promise<boolean> {
+    return this.phase(async () => {
+      const proof = parseContextProvenance(value);
+      if (!proof || proof.purpose !== purpose || proof.outputHash !== hashContent(output) || !await this.proofSourcesCurrent(proof)) return false;
+      for (const entry of proof.dependencies) {
+        if (!await this.retain(entry.messageId)) return false;
+        if (entry.assetsHash) this.assetDependencies.set(entry.messageId, entry.assetsHash);
+      }
+      if (!await this.retainActors(proof)) return false;
+      for (const entry of proof.resources ?? []) this.resources.set(`${entry.kind}:${entry.id}`, entry);
+      this.inheritPublicTools(proof);
+      if (proof.publicWeb) { this.publicWebUsed = true; for (const digest of proof.publicWeb.citationHashes) this.publicWebCitations.add(digest); }
+      return true;
+    }, "memory");
+  }
+
   private async validateResources(proof: Pick<ContextProvenance, "resources">): Promise<boolean> {
     for (const entry of proof.resources ?? []) {
+      const prior = this.resources.get(`${entry.kind}:${entry.id}`);
+      if (prior && prior.representationHash !== entry.representationHash) return false;
       if (!this.port.resource || entry.kind === "birthday" && !await this.port.actor(entry.id, this.signal)) return false;
       const value = await this.port.resource(entry, this.signal).catch(() => null);
       if (value === null || hashContent(value) !== entry.representationHash) return false;
@@ -462,7 +488,7 @@ export class GuardedConversationContext {
 
   public provenance(output: string, purpose: "reply" | "memory_claim" | "character_state" = "reply"): ContextProvenance | null {
     if (this.port.persist === false || this.closed || !this.port.policyCurrent() || !this.evidence.size || this.evidence.size > contextProvenanceLimits.dependencies) return null;
-    return parseContextProvenance({ version: 1, ...(purpose !== "reply" ? { purpose } : {}), coverage: "complete", audience: { guildId: this.port.guildId, channelId: this.port.channelId, userId: null },
+    return parseContextProvenance({ version: 1, ...(purpose !== "reply" ? { purpose } : {}), coverage: "complete", audience: { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.audienceUserId ?? null },
       outputHash: hashContent(output), dependencies: [...this.evidence.values()].map((source) => ({ guildId: this.port.guildId,
         channelId: this.port.channelId, messageId: source.messageId, authorId: source.authorId, timestampMs: source.timestampMs,
         representationHash: contextSourceHash(source), ...(this.assetDependencies.has(source.messageId) ? { assetsHash: this.assetDependencies.get(source.messageId) } : {}) })), actors: [...this.reactionActors.values()].map((actor) => ({ userId: actor.id, representationHash: hashContent(JSON.stringify(actor)) })),

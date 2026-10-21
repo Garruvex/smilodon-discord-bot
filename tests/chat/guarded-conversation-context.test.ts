@@ -8,6 +8,18 @@ afterEach(() => vi.useRealTimers());
 const policy = { count: 40, budget: 12000, burstIds: [] };
 
 describe("guarded conversation context", () => {
+  it("does not reuse private derived text in a public destination even for the same requester", async () => {
+    const fixture = guardedFixture(); fixture.port.audienceUserId = "alice";
+    const privateLease = await GuardedConversationContext.open(fixture.port, policy);
+    const proof = privateLease.provenance("PRIVATE_TEXT")!;
+    expect(proof.audience.userId).toBe("alice");
+    fixture.sources.set("private-bot", { event: guardedEvent("private-bot", 5000, "PRIVATE_TEXT", "bot"), origin: "chat", provenance: proof });
+    fixture.add(guardedEvent("public-current", 6000, "hello", "alice", { replyToMessageId: "private-bot" }));
+    fixture.port.audienceUserId = null; fixture.port.sourceMessageId = "public-current";
+    const publicLease = await GuardedConversationContext.open(fixture.port, policy);
+    expect(publicLease.replyChain).toEqual([]);
+    expect(JSON.stringify(publicLease.history)).not.toContain("PRIVATE_TEXT");
+  });
   it("loads only eligible images, preserving reply/history identity and attachment dependencies", async () => {
     const fixture = guardedFixture(guardedEvent("current", 4000, "What do these pictures show?", "alice", { replyToMessageId: "old" }));
     for (const [id, time] of [["old", 1000], ["recent", 2000], ["hidden", 3000]] as const) {
