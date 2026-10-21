@@ -9,6 +9,7 @@ const requests = new WeakSet<object>();
 const execution = new WeakMap<object, () => boolean>();
 const evaluationRequests = new WeakSet<object>();
 const references = new Set(["contextLease", "configurationContext", "turnSignal", "beforeModelAttempt", "musicResolveAccessSubjectFields"]);
+const roleSets = new Set(["musicControllerRoleIds", "musicBotAdministratorRoleIds"]);
 
 // Only the source-owned assembler can issue initial requests. Derivation is
 // restricted to closed repair operations in the model gateway. Copies have no
@@ -21,7 +22,10 @@ export function approveConversationRequest(input: ChatRequest, toolExecuted: () 
   const context = input.contextLease; const configuration = input.configurationContext;
   const beforeAttempt = input.beforeModelAttempt; const guildId = input.guildId;
   const projection = Object.fromEntries(Object.entries(input).filter(([key]) => !references.has(key) && key !== "enabledTools" && key !== "functionalToolExecuted")
-    .map(([key, value]) => [key, value instanceof Set ? readonlySet(value) : immutableSnapshot(value)]));
+    // A prior approval exposes ReadonlySet views, not native Sets. Rebuild
+    // these known fields from their values rather than cloning bound methods.
+    .map(([key, value]) => [key, value != null && roleSets.has(key) ? readonlySet(value as ReadonlySet<unknown>) :
+      value instanceof Set ? readonlySet(value) : immutableSnapshot(value)]));
   const request = { ...projection,
     contextLease: input.contextLease, configurationContext: input.configurationContext,
     ...(input.turnSignal ? { turnSignal: input.turnSignal } : {}),

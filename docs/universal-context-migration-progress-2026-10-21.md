@@ -388,3 +388,18 @@ lint debt remains unrelated and was not relabeled as a new passing global check.
 The original plans, closing audit, consumer inventory narrative and system flows
 now identify the channel/opt-out policy as superseding role-based collection.
 No paid provider run, production change, live Discord send or deployment occurred.
+
+## Checkpoint 42: production role-set reapproval failure
+
+The supplied build `97e540e4` trace reaches current snapshot checks in 20–29 ms,
+then fails before reply generation with no confirmed delivery. Tests reproducing
+the production music role fields failed with `DataCloneError` at the second
+request approval: immutable read-only role views contain bound functions, which
+cannot be structured-cloned. Reapproval now reconstructs both known role fields
+from their values, preserving immutability through generation and repair.
+Empty and populated role sets and actual direct-turn delivery are covered.
+Diagnostics classify `data_clone_error` without leaking raw error text.
+
+Verification: **5,153 passed, 7 skipped, zero failed**; typecheck, full build,
+changed-file lint and whitespace checks pass. The previous turn fixtures omitted
+these production fields. No production deployment or paid evaluation occurred.

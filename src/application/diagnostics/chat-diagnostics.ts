@@ -29,7 +29,7 @@ export const eligibilityReason = z.enum(["context_opt_out", "not_guild", "chat_d
 
 export const failureCategory = z.enum([
   "timeout", "http_error", "rate_limited", "invalid_json", "schema_mismatch",
-  "incomplete_response", "transport_error", "provider_error", "provider_cooldown", "operation_error", "invalid_target",
+  "incomplete_response", "transport_error", "provider_error", "provider_cooldown", "operation_error", "data_clone_error", "invalid_target",
   "fixed_target_mismatch", "invalid_boundary", "invalid_evidence", "invalid_contribution",
   "invalid_thought", "recipient_mismatch",
 ]);
@@ -207,6 +207,7 @@ export function safeFailure(error: unknown, fallback: "provider_error" | "operat
     const parsed = z.object({ name: z.unknown(), status: z.unknown(), code: z.unknown() }).safeParse(error);
     if (!parsed.success) return { failure: fallback };
     const { name, status, code } = parsed.data;
+    if (name === "DataCloneError") return { failure: "data_clone_error" };
     // DOMException has a numeric `code`, unlike transport errors. Inspect
     // fields independently so that does not mask its TimeoutError name.
     if (name === "TimeoutError" || name === "AbortError" || code === "ETIMEDOUT" || code === "UND_ERR_CONNECT_TIMEOUT") return { failure: "timeout" };

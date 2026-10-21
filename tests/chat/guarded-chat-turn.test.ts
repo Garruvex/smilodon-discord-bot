@@ -76,6 +76,16 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
 }
 
 describe("guarded turn acceptance", () => {
+  it("delivers a direct turn with production music role sets across both request approvals", async () => {
+    const { service, input, reply } = await setup();
+    input.musicControllerRoleIds = new Set(["controller"]);
+    input.musicBotAdministratorRoleIds = new Set();
+    const deliver = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
+    await service.run(input, deliver);
+    expect(reply).toHaveBeenCalledOnce();
+    expect([...reply.mock.calls[0]![0].musicControllerRoleIds!]).toEqual(["controller"]);
+    expect(deliver).toHaveBeenCalledOnce();
+  });
   it("preserves authored facts used by preflight when reply semantic enrichment returns no lore", async () => {
     const enrichment = { examples: { select: vi.fn<ExampleExchangeSelector["select"]>().mockResolvedValue([]) },
       lore: { select: vi.fn<PersonaLoreSelector["select"]>().mockResolvedValue([]) } };

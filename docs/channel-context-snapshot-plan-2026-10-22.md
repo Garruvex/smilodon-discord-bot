@@ -68,3 +68,28 @@ compaction can still run before decision when needed for the supplied context;
 the system does not make every semantic decision from the incoming text alone.
 
 No live Discord actions or paid provider evaluation are part of local validation.
+
+## Production follow-up: request approval with music roles
+
+The supplied production trace for build `97e540e4`, source message
+`1562554511988498574`, passes snapshot validation in 20–29 ms but fails before
+the reply-model boundary, ending after 3.925 seconds without confirmed delivery.
+Its generic `provider_error` classification does not establish a provider fault.
+
+Reproducing the production music role fields exposed a `DataCloneError`:
+initial request approval replaces native role sets with immutable read-only
+views containing bound methods. Generation and text-only repair approve the
+request again; those views must be rebuilt from their values, not passed to
+`structuredClone`. Both empty and populated sets now survive approval and
+repair while remaining immutable. A direct-turn regression includes the role
+fields and verifies delivery. The logger now categorizes this exception as
+`data_clone_error` without exposing exception text or request material.
+
+The earlier turn fixtures omitted these production fields; prior passing tests
+therefore did not cover this failure. This correction preserves channel
+collection, explicit opt-outs, interaction permissions and source freshness.
+
+Correction verification: **5,153 passed, 7 skipped, zero failed**; TypeScript
+checking, complete application/Activity build, changed-file lint and whitespace
+checks pass. All three added regressions failed with `DataCloneError` before
+the fix. No deployment, live Discord send or paid model request was performed.

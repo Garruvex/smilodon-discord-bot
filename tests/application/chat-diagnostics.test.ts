@@ -47,6 +47,7 @@ describe("chat diagnostic boundary", () => {
 
   it("classifies safe structural failures without exception messages or provider codes", () => {
     expect(safeFailure(new DOMException("SECRET_TIMEOUT", "TimeoutError"))).toEqual({ failure: "timeout" });
+    expect(safeFailure(new DOMException("SECRET_CLONE_PAYLOAD", "DataCloneError"))).toEqual({ failure: "data_clone_error" });
     expect(safeFailure(new SyntaxError("SECRET_JSON"))).toEqual({ failure: "invalid_json" });
     expect(safeFailure(new z.ZodError([]))).toEqual({ failure: "schema_mismatch" });
     expect(safeFailure({ code: "incomplete_response" })).toEqual({ failure: "incomplete_response" });

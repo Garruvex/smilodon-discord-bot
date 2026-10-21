@@ -18,6 +18,22 @@ async function fixture(): Promise<{ input: ChatRequest; source: ReturnType<typeo
 }
 
 describe("registered conversation request boundary", () => {
+  it.each([false, true])("reapproves role sets through generation and repair (populated=%s)", async (populated) => {
+    const { input } = await fixture();
+    input.musicControllerRoleIds = new Set(populated ? ["controller"] : []);
+    input.musicBotAdministratorRoleIds = new Set(populated ? ["administrator"] : []);
+    const parent = approveConversationRequest(input);
+    const generation = approveConversationRequest({ ...parent, personaLore: [] });
+    const repair = repairConversationRequest(generation, "draft", "notes");
+    for (const request of [generation, repair]) {
+      expect([...request.musicControllerRoleIds!]).toEqual(populated ? ["controller"] : []);
+      expect([...request.musicBotAdministratorRoleIds!]).toEqual(populated ? ["administrator"] : []);
+      expect("add" in request.musicControllerRoleIds!).toBe(false);
+      const reply = vi.fn(() => Promise.resolve(decisionResponse()));
+      await new ConversationModelGateway({ reply }).reply(request);
+      expect(reply).toHaveBeenCalledOnce();
+    }
+  });
   it.each(["raw", "copy"] as const)("rejects a %s request despite a valid source lease", async (kind) => {
     const { input } = await fixture(); const reply = vi.fn(() => Promise.resolve(decisionResponse()));
     const request = kind === "copy" ? { ...approveConversationRequest(input) } : input;

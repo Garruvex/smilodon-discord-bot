@@ -4,6 +4,14 @@ Updated after the channel-context policy and snapshot redesign (`e8e1e238`, `923
 
 ## Completion and scope
 
+Production follow-up: the supplied `97e540e4` trace passed snapshot checks but
+failed before reply generation. A locally reproduced request reapproval defect
+affected turns carrying music role sets, including empty sets. The correction
+rebuilds immutable role views from their values during generation/repair; new
+boundary and direct-delivery regressions cover the formerly omitted production
+fields. See the [follow-up evidence](channel-context-snapshot-plan-2026-10-22.md#production-follow-up-request-approval-with-music-roles).
+Earlier local completion evidence did not certify this production case.
+
 The local source and consumer migration is implemented. All production Discord chat entry points use the registered source engine; all configured chat, utility, dedicated decision, image and embedding capabilities are exposed through mandatory frozen model facades. The production memory engine is also behind a frozen mandatory facade. There is no active context-free chat/model fallback selected by a missing port or legacy retrieval setting.
 
 This scope covers Discord conversation context and the consumers listed in the AST [model inventory](model-consumer-inventory-2026-10-21.json). Campaign game-state generation is a separate subsystem and does not receive these chat source authorities. The architecture checks protect ordinary application boundaries; they are not a sandbox against intentionally malicious new JavaScript, arbitrary networking or direct database tampering.
