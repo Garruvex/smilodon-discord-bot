@@ -1,5 +1,5 @@
-import { writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import pino from "pino";
 import { contextualReplayCases } from "../application/chat/contextual-replay.js";
 import { contextualReplayPolicyRevision, replayPolicyAssessment } from "../application/chat/contextual-replay-policy.js";
@@ -95,6 +95,7 @@ async function main(): Promise<void> {
     validityGateMet: live && probeMs === null && cases.length >= 200 ? valid / cases.length >= 0.99 : null,
     semanticReview: "Controlled expected-label checks; independent review and a scoped live pilot remain required.", tokenUsage: "unavailable", discordSends: 0 };
   const output = resolve(argument("--output") ?? "contextual-participation-replay.json");
+  await mkdir(dirname(output), { recursive: true });
   await writeFile(output, JSON.stringify({ summary, results: results.sort((a, b) => a.id.localeCompare(b.id)) }, null, 2), "utf8");
   process.stdout.write(JSON.stringify({ ...summary, output }) + "\n");
   if (live && summary.validityGateMet === false && cases.length >= 200) process.exitCode = 2;

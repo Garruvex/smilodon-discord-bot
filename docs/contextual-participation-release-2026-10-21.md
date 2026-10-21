@@ -82,6 +82,24 @@ Fixture revision 2's text-policy counter is narrower than complete recipient acc
 
 ## Reproduction
 
+`eval:contextual` runs TypeScript source and requires development dependencies, including `tsx`. A server host using only Docker may have no host dependencies at all; production-only installs and the runtime image intentionally omit `tsx`. A `tsx: not found` failure occurs before the replay or provider requests start.
+
+For the existing Docker deployment, run the compiled replay inside the selected bot container and write to a writable location. This starts only the evaluation script; it does not start another bot, run migrations or restart the service:
+
+```sh
+docker compose exec -T bot-pinecone node dist/scripts/replay-contextual-participation.js --live --instance pinecone --limit 216 --concurrency 4 --output /tmp/contextual-replay.json
+docker compose cp bot-pinecone:/tmp/contextual-replay.json ./contextual-replay.json
+```
+
+For inventory only in that same container:
+
+```sh
+docker compose exec -T bot-pinecone node dist/scripts/replay-contextual-participation.js --output /tmp/contextual-replay-inventory.json
+docker compose cp bot-pinecone:/tmp/contextual-replay-inventory.json ./contextual-replay-inventory.json
+```
+
+The container must contain a build with this script. For a host checkout that already has compiled `dist/` and runtime dependencies, `npm run eval:contextual:built -- ...` runs the same compiled entry point without `tsx`; keep the build aligned with the checkout. The direct `node dist/scripts/replay-contextual-participation.js ...` form also works with builds made before the named npm command was added. For source-based evaluation in a development checkout, install the locked development dependencies with `npm ci --include=dev` before using the commands below. Report output directories are created when absent.
+
 Inventory only, with no API calls:
 
 ```text
