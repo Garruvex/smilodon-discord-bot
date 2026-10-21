@@ -8,6 +8,7 @@ import type { ConversationEpisodeStore } from "../application/chat/conversation-
 import { SocialChatEligibility } from "../infrastructure/discord/behaviors/social-chat-eligibility.js";
 import { ChatTurnSupport } from "../infrastructure/discord/behaviors/chat-turn-support.js";
 import { guardedToolResourcePort } from "../application/chat/guarded-tool-gateway.js";
+import { ReviewedMusicTool } from "../infrastructure/discord/commands/music/reviewed-music-tool.js";
 import { isGuardedContext } from "../application/chat/guarded-conversation-context.js";
 import { resolveChannelMemoryMode } from "../application/memory/memory-channel-policy.js";
 import { ConversationObservationBehavior } from "../infrastructure/discord/behaviors/conversation-observation-behavior.js";
@@ -667,7 +668,7 @@ export function createDependencies(
   // model, so a command's LLM exposure has one source of truth — the
   // command file itself — instead of a second array to keep in sync here.
   const commandToolBindings = commandRegistry.getAll().flatMap((command) =>
-    command.toolBinding ? [command.toolBinding] : []);
+    command.toolBinding ? [ReviewedMusicTool.from(command) ?? command.toolBinding] : []);
   const chatToolRegistry = new ChatToolRegistry([
     new DiceRollTool(),
     new EightBallTool(),

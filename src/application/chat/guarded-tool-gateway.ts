@@ -14,20 +14,26 @@ import { isGuardedContext, type GuardedConversationContext, type GuardedResource
 import type { ChatUser } from "./chat-provider.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { extendConversationSource } from "../context/conversation-source-registry.js";
+import { ReviewedMusicTool } from "../../infrastructure/discord/commands/music/reviewed-music-tool.js";
+import { immutableSnapshot } from "../context/immutable-snapshot.js";
 
 // Only reviewed implementations can enter this boundary. A name or a model-
 // supplied "filtered" flag cannot turn an unknown tool into a source authority.
 export function guardedTools(registry: ChatToolRegistry | null, lease: GuardedConversationContext,
   scope: { enabled: boolean; imageGenerationEnabled?: boolean; guildId: string; channelId: string; userId: string; allowed?: ReadonlySet<string>; disabled?: ReadonlySet<string> },
-  check: () => Promise<void>, executed: () => void): ChatTool[] {
+  check: () => Promise<void>, executed: () => void,
+  authority: Pick<ChatToolContext, "channelIsNsfw" | "channelMode" | "isOwner" | "music"> = { channelIsNsfw: false, channelMode: "shared", isOwner: false, music: null }): ChatTool[] {
   if (!scope.enabled || !registry || !isGuardedContext(lease)) return [];
+  const boundAuthority = Object.freeze({ ...authority, music: authority.music ? Object.freeze({ ...authority.music,
+    actor: immutableSnapshot(authority.music.actor), musicControllerRoleIds: new Set(authority.music.musicControllerRoleIds),
+    botAdministratorRoleIds: new Set(authority.music.botAdministratorRoleIds) }) : null });
   const subjects = [...new Set([lease.current.authorId, ...lease.history.map((event) => event.authorId),
     ...lease.replyChain.map((event) => event.authorId), ...lease.burst.map((event) => event.authorId)])];
   const texts = [lease.current, ...lease.history, ...lease.replyChain, ...lease.burst].map((event) => event.content);
   return registry.list().filter((tool) => !scope.disabled?.has(tool.name) && (!scope.allowed || scope.allowed.has(tool.name)) &&
     (tool instanceof DiceRollTool || tool instanceof EightBallTool || tool instanceof MemoryLookupTool || tool instanceof ReadLinkTool ||
       tool instanceof BirthdayLookupTool || tool instanceof BirthdaySetTool || tool instanceof BirthdayMemberSetTool || tool instanceof BooruSearchTool ||
-      tool instanceof DiscordServerLookupTool || tool instanceof GenerateSelfImageTool && scope.imageGenerationEnabled))
+      tool instanceof DiscordServerLookupTool || ReviewedMusicTool.registered(tool) || tool instanceof GenerateSelfImageTool && scope.imageGenerationEnabled))
     .map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters, ...(tool.outputKind ? { outputKind: tool.outputKind } : {}),
       execute: async (args: unknown, context: ChatToolContext): Promise<ChatToolResult> => {
         await check(); context.signal?.throwIfAborted();
@@ -43,7 +49,9 @@ export function guardedTools(registry: ChatToolRegistry | null, lease: GuardedCo
           if (typeof raw !== "string" || !texts.some((text) => text.match(/https?:\/\/[^\s<>]+/gu)?.includes(raw)))
             return { content: "The link must come from supplied authorized conversation context. Ask for the link." };
         }
-        const result = await tool.execute(args, { ...context, contextLease: lease, beforeModelAttempt: check, knownSubjectIds: [...new Set([...subjects, ...lease.admittedActorIds])] });
+        if (boundAuthority.music && (boundAuthority.music.actor.guildId !== scope.guildId || boundAuthority.music.actor.userId !== scope.userId)) throw new SocialOutputSuppressed();
+        const result = await tool.execute(args, { ...context, ...boundAuthority, currentUser: lease.current.author ?? context.currentUser,
+          contextLease: lease, beforeModelAttempt: check, knownSubjectIds: [...new Set([...subjects, ...lease.admittedActorIds])] });
         context.signal?.throwIfAborted(); await check();
         if (tool instanceof ReadLinkTool || tool instanceof BooruSearchTool) lease.recordPublicTool(tool.name, result.content);
         if (tool.outputKind !== "context") executed();
@@ -52,8 +60,14 @@ export function guardedTools(registry: ChatToolRegistry | null, lease: GuardedCo
     }));
 }
 
-export async function resolveGuardedToolResource(registry: ChatToolRegistry | null, key: GuardedResourceKey, context: ChatToolContext): Promise<string | null> {
+export async function resolveGuardedToolResource(registry: ChatToolRegistry | null, key: GuardedResourceKey, context: ChatToolContext,
+  eligible?: (userId: string) => Promise<boolean>): Promise<string | null> {
   context.signal?.throwIfAborted();
+  if (key.kind === "music_queue") {
+    if (key.id !== "current" || !eligible) return null;
+    for (const tool of registry?.list() ?? []) if (ReviewedMusicTool.registered(tool) && tool.outputKind === "context") return tool.readQueue(context, eligible);
+    return null;
+  }
   if (key.kind === "self_reference_image") {
     if (key.id !== "current") return null;
     const tool = registry?.list().find((candidate) => candidate instanceof GenerateSelfImageTool);
@@ -70,7 +84,8 @@ export async function resolveGuardedToolResource(registry: ChatToolRegistry | nu
 
 export function guardedToolResourcePort(port: GuardedContextPort, registry: ChatToolRegistry | null,
   context: { currentUser: ChatUser; channelMode: ChatToolContext["channelMode"]; channelIsNsfw: boolean; isOwner: boolean }, turnSignal?: AbortSignal): GuardedContextPort {
+  const source = { ...port }; const destination = { ...context };
   return extendConversationSource(port, { ...(turnSignal ? { turnSignal } : {}), resource: (key, signal): Promise<string | null> => resolveGuardedToolResource(registry, key, {
-    ...context, guildId: port.guildId, channelId: port.channelId, music: null, pendingGeneratedImages: [], signal,
-  }) });
+    ...destination, guildId: source.guildId, channelId: source.channelId, music: null, pendingGeneratedImages: [], signal,
+  }, async (id) => (await source.actor(id, signal))?.id === id) });
 }

@@ -534,6 +534,8 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
   }
 
   public async enqueue(request: EnqueueRequest): Promise<EnqueueResult> {
+    const check = async (): Promise<void> => { request.signal?.throwIfAborted(); await request.beforeCommit?.(); request.signal?.throwIfAborted(); };
+    await check();
     const existingPlayer = this.manager.getPlayer(request.guildId);
     // Only a fresh join needs this — assertSameVoiceChannel (PlaybackService)
     // already guarantees an existing player's channel can't change here, so
@@ -550,7 +552,9 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     });
 
     await player.connect();
+    await check();
     await this.prepareStageChannel(request.guildId);
+    await check();
     if (!existingPlayer) {
       const profile = this.guildConfigurationProvider.find(request.guildId);
       if (profile) await player.setVolume(profile.music.defaultVolume);
@@ -558,7 +562,8 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
 
     const searchResult = await this.searchWithFallback(player, request.query, {
       userId: request.requestedByUserId,
-    });
+    }, check);
+    await check();
     const tracks = searchResult.tracks;
 
     if (tracks.length === 0) {
@@ -608,14 +613,17 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     player: Player,
     query: string,
     requester: { userId: string },
+    beforeAttempt?: () => Promise<void>,
   ): Promise<SearchResult | UnresolvedSearchResult> {
+    await beforeAttempt?.();
     try {
       const primary = await player.search({ query, source: "spsearch" }, requester);
       if (primary.tracks.length > 0) return primary;
     } catch (error) {
-      this.logger.warn({ error, query }, "Spotify search failed, falling back to YouTube");
+      this.logger.warn({ errorName: error instanceof Error ? error.name : "unknown" }, "Spotify search failed, falling back to YouTube");
     }
 
+    await beforeAttempt?.();
     return player.search({ query, source: "ytsearch" }, requester);
   }
 
@@ -1232,6 +1240,7 @@ export class LavalinkPlayerGateway implements MusicPlayerGateway {
     return {
       guildId,
       voiceChannelId: player.voiceChannelId ?? "",
+      textChannelId: player.textChannelId ?? null,
       paused: player.paused,
       playing: player.playing,
       volume: player.volume,

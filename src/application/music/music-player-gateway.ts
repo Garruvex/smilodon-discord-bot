@@ -14,6 +14,8 @@ export type MusicFilterPreset =
   | "tremolo";
 
 export interface EnqueueRequest {
+  signal?: AbortSignal;
+  beforeCommit?: () => Promise<void>;
   guildId: string;
   voiceChannelId: string;
   textChannelId: string;
@@ -100,6 +102,9 @@ export type AutoQueueVoteSnapshot =
 
 export interface MusicPlayerSnapshot {
   guildId: string;
+  // Required by privacy-sensitive queue consumers; older adapters without
+  // this source audience cannot disclose queue context through chat.
+  textChannelId?: string | null;
   voiceChannelId: string;
   paused: boolean;
   playing: boolean;

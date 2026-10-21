@@ -45,6 +45,11 @@ export function evaluateMusicToolAccess(
   );
 }
 
+export async function evaluateGuardedMusicToolAccess(ctx: ChatToolContext, music: NonNullable<ChatToolContext["music"]>, profiles: GuildConfigurationProvider): Promise<AccessDecision> {
+  await ctx.beforeModelAttempt?.(); ctx.signal?.throwIfAborted();
+  return evaluateMusicToolAccess(ctx, music, profiles);
+}
+
 // Shared by every music tool binding's catch block — same mapping the
 // slash-command core actions use, so a MusicError message reads identically
 // whether it reached the user via /pause or a pause_music tool call.

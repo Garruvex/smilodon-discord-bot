@@ -1,7 +1,7 @@
 import { CommandModule, type BotCommand, type ChatToolBinding, type CommandContext } from "../../../../application/commands/command.js";
 import type { ChatToolContext, ChatToolResult } from "../../../../application/chat/tools/chat-tool.js";
 import {
-  evaluateMusicToolAccess,
+  evaluateGuardedMusicToolAccess,
   formatMusicError,
   musicPermissionDeniedMessage,
   musicToolTimedOutMessage,
@@ -57,7 +57,7 @@ export class VolumeCommand implements BotCommand {
 
   private async executeAsTool(args: SetMusicVolumeToolArgs, ctx: ChatToolContext): Promise<ChatToolResult> {
     if (!ctx.music) return { content: musicPermissionDeniedMessage };
-    const decision = evaluateMusicToolAccess(ctx, ctx.music, this.profiles);
+    const decision = await evaluateGuardedMusicToolAccess(ctx, ctx.music, this.profiles);
     if (!decision.allowed) return { content: musicPermissionDeniedMessage };
     const maximumVolume = this.profiles.require(ctx.guildId).music.maximumVolume;
     const volume = Math.min(Math.max(Math.round(args.volume), 0), maximumVolume);

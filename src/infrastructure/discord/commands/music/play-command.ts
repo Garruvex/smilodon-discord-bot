@@ -3,7 +3,7 @@ import { PermissionFlagsBits } from "discord.js";
 import { CommandModule, type BotCommand, type ChatToolBinding, type CommandContext } from "../../../../application/commands/command.js";
 import type { ChatToolContext, ChatToolResult } from "../../../../application/chat/tools/chat-tool.js";
 import {
-  evaluateMusicToolAccess,
+  evaluateGuardedMusicToolAccess,
   formatMusicError,
   musicPermissionDeniedMessage,
   musicToolTimedOutMessage,
@@ -106,18 +106,23 @@ export class PlayCommand implements BotCommand {
 
   private async executeAsTool(args: PlayMusicToolArgs, ctx: ChatToolContext): Promise<ChatToolResult> {
     if (!ctx.music) return { content: musicPermissionDeniedMessage };
-    const decision = evaluateMusicToolAccess(ctx, ctx.music, this.profiles);
+    const decision = await evaluateGuardedMusicToolAccess(ctx, ctx.music, this.profiles);
     if (!decision.allowed) return { content: musicPermissionDeniedMessage };
     if (musicToolWasCancelled(ctx)) return { content: musicToolTimedOutMessage };
     try {
       const actor = withDjBypass(ctx.music.actor, decision.bypassVoiceChannelCheck, decision.allowQueueWithoutVoiceChannel);
-      const result = await this.playbackService.enqueue(actor, args.query);
+      const result = ctx.contextLease ? await this.playbackService.enqueue(actor, args.query, {
+        ...(ctx.signal ? { signal: ctx.signal } : {}), beforeCommit: async (): Promise<void> => {
+          const current = await evaluateGuardedMusicToolAccess(ctx, ctx.music!, this.profiles);
+          if (!current.allowed) throw new Error(musicPermissionDeniedMessage);
+        },
+      }) : await this.playbackService.enqueue(actor, args.query);
       return {
         content: JSON.stringify({
           title: result.firstTrack.title,
           author: result.firstTrack.author,
           startedPlayback: result.startedPlayback,
-          queuePosition: result.queuePosition,
+          ...(ctx.contextLease ? {} : { queuePosition: result.queuePosition }),
           addedTrackCount: result.addedTrackCount,
         }),
       };

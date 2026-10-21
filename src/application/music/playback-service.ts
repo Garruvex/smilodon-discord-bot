@@ -40,7 +40,7 @@ export class PlaybackService {
 
   public constructor(private readonly playerGateway: MusicPlayerGateway) {}
 
-  public async enqueue(actor: PlaybackActor, query: string): Promise<EnqueueResult> {
+  public async enqueue(actor: PlaybackActor, query: string, operation?: Pick<EnqueueRequest, "signal" | "beforeCommit">): Promise<EnqueueResult> {
     const remainingSeconds = this.rateLimiter.check(actor.guildId, actor.userId);
     if (remainingSeconds !== null) {
       throw new MusicRateLimitError(remainingSeconds);
@@ -54,6 +54,7 @@ export class PlaybackService {
       textChannelId: actor.textChannelId,
       query,
       requestedByUserId: actor.userId,
+      ...(operation?.signal ? { signal: operation.signal } : {}), ...(operation?.beforeCommit ? { beforeCommit: operation.beforeCommit } : {}),
     };
 
     // Recorded before the search so failed lookups are rate limited too; the
