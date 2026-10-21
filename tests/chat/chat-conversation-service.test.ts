@@ -98,24 +98,6 @@ describe("ChatConversationService", () => {
       expect(commit).toHaveBeenCalledWith(expect.objectContaining({ contextProvenance: null }));
     } finally { service.stopScheduling(); await service.drain(); }
   });
-  it("excludes legacy session quotations from every expanded prompt input and reports a safe count", async () => {
-    const { logger, records } = captureDiagnosticLogger();
-    const reply = vi.fn((request: ChatRequest) => {
-      expect(request.recentHistory).toEqual([]); expect(buildChatContext(request)).not.toContain("PROTECTED_SESSION_QUOTATION");
-      return Promise.resolve(response("answer"));
-    });
-    const state = baseStore({ load: () => Promise.resolve({ memories: [], exchanges: [{
-      user: { content: "earlier question", createdAt: 1 }, assistant: { content: "PROTECTED_SESSION_QUOTATION", createdAt: 2 },
-    }] }) });
-    const service = new ChatConversationService({ reply }, state, testMemoryEngine().engine, undefined, undefined, undefined, null, null, null, logger);
-    try {
-      await service.run({ ...input("question"), refreshHistoricalContext: () => Promise.resolve([]) }, (result) => Promise.resolve(result.text));
-      expect(reply).toHaveBeenCalledOnce();
-      expect(records.find((record) => record.event === "context.derived.excluded")).toMatchObject({ source: "session", count: 1, reason: "unverified_provenance" });
-      expect(JSON.stringify(records)).not.toContain("PROTECTED_SESSION");
-    } finally { service.stopScheduling(); await service.drain(); }
-  });
-
   it("overwrites provider-supplied provenance and records known dependencies and confirmed delivery IDs", async () => {
     const forged = captureIncompleteTurnProvenance(decisionRequest({ currentBurst: [], channelHistory: [],
       currentEvent: { type: "message", messageId: "forged-source", channelId: "channel", authorId: "alice", timestampMs: 1, replyToMessageId: null, mentionedUserIds: [] },
@@ -132,35 +114,6 @@ describe("ChatConversationService", () => {
       });
       expect(result.contextProvenance?.dependencies).toMatchObject([{ messageId: "current", authorId: "user" }]);
       expect(commit).toHaveBeenCalledWith(expect.objectContaining({ assistantMessageIds: ["confirmed"], contextProvenance: result.contextProvenance }));
-    } finally { service.stopScheduling(); await service.drain(); }
-  });
-  it("refreshes expanded history before use and suppresses delivery after a source becomes unreadable", async () => {
-    const old = { messageId: "old", channelId: "channel", timestampMs: 0, authorId: "user", authorDisplayName: "User", content: "earlier question", imageCount: 0 };
-    let readable = true;
-    const refreshHistoricalContext = vi.fn((events) => Promise.resolve(readable ? events : []));
-    const reply = vi.fn((request: ChatRequest) => {
-      expect(request.channelHistory).toEqual([old]); readable = false; return Promise.resolve(response("answer"));
-    });
-    const deliver = vi.fn(() => Promise.resolve("sent"));
-    const service = new ChatConversationService({ reply }, baseStore(), testMemoryEngine().engine);
-    try {
-      await expect(service.run({ ...input("question"), channelHistoryEnabled: true, channelHistory: [old], refreshHistoricalContext }, deliver))
-        .rejects.toBeInstanceOf(SocialOutputSuppressed);
-      expect(reply).toHaveBeenCalledOnce(); expect(deliver).not.toHaveBeenCalled();
-      expect(refreshHistoricalContext.mock.calls.length).toBeGreaterThanOrEqual(2);
-    } finally { service.stopScheduling(); await service.drain(); }
-  });
-
-  it("does not merge unverified bot episode text into expanded history", async () => {
-    const reply = vi.fn((request: ChatRequest) => {
-      expect(request.channelHistory).toEqual([]); return Promise.resolve(response("answer"));
-    });
-    const service = new ChatConversationService({ reply }, baseStore(), testMemoryEngine().engine);
-    try {
-      service.observe("guild", "channel", { messageId: "bot-episode", channelId: "channel", timestampMs: Date.now(), authorId: "bot",
-        authorDisplayName: "Bot", content: "UNVERIFIABLE_DERIVED_TEXT", imageCount: 0 });
-      await service.run({ ...input("question"), channelHistoryEnabled: true, refreshHistoricalContext: () => Promise.resolve([]) }, (result) => Promise.resolve(result.text));
-      expect(reply).toHaveBeenCalledOnce();
     } finally { service.stopScheduling(); await service.drain(); }
   });
   it("clears stored sessions even when durable diagnostic cleanup fails", async () => {

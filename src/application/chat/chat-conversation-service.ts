@@ -186,7 +186,6 @@ export interface ChatConversationInput
   shouldDeliver?: () => boolean;
   guardedContextPort?: GuardedContextPort;
   guardedContextPolicy?: { count: number; budget: number; minReactors?: number };
-  refreshHistoricalContext?: (events: readonly ChannelHistoryMessage[]) => Promise<ChannelHistoryMessage[]>;
   refreshContextMessage?: (event: ChannelHistoryMessage) => Promise<ChannelHistoryMessage | null>;
   afterDecision?: (response: ChatResponse) => Promise<void>;
   shadowMode?: boolean;
@@ -828,7 +827,7 @@ export class ChatConversationService {
         emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "execution_ineligible" });
         throw new SocialOutputSuppressed();
       }
-      if (input.turnPlan.context === "legacy" && !input.refreshHistoricalContext && input.channelHistoryEnabled && this.episodeStore && (input.resolveMemoryMode?.() ?? resolveChannelMemoryMode(input.channelMemoryModes ?? {}, input.channelId)) !== "disabled") {
+      if (input.turnPlan.context === "legacy" && input.channelHistoryEnabled && this.episodeStore && (input.resolveMemoryMode?.() ?? resolveChannelMemoryMode(input.channelMemoryModes ?? {}, input.channelId)) !== "disabled") {
         const persisted = await this.episodeStore.load(input.guildId, input.channelId, this.now());
         persisted.forEach((event) => this.episodes.observe(key, event, this.now(), (this.characterRuntime?.contextWindow(input.guildId, input.channelId) ?? 15) * 60_000));
       }
@@ -840,7 +839,7 @@ export class ChatConversationService {
         input.currentEvent?.type === "message" ? input.currentEvent.replyToMessageId : null, this.now()) : [];
       // The expanded path is rebuilt from Discord and refreshed as one batch;
       // legacy derived bot episode text has no complete provenance.
-      if (input.turnPlan.context === "guarded_text" || input.refreshHistoricalContext) snapshot = [];
+      if (input.turnPlan.context === "guarded_text") snapshot = [];
       if (input.refreshContextMessage) snapshot = (await Promise.all(snapshot.map((event) => input.refreshContextMessage!(event))))
         .filter((event): event is ChannelHistoryMessage => event !== null);
       const ids = new Set(input.replyChain.map((message) => message.messageId));
@@ -848,23 +847,7 @@ export class ChatConversationService {
         !ids.has(message.messageId) && message.messageId !== input.sourceMessageId &&
         message.timestampMs > (this.forgottenBefore.get(`${input.guildId}:${message.authorId}`) ?? -Infinity)).map((message) => [message.messageId, message])).values()]
         .sort((a, b) => a.timestampMs - b.timestampMs);
-      if (!input.refreshHistoricalContext) history = history.slice(windowMinutes ? -48 : -24);
-      else history = await input.refreshHistoricalContext(history);
-      const expandedEvidence = history;
-      const expandedStillCurrent = async (): Promise<boolean> => {
-        if (!input.refreshHistoricalContext) return true;
-        const ids = new Set(history.map((event) => event.messageId));
-        const expected = expandedEvidence.filter((event) => ids.has(event.messageId));
-        const refreshed = await input.refreshHistoricalContext(expected);
-        const identity = (events: readonly ChannelHistoryMessage[]): string => JSON.stringify(events.map((event) => ({
-          messageId: event.messageId, channelId: event.channelId, authorId: event.authorId, author: event.author,
-          authorDisplayName: event.authorDisplayName, content: event.content, timestampMs: event.timestampMs,
-          imageCount: event.imageCount, replyToMessageId: event.replyToMessageId,
-        })));
-        const current = identity(refreshed) === identity(expected);
-        if (!current) emitChatDiagnostic(this.logger, { event: "context.history.revalidated", requested: expected.length, selected: refreshed.length, status: "changed" });
-        return current;
-      };
+      history = history.slice(windowMinutes ? -48 : -24);
       const merged = history.length;
       if (this.characterRuntime) history = this.characterRuntime.selectContext(input.guildId, input.channelId, history);
       emitChatDiagnostic(this.logger, { event: "context.selection.completed", fetchedHistory: input.channelHistory.length,
@@ -886,16 +869,12 @@ export class ChatConversationService {
           text: contextualAvailability ? contextualAvailability.continuation.text || contextualAvailability.spontaneous.text : this.scheduler.outputAvailable(key, "text", limits),
           reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits),
         } } : {}),
-        canExecute: async () => (this.privacyVersions.get(input.guildId) ?? 0) === privacyVersion && (!input.canExecute || await input.canExecute()) && await expandedStillCurrent(),
+        canExecute: async () => (this.privacyVersions.get(input.guildId) ?? 0) === privacyVersion && (!input.canExecute || await input.canExecute()),
         onModelAttempt: () => this.scheduler.recordModelAttempt() }, async (result) => {
         const effects = authorizeConversationEffects(result, input.sourceMessageId ?? null);
         if (effects.action !== "reply" && effects.action !== "reply_and_react") throw new SocialOutputSuppressed();
         if ((this.privacyVersions.get(input.guildId) ?? 0) !== privacyVersion) {
           emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "privacy_changed" });
-          throw new SocialOutputSuppressed();
-        }
-        if (!await expandedStillCurrent()) {
-          emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "context_changed" });
           throw new SocialOutputSuppressed();
         }
         if (input.shadowMode) {
@@ -1114,13 +1093,7 @@ export class ChatConversationService {
       // (private memory reads go through memoryEngine.recall below).
       const state = input.triggerMode === "reaction" ? { exchanges: [], memories: [] }
         : await this.stateStore.load(input.guildId, input.currentUser.id, input.channelId, now);
-      // A legacy session can quote any number of other people. Its owner
-      // alone is not sufficient authorization for expanded-context reuse.
-      const sessionExchanges = input.refreshHistoricalContext ? [] : state.exchanges;
-      if (input.refreshHistoricalContext && state.exchanges.length) emitChatDiagnostic(this.logger, {
-        event: "context.derived.excluded", source: "session", count: state.exchanges.length, reason: "unverified_provenance",
-      });
-      const recentHistory = this.promptHistorySelector.select(sessionExchanges);
+      const recentHistory = this.promptHistorySelector.select(state.exchanges);
       const replyToContent = input.replyChain.at(-1)?.content;
       // Never rejects (failures resolve to null), so lore selection can
       // chain on it without risking the whole Promise.all.

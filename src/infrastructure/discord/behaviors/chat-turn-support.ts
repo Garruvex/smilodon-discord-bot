@@ -8,8 +8,7 @@ import type { ChatUser, ConversationEvent } from "../../../application/chat/chat
 import type { Logger } from "pino";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
 import { eligibilityReason, emitChatDiagnostic, safeFailure } from "../../../application/diagnostics/chat-diagnostics.js";
-import { collectEligibleHistory, channelHistoryPolicy } from "../../../application/chat/eligible-channel-history.js";
-import type { SocialChatEligibility, SocialTrigger, HistoricalOriginBudget } from "./social-chat-eligibility.js";
+import type { SocialChatEligibility, SocialTrigger } from "./social-chat-eligibility.js";
 import { SocialOutputSuppressed, type MessageOriginStore, type MessageOrigin } from "../../../application/chat/message-origin-store.js";
 
 import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
@@ -177,36 +176,6 @@ export class ChatTurnSupport {
     };
   }
 
-  public createHistoricalContextRefresh(source: Message): (events: readonly ChannelHistoryMessage[]) => Promise<ChannelHistoryMessage[]> {
-    const budget: HistoricalOriginBudget = { remaining: channelHistoryPolicy.maxOriginFetches, resolved: new Map() };
-    let remainingMessages: number = channelHistoryPolicy.maxRevalidationMessages;
-    let remainingPasses: number = channelHistoryPolicy.maxRevalidationPasses;
-    return async (events) => {
-      if (--remainingPasses < 0 || events.length > remainingMessages) {
-        emitChatDiagnostic(this.logger, { event: "context.history.revalidated", requested: events.length, selected: 0, status: "budget_exhausted" });
-        return [];
-      }
-      remainingMessages -= events.length;
-      budget.resolved.clear();
-      const selected = await this.refreshHistoricalContext(source, events, budget);
-      emitChatDiagnostic(this.logger, { event: "context.history.revalidated", requested: events.length, selected: selected.length,
-        status: selected.length === events.length ? "refreshed" : "underfilled" });
-      return selected;
-    };
-  }
-
-  private async refreshHistoricalContext(source: Message, events: readonly ChannelHistoryMessage[], budget: HistoricalOriginBudget): Promise<ChannelHistoryMessage[]> {
-    if (!this.eligibility || !await this.eligibility.canReadHistory(source)) return [];
-    const selected: Message[] = [];
-    for (const event of events) {
-      if (event.channelId !== source.channelId || event.author?.kind === "bot") continue;
-      const message = await source.channel.messages.fetch({ message: event.messageId, force: true }).catch(() => null);
-      if (!message || message.channelId !== source.channelId || message.guildId !== source.guildId || message.author.bot) continue;
-      if ((await this.eligibility.check(message, "history", budget)).eligible) selected.push(message);
-    }
-    return this.toChannelHistoryMessages(selected);
-  }
-
   public async refreshHistoryEvent(source: Message, event: ChannelHistoryMessage): Promise<ChannelHistoryMessage | null> {
     if (event.channelId && event.channelId !== source.channelId || !await this.isEligible(source, "observation")) return null;
     const message = await source.channel.messages.fetch(event.messageId).catch(() => null);
@@ -361,32 +330,7 @@ export class ChatTurnSupport {
     excludeIds: ReadonlySet<string>,
     before: string | null = message.id,
     maxChars: number = chatMemoryLimits.maxChannelHistoryChars,
-    countFirst = false,
   ): Promise<Message[]> {
-    if (countFirst) {
-      if (!this.eligibility || !await this.eligibility.canReadHistory(message)) {
-        emitChatDiagnostic(this.logger, { event: "context.history.coverage", requested: limit, fetched: 0, examined: 0, eligible: 0, pages: 0,
-          selectedIds: [], status: "ineligible", omissions: { excluded: 0, ineligible: 0, unverifiable_bot: 0, duplicate: 0 } });
-        return [];
-      }
-      const budget: HistoricalOriginBudget = { remaining: channelHistoryPolicy.maxOriginFetches, resolved: new Map() };
-      const result = await collectEligibleHistory({ requested: limit, before, excludeIds,
-        fetchPage: async (cursor, pageSize) => [...(await message.channel.messages.fetch({ limit: pageSize, ...(cursor ? { before: cursor } : {}) })).values()],
-        authorize: async (candidate) => {
-          if (candidate.channelId !== message.channelId || candidate.guildId !== message.guildId) return "ineligible";
-          if (candidate.author.bot) return "unverifiable_bot";
-          if (!this.eligibility) return "ineligible";
-          const result = await this.eligibility.check(candidate, "history", budget);
-          if (!result.eligible) {
-            const reason = eligibilityReason.safeParse(result.reason);
-            if (reason.success) emitChatDiagnostic(this.logger, { event: "context.eligibility.denied", sourceMessageId: candidate.id, purpose: "history", reason: reason.data });
-          }
-          return result.eligible ? null : "ineligible";
-        },
-      });
-      emitChatDiagnostic(this.logger, { event: "context.history.coverage", ...result.coverage });
-      return result.messages;
-    }
     if (!await this.isEligible(message, "observation")) {
       emitChatDiagnostic(this.logger, { event: "context.source.selected", source: "channel_history", fetched: 0, selected: 0, omitted: 0, chars: 0, status: "ineligible" });
       return [];

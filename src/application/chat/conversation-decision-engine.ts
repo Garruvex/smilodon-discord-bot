@@ -40,7 +40,7 @@ export class ConversationDecisionEngine {
   public canUseGroundedContinuation(request: ChatRequest, now: number): boolean {
     const events = [...request.channelHistory, ...request.replyChain, ...(request.currentBurst ?? [])];
     const current = request.currentBurst?.at(-1);
-    if (!current || current.authorId !== request.currentUser.id || now < current.timestampMs || now - current.timestampMs >= 30_000 || localAddressing(events, current, request.botUserId ?? "bot", true, 120_000, request.aliasCandidates) !== "continuing") return false;
+    if (!current || current.authorId !== request.currentUser.id || now < current.timestampMs || now - current.timestampMs >= 30_000 || localAddressing(events, current, request.botUserId ?? "bot", 120_000, request.aliasCandidates) !== "continuing") return false;
     return events.some((event) => event.authorId === request.botUserId && event.replyToAuthorId === current.authorId &&
       event.timestampMs < current.timestampMs && now - event.timestampMs <= 120_000 && event.replyToMessageId &&
       events.some((human) => human.messageId === event.replyToMessageId && human.authorId === current.authorId && human.timestampMs < event.timestampMs));
@@ -60,7 +60,7 @@ export class ConversationDecisionEngine {
       messageId: request.currentEvent.messageId, timestampMs: request.currentEvent.timestampMs, authorId: request.currentUser.id,
       authorDisplayName: request.currentUser.displayName, content: request.message, imageCount: request.images.length,
       replyToMessageId: request.currentEvent.replyToMessageId } : undefined);
-    let local = current ? localAddressing(events, current, botId, true, 120_000, request.aliasCandidates) : "unclear";
+    let local = current ? localAddressing(events, current, botId, 120_000, request.aliasCandidates) : "unclear";
     const elsewhere = !!current && addressedElsewhere(current, events, botId, request.aliasCandidates, !!outcome.decision?.contextual);
     const proposal = outcome.decision;
     const base = { contribution: null, targetMessageId: null, targetConfidence: 0, reaction: null, exchangeId: current ? exchangeBranch(events, current, botId) : null, local };

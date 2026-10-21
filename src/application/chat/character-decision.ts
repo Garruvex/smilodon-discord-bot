@@ -126,7 +126,7 @@ export function namedRecipient(text: string, events: readonly ChannelHistoryMess
 }
 // Reconstruct from confirmed delivered replies only. A source human message
 // authorizes its first reply window; duplicate/extra bot output cannot renew it.
-export function localAddressing(events: readonly ChannelHistoryMessage[], current: ChannelHistoryMessage, botId: string, _includeOthers: boolean, followupMs = 120_000, aliases: readonly RecipientAliases[] = []): CharacterDecision["addressing"] {
+export function localAddressing(events: readonly ChannelHistoryMessage[], current: ChannelHistoryMessage, botId: string, followupMs = 120_000, aliases: readonly RecipientAliases[] = []): CharacterDecision["addressing"] {
   const history = events.filter((event) => event.messageId !== current.messageId && event.timestampMs < current.timestampMs).sort((a, b) => a.timestampMs - b.timestampMs);
   const reply = history.find((event) => event.messageId === current.replyToMessageId);
   const replyAuthor = current.replyToAuthorId ?? reply?.authorId;
@@ -170,7 +170,7 @@ export function exchangeBranch(events: readonly ChannelHistoryMessage[], current
   while (cursor && !visited.has(cursor.messageId)) {
     visited.add(cursor.messageId); root = cursor.messageId;
     if (cursor.replyToMessageId) cursor = byId.get(cursor.replyToMessageId);
-    else if (cursor.authorId !== botId && localAddressing(history, cursor, botId, true) === "continuing") {
+    else if (cursor.authorId !== botId && localAddressing(history, cursor, botId) === "continuing") {
       const human = cursor;
       cursor = history.filter((event) => event.authorId === botId && event.replyToAuthorId === human.authorId && event.timestampMs < human.timestampMs).at(-1);
     } else cursor = undefined;
@@ -227,7 +227,6 @@ export class CharacterDecisionService {
       fixedTarget: current.messageId, gapMs: 60_000, speakingShare: 0, thoughts: false }).then(() => this.healthStatus());
     this.probe = { at: Date.now(), task }; return task;
   }
-  public async decide(input: DecisionInput): Promise<CharacterDecision | null> { return (await this.evaluate(input)).decision; }
   public async evaluate(input: DecisionInput & { contextual?: boolean; signal?: AbortSignal; deadlineAt?: number }): Promise<DecisionOutcome> {
     const attempts: DecisionAttempt[] = [];
     let remainingModelMs: number = decisionCallLimits.totalMs;

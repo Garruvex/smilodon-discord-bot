@@ -56,21 +56,21 @@ describe("participation safety and replay", () => {
   });
   it("renews a window once per new human message and retains a stable implicit branch", () => {
     const extra = { ...bot, messageId: "extra", timestampMs: 120000 };
-    expect(localAddressing([original, bot, extra], event("late", 140000), "bot", true)).toBe("others");
+    expect(localAddressing([original, bot, extra], event("late", 140000), "bot")).toBe("others");
     const second = event("second", 60000);
     const secondBot = event("second-reply", 65000, "bot", { replyToMessageId: "second", replyToAuthorId: "alice" });
     const third = event("third", 170000);
-    expect(localAddressing([original, bot, second, secondBot], third, "bot", true)).toBe("continuing");
+    expect(localAddressing([original, bot, second, secondBot], third, "bot")).toBe("continuing");
     expect(exchangeBranch([original, bot, second, secondBot], third, "bot")).toBe("initial");
     const bystander = event("bystander", 2000, "bob");
     const unsolicited = event("extra-to-bob", 120000, "bot", { replyToMessageId: "bystander", replyToAuthorId: "bob" });
-    expect(localAddressing([original, bystander, bot, unsolicited], event("bob-now", 140000, "bob"), "bot", true)).toBe("others");
+    expect(localAddressing([original, bystander, bot, unsolicited], event("bob-now", 140000, "bob"), "bot")).toBe("others");
   });
   it("supports six human-engaged follow-ups without resetting the branch on every turn", () => {
     const history = [original, bot];
     for (let index = 1; index <= 6; index++) {
       const human = event(`human-${index}`, 8000 + index * 30000);
-      expect(localAddressing(history, human, "bot", true)).toBe("continuing");
+      expect(localAddressing(history, human, "bot")).toBe("continuing");
       expect(exchangeBranch(history, human, "bot")).toBe("initial");
       history.push(human, event(`bot-${index}`, human.timestampMs + 1000, "bot", { replyToMessageId: human.messageId, replyToAuthorId: human.authorId }));
     }
@@ -80,8 +80,8 @@ describe("participation safety and replay", () => {
     expect(addressesBotName("Bob, did you see it?", "Bob")).toBe(true);
     expect(addressesBotName("阿明你怎麼看？", "阿明")).toBe(true);
     const alias = [{ alias: "Ace", subjectIds: ["bob"] }];
-    expect(localAddressing([original, bot], { ...current, content: "Ace, what do you think?" }, "bot", true, 120000, alias)).toBe("others");
-    expect(localAddressing([original, bot], { ...current, content: "Ace, what do you think?" }, "bot", true, 120000, [{ alias: "Ace", subjectIds: ["bob", "carol"] }])).toBe("unclear");
+    expect(localAddressing([original, bot], { ...current, content: "Ace, what do you think?" }, "bot", 120000, alias)).toBe("others");
+    expect(localAddressing([original, bot], { ...current, content: "Ace, what do you think?" }, "bot", 120000, [{ alias: "Ace", subjectIds: ["bob", "carol"] }])).toBe("unclear");
   });
   it("migrates the restrictive legacy threshold once, with explicit new values taking precedence", () => {
     const document = freshDocument(); delete document.chat.participation.spontaneousThreshold;

@@ -9,11 +9,11 @@ export class ThoughtsModule implements CharacterModule {
   public reset(guildId?: string, channelId?: string): void {
     for (const key of this.reservoir.keys()) if (!guildId || (channelId ? key === `${guildId}:${channelId}` : key.startsWith(`${guildId}:`))) this.reservoir.delete(key);
   }
-  public onDecision(turn: CharacterTurn, input: CharacterDecisionInput): { request: ChatRequest; allowed: boolean } {
+  public onDecision(turn: CharacterTurn, input: CharacterDecisionInput): ChatRequest {
     const request = turn.request; const controls = turn.settings.modules.thoughts; const decision = input.decision;
     const key = `${request.guildId}:${request.channelId}`;
-    if (!decision || !input.optional || decision.opening !== "clear") { this.reservoir.delete(key); return { request, allowed: true }; }
-    const current = input.burst.at(-1); if (!current) return { request, allowed: true };
+    if (!decision || !input.optional || decision.opening !== "clear") { this.reservoir.delete(key); return request; }
+    const current = input.burst.at(-1); if (!current) return request;
     const scope = JSON.stringify([exchangeBranch(input.events, current, request.botUserId ?? "bot"), decision.contribution.recipientId, decision.boundary, turn.settings, input.policy]);
     const candidates = decision.thoughts.filter((candidate) => eligibleContribution(candidate, request.triggerMode === "spontaneous" ? "spontaneous" : "continuation", input.policy) && candidate.recipientId === decision.contribution.recipientId);
     // Held candidates must be explicitly reassessed in the new valid decision.
@@ -26,6 +26,6 @@ export class ThoughtsModule implements CharacterModule {
     // The baseline accepted contribution always controls admission; shadow
     // thoughts neither authorize output nor veto another eligible contribution.
     const selected = !controls.shadow && held.find((thought) => thought.candidate.sourceMessageId === decision.contribution.sourceMessageId && thought.candidate.text === decision.contribution.text);
-    return { request: selected ? { ...request, characterContext: [...(request.characterContext ?? []), { moduleId: "thoughts", text: `Reassessed candidate, subordinate to the accepted contribution: ${JSON.stringify(selected.candidate)}` }] } : request, allowed: true };
+    return selected ? { ...request, characterContext: [...(request.characterContext ?? []), { moduleId: "thoughts", text: `Reassessed candidate, subordinate to the accepted contribution: ${JSON.stringify(selected.candidate)}` }] } : request;
   }
 }

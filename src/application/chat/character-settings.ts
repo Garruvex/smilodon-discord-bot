@@ -3,6 +3,9 @@ import type { GuildConfiguration } from "../../config/guild-configuration.js";
 
 export const characterModuleIds = ["canon", "relationships", "thoughts", "recall-style", "callbacks", "fading", "voice", "message-shape", "mood", "addressing", "group", "daily-sketch", "evaluation"] as const;
 export type CharacterModuleId = typeof characterModuleIds[number];
+// Persisted addressing controls are accepted for backward configuration reads.
+// Recipient policy is mandatory application behavior, not an optional module.
+export const activeCharacterModuleIds = characterModuleIds.filter((id) => id !== "addressing");
 const baseControls = z.object({ enabled: z.boolean().default(false), budget: z.number().int().min(100).max(4000).default(800) });
 const interval = z.number().int().min(1).max(1440);
 const retention = z.number().int().min(1).max(365).default(90);
@@ -17,7 +20,7 @@ export const characterModuleSchemas = {
   voice: baseControls.extend({ strictness: z.enum(["trim", "regenerate"]).default("trim") }).default({}),
   "message-shape": baseControls.extend({ maxMessages: z.number().int().min(1).max(3).default(1), maxDelayMs: z.number().int().min(0).max(5000).default(0) }).default({}),
   mood: baseControls.extend({ intervalMinutes: interval.default(30) }).default({}),
-  addressing: baseControls.extend({ shadow: z.boolean().default(true), includeOtherParticipants: z.boolean().default(true) }).default({}),
+  addressing: baseControls.extend({ shadow: z.boolean().default(true), includeOtherParticipants: z.boolean().default(true) }).default({}), // Deprecated; read compatibility only.
   group: baseControls.default({}),
   "daily-sketch": baseControls.default({}),
   evaluation: baseControls.extend({ probes: z.boolean().default(false), intervalMinutes: z.number().int().min(60).max(1440).default(1440) }).default({}),
@@ -45,7 +48,7 @@ export function characterSettings(profile: GuildConfiguration): CharacterSetting
 export interface CharacterCapabilities { decision: boolean; context: boolean; memorySharing: boolean; continuation: boolean; spontaneous: boolean; excluded: boolean }
 export const characterDependencies: Partial<Record<CharacterModuleId, readonly string[]>> = {
   relationships: ["memorySharing"], callbacks: ["memorySharing", "continuation"],
-  thoughts: ["context", "addressing", "decision", "participation"], addressing: ["context", "continuation"],
+  thoughts: ["context", "decision", "participation"],
   group: ["context"], "daily-sketch": ["canon"],
 };
 export function characterInactiveReason(settings: CharacterSettings, id: CharacterModuleId, channelId: string, capabilities: CharacterCapabilities, visited = new Set<string>()): string | null {

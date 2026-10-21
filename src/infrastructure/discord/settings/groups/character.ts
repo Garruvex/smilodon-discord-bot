@@ -1,11 +1,11 @@
 import { action, choice, group, integer, report, setting, toggle } from "../registry/builders.js";
-import { characterModuleIds, characterSettings, type CharacterModuleId } from "../../../../application/chat/character-settings.js";
+import { activeCharacterModuleIds, characterSettings, type CharacterModuleId } from "../../../../application/chat/character-settings.js";
 import type { SettingNode, SettingOption } from "../registry/types.js";
 
 const extras: Partial<Record<CharacterModuleId, readonly string[]>> = {
   canon: ["freeze"], relationships: ["interval"], thoughts: ["shadow", "hold"],
   callbacks: ["max-per-day", "min-delay"], voice: ["strictness"],
-  "message-shape": ["max-messages", "max-delay"], mood: ["interval"], addressing: ["shadow", "include-others"],
+  "message-shape": ["max-messages", "max-delay"], mood: ["interval"],
   evaluation: ["probes", "interval"],
 };
 function moduleSetting(id: CharacterModuleId): SettingNode {
@@ -15,8 +15,7 @@ function moduleSetting(id: CharacterModuleId): SettingNode {
   if (["canon", "relationships", "recall-style", "mood", "group", "daily-sketch"].includes(id))
     options.budget = integer({ min: 100, max: 4000, read: (p) => characterSettings(p).modules[id].budget, write: (v) => ({ character: { modules: { [id]: { budget: v } } } }) });
   if (id === "canon") options.freeze = toggle({ read: (p) => characterSettings(p).modules.canon.freeze, write: (v) => ({ character: { modules: { canon: { freeze: v } } } }) });
-  if (id === "thoughts" || id === "addressing") options.shadow = toggle({ read: (p) => characterSettings(p).modules[id].shadow, write: (v) => ({ character: { modules: { [id]: { shadow: v } } } }) });
-  if (id === "addressing") options["include-others"] = toggle({ read: (p) => characterSettings(p).modules.addressing.includeOtherParticipants, write: (v) => ({ character: { modules: { addressing: { includeOtherParticipants: v } } } }) });
+  if (id === "thoughts") options.shadow = toggle({ read: (p) => characterSettings(p).modules.thoughts.shadow, write: (v) => ({ character: { modules: { thoughts: { shadow: v } } } }) });
   if (id === "evaluation") options.probes = toggle({ read: (p) => characterSettings(p).modules.evaluation.probes, write: (v) => ({ character: { modules: { evaluation: { probes: v } } } }) });
   const numbers = { interval: ["intervalMinutes", 1, 1440], threshold: ["threshold", 0, 100], hold: ["holdSeconds", 5, 600],
     "max-per-day": ["maxPerDay", 0, 10], "min-delay": ["minDelayMinutes", 0, 1440], "half-life": ["halfLifeDays", 1, 365],
@@ -48,8 +47,8 @@ export const character = group("character", [
     shadow: toggle({ read: (p) => characterSettings(p).context.shadow, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, shadow: v } } }) }),
     "decision-messages": integer({ min: 5, max: 20, read: (p) => characterSettings(p).context.decisionMessages, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, decisionMessages: v } } }) }),
   }),
-  ...characterModuleIds.map(moduleSetting),
-  action("channel", { params: { channel: { kind: "channel", textOnly: true, required: true }, module: { kind: "choice", choices: ["master", "context", ...characterModuleIds], required: true }, enabled: { kind: "toggle", required: true }, reset: { kind: "toggle" } },
+  ...activeCharacterModuleIds.map(moduleSetting),
+  action("channel", { params: { channel: { kind: "channel", textOnly: true, required: true }, module: { kind: "choice", choices: ["master", "context", ...activeCharacterModuleIds], required: true }, enabled: { kind: "toggle", required: true }, reset: { kind: "toggle" } },
     run: ({ profile, values, text: labels, path }) => {
       const channelId = values.getChannel("channel")?.id;
       const id = values.getString("module") as CharacterModuleId | "master" | "context" | null;

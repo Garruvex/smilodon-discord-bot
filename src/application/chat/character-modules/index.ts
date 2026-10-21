@@ -10,7 +10,6 @@ import { GroupModule } from "./group.js";
 import { VoiceModule } from "./voice.js";
 import { MessageShapeModule } from "./message-shape.js";
 import { ThoughtsModule } from "./thoughts.js";
-import { AddressingModule } from "./addressing.js";
 import { FadingModule } from "./fading.js";
 import { EvaluationModule } from "./evaluation.js";
 
@@ -19,5 +18,5 @@ import { EvaluationModule } from "./evaluation.js";
 export function createCharacterModules(services: CharacterModuleServices): readonly CharacterModule[] {
   return [new CanonModule(services), new MoodModule(services), new DailySketchModule(services), new RelationshipsModule(services),
     new RecallStyleModule(), new GroupModule(), new VoiceModule(services), new MessageShapeModule(), new CallbackPlanningModule(services),
-    new AddressingModule(), new ThoughtsModule(), new FadingModule(), new EvaluationModule()];
+    new ThoughtsModule(), new FadingModule(), new EvaluationModule()];
 }

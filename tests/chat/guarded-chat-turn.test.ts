@@ -60,6 +60,21 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false): 
 }
 
 describe("guarded turn acceptance", () => {
+  it("excludes unverified session quotations and cached bot episodes through the active lease", async () => {
+    const { service, input, reply, state, records } = await setup();
+    await state.commitSuccessfulExchange({ guildId, userId: "alice", channelId, sourceMessageId: "unverified",
+      userMessage: "old question", assistantMessage: "PROTECTED_SESSION_QUOTATION", actions: [], now: 3000 });
+    service.observe(guildId, channelId, guardedEvent("cached-bot", 3000, "UNVERIFIABLE_EPISODE_TEXT", "bot", { channelId }));
+    reply.mockImplementation((request) => {
+      const prompt = buildChatContext(request);
+      expect(request.recentHistory).toEqual([]);
+      expect(prompt).not.toContain("PROTECTED_SESSION"); expect(prompt).not.toContain("UNVERIFIABLE_EPISODE");
+      return Promise.resolve(decisionResponse());
+    });
+    await service.run(input, (response) => Promise.resolve(response.text));
+    expect(reply).toHaveBeenCalledOnce();
+    expect(JSON.stringify(records)).not.toContain("PROTECTED_SESSION");
+  });
   it.each(["reply", "react", "silent", "failed", "invalid_link", "low_confidence", "actor_revoked", "source_changed", "budget", "shadow"] as const)("enforces reaction preflight through generation and effects: %s", async (scenario) => {
     const { service, fixture, input, reply, decision } = await setup(5000, "alice", true);
     fixture.port.sourceMessageId = "answer"; fixture.port.actorId = null;

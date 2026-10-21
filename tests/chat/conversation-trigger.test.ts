@@ -9,7 +9,7 @@ describe("conversation trigger evidence", () => {
   });
   it("lets an explicit bot mention override a human reply target", () => {
     const current = { messageId: "current", timestampMs: 2, authorId: "speaker", authorDisplayName: "Speaker", content: "<@123> what about this?", imageCount: 0, replyToMessageId: "human", replyToAuthorId: "another" };
-    expect(localAddressing([], current, "123", true)).toBe("bot");
+    expect(localAddressing([], current, "123")).toBe("bot");
     expect(addressedElsewhere(current, [], "123")).toBe(false);
     expect(mentionInteraction("<@123>", "123", false)).toBe("bare_ping");
   });

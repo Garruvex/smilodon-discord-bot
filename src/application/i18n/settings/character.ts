@@ -1,4 +1,4 @@
-import { characterModuleIds } from "../../chat/character-settings.js";
+import { characterModuleIds, activeCharacterModuleIds } from "../../chat/character-settings.js";
 import type { Language } from "../language.js";
 import type { SettingsTextCatalog, SettingsNodeText } from "./catalog.js";
 
@@ -92,21 +92,21 @@ export function characterSettingsText(language: Language): SettingsTextCatalog {
     done: ["Character setting updated.", "角色設定已更新。", "キャラクター設定を更新しました。"][column]!,
     unavailable: ["Character runtime is unavailable.", "角色功能尚未可用。", "キャラクター機能を利用できません。"][column]!,
   };
-  const nodes = ["controls", "context", ...characterModuleIds, "channel", "ledger", "status"];
+  const nodes = ["controls", "context", ...activeCharacterModuleIds, "channel", "ledger", "status"];
   for (const node of nodes) {
     const index = characterModuleIds.indexOf(node as typeof characterModuleIds[number]);
     const label = index >= 0 ? moduleLabels[language][index]! : ({ controls: ["Master switch", "總開關", "全体の設定"], context: ["Conversation context", "對話上下文", "会話の文脈"],
       channel: ["Channel overrides", "頻道覆寫", "チャンネル上書き"], ledger: ["Character records", "角色紀錄管理", "キャラクターの記録"], status: ["Feature status", "功能狀態", "機能の状態"] } as Record<string, string[]>)[node]![column]!;
     catalog[`character.${node}`] = { label, description: nodeDescriptions[node]![column], messages };
     const extras: Record<string, readonly string[]> = { canon: ["freeze"], relationships: ["interval"], thoughts: ["shadow", "hold"],
-      callbacks: ["max-per-day", "min-delay"], voice: ["strictness"], "message-shape": ["max-messages", "max-delay"], mood: ["interval"], addressing: ["shadow", "include-others"], evaluation: ["probes", "interval"] };
+      callbacks: ["max-per-day", "min-delay"], voice: ["strictness"], "message-shape": ["max-messages", "max-delay"], mood: ["interval"], evaluation: ["probes", "interval"] };
     const options = index >= 0 ? ["enabled", ...(["canon", "relationships", "recall-style", "mood", "group", "daily-sketch"].includes(node) ? ["budget"] : []), ...(extras[node] ?? [])] : ({ controls: ["enabled"], context: ["enabled", "retrieval-mode", "minutes", "gap", "messages", "budget", "summary", "shadow", "decision-messages"],
       channel: ["channel", "module", "enabled", "reset"], ledger: ["operation", "module", "channel", "id", "statement"], status: ["channel"] } as Record<string, string[]>)[node]!;
     for (const field of options) { const labels = fields[field]!; catalog[`character.${node}.${field}`] = { label: labels[column], description: (optionDescriptions[`${node}.${field}`] ?? fieldDescriptions[field])![column],
       ...(field === "retrieval-mode" ? { choices: { legacy: ["Legacy", "舊版時間視窗", "従来の時間枠"][column]!, eligible_count: ["Eligible text", "可讀文字歷史", "許可された文字履歴"][column]! } } : {}),
       ...(field === "strictness" ? { choices: { trim: ["Trim safe phrases", "移除安全套語", "定型表現を除去"][column]!, regenerate: ["Regenerate once", "重新生成一次", "一度だけ再生成"][column]! } } : {}),
       ...(field === "module" ? { choices: node === "ledger" ? Object.fromEntries(["canon", "mood", "daily-sketch"].map((id) => [id, moduleLabels[language][characterModuleIds.indexOf(id as typeof characterModuleIds[number])]!]))
-        : { ...Object.fromEntries(characterModuleIds.map((id, i) => [id, moduleLabels[language][i]!])), master: ["Master switch", "總開關", "全体の設定"][column]!, context: ["Conversation context", "對話上下文", "会話の文脈"][column]! } } : {}),
+        : { ...Object.fromEntries(activeCharacterModuleIds.map((id) => [id, moduleLabels[language][characterModuleIds.indexOf(id)]!])), master: ["Master switch", "總開關", "全体の設定"][column]!, context: ["Conversation context", "對話上下文", "会話の文脈"][column]! } } : {}),
       ...(field === "operation" ? { choices: { list: ["List", "列出", "一覧"][column]!, edit: ["Edit", "修改", "編集"][column]!, delete: ["Delete", "刪除", "削除"][column]!, clear: ["Clear this category", "清空這類紀錄", "この種類を全消去"][column]! } } : {}),
     };
     }

@@ -374,7 +374,6 @@ export class ReactionReplyScheduler {
       ? this.turnSupport.toChannelHistoryMessages(await this.turnSupport.resolveChannelHistory(
           message, characterSettings(profile).context.enabled ? characterSettings(profile).context.maxMessages : profile.chat.channelHistoryLimit, new Set([message.id]), null,
           characterSettings(profile).context.enabled ? characterSettings(profile).context.budget : chatMemoryLimits.maxChannelHistoryChars,
-          usesGuardedContext(profile, message.channelId),
         ))
       : [];
     const currentUser = {

@@ -120,7 +120,6 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           characterSettings(profile).context.enabled ? characterSettings(profile).context.maxMessages : profile.chat.channelHistoryLimit,
           new Set(replyChainMessages.map((hop) => hop.id)),
           undefined, characterSettings(profile).context.enabled ? characterSettings(profile).context.budget : chatMemoryLimits.maxChannelHistoryChars,
-          usesGuardedContext(profile, message.channelId),
         ))
       : [];
     const { selected: imageAttachments, droppedUnsupported, droppedOverLimit } = profile.chat.imageInputEnabled && !(usesGuardedContext(profile, message.channelId))

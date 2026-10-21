@@ -100,8 +100,7 @@ export class CharacterRuntime {
   public couldBeAddressed(guildId: string, channelId: string, event: ChannelHistoryMessage, history: readonly ChannelHistoryMessage[], botId: string): boolean {
     const profile = this.profiles.find(guildId); if (!profile || !passiveChannelAllowed(profile, channelId)) return false;
     const settings = characterSettings(profile);
-    const live = this.registry.has("addressing") && !characterInactiveReason(settings, "addressing", channelId, this.capabilities(profile, channelId)) && !settings.modules.addressing.shadow;
-    const addressing = localAddressing(history, event, botId, live && settings.modules.addressing.includeOtherParticipants);
+    const addressing = localAddressing(history, event, botId);
     return addressing === "bot" || addressing === "continuing" ||
       this.decisionAvailable && settings.context.enabled && settings.context.retrievalMode === "eligible_count" &&
       possiblePersonalFollowup(event.content) && !addressedElsewhere(event, history, botId);
@@ -315,7 +314,7 @@ export class CharacterRuntime {
         if (index >= 0) request = { ...request, channelHistory: events.slice(Math.min(index, Math.max(0, events.length - 8))) };
       }
       turn.request = request;
-      if (!guarded) request = this.registry.applyDecision(turn, { decision, events, burst, optional, local, policy }).request;
+      if (!guarded) request = this.registry.applyDecision(turn, { decision, events, burst, optional, local, policy });
       if (optional) {
         const action = !allowed ? "ignore" : participation?.action === "reply" ? "reply" : participation?.reaction ? "reaction" : "ignore";
         const rejectionReason = action === "ignore" ? textRejectionReason ?? "no_action" : null;
@@ -425,7 +424,7 @@ export class CharacterRuntime {
       needs_context: "needs conversation context", needs_decision: "needs a decision/utility provider", needs_memorySharing: "needs memory sharing",
       needs_continuation: "needs continuation", needs_participation: "needs continuation or spontaneous participation", needs_addressing: "needs implicit addressing", needs_canon: "needs canon" };
     return [...this.registry.active({ request: { guildId: profile.guildId, channelId } as ChatRequest, settings, capabilities, now: this.now() }).map((module) => `${module.id}: enabled`),
-      ...Object.keys(settings.modules).flatMap((id) => {
+      ...Object.keys(settings.modules).filter((id) => id !== "addressing").flatMap((id) => {
         const reason = characterInactiveReason(settings, id as CharacterModuleId, channelId, capabilities);
         return !this.registry.has(id as CharacterModuleId) ? [`${id}: module unavailable`] : reason ? [`${id}: ${labels[reason as keyof typeof labels] ?? reason}`] : [];
       })].join("\n");

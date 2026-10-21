@@ -11,8 +11,6 @@ import { ChatConversationService } from "../../src/application/chat/chat-convers
 import { ChatToolRegistry } from "../../src/application/chat/tools/chat-tool-registry.js";
 import { SqliteChatStateStore } from "../../src/infrastructure/persistence/sqlite-chat-state-store.js";
 import { CharacterModuleRegistry } from "../../src/application/chat/character-module-registry.js";
-import { ThoughtsModule } from "../../src/application/chat/character-modules/thoughts.js";
-import { AddressingModule } from "../../src/application/chat/character-modules/addressing.js";
 import { endOfLocalDay, startOfLocalDay } from "../../src/application/chat/character-calendar.js";
 import { CharacterDecisionService } from "../../src/application/chat/character-decision.js";
 import { buildChatContext } from "../../src/infrastructure/chat/chat-structured-output.js";
@@ -79,9 +77,9 @@ describe("character module integration", () => {
     expect(JSON.stringify(diagnostics)).not.toContain("SECRET");
   });
   it("keeps a composed module inactive when an implementation dependency is absent", () => {
-    const registry = new CharacterModuleRegistry(); registry.register(new ThoughtsModule());
-    expect(registry.has("thoughts")).toBe(false);
-    registry.register(new AddressingModule()); expect(registry.has("thoughts")).toBe(true);
+    const registry = new CharacterModuleRegistry(); registry.register({ id: "daily-sketch" });
+    expect(registry.has("daily-sketch")).toBe(false);
+    registry.register({ id: "canon" }); expect(registry.has("daily-sketch")).toBe(true);
   });
   it("uses module-specific fields, cheap voice defaults and daily scheduled probes", () => {
     const settings = characterSettingsSchema.parse({});
@@ -533,7 +531,7 @@ describe("decision windows and continuation timing", () => {
   it("rejects fabricated targets rather than silently repairing recipient evidence", async () => {
     const provider = { generateCharacterData: vi.fn(() => Promise.resolve({ addressing: "bot", motivation: 0.8, boundary: "bad", target: "fabricated", confidence: 0.9, reaction: null, thoughts: [] })) };
     const decision = new CharacterDecisionService(provider); const input = { personality: "test", events: [], burst: [{ messageId: "latest", timestampMs: 1000, authorId: "human", authorDisplayName: "human", content: "hello", imageCount: 0 }], botId: "bot", fixedTarget: null, gapMs: 600000, speakingShare: 0, thoughts: false };
-    expect(await decision.evaluate(input)).toMatchObject({ status: "failed", decision: null }); expect(await decision.decide({ ...input, fixedTarget: "direct" })).toBeNull();
+    expect(await decision.evaluate(input)).toMatchObject({ status: "failed", decision: null }); expect(await decision.evaluate({ ...input, fixedTarget: "direct" })).toMatchObject({ status: "failed", decision: null });
   });
   it("admits active continuation inside spontaneous cooldowns while bounding exchanges and the guild", async () => {
     let now = 1000; const scheduler = new ChatScheduler(() => now); const limits = { ...balancedChatLimits, continuation: true, continuationPerExchange: 2, continuationPerWindow: 3, optionalTurnsPerWindow: 4 };

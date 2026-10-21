@@ -17,7 +17,7 @@ export interface CharacterModule {
   postProcess?(reply: ChatResponse, turn: CharacterTurn): Promise<ChatResponse>;
   onObservation?(event: ChannelHistoryMessage, turn: CharacterTurn): Promise<void>;
   onConsolidation?(reply: ChatResponse, turn: CharacterTurn): Promise<void>;
-  onDecision?(turn: CharacterTurn, input: CharacterDecisionInput): { request: ChatRequest; allowed: boolean };
+  onDecision?(turn: CharacterTurn, input: CharacterDecisionInput): ChatRequest;
   reset?(guildId?: string, channelId?: string): void;
   extractMemories?(userMessage: string, reply: ChatResponse, turn: CharacterTurn): Promise<readonly PersonalMemoryExtractionAction[] | null>;
 }
@@ -47,13 +47,12 @@ export class CharacterModuleRegistry {
       return enabled;
     });
   }
-  public applyDecision(turn: CharacterTurn, input: CharacterDecisionInput): { request: ChatRequest; allowed: boolean } {
+  public applyDecision(turn: CharacterTurn, input: CharacterDecisionInput): ChatRequest {
     for (const module of this.active(turn)) if (module.onDecision) {
-      // Character hooks contribute context/style; the decision engine owns
-      // admission. Legacy `allowed` flags cannot silently veto its result.
-      const result = module.onDecision(turn, input); turn.request = result.request;
+      // Character hooks contribute context/style; admission belongs to the engine.
+      turn.request = module.onDecision(turn, input);
     }
-    return { request: turn.request, allowed: true };
+    return turn.request;
   }
   public reset(guildId?: string): void { for (const module of this.modules.values()) module.reset?.(guildId); }
   public async extractMemories(userMessage: string, reply: ChatResponse, turn: CharacterTurn): Promise<readonly PersonalMemoryExtractionAction[] | null> {

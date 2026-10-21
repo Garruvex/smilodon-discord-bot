@@ -16,7 +16,7 @@ export async function replayParticipation(input: unknown): Promise<readonly { na
     const service = new CharacterDecisionService(entry.decision === null ? null : { generateCharacterData: (): Promise<unknown> => { calls++; return Promise.resolve(entry.decision); } });
     const current = entry.current as ChannelHistoryMessage; const events = entry.events as ChannelHistoryMessage[];
     const outcome = await service.evaluate({ personality: "Synthetic replay", events, burst: [current], botId: "bot", fixedTarget: null, gapMs: 600_000, speakingShare: 0, thoughts: true, now: current.timestampMs });
-    const local = localAddressing(events, current, "bot", true, 120_000, entry.aliases);
+    const local = localAddressing(events, current, "bot", 120_000, entry.aliases);
     const elsewhere = addressedElsewhere(current, events, "bot", entry.aliases);
     const proposed = allowsOptionalParticipation(entry.trigger, local, outcome.decision, elsewhere, contributionPolicy(undefined));
     // Record the former admission rule on the same recipient and decision data.
