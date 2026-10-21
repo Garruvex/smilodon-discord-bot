@@ -153,7 +153,7 @@ describe("Discord one-pass context snapshots", () => {
       const guild = { id: "guild" }; const message = messages.get("10")!;
       if (event === "messageUpdate") client.emit(event, message, message);
       else if (event === "messageDelete") client.emit(event, message);
-      else if (event === "messageDeleteBulk") client.emit(event, new Map(), { id: "channel" });
+      else if (event === "messageDeleteBulk") client.emit(event, new Map([[message.id, message]]), { id: "channel" });
       else if (event === "guildMemberUpdate" || event === "roleUpdate") client.emit(event, {}, { guild });
       else if (event === "channelUpdate" || event === "threadUpdate") client.emit(event, {}, { guildId: "guild" });
       else client.emit(event);
@@ -164,6 +164,7 @@ describe("Discord one-pass context snapshots", () => {
     const { lease, client, fetch, messages } = await fixture("durable", true);
     client.emit("messageCreate", messages.get("41"));
     client.emit("messageUpdate", {}, { channelId: "other-channel" });
+    client.emit("messageUpdate", {}, { channelId: "channel", id: "unrelated-utility-panel" });
     expect(await lease.validate()).toBe(true); expect(fetch).not.toHaveBeenCalled();
   });
   it("checks shared persistence forget tombstones at an effect boundary without a full REST scan", async () => {

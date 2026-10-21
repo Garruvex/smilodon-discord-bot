@@ -153,25 +153,27 @@ MessageCreate / ReactionAdd
   -> registered ChatTurnSupport source port + registered persona configuration
   -> ChatConversationService scheduling, turn plan and work deadline
   -> runGuardedChatTurn (the only live conversation executor)
+       -> one channel-visible snapshot, explicit role/user opt-out filter
        -> source-owned current/burst/history/ancestry and verified sessions
        -> authorized claims, relations, identities, configuration and images
        -> approved character preparation and optional decision projection
        -> deterministic ConversationDecisionEngine policy
+       -> silent/emoji exit, or reply-only semantic examples/lore retrieval
        -> immutable approved request -> ConversationModelGateway
        -> frozen guardModelTransport -> provider attempts / reviewed tools
        -> attribution / voice repair under derived registered requests
-       -> source revalidation -> immutable effect permit -> adapter delivery
+       -> snapshot invalidation + fresh batched forget check -> immutable effect permit -> adapter delivery
        -> confirmed state commit and approved memory mutation batch
        -> fresh guarded post-turn extraction, consolidation and scoped drift
 ```
 
-Mention, explicit reply, bare ping and matched name address have application-owned response destinations. Follow-up, group and reaction opportunities use context interpretation and deterministic participation policy. All modes share source eligibility and final effect controls. A bare ping can refer to an earlier untagged question. Quiet gaps alone do not discard otherwise eligible evidence; coalescing, expiry and work deadlines remain separate from relevance.
+Mention, explicit reply, bare ping and matched name address have application-owned response destinations. Follow-up, group and reaction opportunities use context interpretation and deterministic participation policy. All modes share source eligibility and final effect controls. Interaction roles decide who can trigger; channel visibility and explicit collection opt-outs decide whose messages/reactions can be context. Admission does not walk reply ancestry. A bare ping can refer to an earlier untagged question. Quiet gaps alone do not discard otherwise eligible evidence; coalescing, expiry and work deadlines remain separate from relevance.
 
 `FilePersonaSource` issues registered authored configuration and verifies file/bundle fingerprints. Lore/examples are selected under that authority. Learned drift is a separately verified channel-scoped source, never an unproven global file folded into persona configuration. Preferences remain style data for the currently authorized user. Birthday/server data enters through reviewed resource/tool reads.
 
 Memory recall uses the mandatory frozen memory facade, source/subject/audience checks before external relevance work, source-owned queries and exact-text embedding admission. BM25/cosine rankings and RRF operate only on admitted candidates. Model proposals require reviewed immutable batches; shared and isolated modes permit durable writes, while session-only/disabled modes do not. Module-owned character records never enter ordinary recall.
 
-All model capabilities use the frozen model facade, and embeddings use a separate facade outside caches. Missing/copied/modified approval fails before dispatch. Provider callbacks revalidate source/configuration authority for retries and tool continuations, and delivery/persistence check again. The guard cannot atomically undo already-dispatched external bytes.
+All model capabilities use the frozen model facade, and embeddings use a separate facade outside caches. Missing/copied/modified approval fails before dispatch. Provider callbacks reuse event-invalidated Discord snapshots and revalidate configuration/resource authority for retries and tool continuations; delivery checks batched forget state again. Message edits/deletions, role/channel/thread changes and connection interruptions invalidate snapshots. Generic adapters without notifications retain full source validation. The guard cannot atomically undo already-dispatched external bytes.
 
 Delivery occurs before session commit; confirmed delivery survives a later bookkeeping failure and is not blindly replayed. Post-turn work uses fresh source authority and shares mutation ordering. Session-only bot-origin proofs remain ephemeral. Unknown legacy records, unsupported tools and unauthorized cross-channel data remain excluded.
 

@@ -1,5 +1,7 @@
 # Model-consumer authority inventory
 
+Current collection policy, updated 2026-10-22: the [channel snapshot and opt-out design](channel-context-snapshot-plan-2026-10-22.md) supersedes historical role-based collection rules and repeated Discord REST revalidation. Discord channel visibility plus explicit collection opt-outs determines context eligibility; interaction roles only determine who may trigger the bot. The model/source authority boundaries below remain in force.
+
 Current local state, 2026-10-22, through checkpoint 37. See the [closing audit](chat-context-final-audit-2026-10-22.md) and [checkpoint history](universal-context-migration-progress-2026-10-21.md) for acceptance evidence and release limits. This table supersedes the starting migration-gap inventory.
 
 The machine-readable [consumer inventory](model-consumer-inventory-2026-10-21.json) uses the TypeScript AST/type checker to detect capability references, optional methods and bound callbacks outside concrete transports. It distinguishes model replies from Discord interaction replies. It is a drift detector; enforcement is the runtime registered source/projection/operation boundary and frozen composition facades.

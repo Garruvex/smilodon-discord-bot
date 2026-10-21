@@ -108,7 +108,8 @@ export class ChatTurnSupport {
   public createContextPort(source: Message, reaction = false): GuardedContextPort {
     const eligibility = this.eligibility;
     const version = eligibility?.contextPolicyVersion(source);
-    const revisionCurrent = source.client ? discordContextSnapshotCurrent(source.client, source.guildId!, source.channelId) : null;
+    const dependencies = new Set([source.id]);
+    const revisionCurrent = source.client ? discordContextSnapshotCurrent(source.client, source.guildId!, source.channelId, () => dependencies) : null;
     type Snapshot = { messages: Map<string, Message>; members: Map<string, Promise<GuildMember | null>>; filtered: Map<string, Promise<GuardedContextSource | null>>; forgotten: Map<string, boolean> };
     const makeState = (): Snapshot => ({ messages: new Map(), members: new Map(), filtered: new Map(), forgotten: new Map() });
     const snapshot = makeState();
@@ -218,6 +219,7 @@ export class ChatTurnSupport {
             if (reason.success) emitChatDiagnostic(this.logger, { event: "context.eligibility.denied", sourceMessageId: id, purpose: "guarded_current", reason: reason.data });
             return null;
           }
+          dependencies.add(id);
           const origin = message.author.bot ? await this.origins?.find(source.guildId!, source.channelId, id).catch(() => null) : null;
           if (message.author.bot && origin?.origin !== "chat") return null;
           const user = this.toChatUser(message.author, actor);
@@ -253,7 +255,7 @@ export class ChatTurnSupport {
   }
 
   public createEligibilityCheck(message: Message, trigger: SocialTrigger = "direct"): () => Promise<boolean> {
-    const current = message.client ? discordContextSnapshotCurrent(message.client, message.guildId!, message.channelId) : null;
+    const current = message.client ? discordContextSnapshotCurrent(message.client, message.guildId!, message.channelId, () => [message.id]) : null;
     const version = this.eligibility?.contextPolicyVersion(message);
     let admission: Promise<boolean> | null = null;
     return async (): Promise<boolean> => {

@@ -28,7 +28,9 @@ determine whose channel messages the bot may understand.
    REST-refetching the complete history and membership for every nested helper.
 6. Before visible effects check snapshot freshness and forget state. Discord
    updates/deletions, permission/membership changes, disconnects and policy
-   changes invalidate in-flight snapshots. New messages alone do not invalidate
+   changes invalidate in-flight snapshots. Edits to unrelated utility panels
+   are ignored; edits/deletions of admitted source IDs invalidate the snapshot.
+   New messages alone do not invalidate
    the immutable context already collected.
 
 ## Checkpoints
@@ -42,7 +44,10 @@ determine whose channel messages the bot may understand.
   SQLite/PostgreSQL forget checks support one bounded query per source batch.
   Reaction collection includes non-triggering participants but requires an
   authorized participant to initiate a turn.
-- Final regression/build verification and reconciliation: pending.
+- Final regression/build verification and plan reconciliation: complete.
+  Full suite: 5,150 passed, 7 skipped, zero failed. Typecheck, complete
+  Activity/application build, migration consistency, changed-file lint and
+  whitespace checks pass. Deployment/live Discord timing remains unverified.
 
 ## Operator settings and diagnostics
 
@@ -57,7 +62,8 @@ freshness), and `full` (fallback for source adapters without event snapshots).
 Logs contain IDs, counters, durations and policy status, never message bodies.
 
 Decision context retains authorized history, memory and authored lexical lore.
-Semantic example/lore retrieval is reply-only. Image input and bounded reply
+Semantic example/lore retrieval is reply-only. Facts already supplied to
+preflight are retained when adding semantic lore within the existing budget. Image input and bounded reply
 compaction can still run before decision when needed for the supplied context;
 the system does not make every semantic decision from the incoming text alone.
 

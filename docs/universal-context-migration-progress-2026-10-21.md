@@ -1,5 +1,7 @@
 # Universal context migration progress
 
+Current collection policy, updated 2026-10-22: the [channel snapshot and opt-out design](channel-context-snapshot-plan-2026-10-22.md) supersedes historical role-based collection rules and repeated Discord REST revalidation. Discord channel visibility plus explicit collection opt-outs determines context eligibility; interaction roles only determine who may trigger the bot. The model/source authority boundaries below remain in force.
+
 Current local status, 2026-10-22: the mandatory chat source/consumer migration is implemented through checkpoint 37. The [closing audit](chat-context-final-audit-2026-10-22.md) is the current coverage and acceptance record. The dated checkpoints below preserve their original migration gaps and evidence; later checkpoints supersede them. Production deployment, independent semantic review and a scoped live pilot remain separate. Repository-wide pre-existing lint debt is recorded explicitly.
 
 ## Checkpoint 1: guarded native web search
@@ -335,3 +337,54 @@ Final verification: **5,116 passed, 7 skipped, zero failed**; full TypeScript ch
 Whole-repository lint was also run and reports **2,145 errors in 58 files**, including generated Activity output. None of the offending files changed in checkpoints 29–37 against `fbdc85b0`; lint configuration and Activity source remain unchanged. This unrelated debt is documented, not hidden by a relaxed lint rule or described as a passing check. A local dry-run/build does not reproduce a clean Linux/Alpine install or diagnose the missing root error from the server's npm excerpt.
 
 No tracked active raw-call/source migration gap remains in the chat inventory. Remaining acceptance is external: independent human semantic review, an explicitly authorized provider-cost run if needed, server build/deployment evidence and a named Discord channel pilot. Earlier paid replay reports are historical and were not relabeled as validation of this later source/model revision. See [the closing audit](chat-context-final-audit-2026-10-22.md) for the complete current contract and bounded guarantees.
+
+
+## Checkpoint 39: channel collection consent independent of interaction grants
+
+`e8e1e238` implements the user-approved Discord-channel privacy boundary with
+explicit `contextOptOutUserIds` and `contextOptOutRoleIds`. Role and ID settings
+are available in the Memory panel and slash settings in all supported languages.
+People without interaction grants can contribute readable context; restrictions
+still prevent triggering. Opt-outs have no administrator/owner bypass.
+
+## Checkpoint 40: one-pass snapshots and admission simplification
+
+`9238b912` replaces repeated Discord history/member validation with one filtered,
+event-invalidated source snapshot shared by decisions, retrieval and generation.
+One listener set per client tracks edits, deletions, membership/role/channel/thread
+changes and connection interruptions. New ordinary messages do not invalidate
+context. Effects check fresh forget tombstones in bounded single-channel SQL
+batches; the SQLite/PostgreSQL contract matches individual forget semantics.
+
+The duplicate admission reply walker and its unused historical budget API were
+removed. Reply ancestry has one owner: the guarded collector. A human question
+is not rejected merely because it references an excluded or unavailable ancestor.
+Reply-only semantic example/lore retrieval runs after contextual admission.
+Reaction context includes non-triggering participants while actual initiation
+requires an authorized reactor. Diagnostics distinguish snapshot/effect/full checks.
+
+Full suite at this checkpoint: 5,144 passed, 7 skipped, zero failed. Typecheck,
+changed-source lint and focused final diagnostics/adapter tests passed. This is
+local synthetic/persistence validation, not production Discord timing or deployment.
+
+
+## Checkpoint 41: final snapshot review and regression evidence
+
+The final reread preserved facts used by preflight when semantic reply enrichment
+selects different lore, within the existing lore budget. Message invalidation is
+specific to admitted source IDs so unrelated utility-panel edits do not cancel
+answers. The shared event tracker remains bounded; role/channel/thread changes
+and connection interruptions still invalidate affected authority conservatively.
+Five actual summary-reader regressions verify default channel collection, user
+and uncached-role opt-outs, persistent forgetting and channel permission revocation.
+Historical role-based collection/admission-walker tests were replaced with the
+new policy; fallback full-validation tests remain explicitly labeled for adapters
+without event notifications.
+
+Closing verification: **5,150 passed, 7 skipped, zero failed**. Full TypeScript
+checking, complete Activity/application build, migration consistency, lint for all
+TypeScript files changed in this work and whitespace checks pass. The prior global
+lint debt remains unrelated and was not relabeled as a new passing global check.
+The original plans, closing audit, consumer inventory narrative and system flows
+now identify the channel/opt-out policy as superseding role-based collection.
+No paid provider run, production change, live Discord send or deployment occurred.

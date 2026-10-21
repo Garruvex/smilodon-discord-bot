@@ -1,5 +1,7 @@
 # Chat context privacy guard and model gateway plan
 
+Current collection policy, updated 2026-10-22: the [channel snapshot and opt-out design](channel-context-snapshot-plan-2026-10-22.md) supersedes historical role-based collection rules and repeated Discord REST revalidation. Discord channel visibility plus explicit collection opt-outs determines context eligibility; interaction roles only determine who may trigger the bot. The model/source authority boundaries below remain in force.
+
 Status, updated 2026-10-22: the local mandatory chat source/model migration is implemented through checkpoint 37. All production conversation modes use the registered source engine, frozen model/embedding facades and guarded memory mutations. The [closing audit](chat-context-final-audit-2026-10-22.md) maps every source and consumer to enforcement and evidence, including explicit legacy exclusion, authored configuration, remaining repository lint debt and external release gates. No deployment or production pilot is claimed.
 
 This document preserves the original design contract, prepared 2026-10-19. The [checkpoint log](universal-context-migration-progress-2026-10-21.md) records the staged implementation; old dated exclusions there describe their checkpoint, not the current source set. New paid replay, independent semantic review and a named-channel production pilot remain separate acceptance work.

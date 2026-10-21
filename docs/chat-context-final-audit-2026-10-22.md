@@ -1,6 +1,6 @@
 # Common chat context and model boundary: closing audit
 
-Reviewed after checkpoint 37 (`f72c0c42`), against the original trigger/context plan, privacy gateway plan and contextual participation plan. This document describes the current local implementation. Earlier dated checkpoints and provider reports are historical evidence, not deployments or new live measurements.
+Updated after the channel-context policy and snapshot redesign (`e8e1e238`, `9238b912`), against the original trigger/context, privacy gateway and contextual participation plans. The original checkpoint-37 audit has been reconciled with the later user-approved [channel visibility and explicit opt-out policy](channel-context-snapshot-plan-2026-10-22.md). This document describes the current local implementation. Earlier dated checkpoints and provider reports are historical evidence, not deployments or new live measurements.
 
 ## Completion and scope
 
@@ -16,23 +16,25 @@ Production deployment, independent wording/semantic review, a newly authorized p
 flowchart TD
   A[Discord message or reaction] --> B[Fresh interaction and source eligibility]
   B --> C[Registered channel/thread source port]
-  C --> D[Bounded eligible history, ancestry, burst and source dependencies]
+  C --> D[One filtered snapshot: history, ancestry, burst and dependencies]
   D --> E[Authorized sessions, claims, identity, configuration, assets and character state]
   E --> F{Explicit request or optional participation?}
   F -->|Explicit| H[Application-owned destination and answer obligation]
   F -->|Optional| G[Approved decision projection and registered model operation]
   G --> H
   H --> I[Deterministic participation policy]
-  I --> J[Immutable approved reply request]
+  I -->|Silent or emoji| Q[Skip reply-only semantic retrieval and text generation]
+  I -->|Reply| R[Semantic examples and lore enrichment]
+  R --> J[Immutable approved reply request]
   J --> K[Frozen mandatory model facade]
   K --> L[Provider attempts and reviewed tool continuations]
-  L --> M[Revalidation, final policy and immutable effect permit]
+  L --> M[Snapshot invalidation, fresh forget check and immutable effect permit]
   M --> N[Confirmed text and/or emoji delivery]
   N --> O[Session commit and approved memory mutation batches]
   O --> P[Fresh guarded post-turn consolidation and extraction]
 ```
 
-All seven interactions use this lifecycle, source policy and effect boundary. A trigger decides whether/how an interaction can proceed; it grants no additional read permission. Rich context means selecting relevant authorized evidence, not loading every source on every turn.
+Discord visibility and enabled channel context define collection scope. Explicit user/role opt-outs exclude literal and derived sources. Interaction roles, including restrictions, control triggering and are not collection consent. All seven interactions use this lifecycle, source policy and effect boundary. A trigger decides whether/how an interaction can proceed; it grants no additional read permission. Rich context means selecting relevant authorized evidence, not loading every source on every turn.
 
 | Interaction | Meaning and participation |
 | --- | --- |
@@ -42,7 +44,7 @@ All seven interactions use this lifecycle, source policy and effect boundary. A 
 | Name address | Matched addressing enters the common explicit-request path. Ambiguous identity is not authority to guess. |
 | Implicit follow-up | Decision sees authorized exchange/reference anchors; policy evaluates validated recipient/contribution evidence. An earlier speaker's exchange does not automatically transfer to another person. |
 | Open group conversation | Optional useful contribution or emoji/silence under configured scope, budgets and deterministic policy. No generic filler obligation. |
-| Reaction to bot | Verified bot target and eligible reactors; no invented current human speaker. Hidden targets exclude their emoji context; thresholds use eligible actors. |
+| Reaction to bot | Verified bot target and eligible reactors; no invented current human speaker. Hidden targets exclude their emoji context; thresholds use collection-eligible actors and at least one actor must have interaction permission. |
 
 History uses eligible counts and bounded evidence selection. Quiet gaps alone do not make a reference irrelevant. Candidate coalescing/expiry, the 30-second turn work deadline, retention and historical relevance are separate concerns. Missing evidence requires uncertainty/clarification, not a claim that someone never spoke or lacked permission.
 
@@ -50,7 +52,7 @@ History uses eligible counts and bounded evidence selection. Quiet gaps alone do
 
 | Source | Current guard and evidence |
 | --- | --- |
-| Current text, burst, history, ancestry and overflow | Registered `GuardedConversationContext`; fresh scope/author/content/access/forget checks, eligible counts, bounded targeted reads and source-owned compaction. `guarded-conversation-context`, `guarded-reply-overflow`, real Discord port/adapter tests. |
+| Current text, burst, history, ancestry and overflow | Registered `GuardedConversationContext`; one-time channel/author/opt-out/forget filtering, immutable source snapshots, gateway-event invalidation, batched fresh forget checks at effects, eligible counts, bounded targeted reads and source-owned compaction. Adapters without snapshot notifications retain full revalidation. `guarded-conversation-context`, `guarded-reply-overflow`, real Discord port/adapter tests. |
 | Bot output and saved sessions | Confirmed origins, exact output/asset hashes and complete dependencies; no authority from bot identity alone. Session-only origins are ephemeral and bounded. Source deletion/change/forgetting invalidates reuse. |
 | Daily summaries and extraction jobs | Registered `GuardedBackgroundContext` and closed `BackgroundModelGateway`; fresh job/source/member/audience checks on actual attempts and persistence, with approved immutable fact/relationship batches. `background-model-gateway`, channel scheduler and memory provenance tests. |
 | Ordinary memories | Candidate authorization before external relevance/classification, literal human grounding, purpose/audience/isolation/subject checks, exact-text embedding receipts and immutable write batches. The production facade rejects context-free core compatibility. |
@@ -64,7 +66,7 @@ History uses eligible counts and bounded evidence selection. Quiet gaps alone do
 | Indexes and caches | Source-owned queries, purpose/scope identity, guard outside result and in-flight caches, every waiter revalidated. Batch failures grant only bounded individual fallback for the original exact texts. |
 | Diagnostics and delivery | Metadata-only source/decision/model/effect traces. Gate rejection records approval/source/result phase without prompts or provider-attempt inflation. Explain-message preserves recovery, partial/confirmed delivery and uncertainty. |
 
-Unknown/unverifiable legacy records remain excluded. Cross-channel learned-data reuse remains restricted until an explicit destination-audience authorization contract exists. This is a deliberate privacy boundary, not an implicit promise that any readable server channel becomes global context. Existing retention/feature/user access settings still apply.
+Unknown/unverifiable legacy records remain excluded. Cross-channel learned-data reuse remains restricted until an explicit destination-audience authorization contract exists. This is a deliberate privacy boundary, not an implicit promise that any readable server channel becomes global context. Existing retention and feature settings still apply; interaction grants remain separate from explicit collection exclusions.
 
 ## Mandatory consumer boundary
 
@@ -76,13 +78,44 @@ The three replay tools now use explicit synthetic/consented source premises. Inc
 
 Architecture tests restrict source/operation issuance, mutation approval, raw transport/core-engine construction and adapters' effect consumption. They cover static aliases, value/namespace/star re-exports, dynamic imports and require/import-equals. The inventory detects added/removed capability consumers; it is a drift detector, not the enforcement mechanism itself.
 
+## Snapshot regression and operator controls
+
+The production incident on `d549c428` recognized and admitted a direct tag, then
+exhausted the 20-second context-work budget through repeated REST/member source
+validation before reply generation. The fix keeps the budget and mandatory model
+facades, but shares one event-invalidated filtered snapshot. It does not bypass
+privacy checks or label internal suppression as a model refusal.
+
+The direct-tag adapter regression delivers after 20 nested model checks with no
+new history fetch. Another regression reuses 40 history messages across 80 checks
+without member/Discord REST. Source edits/deletions, membership/role/channel/thread
+changes, disconnect/reconnect, explicit forget invalidation and configuration
+changes stop stale snapshots. New ordinary messages do not invalidate them.
+Edits of admitted message IDs invalidate context; unrelated utility-panel edits
+do not cancel a reply. Cross-process forget changes are checked against
+persistence at effect boundaries.
+SQL forget batches are bounded to one guild/channel and preserve individual
+subject, topic, slot and timestamp semantics in SQLite and PostgreSQL.
+
+Use `/settings-memory context-opt-out` or the Memory panel to set excluded roles
+and user IDs. The lists default to empty. There is no owner exemption. Reaction
+threshold context may include non-triggering members, while triggering still
+requires an authorized participant. Daily scans/summaries use the same exclusion
+policy, including revalidation when role/user consent changes.
+
+`context.guard.validation.mode` records `snapshot`, `effect` or `full`. Snapshots
+avoid full history/member REST during nested checks; protected resource revisions
+are still verified. Generic/non-notifying sources retain the full validation path.
+The event tracker uses one bounded metadata-only listener set per Discord client.
+It is conservative: a relevant guild permission/membership change can cancel a turn.
+
 ## Closing verification and limits
 
-- Full suite: **5,116 passed, 7 skipped, zero failed**. Full TypeScript checking, production TypeScript compilation, complete Activity/application build, migration consistency, changed-file ESLint and whitespace checks passed.
+- Full suite: **5,150 passed, 7 skipped, zero failed**. Full TypeScript checking, production TypeScript compilation, complete Activity/application build, migration consistency, changed-file ESLint and whitespace checks passed.
 - The actual adapter-to-effect suite now runs behind the production model and memory facades. Fake HTTP tests capture final serialized requests, retries and revocation behavior. SQLite tests exercise persisted facts, temporal revisions, forgetting and invalidation.
-- `npm ci --dry-run --ignore-scripts --offline --no-audit --no-fund` passed against the current package/lock state. This verifies the local install plan, not a clean Linux/Alpine native-module build or the user's server. The original server excerpt omitted the preceding npm root error; no different cause is invented here.
-- Both contextual and lifecycle compiled inventory commands passed without `tsx` or provider calls; character replay's compiled help entry point passed too.
-- Whole-repository ESLint reports **2,145 errors in 58 files**, including 1,045 errors in generated Activity output. None of its offending files were changed by checkpoints 29–37 compared with `fbdc85b0`; the lint configuration and Activity sources are unchanged. The source changes in this migration pass their lint checks. Unrelated repository-wide lint debt remains explicit; no global lint relaxation or unrelated mass rewrite was used to obtain a green label.
+- Earlier package/lock validation: `npm ci --dry-run --ignore-scripts --offline --no-audit --no-fund` passed against the current package/lock state. This verifies the local install plan, not a clean Linux/Alpine native-module build or the user's server. The original server excerpt omitted the preceding npm root error; no different cause is invented here.
+- Earlier compiled-entry validation: both contextual and lifecycle inventory commands passed without `tsx` or provider calls; character replay's compiled help entry point passed too.
+- Previously measured whole-repository ESLint debt: **2,145 errors in 58 files**, including 1,045 errors in generated Activity output. None of its offending files were changed by checkpoints 29–37 compared with `fbdc85b0`; the lint configuration and Activity sources are unchanged. This is historical repository-wide debt evidence; it was not relabeled as a new successful global lint run. Changed source files pass their lint checks. Unrelated repository-wide lint debt remains explicit; no global lint relaxation or unrelated mass rewrite was used to obtain a green label.
 - The seven skipped tests and fake transports do not establish live PostgreSQL, Discord transport or server deployment acceptance. No new paid 216-case run, independent human semantic review or production pilot is claimed.
 
-The original plans were reread after the implementation. That reread led to mandatory utility/embedding/reply dispatch, replay migration, dead-path removal, authored ledger repair, guarded public character preparation and closed transport/diagnostic checks in checkpoints 29–37. The remaining release gates are independent semantic review, server build/deployment evidence and a named-channel pilot with an agreed measured-cost budget. Rollback may change participation policy; it must not restore raw source/model access or promote legacy data.
+The original plans and the later channel-snapshot design were reread after the implementation. The closing snapshot review also retained preflight lore in generation and narrowed message invalidation so unrelated utility-panel edits do not cancel replies. That reread led to mandatory utility/embedding/reply dispatch, replay migration, dead-path removal, authored ledger repair, guarded public character preparation and closed transport/diagnostic checks in checkpoints 29–37. The remaining release gates are independent semantic review, server build/deployment evidence and a named-channel pilot with an agreed measured-cost budget. Rollback may change participation policy; it must not restore raw source/model access or promote legacy data.

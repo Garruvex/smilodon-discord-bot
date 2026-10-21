@@ -1,5 +1,7 @@
 # Contextual participation improvement plan
 
+Current collection policy, updated 2026-10-22: the [channel snapshot and opt-out design](channel-context-snapshot-plan-2026-10-22.md) supersedes historical role-based collection rules and repeated Discord REST revalidation. Discord channel visibility plus explicit collection opt-outs determines context eligibility; interaction roles only determine who may trigger the bot. The model/source authority boundaries below remain in force.
+
 Prepared 2026-10-21; current implementation status updated 2026-10-22. The local interaction flow and universal chat-source migration are implemented through checkpoint 37, including mandatory registered model/embedding dispatch, guarded character entry points and all seven real adapter/effect paths. The [closing audit](chat-context-final-audit-2026-10-22.md) is the current completion/limit record. Independent semantic review, a newly authorized paid replay and a scoped deployed pilot remain external acceptance work. Historical provider reports and checkpoint paragraphs below do not certify this later revision or a deployment.
 
 The following progress paragraphs are historical checkpoints, including failures that drove later corrections. The ledger and latest release evidence describe the finished local state.

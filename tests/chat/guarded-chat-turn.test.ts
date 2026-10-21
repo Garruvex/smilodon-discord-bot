@@ -76,6 +76,20 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
 }
 
 describe("guarded turn acceptance", () => {
+  it("preserves authored facts used by preflight when reply semantic enrichment returns no lore", async () => {
+    const enrichment = { examples: { select: vi.fn<ExampleExchangeSelector["select"]>().mockResolvedValue([]) },
+      lore: { select: vi.fn<PersonaLoreSelector["select"]>().mockResolvedValue([]) } };
+    const { service, input, fixture, decision, reply } = await setup(5000, "alice", true, false, null, false, null, null, enrichment);
+    fixture.sources.get("current")!.event.content = "carburetor";
+    const fact = { heading: "carburetor", text: "The carburetor needs the approved mixture.", embedding: null };
+    input.configurationContext = await GuardedConfigurationContext.open({ kind: "persona", guildId, ownerUserId: null },
+      { text: "A dry mechanic", loreChunks: [fact] }, () => true);
+    decision.generateCharacterData.mockResolvedValue(contextualProposal({ relationship: "followup", referent: "context_linked", intent: "answer",
+      action: "reply", linkKey: "speaker_1", recipientEvidence: ["current"] }));
+    await service.run({ ...input, triggerMode: "continuation" }, (response) => Promise.resolve(response.text));
+    expect(JSON.stringify(decision.generateCharacterData.mock.calls)).toContain(fact.text);
+    expect(reply.mock.calls[0]![0].personaLore).toContainEqual({ heading: fact.heading, text: fact.text });
+  });
   it.each(["silent", "react", "reply"] as const)("runs reply-only semantic retrieval after a contextual %s decision", async (action) => {
     let decided = false;
     const examples = { select: vi.fn<ExampleExchangeSelector["select"]>(() => { expect(decided).toBe(true); return Promise.resolve([]); }) };

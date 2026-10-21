@@ -25,6 +25,7 @@ import { conversationConfiguration } from "../context/conversation-configuration
 import type { UserCustomizationStore } from "./user-customization-store.js";
 import type { ExampleExchangeSelector } from "./example-exchange-selector.js";
 import { RelevantPersonaLoreSelector, type PersonaLoreSelector } from "./persona-lore-selector.js";
+import { personaLoreLimits } from "./persona-lore-policy.js";
 import type { ChatSessionExchange } from "./chat-state-store.js";
 import type { PersonaDriftStore } from "./persona-drift-store.js";
 import { personaDriftPayload } from "./persona-drift-provenance.js";
@@ -186,8 +187,17 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   const replyLore = (await dependencies.lore.select({ chunks: lorePool, recentHistory,
     message: lease.current.content, replyChain: lease.replyChain, now: dependencies.now(), context: lease }))
     .filter((item) => lorePool.some((source) => source.heading === item.heading && source.text === item.text));
+  // Keep facts already used by the decision. Semantic enrichment may add
+  // context within the existing budget, but cannot remove its grounding.
+  const generationLore = [...request.personaLore];
+  let loreChars = generationLore.reduce((sum, item) => sum + JSON.stringify(item).length, 0);
+  for (const { heading, text } of replyLore) {
+    const item = { heading, text }; const size = JSON.stringify(item).length;
+    if (generationLore.some((prior) => prior.heading === heading && prior.text === text) || loreChars + size > personaLoreLimits.maxSelectedChars) continue;
+    generationLore.push(item); loreChars += size;
+  }
   request = { ...request, exampleExchanges: selectedExamples.map(({ tags, user, character }) => ({ tags, user, character })),
-    personaLore: replyLore.map(({ heading, text }) => ({ heading, text })) };
+    personaLore: generationLore };
   // Error recovery must stay grounded in the supplied text, and shadow turns
   // must never initiate searches. Native search does not enable application
   // tools or give access to additional Discord sources.
