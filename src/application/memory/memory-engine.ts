@@ -1,6 +1,7 @@
 import { fadingWeight } from "./fading.js";
 import { retrievalProjection } from "../context/retrieval-query.js";
 import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
+import { requireApprovedMemoryIngest, requireApprovedRelationIngest } from "../context/approved-memory-ingest.js";
 import type { Logger } from "pino";
 import { safeFailure } from "../diagnostics/chat-diagnostics.js";
 
@@ -447,6 +448,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
   }
 
   public async ingest(input: MemoryIngestInput): Promise<MemoryIngestResult> {
+    requireApprovedMemoryIngest(input);
     await checkMemoryContext(input.context);
     if (!allowsDurableWrites(input.channelMode) && input.proposals.every((proposal) => proposal.action === "upsert"))
       return { ingested: [], removed: 0, rejected: 0, failed: 0 };
@@ -515,6 +517,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
   // regular facts already go through, so a relation extracted from the same
   // consolidation batch as a fact gets the same isolation boundary.
   public async ingestRelations(input: MemoryRelationIngestInput): Promise<MemoryRelationIngestResult> {
+    requireApprovedRelationIngest(input);
     await checkMemoryContext(input.context);
     if (!allowsDurableWrites(input.channelMode)) return { created: 0, rejected: input.proposals.length };
     const scope = resolveMemoryScope(input.channelMode, input.channelId, { audience: "guild", channelScoped: true });

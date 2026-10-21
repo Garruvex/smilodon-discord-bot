@@ -1,3 +1,4 @@
+import { fixtureMemoryIngest } from "../helpers/approved-memory-fixture.js";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -31,7 +32,7 @@ async function setup(shared = true): Promise<{ engine: DefaultMemoryEngine; cont
 describe("durable guarded memory claims", () => {
   it("persists identity-bound, content-free source manifests and recalls through a fresh lease", async () => {
     const { engine, context, fixture } = await setup();
-    const stored = await engine.ingest({ ...base, context });
+    const stored = await engine.ingest(fixtureMemoryIngest({ ...base, context }));
     const row = stored.ingested[0]!;
     expect(row.contextProvenance?.purpose).toBe("memory_claim");
     expect(row.contextProvenance?.dependencies[0]).toMatchObject({ messageId: "original", projection: { kind: "background_text" } });
@@ -46,7 +47,7 @@ describe("durable guarded memory claims", () => {
 
   it.each(["edited", "deleted", "revoked", "legacy", "different_audience"] as const)("excludes a claim whose evidence is %s", async (scenario) => {
     const { engine, context, fixture } = await setup();
-    await engine.ingest({ ...base, ...(scenario === "legacy" ? {} : { context }) });
+    await engine.ingest(fixtureMemoryIngest({ ...base, ...(scenario === "legacy" ? {} : { context }) }));
     if (scenario === "edited") fixture.sources.get("original")!.event.content = "I dislike apples";
     if (scenario === "deleted") fixture.sources.delete("original");
     if (scenario === "revoked") fixture.denied.add("original");
@@ -58,7 +59,7 @@ describe("durable guarded memory claims", () => {
 
   it("does not disclose private memory into a public channel even to its owner", async () => {
     const { engine, context, fixture } = await setup(false);
-    const row = (await engine.ingest({ ...base, context })).ingested[0]!;
+    const row = (await engine.ingest(fixtureMemoryIngest({ ...base, context }))).ingested[0]!;
     const publicLease = await GuardedConversationContext.open(fixture.port, { count: 0, budget: 12000, burstIds: [] });
     expect(await publicLease.memories([row])).toEqual([]);
     fixture.port.audienceUserId = "alice";
@@ -68,15 +69,15 @@ describe("durable guarded memory claims", () => {
 
   it("never writes a claim from a revoked background snapshot", async () => {
     const { engine, context, deny } = await setup(); deny();
-    await expect(engine.ingest({ ...base, context })).rejects.toThrow();
+    await expect(engine.ingest(fixtureMemoryIngest({ ...base, context }))).rejects.toThrow();
     expect(await engine.listUserMemories("guild", "alice")).toEqual([]);
   });
 
   it("does not let an unproven overwrite inherit another statement's proof", async () => {
     const { engine, context } = await setup();
-    await engine.ingest({ ...base, context });
+    await engine.ingest(fixtureMemoryIngest({ ...base, context }));
     const proposal = base.proposals[0]!; if (proposal.action !== "upsert") throw new Error("Expected upsert");
-    const revised = await engine.ingest({ ...base, now: 2500, proposals: [{ ...proposal, statement: "likes red pears" }] });
+    const revised = await engine.ingest(fixtureMemoryIngest({ ...base, now: 2500, proposals: [{ ...proposal, statement: "likes red pears" }] }));
     expect(revised.ingested[0]?.contextProvenance).toBeUndefined();
   });
 });

@@ -1,3 +1,4 @@
+import { fixtureMemoryIngest } from "../helpers/approved-memory-fixture.js";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,10 +30,10 @@ describe("guarded learned character sources", () => {
     const reader = { readBatch: vi.fn(), validateBatch: (): Promise<boolean> => Promise.resolve(allowed) };
     const context = await GuardedBackgroundContext.open("summary", [message], reader, () => true);
     const engine = new DefaultMemoryEngine(repository, null, null, undefined, null, null, null, () => true);
-    const result = await engine.ingest({ guildId, channelId: "channel", channelMode: "shared", ...(scenario === "legacy" ? {} : { context }),
+    const result = await engine.ingest(fixtureMemoryIngest({ guildId, channelId: "channel", channelMode: "shared", ...(scenario === "legacy" ? {} : { context }),
       assertedByUserId: "alice", sourceMessageId: "source", sourceTimestampMs: 1000, source: "consolidation", now: 2000,
       proposals: [{ action: "upsert", audience: "guild", kind: "preference", ownerUserId: null, subjectType: "member", subjectId: "alice",
-        topic: "preference", slot: "hobby.gardening", statement: "enjoys gardening", channelScoped: true, sourceQuote: "I enjoy gardening" }] });
+        topic: "preference", slot: "hobby.gardening", statement: "enjoys gardening", channelScoped: true, sourceQuote: "I enjoy gardening" }] }));
     expect(result.ingested).toHaveLength(1);
     const reply = vi.fn(() => Promise.resolve(decisionResponse()));
     const runtime = new CharacterRuntime(profiles, repository, null, { reply }, null, null, () => 3000);

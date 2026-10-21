@@ -26,6 +26,14 @@ describe("conversation execution ownership", () => {
         if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) continue;
         const module = node.moduleSpecifier.text;
         const relative = path.relative(root, file).replaceAll(path.sep, "/");
+        if (module.endsWith("/approved-memory-ingest.js") && !node.importClause?.isTypeOnly) {
+          const bindings = node.importClause?.namedBindings;
+          const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
+          const permitted = relative === "application/context/channel-summary-scheduler.ts" ? ["approveMemoryIngest", "approveRelationIngest"] :
+            ["application/chat/guarded-chat-turn.ts", "application/chat/guarded-post-turn.ts"].includes(relative) ? ["approveMemoryIngest"] :
+              relative === "application/memory/memory-engine.ts" ? ["requireApprovedMemoryIngest", "requireApprovedRelationIngest"] : [];
+          if (imported.some((name) => !permitted.includes(name))) offenders.push(relative);
+        }
         if (module.endsWith("/retrieval-query.js") && !node.importClause?.isTypeOnly) {
           const bindings = node.importClause?.namedBindings;
           const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];

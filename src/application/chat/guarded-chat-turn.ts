@@ -29,6 +29,7 @@ import type { ChatSessionExchange } from "./chat-state-store.js";
 import type { PersonaDriftStore } from "./persona-drift-store.js";
 import { personaDriftPayload } from "./persona-drift-provenance.js";
 import { approveConversationRequest } from "../context/approved-conversation-request.js";
+import { approveMemoryIngest } from "../context/approved-memory-ingest.js";
 
 export async function runGuardedChatTurn(input: GuardedChatConversationInput, dependencies: {
   state: ChatStateStore; runtime: CharacterRuntime | null; logger: Logger | null; now: () => number;
@@ -250,9 +251,9 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   });
     if (allowsDurableWrites(mode) && memoryProposals.length) {
       await check();
-      const result = await dependencies.mutate(() => dependencies.memory.ingest({ guildId: input.guildId, channelId: input.channelId, channelMode: mode, context: lease,
+      const result = await dependencies.mutate(() => dependencies.memory.ingest(approveMemoryIngest({ guildId: input.guildId, channelId: input.channelId, channelMode: mode, context: lease,
         assertedByUserId: input.currentUser.id, sourceMessageId: lease.current.messageId, source: "live", proposals: memoryProposals,
-        sourceTimestampMs: lease.current.timestampMs, now: dependencies.now() }));
+        sourceTimestampMs: lease.current.timestampMs, now: dependencies.now() })));
       if (result.failed) throw new Error("Guarded memory persistence failed");
     }
     if (allowsDurableWrites(mode)) dependencies.postTurn(committed.droppedExchanges,

@@ -1,3 +1,4 @@
+import { fixtureMemoryIngest } from "../helpers/approved-memory-fixture.js";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,9 +21,9 @@ async function setup(shared = true, proven = true, label = "OldBob"): Promise<{
   const fixture = guardedFixture(guardedEvent("current", 1000, "Call me OldBob. I like apples.", "bob"));
   fixture.actors.set("bob", { id: "bob", displayName: "NewBob", roleNames: [] });
   const context = await GuardedConversationContext.open(fixture.port, { count: 0, budget: 4000, burstIds: [] });
-  const row = (await engine.ingest({ guildId: "guild", channelId: "channel", channelMode: "shared", assertedByUserId: "bob", sourceMessageId: "current", source: "live", now: 1000,
+  const row = (await engine.ingest(fixtureMemoryIngest({ guildId: "guild", channelId: "channel", channelMode: "shared", assertedByUserId: "bob", sourceMessageId: "current", source: "live", now: 1000,
     ...(proven ? { context } : {}), proposals: [{ action: "upsert", audience: "private", kind: "preference", ownerUserId: "bob", subjectType: "member", subjectId: "bob",
-      topic: "preference", slot: "food.fruit", statement: "likes apples", channelScoped: true, observedSubjectNames: [label, "apples", "Unbacked"] }] })).ingested[0]!;
+      topic: "preference", slot: "food.fruit", statement: "likes apples", channelScoped: true, observedSubjectNames: [label, "apples", "Unbacked"] }] }))).ingested[0]!;
   fixture.add(guardedEvent("query", 2000, `${label} likes what?`)); fixture.port.sourceMessageId = "query"; fixture.port.actorId = "alice";
   return { engine, fixture, row };
 }

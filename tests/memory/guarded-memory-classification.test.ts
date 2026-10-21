@@ -1,3 +1,4 @@
+import { fixtureMemoryIngest } from "../helpers/approved-memory-fixture.js";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,9 +24,9 @@ describe("guarded memory conflict processing", () => {
     const ingest = async (actor: string, sourceId: string, now: number): ReturnType<DefaultMemoryEngine["ingest"]> => {
       fixture.port.actorId = actor; fixture.port.sourceMessageId = sourceId;
       const context = await GuardedConversationContext.open(fixture.port, { count: 0, budget: 4000, burstIds: [] });
-      return engine.ingest({ guildId: "guild", channelId: "channel", channelMode: "shared", assertedByUserId: actor, sourceMessageId: sourceId, source: "live", now, context,
+      return engine.ingest(fixtureMemoryIngest({ guildId: "guild", channelId: "channel", channelMode: "shared", assertedByUserId: actor, sourceMessageId: sourceId, source: "live", now, context,
         proposals: [{ action: "upsert", kind: "preference", audience: "guild", ownerUserId: null, channelScoped: true,
-          subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.fruit", statement: "likes apples" }] });
+          subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.fruit", statement: "likes apples" }] }));
     };
     const first = await ingest("bob", "bob-source", 2000); expect(first.ingested[0]?.status).toBe("candidate");
     fixture.add(guardedEvent("carol-source", 3000, "Alice likes apples", "carol"));
@@ -55,9 +56,9 @@ describe("guarded memory conflict processing", () => {
     });
     const engine = new DefaultMemoryEngine(repository, { modelId: "test", embed: (): Promise<number[]> => Promise.resolve([0.8, 0.6]) }, null, undefined,
       { classifyMemoryConflict }, null, null, () => true);
-    await engine.ingest({ guildId: "guild", channelId: "channel", channelMode: "shared", assertedByUserId: "alice", sourceMessageId: "current", source: "live", now: 5000,
+    await engine.ingest(fixtureMemoryIngest({ guildId: "guild", channelId: "channel", channelMode: "shared", assertedByUserId: "alice", sourceMessageId: "current", source: "live", now: 5000,
       context, proposals: [{ action: "upsert", kind: "preference", audience: "guild", ownerUserId: null, channelScoped: true,
-        subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.fruit.new", statement: "prefers oranges" }] });
+        subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.fruit.new", statement: "prefers oranges" }] }));
     expect(classifyMemoryConflict).toHaveBeenCalledTimes(scenario === "verified" || scenario === "changed_during_classification" ? 1 : 0);
     expect((await repository.findById("guild", stored.id))?.status).toBe(scenario === "verified" ? "superseded" : "active");
   });

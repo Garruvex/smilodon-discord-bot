@@ -16,6 +16,7 @@ import type { PersonalMemoryExtractionJob, PersonalMemoryExtractionJobInput, Per
 import { GuardedBackgroundContext, type BackgroundModelPurpose } from "./guarded-background-context.js";
 import { BackgroundModelGateway } from "./background-model-gateway.js";
 import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
+import { approveMemoryIngest, approveRelationIngest } from "./approved-memory-ingest.js";
 
 // Hourly — same cadence as BirthdayAnnouncer. Daily's own once-per-~24h
 // gate (checkpoint.lastRunAt) means an hourly tick doesn't mean an hourly
@@ -479,7 +480,7 @@ export class ChannelSummaryScheduler {
       if (this.historyReader.canLearn && !(await this.historyReader.canLearn(profile.guildId, channelId, messages[0]!.id))) return true;
       let result;
       try {
-        result = await this.memoryEngine.ingest({
+        result = await this.memoryEngine.ingest(approveMemoryIngest({
           context,
           guildId: profile.guildId, channelId, channelMode: mode,
           // Stable per-batch id (mode + guild + channel + cursor range) — a
@@ -490,7 +491,7 @@ export class ChannelSummaryScheduler {
           // consolidation batch spanning many messages.
           assertedByUserId: null, sourceMessageId: batchId, source: "consolidation", now, proposals,
           sourceTimestampMs: Math.max(...messages.map((message) => message.createdAt)),
-        });
+        }));
       } catch (error) {
         await this.checkpointStore.recordError(
           profile.guildId, channelId, "memory_ingest_failed", error instanceof Error ? error.message : "Memory ingest failed.", now,
@@ -583,11 +584,11 @@ export class ChannelSummaryScheduler {
           // several facts/memories, not one, so there's no single memory
           // row that's uniquely "the" support for a relation extracted
           // from the same batch — provenance here is the batch, not a row.
-          await this.memoryEngine.ingestRelations({
+          await this.memoryEngine.ingestRelations(approveRelationIngest({
             guildId: profile.guildId, channelId, channelMode: mode,
             context,
             proposals, supportingMemoryId: null, now,
-          });
+          }));
         } catch (error) {
           await this.checkpointStore.recordError(
             profile.guildId, channelId, "relation_ingest_failed",
@@ -702,11 +703,11 @@ export class ChannelSummaryScheduler {
             const mode = resolveChannelMemoryMode(profile.chat.channelMemoryModes, job.channelId);
             try {
               await context.check();
-              const result = await this.memoryEngine.ingest({
+              const result = await this.memoryEngine.ingest(approveMemoryIngest({
                 context,
                 guildId: job.guildId, channelId: job.channelId, channelMode: mode,
                 assertedByUserId: null, sourceMessageId: job.batchId, source: "consolidation", now, proposals,
-              });
+              }));
               if (result.failed > 0) {
                 await fail(null, `${result.failed} of ${proposals.length} proposed ${proposals.length === 1 ? "memory" : "memories"} failed to persist.`);
                 return;

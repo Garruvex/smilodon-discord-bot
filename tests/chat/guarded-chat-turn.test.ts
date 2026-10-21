@@ -1,3 +1,4 @@
+import { fixtureMemoryIngest } from "../helpers/approved-memory-fixture.js";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -144,9 +145,9 @@ describe("guarded turn acceptance", () => {
     fixture.sources.get("current")!.event.content = "OldAlice likes what?";
     fixture.sources.get("current")!.event.replyToMessageId = null;
     const source = await GuardedConversationContext.open(fixture.port, { count: 40, budget: 12000, burstIds: [] });
-    const row = (await engine.ingest({ guildId, channelId, channelMode: "shared", assertedByUserId: "alice", sourceMessageId: "question", source: "live", now: 3000,
+    const row = (await engine.ingest(fixtureMemoryIngest({ guildId, channelId, channelMode: "shared", assertedByUserId: "alice", sourceMessageId: "question", source: "live", now: 3000,
       ...(scenario === "unproven" ? {} : { context: source }), proposals: [{ action: "upsert", audience: "private", kind: "preference", ownerUserId: "alice",
-        subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.fruit", statement: "likes apples", channelScoped: true, observedSubjectNames: ["OldAlice"] }] })).ingested[0]!;
+        subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.fruit", statement: "likes apples", channelScoped: true, observedSubjectNames: ["OldAlice"] }] }))).ingested[0]!;
     vi.spyOn(engine, "recall").mockResolvedValue({ memories: [], causalChains: [], aliasSources: [row], aliasCandidates: [{ alias: "FORGED_ALIAS", subjectIds: ["unknown"] }] });
     if (scenario === "revoked") fixture.denied.add("question");
     decision.generateCharacterData.mockResolvedValue(contextualProposal({ relationship: "group", intent: "contribute", referent: "self_contained", linkKey: null, recipientEvidence: ["current"] }));
@@ -266,9 +267,9 @@ describe("guarded turn acceptance", () => {
     fixture.sources.get("current")!.event.replyToMessageId = null;
     const context = await GuardedBackgroundContext.open("summary", [{ id: original.messageId, guildId, channelId, authorId: original.authorId,
       authorDisplayName: original.authorDisplayName, content: original.content, createdAt: original.timestampMs }], { readBatch: vi.fn(), validateBatch: () => Promise.resolve(true) }, () => true);
-    await engine.ingest({ guildId, channelId, channelMode: "shared", context, source: "consolidation", sourceMessageId: "batch",
+    await engine.ingest(fixtureMemoryIngest({ guildId, channelId, channelMode: "shared", context, source: "consolidation", sourceMessageId: "batch",
       assertedByUserId: "alice", sourceTimestampMs: original.timestampMs, now: 3000, proposals: [{ action: "upsert", audience: "private", kind: "preference",
-        ownerUserId: "alice", subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.fruit", statement: "likes green apples", channelScoped: true }] });
+        ownerUserId: "alice", subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.fruit", statement: "likes green apples", channelScoped: true }] }));
     if (scenario === "revoked") fixture.denied.add("question");
     await service.run({ ...input, triggerMode: "spontaneous" }, (response) => Promise.resolve(response.text));
     const request = reply.mock.calls[0]![0];

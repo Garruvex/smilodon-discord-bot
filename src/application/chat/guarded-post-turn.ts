@@ -17,6 +17,7 @@ import { safeFailure } from "../diagnostics/chat-diagnostics.js";
 import { hashContent } from "../assets/content-hash.js";
 import { isRecipientCorrection } from "./character-decision.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
+import { approveMemoryIngest } from "../context/approved-memory-ingest.js";
 
 export async function runGuardedPostTurn(input: GuardedChatConversationInput, dropped: readonly ChatSessionExchange[], dependencies: {
   provider: ChatProvider; utility: ChatProvider | null; memory: MemoryEngine; customization: UserCustomizationStore | null;
@@ -40,9 +41,9 @@ export async function runGuardedPostTurn(input: GuardedChatConversationInput, dr
     await dependencies.mutate(async () => {
       const currentMode = input.resolveMemoryMode?.() ?? mode;
       if (!allowsDurableWrites(currentMode) || !await context.validate()) return;
-      const result = await dependencies.memory.ingest({ guildId: input.guildId, channelId: input.channelId, channelMode: currentMode, context,
+      const result = await dependencies.memory.ingest(approveMemoryIngest({ guildId: input.guildId, channelId: input.channelId, channelMode: currentMode, context,
         assertedByUserId: context.current.authorId, sourceMessageId: context.current.messageId, sourceTimestampMs: context.current.timestampMs,
-        source, proposals, now: dependencies.now() });
+        source, proposals, now: dependencies.now() }));
       if (result.failed || result.rejected) dependencies.logger?.warn({ guildId: input.guildId, channelId: input.channelId,
         failed: result.failed, rejected: result.rejected }, "Guarded post-turn memory ingest issues");
     });

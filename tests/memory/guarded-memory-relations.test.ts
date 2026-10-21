@@ -1,3 +1,4 @@
+import { fixtureRelationIngest } from "../helpers/approved-memory-fixture.js";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,7 +27,7 @@ describe("guarded relational evidence", () => {
     for (const id of ["bob", "carol"]) fixture.actors.set(id, { id, displayName: id, roleNames: [] });
     const context = await GuardedConversationContext.open(fixture.port, { count: 0, budget: 4000, burstIds: [] });
     if (scenario === "unproven") await repository.createRelations(edges.map((edge) => ({ ...edge, guildId: "guild", channelId: "channel", isolationChannelId: null, supportingMemoryId: null, now: 4000 })));
-    else expect((await engine.ingestRelations({ guildId: "guild", channelId: "channel", channelMode: "shared", proposals: edges, context, supportingMemoryId: null, now: 4000 })).created).toBe(2);
+    else expect((await engine.ingestRelations(fixtureRelationIngest({ guildId: "guild", channelId: "channel", channelMode: "shared", proposals: edges, context, supportingMemoryId: null, now: 4000 }))).created).toBe(2);
     if (scenario === "hidden_intermediate") fixture.actors.delete("bob");
     if (scenario === "source_edited") fixture.sources.get("current")!.event.content = "different topic";
     if (scenario === "edge_tampered") connection.database.update(memoryRelations).set({ toSubjectId: "carol" }).where(eq(memoryRelations.fromSubjectId, "alice")).run();
@@ -48,7 +49,7 @@ describe("guarded relational evidence", () => {
     const fixture = guardedFixture(); fixture.actors.set("bob", { id: "bob", displayName: "bob", roleNames: [] });
     const context = await GuardedConversationContext.open(fixture.port, { count: 0, budget: 4000, burstIds: [] });
     expect(await repository.findRelatedSubjects({ guildId: "guild", channelId: "channel", subjectIds: ["alice"], maxHops: 1, context })).toEqual([]);
-    expect((await engine.ingestRelations({ guildId: "guild", channelId: "channel", channelMode: "shared", proposals: [edges[0]!], context, supportingMemoryId: null, now: 4000 })).created).toBe(0);
+    expect((await engine.ingestRelations(fixtureRelationIngest({ guildId: "guild", channelId: "channel", channelMode: "shared", proposals: [edges[0]!], context, supportingMemoryId: null, now: 4000 }))).created).toBe(0);
     expect((await repository.findRelatedSubjects({ guildId: "guild", channelId: "channel", subjectIds: ["alice"], maxHops: 1, context })).map((subject) => subject.subjectId)).toEqual(["bob"]);
   });
 });
