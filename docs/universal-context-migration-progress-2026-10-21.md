@@ -18,10 +18,18 @@ Validation: 162 focused tests passed, along with typecheck, changed-file lint an
 
 Execution and `/status` now use one capability resolver. Status distinguishes configured settings from capabilities available in the current channel, and explicitly lists guarded sources that remain excluded. The actual transport's declared native search support is supplied by bootstrap, rather than guessed from a model name. Legacy execution also disables unsupported search instead of advertising an unavailable native tool. English, Traditional Chinese and Japanese status-rendering tests exercise the real command. Focused validation: 208 tests passed; typecheck and changed-file lint are required before the commit.
 
-## Remaining implementation checkpoints
+## Checkpoint 3: background source revalidation
+
+Channel summaries and queued personal-memory extraction now enter a registered, immutable, purpose-scoped background context and a model gateway that owns their serialized inputs. The Discord port refreshes channel permissions, source text and source authors. Missing validation support, changed/deleted/forgotten sources, changed configuration and invalid extraction jobs stop processing. Queued legacy jobs without their original source representations are dead-lettered before a model call. OpenAI Responses, OpenAI-compatible and Gemini revalidate before each summary/extraction fallback attempt; outputs are checked again before use. Bounded source validation cancels further transport reads on timeout. Diagnostics record purpose, source count and outcome without raw text.
+
+This closes these background operations' stale-input/retry gap. It does **not** migrate the persisted memory claims' provenance, memory-engine embedding/conflict calls, learned-character consolidation, live legacy extraction or every model consumer. Summary-derived records remain excluded from guarded reply recall until that work is complete.
+
+Validation: 103 focused tests passed; the full suite passed 4,881 tests with 7 skipped and zero failures. New tests include actual provider fallback cancellation and fresh Discord source/member reads. Typecheck and changed-file lint are required before committing. No paid model call or Discord send occurred.
+
+## Remaining implementation checkpoints (updated)
 
 1. Effective capability/source availability is now surfaced in operator status; expand it as each new source migrates.
-2. Introduce a mandatory context/model boundary for the remaining consumers; inventory raw calls and prevent new bypasses.
+2. The first background source boundary is implemented; complete the provider-consumer inventory and migrate the remaining consumers behind the shared mandatory boundary.
 3. Migrate summary and personal-memory producers and records with claim-level evidence, subject/purpose/audience authorization and invalidation. Legacy batch identifiers alone do not establish re-readable source provenance.
 4. Migrate memory/relationship recall, learned character/profile context and caches; preserve forgetting and reject unproven legacy records.
 5. Migrate images, attachments and application tool results/continuations with source and action checks.

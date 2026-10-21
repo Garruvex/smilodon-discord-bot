@@ -1,5 +1,5 @@
 import type { Logger } from "pino";
-import { withDiagnosticScope } from "../diagnostics/chat-diagnostics.js";
+import { emitChatDiagnostic, withDiagnosticScope } from "../diagnostics/chat-diagnostics.js";
 
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
@@ -13,6 +13,9 @@ import type { ChannelHistoryMessage, ChannelHistoryReader } from "./channel-hist
 import type { ChannelMessageSummarizer, ChannelSummaryFact, ChannelSummaryRelation } from "./channel-message-summarizer.js";
 import type { ChannelSummaryCheckpointStore } from "./channel-summary-checkpoint-store.js";
 import type { PersonalMemoryExtractionJob, PersonalMemoryExtractionJobInput, PersonalMemoryExtractionQueueStore } from "./personal-memory-extraction-queue.js";
+import { GuardedBackgroundContext, type BackgroundModelPurpose } from "./guarded-background-context.js";
+import { BackgroundModelGateway } from "./background-model-gateway.js";
+import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
 
 // Hourly — same cadence as BirthdayAnnouncer. Daily's own once-per-~24h
 // gate (checkpoint.lastRunAt) means an hourly tick doesn't mean an hourly
@@ -168,6 +171,7 @@ function resolveEvidenceAsserter(
 }
 
 export class ChannelSummaryScheduler {
+  private readonly modelGateway: BackgroundModelGateway;
   private characterConsolidation: ((guildId: string, channelId: string, subjectIds: readonly string[]) => Promise<void>) | null = null;
   public bindCharacterConsolidation(handler: (guildId: string, channelId: string, subjectIds: readonly string[]) => Promise<void>): void { this.characterConsolidation = handler; }
   private checkTimer: NodeJS.Timeout | null = null;
@@ -203,7 +207,17 @@ export class ChannelSummaryScheduler {
     // case, same as before this existed.
     private readonly summarizer: ChannelMessageSummarizer & Partial<PersonalMemoryExtractor>,
     private readonly logger: Logger,
-  ) {}
+  ) { this.modelGateway = new BackgroundModelGateway(summarizer); }
+
+  private openContext(purpose: BackgroundModelPurpose, messages: readonly ChannelHistoryMessage[],
+    current: () => Promise<boolean> = () => Promise.resolve(true)): Promise<GuardedBackgroundContext> {
+    const guildId = messages[0]?.guildId;
+    const fingerprint = (): string => JSON.stringify(guildId ? this.profiles.find(guildId) : null,
+      (_key, value: unknown) => value instanceof Set ? [...value].sort() : value);
+    const expected = fingerprint();
+    return GuardedBackgroundContext.open(purpose, messages, this.historyReader, async () => !!guildId && !!this.profiles.find(guildId) && fingerprint() === expected && await current(),
+      (status) => emitChatDiagnostic(this.logger, { event: "context.background.validation", purpose, sources: messages.length, status }));
+  }
 
   public start(): void {
     void this.checkNow(new Date());
@@ -399,10 +413,10 @@ export class ChannelSummaryScheduler {
     const authorIds = new Set(messages.map((message) => message.authorId));
     let facts: readonly ChannelSummaryFact[];
     let relations: readonly ChannelSummaryRelation[];
+    let context: GuardedBackgroundContext;
     try {
-      const summary = await this.summarizer.summarizeChannelMessages(profile.guildId, messages.map((message) => ({
-        id: message.id, authorId: message.authorId, authorDisplayName: message.authorDisplayName, content: message.content,
-      })));
+      context = await this.openContext("summary", messages);
+      const summary = await this.modelGateway.summarize(context);
       facts = summary.facts;
       relations = summary.relations;
     } catch (error) {
@@ -461,6 +475,7 @@ export class ChannelSummaryScheduler {
     }));
 
     if (proposals.length > 0) {
+      await context.check();
       if (this.historyReader.canLearn && !(await this.historyReader.canLearn(profile.guildId, channelId, messages[0]!.id))) return true;
       let result;
       try {
@@ -533,6 +548,7 @@ export class ChannelSummaryScheduler {
         }));
       if (jobs.length > 0) {
         try {
+          await context.check();
           await this.extractionQueue.enqueueMany(jobs, now);
         } catch (error) {
           await this.checkpointStore.recordError(
@@ -555,6 +571,7 @@ export class ChannelSummaryScheduler {
       const validRelations = relations.filter((relation) =>
         knownSubjectIds.has(relation.fromSubjectId) && knownSubjectIds.has(relation.toSubjectId));
       if (validRelations.length > 0) {
+        await context.check();
         const proposals: ProposedRelation[] = validRelations.map((relation) => ({
           fromSubjectType: relation.fromSubjectType, fromSubjectId: relation.fromSubjectId,
           predicate: relation.predicate, kind: relation.kind,
@@ -604,7 +621,6 @@ export class ChannelSummaryScheduler {
   // error (dequeue/mark itself failing) escapes, which the caller logs.
   private async processPersonalMemoryExtractionJobs(now: number): Promise<void> {
     if (!this.summarizer.extractPersonalMemories) return;
-    const extractPersonalMemories = this.summarizer.extractPersonalMemories.bind(this.summarizer);
     const jobs = await this.extractionQueue.dequeueDue(maxJobsProcessedPerTick, now);
     if (jobs.length === 0) return;
 
@@ -645,9 +661,20 @@ export class ChannelSummaryScheduler {
         };
 
         let actions;
+        let context: GuardedBackgroundContext;
         try {
-          actions = await extractPersonalMemories(job.content, "", { id: job.subjectId, displayName: job.displayName });
+          if (!job.sourceMessages?.length || job.sourceMessages.map((source) => source.content).join("\n") !== job.content) throw new SocialOutputSuppressed();
+          context = await this.openContext("memory_extraction", job.sourceMessages.map((source) => ({
+            id: source.messageId, guildId: job.guildId, channelId: job.channelId, authorId: job.subjectId,
+            authorDisplayName: job.displayName, content: source.content, createdAt: source.timestampMs,
+          })), stillExists);
+          actions = await this.modelGateway.extract(context, job.subjectId);
         } catch (error) {
+          if (error instanceof SocialOutputSuppressed) {
+            await this.extractionQueue.markDeadLettered(job.guildId, job.channelId, job.batchId, job.subjectId,
+              "Original source content, current scope or eligibility changed before extraction.");
+            return;
+          }
           await fail(error, "Personal-memory extraction failed.");
           return;
         }
@@ -671,6 +698,7 @@ export class ChannelSummaryScheduler {
           if (profile) {
             const mode = resolveChannelMemoryMode(profile.chat.channelMemoryModes, job.channelId);
             try {
+              await context.check();
               const result = await this.memoryEngine.ingest({
                 guildId: job.guildId, channelId: job.channelId, channelMode: mode,
                 assertedByUserId: null, sourceMessageId: job.batchId, source: "consolidation", now, proposals,

@@ -48,6 +48,7 @@ const eventSchema = z.discriminatedUnion("event", [
   z.object({ event: z.literal("context.guard.sources"), sessions: count, unavailable: z.array(z.enum(["legacy_derived", "memory", "summaries", "learned_character", "images", "context_tools", "profile_fields"])) }),
   z.object({ event: z.literal("chat.capabilities.resolved"), webSearchConfigured: z.enum(["off", "auto"]), webSearchEffective: z.enum(["off", "auto"]),
     nativeWebSearchSupported: z.boolean(), shadow: z.boolean(), recovery: z.boolean() }),
+  z.object({ event: z.literal("context.background.validation"), purpose: z.enum(["summary", "memory_extraction"]), sources: count, status: z.enum(["current", "changed", "deadline"]) }),
   z.object({ event: z.literal("context.derived.excluded"), source: z.enum(["session", "bot_output"]), count, reason: z.literal("unverified_provenance") }),
   z.object({ event: z.literal("context.history.revalidated"), requested: count, selected: count, status: z.enum(["refreshed", "underfilled", "budget_exhausted", "changed"]) }),
   z.object({ event: z.literal("context.history.budget"), candidates: count, selected: count, truncated: count, omitted: count, budget: count, chars: count }),

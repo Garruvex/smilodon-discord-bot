@@ -491,8 +491,10 @@ export class GeminiChatProvider implements ChatProvider {
     userMessage: string,
     assistantReply: string,
     speaker: { id: string; displayName: string },
+    options?: StructuredCallOptions,
   ): Promise<readonly PersonalMemoryExtractionAction[]> {
     return this.summaryModelChain.run(async (model) => {
+      await options?.beforeAttempt?.();
       const response = await this.generateStructured(
         model,
         buildPersonalMemoryExtractionPrompt(userMessage, assistantReply, speaker),
@@ -528,14 +530,18 @@ export class GeminiChatProvider implements ChatProvider {
   public async summarizeChannelMessages(
     guildId: string,
     messages: readonly ChannelSummaryMessage[],
+    options?: StructuredCallOptions,
   ): Promise<ChannelSummaryResult> {
     const summary = prepareChannelMessageSummary(guildId, messages);
-    const response = await this.summaryModelChain.run((model) => this.generateStructured(
-      model,
-      summary.prompt,
-      channelMessageSummaryJsonSchema,
-      this.generation.summaryMaxOutputTokens ?? channelMessageSummaryMaxOutputTokens,
-    ));
+    const response = await this.summaryModelChain.run(async (model) => {
+      await options?.beforeAttempt?.();
+      return this.generateStructured(
+        model,
+        summary.prompt,
+        channelMessageSummaryJsonSchema,
+        this.generation.summaryMaxOutputTokens ?? channelMessageSummaryMaxOutputTokens,
+      );
+    });
     return summary.parse((response.text ?? "").trim());
   }
 

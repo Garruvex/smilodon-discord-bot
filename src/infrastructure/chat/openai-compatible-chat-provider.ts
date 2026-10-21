@@ -222,8 +222,10 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
     userMessage: string,
     assistantReply: string,
     speaker: { id: string; displayName: string },
+    options?: StructuredCallOptions,
   ): Promise<readonly PersonalMemoryExtractionAction[]> {
     return this.summaryModelChain.run(async (model) => {
+      await options?.beforeAttempt?.();
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
@@ -260,9 +262,11 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
   public async summarizeChannelMessages(
     guildId: string,
     messages: readonly ChannelSummaryMessage[],
+    options?: StructuredCallOptions,
   ): Promise<ChannelSummaryResult> {
     const summary = prepareChannelMessageSummary(guildId, messages);
     const body = await this.summaryModelChain.run(async (model) => {
+      await options?.beforeAttempt?.();
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {

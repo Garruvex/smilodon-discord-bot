@@ -1,5 +1,7 @@
 # Implementation alignment ledger
 
+Continued source/capability migration is tracked in [universal context migration progress](universal-context-migration-progress-2026-10-21.md). Guarded native web search and effective operator capability status have been implemented after this original closure audit. Background summaries and queued extraction now revalidate registered source snapshots at model/fallback boundaries; persisted derived-memory provenance and the remaining raw consumers are still migration work. Historical checkpoint totals below refer to the earlier closure.
+
 Work follows the [contextual participation plan](chat-contextual-participation-plan-2026-10-21.md) and [flow audit](chat-flow-state-audit-2026-10-21.md). This ledger is checked against source and observable execution, not test totals alone. Production remains unchanged; a deployed pilot requires separate evidence.
 
 | Requirement | State | Evidence / remaining work |

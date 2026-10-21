@@ -64,6 +64,7 @@ function fakeChannel(allNewestFirst: readonly FakeStoredMessage[], guildId = "gu
 // test reads `historyReader.readBatch` for assertions. This shape is still
 // structurally assignable to ChannelHistoryReader at every call site.
 type FakeChannelHistoryReader = {
+  validateBatch: ReturnType<typeof vi.fn<(messages: readonly ChannelHistoryMessage[]) => Promise<boolean>>>;
   readBatch: ReturnType<typeof vi.fn<(request: ChannelHistoryReadRequest) => Promise<ChannelHistoryReadResult>>>;
 };
 
@@ -121,7 +122,12 @@ function fakeHistoryReader(channel: FakeChannel | null): FakeChannelHistoryReade
 
     return Promise.resolve({ ok: true, messages, oldestSeenMessageId, reachedBoundary });
   });
-  return { readBatch };
+  const validateBatch = vi.fn((messages: readonly ChannelHistoryMessage[]): Promise<boolean> => Promise.resolve(messages.every((source) => {
+    const original = channel?.messages.find((message) => message.id === source.id);
+    return !!original && channel?.guildId === source.guildId && !original.bot && !original.system && original.authorId === source.authorId &&
+      original.createdTimestamp === source.createdAt && original.content.trim().slice(0, source.content.length) === source.content;
+  })));
+  return { readBatch, validateBatch };
 }
 
 function fakeProfile(

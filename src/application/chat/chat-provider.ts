@@ -152,7 +152,7 @@ export interface ChatRequest {
   historyReactionsEnabled?: boolean;
 }
 
-export interface StructuredCallOptions { signal?: AbortSignal; maxAttempts?: number; onUsage?: (usage: ChatUsage) => void }
+export interface StructuredCallOptions { signal?: AbortSignal; maxAttempts?: number; onUsage?: (usage: ChatUsage) => void; beforeAttempt?: () => Promise<void> }
 export function reportStructuredUsage(options: Pick<StructuredCallOptions, "onUsage"> | undefined, usage: ChatUsage): void {
   try { options?.onUsage?.(usage); } catch { /* Usage observers cannot affect admission or retries. */ }
 }
@@ -597,6 +597,7 @@ export interface PersonalMemoryExtractor {
     userMessage: string,
     assistantReply: string,
     speaker: { id: string; displayName: string },
+    options?: StructuredCallOptions,
   ): Promise<readonly PersonalMemoryExtractionAction[]>;
 }
 

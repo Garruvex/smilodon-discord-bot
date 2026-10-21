@@ -24,6 +24,10 @@ export class SocialChatEligibility {
   private readonly access: ChatAccessService;
   private forgottenSource: ((message: Message) => Promise<boolean>) | null = null;
   public bindGuardedForgetPolicy(check: (message: Message) => Promise<boolean>): void { this.forgottenSource = check; }
+  public async checkBackgroundSource(message: Message, member: GuildMember | null = message.member): Promise<SocialEligibility> {
+    if (this.forgottenSource && await this.forgottenSource(message)) return { eligible: false, reason: "forgotten_source" };
+    return this.check(message, "background_observation", undefined, member);
+  }
   public contextPolicyVersion(message: Message): string {
     const profile = message.guildId ? this.profiles.find(message.guildId) : null;
     return hashContent(JSON.stringify(profile, (_key, value: unknown) => value instanceof Set ? [...value].sort() : value));
