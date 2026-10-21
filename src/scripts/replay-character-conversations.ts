@@ -14,7 +14,7 @@ import { characterSettingsSchema } from "../application/chat/character-settings.
 import { replayCharacterConversations, replayManifestSchema } from "../application/chat/character-evaluation.js";
 import { CharacterRuntime } from "../application/chat/character-runtime.js";
 import { ChatConversationService } from "../application/chat/chat-conversation-service.js";
-import { DefaultMemoryEngine } from "../application/memory/memory-engine.js";
+import { createGuardedMemoryEngine } from "../application/context/guarded-memory-gateway.js";
 import { createSqliteDatabaseConnection } from "../infrastructure/database/sqlite-database.js";
 import { SqliteMemoryRepository } from "../infrastructure/persistence/sqlite-memory-repository.js";
 import { SqliteChatStateStore } from "../infrastructure/persistence/sqlite-chat-state-store.js";
@@ -51,7 +51,7 @@ if (args.includes("--help")) {
   let now = manifest.turns[0]!.timestampMs; const clock = (): number => now;
   const directory = await mkdtemp(join(tmpdir(), "character-replay-")); const connection = createSqliteDatabaseConnection(directory);
   const repository = new SqliteMemoryRepository(connection.database);
-  const memoryEngine = new DefaultMemoryEngine(repository, null, logger, undefined, utility, null, (id) => Promise.resolve(id === "bot"), () => true, () => null, clock);
+  const memoryEngine = createGuardedMemoryEngine(repository, null, logger, undefined, utility, null, (id) => Promise.resolve(id === "bot"), () => true, () => null, clock);
   const runtime = new CharacterRuntime(profiles, repository, utility.generateCharacterData ? { generateCharacterData: utility.generateCharacterData.bind(utility) } : null, provider, undefined, null, clock);
   const conversation = new ChatConversationService(provider, new SqliteChatStateStore(connection.database), memoryEngine,
     undefined, undefined, undefined, null, null, null, logger, utility, null, null, null, runtime, clock);

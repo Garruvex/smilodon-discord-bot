@@ -1,3 +1,4 @@
+import { characterInternals } from "../helpers/character-runtime-internals.js";
 import { GuardedEvaluationContext } from "../../src/application/context/guarded-evaluation-context.js";
 import { configurationFixture } from "../helpers/configuration-context-fixture.js";
 import { mkdtempSync } from "node:fs";
@@ -104,9 +105,9 @@ describe("character module integration", () => {
   it("does not re-read character context for solicited tool/delivery checks after background learning", async () => {
     const { runtime, profiles, repository } = setup(() => 3000);
     await profiles.update(guildId, { chatbotSharedMemoryEnabled: true, character: { enabled: true, modules: { relationships: { enabled: true } } } });
-    const prepared = (await runtime.prepare(request()))!; const contribute = vi.spyOn(runtime.registry, "contribute");
+    const prepared = (await runtime.prepare(request()))!; const contribute = vi.spyOn(characterInternals(runtime).registry, "contribute");
     const source = await repository.ingest(record());
-    await runtime.memory.write(profiles.current(), channelId, "relationships", record({ kind: "impression", slot: "relationship", now: 2000 }), [source]);
+    await characterInternals(runtime).memory.write(profiles.current(), channelId, "relationships", record({ kind: "impression", slot: "relationship", now: 2000 }), [source]);
     expect(await runtime.validatePrepared(prepared)).toBe(true); expect(await runtime.validatePrepared(prepared)).toBe(true);
     expect(contribute).not.toHaveBeenCalled();
     expect(await runtime.validatePrepared({ ...prepared, request: { ...prepared.request, triggerMode: "spontaneous" } })).toBe(false);
@@ -198,9 +199,9 @@ describe("character module integration", () => {
   it("freezes canon ingestion and rejects canon statements about members", async () => {
     const { runtime, repository, profiles, provider } = setup(); await profiles.update(guildId, { character: { enabled: true, modules: { canon: { enabled: true, freeze: true } } } });
     await runtime.consolidate(response("I like cats"), (await runtime.prepare(request()))!); expect(provider.generateCharacterData).not.toHaveBeenCalled();
-    expect(await runtime.memory.write(profiles.current(), channelId, "canon", record())).toBeNull();
+    expect(await characterInternals(runtime).memory.write(profiles.current(), channelId, "canon", record())).toBeNull();
     await profiles.update(guildId, { character: { modules: { canon: { freeze: false } } } });
-    await expect(runtime.memory.write(profiles.current(), channelId, "canon", record())).rejects.toThrow("Canon can only describe");
+    await expect(characterInternals(runtime).memory.write(profiles.current(), channelId, "canon", record())).rejects.toThrow("Canon can only describe");
     expect((await repository.findModuleCandidates({ guildId, channelId, userId: actorUserId, now: 2000, moduleId: "canon" })).memories).toEqual([]);
   });
   it("does not merge private and shared evidence into an impression", async () => {
@@ -225,7 +226,7 @@ describe("character module integration", () => {
     const { runtime, repository, profiles } = setup(() => 3000);
     await profiles.update(guildId, { chatbotSharedMemoryEnabled: true, chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] }, character: { enabled: true, modules: { relationships: { enabled: true } } } });
     const source = await repository.ingest(record());
-    await runtime.memory.write(profiles.current(), channelId, "relationships", record({ kind: "impression", slot: "relationship", now: 2000 }), [source]);
+    await characterInternals(runtime).memory.write(profiles.current(), channelId, "relationships", record({ kind: "impression", slot: "relationship", now: 2000 }), [source]);
     const prepared = (await runtime.prepare({ ...request(), triggerMode: "spontaneous" }))!;
     expect(prepared.request.characterContext?.some((section) => section.moduleId === "relationships")).toBe(true);
     expect(await runtime.validatePrepared(prepared)).toBe(true);
@@ -258,7 +259,7 @@ describe("character module integration", () => {
     await repository.ingest(record({ slot: "new-interest", statement: "recently discussed chess", sourceMessageId: "new-human", now: 2000, sourceTimestampMs: 2000 }));
     const prepared = (await runtime.prepare(request()))!;
     await runtime.consolidate(response(), prepared);
-    const rows = await runtime.memory.read(profiles.current(), { guildId, channelId, userId: actorUserId, now: 3000 }, "relationships");
+    const rows = await characterInternals(runtime).memory.read(profiles.current(), { guildId, channelId, userId: actorUserId, now: 3000 }, "relationships");
     expect(rows).toHaveLength(2);
     expect(rows.map((row) => (row.structuredValue as { relationshipEvidence: { supportedAt: number } }).relationshipEvidence.supportedAt).sort()).toEqual([1000, 2000]);
     expect(rows.every((row) => row.expiresAt === null)).toBe(true);

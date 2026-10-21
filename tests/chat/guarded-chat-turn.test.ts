@@ -1,3 +1,4 @@
+import { characterInternals } from "../helpers/character-runtime-internals.js";
 import { fixtureMemoryIngest } from "../helpers/approved-memory-fixture.js";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -189,7 +190,7 @@ describe("guarded turn acceptance", () => {
     fixture.sources.get("current")!.event.replyToMessageId = null;
     await profiles.update(guildId, { character: { enabled: true, modules: { mood: { enabled: true } } } });
     const sourceContext = await GuardedConversationContext.open(fixture.port, { count: 40, budget: 12000, burstIds: [] });
-    const written = await runtime.memory.write(profiles.current(), channelId, "mood", { kind: "state", audience: "channel", ownerUserId: null,
+    const written = await characterInternals(runtime).memory.write(profiles.current(), channelId, "mood", { kind: "state", audience: "channel", ownerUserId: null,
       channelId, isolationChannelId: channelId, subjectType: "persona", subjectId: "character", topic: "character.mood", slot: "fast-mood", statement: "SOURCE_VERIFIED_MOOD",
       status: "active", source: "consolidation", importance: 1, embedding: null, embeddingModel: null, expiresAt: null, now: 3000,
       sourceMessageId: "question", sourceChannelId: channelId, assertedByUserId: null, structuredValue: { personaHash: hashContent(input.personality) }, sourceContext });
@@ -610,7 +611,7 @@ describe("guarded turn acceptance", () => {
   it("treats unavailable memory as an omission and gives character contributors the registered source context", async () => {
     const { service, input, engine, runtime } = await setup();
     const recall = vi.spyOn(engine, "recall").mockRejectedValue(new Error("SECRET_MEMORY"));
-    const contribute = vi.spyOn(runtime.registry, "contribute");
+    const contribute = vi.spyOn(characterInternals(runtime).registry, "contribute");
     await service.run({ ...input, interactionMode: "direct_mention" }, (response) => Promise.resolve(response.text));
     expect(recall.mock.calls[0]?.[0].context).toBeInstanceOf(GuardedConversationContext);
     expect(contribute.mock.calls[0]?.[0].request.contextLease).toBeInstanceOf(GuardedConversationContext);

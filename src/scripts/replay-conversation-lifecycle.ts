@@ -10,7 +10,7 @@ import { syntheticReplayContext } from "../application/chat/synthetic-replay-con
 import type { ChatProvider, ChatResponse, ChatUser, StructuredCharacterProvider } from "../application/chat/chat-provider.js";
 import type { ConversationInteraction } from "../application/chat/conversation-trigger.js";
 import { conversationEffects } from "../application/chat/conversation-effects.js";
-import { DefaultMemoryEngine } from "../application/memory/memory-engine.js";
+import { createGuardedMemoryEngine } from "../application/context/guarded-memory-gateway.js";
 import { safeFailure } from "../application/diagnostics/chat-diagnostics.js";
 import { loadInstanceEnvironment } from "../config/instance-environment.js";
 import { loadConfiguration } from "../config/environment.js";
@@ -92,7 +92,7 @@ async function main(): Promise<void> {
       verificationCalls++; return utility.verifyAttribution!(...values);
     };
     const runtime = new CharacterRuntime(profiles, repository, null, provider, null, null, Date.now, logger, selected);
-    const service = new ChatConversationService(provider, new SqliteChatStateStore(connection.database), new DefaultMemoryEngine(repository, null, null, undefined, null, null, null, () => true),
+    const service = new ChatConversationService(provider, new SqliteChatStateStore(connection.database), createGuardedMemoryEngine(repository, null, null, undefined, null, null, null, () => true),
       undefined, undefined, undefined, null, null, null, logger, utilityFacade, null, null, null, runtime);
     try {
       response = await service.run({ guildId, channelId, sourceMessageId: sourceId, channelHistoryEnabled: true, guardedContextPort: port,

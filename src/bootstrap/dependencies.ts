@@ -144,7 +144,7 @@ import { RelevantPersonaLoreSelector } from "../application/chat/persona-lore-se
 import { PersonaBundleCompiler } from "../application/chat/persona-bundle-compiler.js";
 import { PersonaDriftStore } from "../application/chat/persona-drift-store.js";
 import type { MemoryRepository } from "../application/memory/memory.js";
-import { DefaultMemoryEngine } from "../application/memory/memory-engine.js";
+import { createGuardedMemoryEngine } from "../application/context/guarded-memory-gateway.js";
 import type { MemoryEngine } from "../application/memory/memory.js";
 import type { ChannelSummaryCheckpointStore } from "../application/context/channel-summary-checkpoint-store.js";
 import { ChannelSummaryScheduler } from "../application/context/channel-summary-scheduler.js";
@@ -484,7 +484,7 @@ export function registerCommands(
         configuration.memory.relevanceEvalIncludePrivate ?? false,
       )
     : null;
-  const memoryEngine = new DefaultMemoryEngine(
+  const memoryEngine = createGuardedMemoryEngine(
     memoryRepository, embeddingsClient, logger.child({ component: "memory-engine" }), configuration.memory,
     utilityProvider,
     relevanceTraceCollector,

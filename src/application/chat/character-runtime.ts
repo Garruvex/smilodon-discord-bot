@@ -49,8 +49,8 @@ export interface CharacterEvaluationAdmission {
 }
 
 export class CharacterRuntime {
-  public readonly registry: CharacterModuleRegistry;
-  public readonly memory: CharacterMemory;
+  private readonly registry: CharacterModuleRegistry;
+  private readonly memory: CharacterMemory;
   private readonly callbacks: CharacterCallbacks;
   private readonly decisions: CharacterDecisionService;
   private readonly decisionEngine = new ConversationDecisionEngine();

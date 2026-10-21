@@ -26,12 +26,24 @@ describe("conversation execution ownership", () => {
         if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) continue;
         const module = node.moduleSpecifier.text;
         const relative = path.relative(root, file).replaceAll(path.sep, "/");
+        if (module.endsWith("/character-memory.js") && !node.importClause?.isTypeOnly) {
+          const bindings = node.importClause?.namedBindings;
+          const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
+          if (imported.includes("CharacterMemory") && relative !== "application/chat/character-runtime.ts" || imported.includes("*")) offenders.push(relative);
+        }
+        if ((module.endsWith("/memory-engine.js") || module.endsWith("/guarded-memory-gateway.js")) && !node.importClause?.isTypeOnly) {
+          const bindings = node.importClause?.namedBindings;
+          const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
+          const permitted = module.endsWith("/memory-engine.js") ? relative === "application/context/guarded-memory-gateway.ts" ? ["DefaultMemoryEngine"] : ["defaultMemoryEngineLimits"] :
+            ["bootstrap/dependencies.ts", "scripts/replay-character-conversations.ts", "scripts/replay-conversation-lifecycle.ts"].includes(relative) ? ["createGuardedMemoryEngine"] : [];
+          if (imported.some((name) => !permitted.includes(name))) offenders.push(relative);
+        }
         if (module.endsWith("/approved-memory-ingest.js") && !node.importClause?.isTypeOnly) {
           const bindings = node.importClause?.namedBindings;
           const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
           const permitted = relative === "application/context/channel-summary-scheduler.ts" ? ["approveMemoryIngest", "approveRelationIngest"] :
             ["application/chat/guarded-chat-turn.ts", "application/chat/guarded-post-turn.ts"].includes(relative) ? ["approveMemoryIngest"] :
-              relative === "application/memory/memory-engine.ts" ? ["requireApprovedMemoryIngest", "requireApprovedRelationIngest"] : [];
+              ["application/memory/memory-engine.ts", "application/context/guarded-memory-gateway.ts"].includes(relative) ? ["requireApprovedMemoryIngest", "requireApprovedRelationIngest"] : [];
           if (imported.some((name) => !permitted.includes(name))) offenders.push(relative);
         }
         if (module.endsWith("/retrieval-query.js") && !node.importClause?.isTypeOnly) {
