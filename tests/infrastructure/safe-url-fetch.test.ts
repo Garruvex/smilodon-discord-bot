@@ -68,6 +68,13 @@ beforeEach(() => {
 });
 
 describe("guardedLookup", () => {
+  it("applies source authorization before fetching a redirected private source", async () => {
+    fetchMock.mockResolvedValue(fakeResponse({ status: 302, headers: { location: "https://discord.com/channels/private/secret/message" } }));
+    const result = await fetchLinkContent("https://example.com/start", { allowUrl: (url) => url.hostname === "example.com" });
+    expect(result).toEqual({ ok: false, reason: "that source requires separate authorization." });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(lookupMock).toHaveBeenCalledTimes(1);
+  });
   // undici's Agent always invokes the custom `connect.lookup` with
   // `{ all: true }`, expecting an (err, addresses[]) callback — the shape
   // bug that shipped originally used the wrong callback signature here and

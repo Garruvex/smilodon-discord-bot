@@ -147,6 +147,7 @@ interface FunctionCallOutputItem {
 
 export class OpenAiResponsesChatProvider implements ChatProvider {
   public readonly nativeWebSearchSupported = true;
+  public readonly applicationToolsSupported = true;
   private readonly modelChain: ModelFallbackChain;
   // Separate chain for the two standalone structured-output calls (own
   // prompt/schema, outside the main reply turn) — falls back to the primary
@@ -187,6 +188,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     ];
     const customTools = request.enabledTools ?? [];
     const toolContext: ChatToolContext = {
+      ...(request.turnSignal ? { signal: request.turnSignal } : {}),
       guildId: request.guildId,
       channelId: request.channelId,
       currentUser: request.currentUser,
@@ -361,12 +363,14 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     // side-effecting tool (see ChatToolContext.signal) notice and bail out
     // right before it would otherwise mutate anything.
     const timeoutController = new AbortController();
+    const signal = ctx.signal ? AbortSignal.any([ctx.signal, timeoutController.signal]) : timeoutController.signal;
     const timer = setTimeout(() => timeoutController.abort(), toolExecutionTimeoutMs);
     try {
       const result = await Promise.race([
-        tool.execute(args, { ...ctx, signal: timeoutController.signal }),
+        tool.execute(args, { ...ctx, signal }),
         new Promise<ChatToolResult>((_, reject) => {
-          timeoutController.signal.addEventListener("abort", () => reject(new Error("tool_timeout")));
+          if (signal.aborted) reject(new Error("tool_cancelled"));
+          else signal.addEventListener("abort", () => reject(new Error("tool_cancelled")), { once: true });
         }),
       ]);
       emitChatDiagnostic(modelDiagnosticLogger(), { event: "chat.tool.completed", status: "completed", durationMs: diagnosticElapsed(started) });

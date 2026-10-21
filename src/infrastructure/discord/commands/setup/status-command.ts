@@ -77,6 +77,7 @@ export class StatusCommand implements BotCommand {
     private readonly adminPanelHealth: AdminPanelHealth,
     private readonly models: ChatModelSummary,
     private readonly nativeWebSearchSupported: () => boolean = () => false,
+    private readonly applicationToolsSupported: () => boolean = () => false,
   ) {}
 
   public async execute(context: CommandContext): Promise<void> {
@@ -159,6 +160,7 @@ export class StatusCommand implements BotCommand {
         const plan = resolveConversationTurnPlan(profile, channelId);
         const effective = effectiveChatCapabilities({ ...chat, toolsEnabled: chat.toolCallingEnabled }, {
           guarded: plan.context === "guarded_text", blocked: plan.state === "blocked" || !this.models.chat, nativeWebSearchSupported: this.nativeWebSearchSupported(),
+          applicationToolsSupported: this.applicationToolsSupported(),
         });
         embed.addFields({ name: text.chat.effectiveTitle, value: [
           text.chat.tools({ webSearch: effective.webSearchMode === "auto" ? text.auto : text.off, tools: onOff(text, effective.toolsEnabled) }),

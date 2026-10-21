@@ -23,7 +23,12 @@ export class ReadLinkTool implements ChatTool<ReadLinkToolArgs> {
   };
 
   public async execute(args: ReadLinkToolArgs, ctx: ChatToolContext): Promise<ChatToolResult> {
-    const options = ctx.signal ? { signal: ctx.signal } : {};
+    const options = { ...(ctx.signal ? { signal: ctx.signal } : {}), ...(ctx.contextLease ? {
+      allowUrl: (url: URL): boolean => !url.username && !url.password &&
+        !/(?:^|\.)(?:discord\.com|discordapp\.com|discordapp\.net)$/iu.test(url.hostname.replace(/\.$/u, "")),
+    } : {}) };
+    try { if (options.allowUrl && !options.allowUrl(new URL(args.url))) return { content: "That link requires a separately authorized Discord source." }; }
+    catch { return { content: "Invalid link." }; }
     const result = isXPostUrl(args.url)
       ? await fetchXPost(args.url, options)
       : await fetchLinkContent(args.url, options);

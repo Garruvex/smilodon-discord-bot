@@ -19,7 +19,7 @@ describe("operator capability status", () => {
     const reply = vi.fn<(...args: unknown[]) => Promise<void>>(() => Promise.resolve());
     const command = new StatusCommand(setup, profiles, new AdminPanelHealth(), {
       chat: { provider: "openai-responses", models: ["test"], summaryModels: ["test"] }, utility: null, embeddings: null,
-    }, () => true);
+    }, () => true, () => true);
     await command.execute({ interaction: { guildId, channelId: "channel" }, text: texts[language], responses: { reply } } as unknown as CommandContext);
     const payload = reply.mock.calls[0]?.[0] as { embeds: EmbedBuilder[] };
     const fields = payload.embeds[0]!.toJSON().fields!;
@@ -27,7 +27,7 @@ describe("operator capability status", () => {
     const configured = fields.find((field) => field.name === text.chat.title)!;
     const effective = fields.find((field) => field.name === text.chat.effectiveTitle)!;
     expect(configured.value).toContain(text.chat.images({ read: text.on, make: text.on }));
-    expect(effective.value).toContain(text.chat.tools({ webSearch: text.auto, tools: text.off }));
+    expect(effective.value).toContain(text.chat.tools({ webSearch: text.auto, tools: text.on }));
     expect(effective.value).toContain(text.chat.images({ read: text.on, make: text.off }));
     expect(effective.value).toContain(text.chat.excludedSources);
   });

@@ -33,6 +33,14 @@ export class DiscordServerLookupTool implements ChatTool<ServerLookupArgs> {
 
   public async execute(args: ServerLookupArgs, ctx: ChatToolContext): Promise<ChatToolResult> {
     if (args.scope !== "server" && args.scope !== "events" || args.query != null && typeof args.query !== "string") return { content: "Invalid server lookup arguments." };
+    if (ctx.contextLease) {
+      const source = await ctx.contextLease.resource({ kind: args.scope === "server" ? "server_metadata" : "server_events", id: "current" });
+      if (!source) return { content: "Current server information is unavailable in this channel." };
+      const result = JSON.parse(source) as { events?: { name: string; description: string | null }[] };
+      const query = args.query?.trim().toLocaleLowerCase().slice(0, 200);
+      if (query && result.events) result.events = result.events.filter((event) => `${event.name} ${event.description ?? ""}`.toLocaleLowerCase().includes(query));
+      return { content: JSON.stringify(result) };
+    }
     try {
       const profile = this.profiles.find(ctx.guildId);
       const guild = this.client.guilds.cache.get(ctx.guildId);
@@ -72,5 +80,17 @@ export class DiscordServerLookupTool implements ChatTool<ServerLookupArgs> {
     } catch {
       return { content: "Could not read current Discord server information. Do not treat this as an empty event list; explain that the lookup is unavailable." };
     }
+  }
+
+  public async readResource(scope: "server" | "events", ctx: ChatToolContext): Promise<string | null> {
+    const { contextLease: _lease, ...rawContext } = ctx;
+    void _lease;
+    const result = await this.execute({ scope, query: null }, rawContext);
+    try {
+      const parsed = JSON.parse(result.content) as Record<string, unknown>;
+      if (typeof parsed.source !== "string") return null;
+      delete parsed.fetchedAt;
+      return JSON.stringify(parsed);
+    } catch { return null; }
   }
 }

@@ -68,12 +68,14 @@ export class MemoryLookupTool implements ChatTool<MemoryLookupToolArgs> {
     if (args.subjectUserId && subjectId !== ctx.currentUser.id && !ctx.knownSubjectIds?.includes(subjectId))
       return { content: "That person was not resolved to a supplied account ID. Ask for a Discord mention or clarification." };
     if (!isList && !query) return { content: "Empty search query." };
-    const { memories } = await this.memoryEngine.recall({
+    const recalled = await this.memoryEngine.recall({
       guildId: ctx.guildId, channelId: ctx.channelId, userId: ctx.currentUser.id,
       message: query, recentHistory: [], subjectIds: [subjectId], now: Date.now(),
       ...(args.subjectUserId ? { filterSubjectIds: [subjectId] } : {}),
       channelMode: ctx.channelMode, requireTopicalMatch: !isList, onlySelfSubjectMemories: isList && subjectId === ctx.currentUser.id,
+      ...(ctx.contextLease ? { context: ctx.contextLease } : {}),
     });
+    const memories = ctx.contextLease ? await ctx.contextLease.memories(recalled.memories, true) : recalled.memories;
     // List results are subject-scoped and bounded by recall's character
     // budget; they are not a promise of an exhaustive inventory. Search
     // additionally caps community facts by count.

@@ -19,11 +19,13 @@ import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 import { contextualProposal } from "../helpers/contextual-decision-fixtures.js";
 import { balancedChatLimits } from "../../src/application/chat/chat-scheduler.js";
 import { GuardedBackgroundContext } from "../../src/application/context/guarded-background-context.js";
+import { ChatToolRegistry } from "../../src/application/chat/tools/chat-tool-registry.js";
+import { DiceRollTool } from "../../src/application/chat/tools/dice-tool.js";
 
 const channelId = "500000000000000001";
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { vi.useRealTimers(); for (const cleanup of cleanups.splice(0)) await cleanup(); });
-async function setup(now = 5000, originalAuthor = "alice", contextual = false, nativeWebSearchSupported = false): Promise<{
+async function setup(now = 5000, originalAuthor = "alice", contextual = false, nativeWebSearchSupported = false, tools: ChatToolRegistry | null = null): Promise<{
   service: ChatConversationService; fixture: ReturnType<typeof guardedFixture>; input: ChatConversationInput;
   reply: ReturnType<typeof vi.fn<(request: ChatRequest) => Promise<ChatResponse>>>;
   engine: DefaultMemoryEngine; runtime: CharacterRuntime; state: SqliteChatStateStore;
@@ -45,7 +47,7 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
   const { logger, records } = captureDiagnosticLogger();
   const runtime = new CharacterRuntime(profiles, repository, null, { reply }, decision, null, () => now, logger);
   const engine = new DefaultMemoryEngine(repository, null, null, undefined, null, null, null, () => true);
-  const service = new ChatConversationService({ reply, nativeWebSearchSupported }, state, engine, undefined, undefined, undefined, null, null, null, logger, null, null, null, null, runtime, () => now);
+  const service = new ChatConversationService({ reply, nativeWebSearchSupported, applicationToolsSupported: true }, state, engine, undefined, undefined, undefined, null, null, tools, logger, null, null, null, null, runtime, () => now);
   cleanups.push(async () => { service.stopScheduling(); await service.drain(); runtime.stop(); connection.close(); });
   const fixture = guardedFixture(guardedEvent("question", 1000, "Explain the carburetor mixture adjustment", originalAuthor), { guildId, channelId });
   const previous = await GuardedConversationContext.open(fixture.port, { count: 40, budget: 12000, burstIds: [] });
@@ -61,6 +63,19 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
 }
 
 describe("guarded turn acceptance", () => {
+  it("offers only guarded tools and preserves their functional execution in final decision", async () => {
+    const { service, input, reply } = await setup(5000, "alice", false, false, new ChatToolRegistry([new DiceRollTool()]));
+    reply.mockImplementation(async (request) => {
+      expect(request.enabledTools?.map((tool) => tool.name)).toEqual(["roll_dice"]);
+      const result = await request.enabledTools![0]!.execute({ count: 1, sides: 6 }, { guildId, channelId, currentUser: request.currentUser,
+        channelMode: "shared", channelIsNsfw: false, isOwner: false, music: null, pendingGeneratedImages: [] });
+      expect(JSON.parse(result.content)).toMatchObject({ count: 1, sides: 6 });
+      expect(request.functionalToolExecuted).toBe(true);
+      return decisionResponse();
+    });
+    const send = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
+    await service.run(input, send); expect(send).toHaveBeenCalledOnce();
+  });
   it.each(["eligible", "changed"] as const)("uses lease-authorized image input and suppresses stale image output: %s", async (scenario) => {
     const { service, fixture, input, reply } = await setup();
     fixture.sources.get("current")!.assets = [{ id: "image", contentType: "image/png", size: 10 }];

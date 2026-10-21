@@ -20,6 +20,7 @@ export interface GuardedAssetDescriptor { id: string; contentType: string; size:
 export const guardedAssetsHash = (assets: readonly GuardedAssetDescriptor[]): string => hashContent(JSON.stringify(
   [...assets].map(({ id, contentType, size }) => ({ id, contentType, size })).sort((a, b) => a.id.localeCompare(b.id))));
 export interface GuardedContextPort {
+  resource?: (key: GuardedResourceKey, signal: AbortSignal) => Promise<string | null>;
   work?: (phase: "assembly" | "sessions" | "memory" | "assets" | "validation", status: "completed" | "deadline" | "failed", durationMs: number) => void;
   loadAsset?: (messageId: string, assetId: string, signal: AbortSignal) => Promise<string | null>;
   persist?: boolean;
@@ -35,6 +36,7 @@ export interface GuardedContextPort {
   prepareValidation?: (messageIds: readonly string[], signal: AbortSignal) => Promise<void>;
   policyCurrent(): boolean;
 }
+export type GuardedResourceKey = Pick<NonNullable<ContextProvenance["resources"]>[number], "kind" | "id">;
 export interface GuardedContextReport {
   replyChain: number; replyBounded: boolean; burst: number; eligibleReactors: number; omittedReactors: number;
   requested: number; fetched: number; examined: number; duplicates: number; unverifiedBot: number; invalidatedDerived: number;
@@ -69,6 +71,8 @@ export class GuardedConversationContext {
   private readonly evidence = new Map<string, ChannelHistoryMessage>();
   private publicWebUsed = false;
   private readonly publicWebCitations = new Set<string>();
+  private readonly publicTools = new Map<string, { name: string; outputHash: string }>();
+  private readonly resources = new Map<string, NonNullable<ContextProvenance["resources"]>[number]>();
   private readonly assetDependencies = new Map<string, string>();
   private phaseQueue: Promise<void> = Promise.resolve();
   public readonly report: GuardedContextReport = { replyChain: 0, replyBounded: false, burst: 0, eligibleReactors: 0, omittedReactors: 0, requested: 40, fetched: 0, examined: 0, duplicates: 0, unverifiedBot: 0, invalidatedDerived: 0, selectedIds: [], oldestTimestampMs: null, newestTimestampMs: null, eligible: 0, selected: 0, pages: 0, targetedPages: 0,
@@ -119,6 +123,7 @@ export class GuardedConversationContext {
         if (!proof || proof.purpose && proof.purpose !== "reply" || proof.coverage !== "complete" || proof.audience.userId !== null && proof.audience.userId !== this.port.actorId) { this.report.unverifiedBot++; return null; }
         if (proof.outputHash !== hashContent(source.event.content)) { this.report.invalidatedDerived++; return null; }
         if (proof.outputAssetsHash && proof.outputAssetsHash !== guardedAssetsHash(source.assets ?? [])) return null;
+        if (!await this.validateResources(proof)) return null;
         for (const dependency of proof.actors ?? []) {
           const actor = await this.port.actor(dependency.userId, this.signal);
           if (!actor || hashContent(JSON.stringify(actor)) !== dependency.representationHash) { this.report.invalidatedDerived++; return null; }
@@ -145,6 +150,7 @@ export class GuardedConversationContext {
         const original = await this.read(dependency.messageId); if (!original || !await add(original)) return false;
         if (dependency.assetsHash) this.assetDependencies.set(dependency.messageId, dependency.assetsHash);
       }
+      for (const entry of item.provenance?.resources ?? []) this.resources.set(`${entry.kind}:${entry.id}`, entry);
       return true;
     };
     const before = new Set(this.evidence.keys());
@@ -157,6 +163,7 @@ export class GuardedConversationContext {
     for (const id of this.evidence.keys()) {
       if (before.has(id)) continue;
       const proof = (await this.read(id))?.provenance;
+      this.inheritPublicTools(proof);
       if (proof?.publicWeb) {
         this.publicWebUsed = true;
         for (const digest of proof.publicWeb.citationHashes) this.publicWebCitations.add(digest);
@@ -276,7 +283,7 @@ export class GuardedConversationContext {
       for (const { exchange, proof, sourceId, deliveryIds } of candidates) {
         const human = await this.read(sourceId);
         if (!human || human.event.authorId !== this.port.actorId || !human.event.content.startsWith(exchange.user.content)) continue;
-        let valid = true;
+        let valid = await this.validateResources(proof);
         for (const dependency of proof.dependencies) {
           if (dependency.guildId !== this.port.guildId || dependency.channelId !== this.port.channelId) { valid = false; break; }
           const source = await this.read(dependency.messageId);
@@ -289,6 +296,7 @@ export class GuardedConversationContext {
         if (!valid || !normalized(delivered).includes(normalized(exchange.assistant.content))) continue;
         for (const id of [...proof.dependencies.map((source) => source.messageId), ...deliveryIds, sourceId]) if (!await this.retain(id)) valid = false;
         if (valid) {
+          for (const entry of proof.resources ?? []) this.resources.set(`${entry.kind}:${entry.id}`, entry);
           for (const dependency of proof.dependencies) if (dependency.assetsHash) this.assetDependencies.set(dependency.messageId, dependency.assetsHash);
           selected.push(exchange);
         }
@@ -310,7 +318,7 @@ export class GuardedConversationContext {
             !canRecallOrdinaryMemory(record, { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.actorId ?? "" }, now)) continue;
         const subject = record.subjectType === "member" ? await this.port.actor(record.subjectId, this.signal) : null;
         if (record.subjectType === "member" && !subject) continue;
-        let valid = true;
+        let valid = await this.validateResources(proof);
         for (const dependency of proof.dependencies) {
           if (dependency.guildId !== this.port.guildId || dependency.channelId !== this.port.channelId) { valid = false; break; }
           const source = await this.read(dependency.messageId);
@@ -319,11 +327,13 @@ export class GuardedConversationContext {
         }
         if (!valid) continue;
         if (retain) {
+          for (const entry of proof.resources ?? []) this.resources.set(`${entry.kind}:${entry.id}`, entry);
           const before = new Set(this.evidence.keys());
           for (const dependency of proof.dependencies) if (!await this.retain(dependency.messageId)) valid = false;
           if (!valid) { for (const id of this.evidence.keys()) if (!before.has(id)) this.evidence.delete(id); continue; }
           for (const dependency of proof.dependencies) if (dependency.assetsHash) this.assetDependencies.set(dependency.messageId, dependency.assetsHash);
           if (subject) this.reactionActors.set(subject.id, subject);
+          this.inheritPublicTools(proof);
           if (proof.publicWeb) { this.publicWebUsed = true; for (const digest of proof.publicWeb.citationHashes) this.publicWebCitations.add(digest); }
         }
         // Unproven alias/callback metadata never rides along with an otherwise
@@ -332,6 +342,30 @@ export class GuardedConversationContext {
         chars += record.statement.length;
       }
       return allowed;
+    }, "memory");
+  }
+
+  private async validateResources(proof: Pick<ContextProvenance, "resources">): Promise<boolean> {
+    for (const entry of proof.resources ?? []) {
+      if (!this.port.resource || entry.kind === "birthday" && !await this.port.actor(entry.id, this.signal)) return false;
+      const value = await this.port.resource(entry, this.signal).catch(() => null);
+      if (value === null || hashContent(value) !== entry.representationHash) return false;
+    }
+    return true;
+  }
+
+  public async resource(key: GuardedResourceKey): Promise<string | null> {
+    return this.phase(async () => {
+      if (!this.port.resource || this.resources.size >= 32) return null;
+      const actor = key.kind === "birthday" ? await this.port.actor(key.id, this.signal) : null;
+      if (key.kind === "birthday" && !actor) return null;
+      const value = await this.port.resource(key, this.signal).catch(() => null);
+      if (value === null || value.length > 16000) return null;
+      if (actor) this.reactionActors.set(actor.id, actor);
+      const entry = { ...key, representationHash: hashContent(value) };
+      const prior = this.resources.get(`${key.kind}:${key.id}`);
+      if (prior && prior.representationHash !== entry.representationHash) throw new SocialOutputSuppressed();
+      this.resources.set(`${key.kind}:${key.id}`, entry); return value;
     }, "memory");
   }
 
@@ -375,11 +409,21 @@ export class GuardedConversationContext {
       for (const [id, previous] of this.reactionActors) {
         const actor = await this.port.actor(id, this.signal); if (!actor || JSON.stringify(actor) !== JSON.stringify(previous)) return false;
       }
+      if (!await this.validateResources({ resources: [...this.resources.values()] })) return false;
       return this.port.policyCurrent();
     }, "validation");
       if (!valid) this.closed = true;
       this.port.validation?.(valid ? "current" : "changed", this.reads); return valid;
     } catch { this.closed = true; this.port.validation?.(this.report.status === "deadline" ? "deadline" : "bounded", this.reads); return false; }
+  }
+
+  private inheritPublicTools(proof: ContextProvenance | null | undefined): void {
+    for (const entry of proof?.publicTools ?? []) this.publicTools.set(`${entry.name}:${entry.outputHash}`, entry);
+  }
+
+  public recordPublicTool(name: string, output: string): void {
+    if (this.closed || !this.port.policyCurrent() || this.publicTools.size >= 128) throw new SocialOutputSuppressed();
+    const entry = { name, outputHash: hashContent(output) }; this.publicTools.set(`${name}:${entry.outputHash}`, entry);
   }
 
   public recordPublicWebSearch(sources: readonly ChatSource[]): ChatSource[] {
@@ -395,6 +439,8 @@ export class GuardedConversationContext {
       outputHash: hashContent(output), dependencies: [...this.evidence.values()].map((source) => ({ guildId: this.port.guildId,
         channelId: this.port.channelId, messageId: source.messageId, authorId: source.authorId, timestampMs: source.timestampMs,
         representationHash: contextSourceHash(source), ...(this.assetDependencies.has(source.messageId) ? { assetsHash: this.assetDependencies.get(source.messageId) } : {}) })), actors: [...this.reactionActors.values()].map((actor) => ({ userId: actor.id, representationHash: hashContent(JSON.stringify(actor)) })),
+      ...(this.publicTools.size ? { publicTools: [...this.publicTools.values()] } : {}),
+      ...(this.resources.size ? { resources: [...this.resources.values()] } : {}),
       ...(this.publicWebUsed ? { publicWeb: { citationHashes: [...this.publicWebCitations].sort() } } : {}), unresolved: [] });
   }
 }

@@ -35,4 +35,15 @@ describe.each(["responses", "gemini"])("%s tool diagnostics", (kind) => {
     release({ content: "SECRET" }); await Promise.resolve();
     expect(records.filter((record) => record.event === "chat.tool.completed")).toEqual([expect.objectContaining({ status: "timeout" })]);
   });
+  it("aborts an in-flight tool when the containing turn is cancelled", async () => {
+    const raw = kind === "responses" ? new OpenAiResponsesChatProvider("https://example.test", "secret", ["model"], { reasoningEffort: "low", verbosity: "low", maxOutputTokens: 100 })
+      : new GeminiChatProvider("secret", ["model"], { maxOutputTokens: 100, thinkingBudget: null });
+    const boundary = raw as unknown as { executeToolCall(call: unknown, tools: readonly ChatTool[], ctx: ChatToolContext): Promise<ChatToolResult> };
+    const controller = new AbortController(); let signal: AbortSignal | undefined;
+    const tool: ChatTool = { name: "test", description: "test", parameters: {}, execute: (_args, context) => { signal = context.signal; return new Promise(() => undefined); } };
+    const result = boundary.executeToolCall({ name: "test", arguments: "{}", args: {} }, [tool], { signal: controller.signal } as ChatToolContext);
+    controller.abort();
+    expect((await result).content).toContain("unavailable");
+    expect(signal?.aborted).toBe(true);
+  });
 });

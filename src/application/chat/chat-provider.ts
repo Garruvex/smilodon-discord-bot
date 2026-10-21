@@ -468,6 +468,7 @@ export interface DroppedExchangeFact {
 
 export interface ChatReplyProvider {
   readonly nativeWebSearchSupported?: boolean;
+  readonly applicationToolsSupported?: boolean;
   reply(request: ChatRequest, observer?: ChatResponseObserver): Promise<ChatResponse>;
 }
 

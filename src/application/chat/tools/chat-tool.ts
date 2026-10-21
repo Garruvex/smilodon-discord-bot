@@ -1,4 +1,5 @@
 import type { ChatUser, GeneratedChatImage } from "../chat-provider.js";
+import type { GuardedConversationContext } from "../guarded-conversation-context.js";
 import type { PlaybackActor } from "../../music/playback-service.js";
 import type { ChannelMemoryMode } from "../../memory/memory-channel-policy.js";
 
@@ -10,6 +11,7 @@ import type { ChannelMemoryMode } from "../../memory/memory-channel-policy.js";
 export type ChatToolParameterSchema = Record<string, unknown>;
 
 export interface ChatToolContext {
+  contextLease?: GuardedConversationContext;
   knownSubjectIds?: readonly string[];
   guildId: string;
   channelId: string;
