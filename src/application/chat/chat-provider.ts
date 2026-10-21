@@ -543,7 +543,8 @@ export interface MemoryConflictClassifier {
 // turn where a reply chain actually goes past the kept-window depth.
 export interface ReplyChainSummarizer {
   summarizeReplyChainOverflow(
-    hops: readonly { authorDisplayName: string; content: string }[],
+    hops: readonly { authorDisplayName: string; authorId?: string; timestampMs?: number; content: string }[],
+    options?: StructuredCallOptions,
   ): Promise<string>;
 }
 

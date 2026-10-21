@@ -304,11 +304,12 @@ export class CharacterRuntime {
       const shouldDecide = optional || request.triggerMode === "reaction" && guarded;
       const decisionStarted = Date.now();
       const outcome = shouldDecide ? await this.decisions.evaluate({ personality: request.personality, events: decisionEvents, burst, botId: request.botUserId ?? "bot",
-        ...(guarded && (request.memories.length || request.guildKnowledge.length || request.causalChains.length || request.aliasCandidates?.length || guardedCharacterContext.length || request.personaLore.length || request.personaDrift) ? { supplementalFacts: [
+        ...(guarded && (request.memories.length || request.guildKnowledge.length || request.causalChains.length || request.aliasCandidates?.length || guardedCharacterContext.length || request.personaLore.length || request.personaDrift || request.replyChainSummary) ? { supplementalFacts: [
           ...request.memories.map((record) => ({ subjectId: record.subjectUserId, statement: record.statement })),
           ...request.guildKnowledge.map((record) => ({ subjectId: record.subjectId, statement: record.statement })),
           ...request.personaLore.map((record) => ({ subjectId: "configured_persona_lore", statement: `Authored persona configuration: ${record.heading}\n${record.text}` })),
           ...(request.personaDrift ? [{ subjectId: "source_backed_persona_drift", statement: request.personaDrift }] : []),
+          ...(request.replyChainSummary ? [{ subjectId: "source_backed_thread_summary", statement: request.replyChainSummary }] : []),
           ...guardedCharacterContext.map((record) => ({ subjectId: `character:${record.moduleId}`, statement: record.text })),
           ...request.causalChains.map((record) => ({ subjectId: record.fromSubjectId, statement: `Untrusted source-backed relation: ${JSON.stringify(record)}` })),
           ...(request.aliasCandidates ?? []).map((alias) => ({ subjectId: !alias.incomplete && alias.subjectIds.length === 1 ? alias.subjectIds[0]! : "ambiguous_alias",

@@ -1,5 +1,6 @@
 import { runGuardedChatTurn } from "./guarded-chat-turn.js";
 import { runGuardedPostTurn } from "./guarded-post-turn.js";
+import { ConversationModelGateway } from "../context/conversation-model-gateway.js";
 import { effectiveChatCapabilities } from "./chat-capabilities.js";
 import { authorizeConversationEffects } from "./conversation-effects.js";
 import type { ActiveConversationTurnPlan, ConversationTurnPlan } from "./conversation-turn-plan.js";
@@ -250,6 +251,7 @@ export class ChatStateCommitError extends Error {
 }
 
 export class ChatConversationService {
+  private readonly conversationModels: ConversationModelGateway;
   private readonly decisionEngine = new ConversationDecisionEngine();
   private readonly scheduler: ChatScheduler;
   private readonly episodes = new ConversationEpisodes();
@@ -295,6 +297,7 @@ export class ChatConversationService {
     private readonly characterRuntime: CharacterRuntime | null = null,
     private readonly now: () => number = () => Date.now(),
   ) {
+    this.conversationModels = new ConversationModelGateway(this.utilityProvider ?? this.provider, this.provider);
     this.scheduler = new ChatScheduler(this.now, undefined, undefined, undefined, this.logger);
     this.episodeCleanupTimer = episodeStore ? setInterval(() => {
       this.trackBackground(episodeStore.deleteExpired(this.now()).catch((error: unknown) =>
@@ -866,6 +869,8 @@ export class ChatConversationService {
             tools: this.toolRegistry, drift: this.personaDriftStore, logger: this.logger, now: this.now,
             mutate: (operation) => this.runMemoryMutation(guarded.guildId, guarded.currentUser.id, operation),
           }).catch((error: unknown) => this.logger?.warn({ failure: safeFailure(error) }, "Guarded post-turn processing stopped"))),
+          compact: (context) => this.conversationModels.compactReply(context),
+          canCompact: this.conversationModels.canCompactReply,
           applicationToolsSupported: this.provider.applicationToolsSupported === true, nativeWebSearchSupported: this.provider.nativeWebSearchSupported === true, reply: (request, observer) => this.replyWithDiagnostics(request, observer),
           imageGenerationSupported: this.provider.imageGenerationSupported === true,
           repair: (text, request) => this.verifyAttribution(text, request), admitSocialPing: () => this.admitSocialPing(turn) }, send, observe))); } : this.runTurn.bind(this);

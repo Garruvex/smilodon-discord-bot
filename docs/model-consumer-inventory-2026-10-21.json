@@ -51,7 +51,8 @@
   "src/application/context/conversation-model-gateway.ts": [
     "evolvePersonaDrift",
     "extractPersonalMemories",
-    "summarizeDroppedExchanges"
+    "summarizeDroppedExchanges",
+    "summarizeReplyChainOverflow"
   ],
   "src/application/memory/memory-engine.ts": [
     "classifyMemoryConflict",

@@ -469,13 +469,15 @@ export class GeminiChatProvider implements ChatProvider {
   }
 
   public async summarizeReplyChainOverflow(
-    hops: readonly { authorDisplayName: string; content: string }[],
+    hops: readonly { authorDisplayName: string; authorId?: string; timestampMs?: number; content: string }[],
+    options?: StructuredCallOptions,
   ): Promise<string> {
-    const response = await this.summaryModelChain.run((model) => this.generateStructured(
+    const response = await this.summaryModelChain.run(async (model) => { await options?.beforeAttempt?.(); return this.generateStructured(
       model,
       buildReplyChainOverflowSummaryPrompt(hops),
       replyChainOverflowSummaryJsonSchema,
-    ));
+      undefined, undefined, options?.signal,
+    ); }, options);
     return parseReplyChainOverflowSummaryOutput((response.text ?? "").trim()).summary;
   }
 

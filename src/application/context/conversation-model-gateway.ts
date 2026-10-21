@@ -4,16 +4,34 @@ import { isGuardedContext, type GuardedConversationContext } from "../chat/guard
 import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
 import { allowsDurableWrites } from "../memory/memory-channel-policy.js";
 import { personaDriftPayload, type ScopedPersonaDrift } from "../chat/persona-drift-provenance.js";
+import { withTurnAbort } from "../chat/turn-work-budget.js";
 
 // Owns the session-to-model projection. Stored transcripts are candidates,
 // never caller authority: the lease verifies human sources and actual bot
 // deliveries again before any text reaches a consolidation model.
 export class ConversationModelGateway {
   public constructor(private readonly provider: ChatProvider, private readonly fallback: ChatProvider | null = null) {}
-  private options(context: GuardedConversationContext): StructuredCallOptions {
-    if (!isGuardedContext(context) || !context.durableWritesAllowed) throw new SocialOutputSuppressed();
+  public get canCompactReply(): boolean { return !!(this.provider.summarizeReplyChainOverflow || this.fallback?.summarizeReplyChainOverflow); }
+  public get canExtract(): boolean { return !!(this.provider.extractPersonalMemories || this.fallback?.extractPersonalMemories); }
+  public get canConsolidate(): boolean { return !!(this.provider.summarizeDroppedExchanges || this.fallback?.summarizeDroppedExchanges); }
+  public get canEvolveDrift(): boolean { return !!(this.provider.evolvePersonaDrift || this.fallback?.evolvePersonaDrift); }
+  private options(context: GuardedConversationContext, durable = true): StructuredCallOptions {
+    if (!isGuardedContext(context) || durable && !context.durableWritesAllowed) throw new SocialOutputSuppressed();
     return { beforeAttempt: async (): Promise<void> => { if (!await context.validate()) throw new SocialOutputSuppressed(); },
       ...(context.cancellationSignal ? { signal: context.cancellationSignal } : {}) };
+  }
+  public async compactReply(context: GuardedConversationContext): Promise<string | null> {
+    if (!isGuardedContext(context)) throw new SocialOutputSuppressed();
+    const provider = this.provider.summarizeReplyChainOverflow ? this.provider : this.fallback;
+    const overflow = context.replyOverflow; if (!overflow.length || !provider?.summarizeReplyChainOverflow) return null;
+    const base = this.options(context, false); const timeout = AbortSignal.timeout(4000);
+    const signal = base.signal ? AbortSignal.any([base.signal, timeout]) : timeout;
+    const beforeAttempt = async (): Promise<void> => { signal.throwIfAborted(); await base.beforeAttempt!(); signal.throwIfAborted(); };
+    await beforeAttempt();
+    const result = await withTurnAbort(signal, () => provider.summarizeReplyChainOverflow!(overflow.map((source) => ({
+      authorId: source.authorId, authorDisplayName: source.authorDisplayName, timestampMs: source.timestampMs, content: source.content,
+    })), { beforeAttempt, signal, maxAttempts: 1 }));
+    await beforeAttempt(); return result.trim().slice(0, 1000) || null;
   }
   private async sessions(context: GuardedConversationContext, candidates: readonly ChatSessionExchange[]): Promise<ChatSessionExchange[]> {
     if (!isGuardedContext(context)) throw new SocialOutputSuppressed();

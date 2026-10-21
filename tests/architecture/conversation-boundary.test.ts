@@ -41,7 +41,7 @@ describe("conversation execution ownership", () => {
         const owner = file.endsWith(`${path.sep}application${path.sep}chat${path.sep}chat-conversation-service.ts`);
         if (module.endsWith("/guarded-chat-turn.js") && !owner) offenders.push(path.relative(root, file));
         if (module.endsWith("/guarded-post-turn.js") && !owner) offenders.push(relative);
-        if (module.endsWith("/conversation-model-gateway.js") && !node.importClause?.isTypeOnly && relative !== "application/chat/guarded-post-turn.ts") offenders.push(relative);
+        if (module.endsWith("/conversation-model-gateway.js") && !node.importClause?.isTypeOnly && !["application/chat/guarded-post-turn.ts", "application/chat/chat-conversation-service.ts"].includes(relative)) offenders.push(relative);
         const typeOnly = node.importClause?.isTypeOnly;
         const predicateOnly = module.endsWith("/guarded-background-context.js") && node.importClause?.namedBindings &&
           ts.isNamedImports(node.importClause.namedBindings) && node.importClause.namedBindings.elements.every((item) => item.isTypeOnly || (item.propertyName ?? item.name).text === "isBackgroundContext");

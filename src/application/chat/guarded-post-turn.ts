@@ -25,6 +25,8 @@ export async function runGuardedPostTurn(input: GuardedChatConversationInput, dr
 }): Promise<void> {
   const mode = input.resolveMemoryMode?.() ?? input.channelMemoryModes?.[input.channelId] ?? "shared";
   if (!allowsDurableWrites(mode) || input.shadowMode || input.triggerMode === "reaction") return;
+  const gateway = new ConversationModelGateway(dependencies.utility ?? dependencies.provider, dependencies.provider);
+  if (!gateway.canExtract && (!dropped.length || !gateway.canConsolidate && !(input.personaDriftEnabled && dependencies.drift && gateway.canEvolveDrift))) return;
   const configuration = await conversationConfiguration(input.guildId, input.currentUser.id, input.configurationContext, dependencies.customization);
   const port = guardedToolResourcePort(input.guardedContextPort, dependencies.tools, { currentUser: input.currentUser,
     channelMode: mode, channelIsNsfw: input.channelIsNsfw ?? false, isOwner: input.isOwner ?? false }, undefined, configuration, dependencies.drift);
@@ -32,7 +34,6 @@ export async function runGuardedPostTurn(input: GuardedChatConversationInput, dr
   const context = await GuardedConversationContext.open(port, { count: 0, budget: 0, burstIds: [] });
   if (!context.durableWritesAllowed) return;
   if (!await context.resource({ kind: "persona_configuration", id: "current" })) return;
-  const gateway = new ConversationModelGateway(dependencies.utility ?? dependencies.provider, dependencies.provider);
   const ingest = async (proposals: readonly ProposedMemory[], source: "live" | "consolidation"): Promise<void> => {
     if (!proposals.length) return;
     await dependencies.mutate(async () => {

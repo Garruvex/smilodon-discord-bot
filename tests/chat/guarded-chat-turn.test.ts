@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatConversationService, type ChatConversationInput } from "../../src/application/chat/chat-conversation-service.js";
-import type { ChatRequest, ChatResponse } from "../../src/application/chat/chat-provider.js";
+import type { ChatRequest, ChatResponse, ChatProvider } from "../../src/application/chat/chat-provider.js";
 import { CharacterRuntime } from "../../src/application/chat/character-runtime.js";
 import { GuardedConversationContext } from "../../src/application/chat/guarded-conversation-context.js";
 import { SqliteChatStateStore } from "../../src/infrastructure/persistence/sqlite-chat-state-store.js";
@@ -33,7 +33,7 @@ import type { UserCustomizationStore } from "../../src/application/chat/user-cus
 const channelId = "500000000000000001";
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { vi.useRealTimers(); for (const cleanup of cleanups.splice(0)) await cleanup(); });
-async function setup(now = 5000, originalAuthor = "alice", contextual = false, nativeWebSearchSupported = false, tools: ChatToolRegistry | null = null, imageGenerationSupported = false, customization: UserCustomizationStore | null = null): Promise<{
+async function setup(now = 5000, originalAuthor = "alice", contextual = false, nativeWebSearchSupported = false, tools: ChatToolRegistry | null = null, imageGenerationSupported = false, customization: UserCustomizationStore | null = null, utility: ChatProvider | null = null): Promise<{
   service: ChatConversationService; fixture: ReturnType<typeof guardedFixture>; input: ChatConversationInput;
   reply: ReturnType<typeof vi.fn<(request: ChatRequest) => Promise<ChatResponse>>>;
   engine: DefaultMemoryEngine; runtime: CharacterRuntime; state: SqliteChatStateStore;
@@ -55,7 +55,7 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
   const { logger, records } = captureDiagnosticLogger();
   const runtime = new CharacterRuntime(profiles, repository, null, { reply }, decision, null, () => now, logger);
   const engine = new DefaultMemoryEngine(repository, null, null, undefined, null, null, null, () => true);
-  const service = new ChatConversationService({ reply, nativeWebSearchSupported, applicationToolsSupported: true, imageGenerationSupported }, state, engine, undefined, undefined, undefined, customization, null, tools, logger, null, null, null, null, runtime, () => now);
+  const service = new ChatConversationService({ reply, nativeWebSearchSupported, applicationToolsSupported: true, imageGenerationSupported }, state, engine, undefined, undefined, undefined, customization, null, tools, logger, utility, null, null, null, runtime, () => now);
   cleanups.push(async () => { service.stopScheduling(); await service.drain(); runtime.stop(); connection.close(); });
   const fixture = guardedFixture(guardedEvent("question", 1000, "Explain the carburetor mixture adjustment", originalAuthor), { guildId, channelId });
   const previous = await GuardedConversationContext.open(fixture.port, { count: 40, budget: 12000, burstIds: [] });
@@ -72,6 +72,26 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
 }
 
 describe("guarded turn acceptance", () => {
+  it.each(["eligible", "restricted", "edited", "model_failure"] as const)("compacts only registered reply ancestry and handles optional failures: %s", async (scenario) => {
+    const summarizeReplyChainOverflow = vi.fn<NonNullable<ChatProvider["summarizeReplyChainOverflow"]>>();
+    const { service, input, fixture, reply } = await setup(5000, "alice", false, false, null, false, null, { reply: vi.fn(), summarizeReplyChainOverflow });
+    for (let index = 0; index < 25; index++) fixture.add(guardedEvent(`ancestor-${index}`, 100 + index, `AUTHORIZED_ANCESTOR_${index}`, "alice", { replyToMessageId: index ? `ancestor-${index - 1}` : null }));
+    fixture.sources.get("current")!.event.replyToMessageId = "ancestor-24";
+    input.replyChainOverflow = [{ authorId: "hidden", authorDisplayName: "hidden", content: "UNREGISTERED_OVERFLOW", messageId: "fake", imageCount: 0, timestampMs: 0 }];
+    if (scenario === "restricted") fixture.denied.add("ancestor-2");
+    summarizeReplyChainOverflow.mockImplementation((hops) => {
+      expect(hops).toHaveLength(scenario === "restricted" ? 2 : 5);
+      expect(JSON.stringify(hops)).not.toContain("UNREGISTERED_OVERFLOW");
+      if (scenario === "edited") fixture.sources.get("ancestor-0")!.event.content = "changed during summary";
+      if (scenario === "model_failure") return Promise.reject(new Error("model unavailable"));
+      return Promise.resolve("AUTHORIZED_RECAP");
+    });
+    const send = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
+    const call = service.run(input, send);
+    if (scenario === "edited") await expect(call).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    else { await call; expect(reply.mock.calls[0]![0].replyChainSummary).toBe(scenario === "model_failure" ? null : "AUTHORIZED_RECAP"); }
+    expect(send).toHaveBeenCalledTimes(scenario === "edited" ? 0 : 1);
+  });
   it.each(["eligible", "changed"] as const)("uses owner-scoped style preferences and rechecks before delivery: %s", async (scenario) => {
     let value = "- Tone: concise OWNER_STYLE";
     const load = vi.fn<UserCustomizationStore["load"]>(() => Promise.resolve(value));

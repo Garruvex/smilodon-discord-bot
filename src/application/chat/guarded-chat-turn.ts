@@ -8,7 +8,7 @@ import { ConversationDecisionEngine, reportConversationDecision } from "./conver
 import { resolveConversationTrigger } from "./conversation-trigger.js";
 import { RecentPromptHistorySelector } from "./prompt-history-selector.js";
 import { allowsDurableWrites } from "../memory/memory-channel-policy.js";
-import { emitChatDiagnostic } from "../diagnostics/chat-diagnostics.js";
+import { emitChatDiagnostic, safeFailure } from "../diagnostics/chat-diagnostics.js";
 import { hashContent } from "../assets/content-hash.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { ChatProviderError } from "./chat-provider.js";
@@ -42,6 +42,8 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   lore: PersonaLoreSelector;
   drift: PersonaDriftStore | null;
   postTurn: (dropped: readonly ChatSessionExchange[]) => void;
+  compact: (context: GuardedConversationContext) => Promise<string | null>;
+  canCompact: boolean;
 }, deliver: (response: ChatResponse) => Promise<string>, observer?: ChatResponseObserver): Promise<ChatResponse> {
   // A partial image has not passed the final conversation/effect decision.
   // Guarded generation delivers its confirmed final assets through the same
@@ -57,6 +59,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   const silent = (): ChatResponse => ({ text: "", ambientAction: "ignore", reactionEmoji: null, historyReactions: [],
     userMemoryActions: [], guildKnowledgeCandidates: [], sources: [], usage: null, webSearchUsed: false, generatedImages: [] });
   const lease = await GuardedConversationContext.open(port, { count: input.guardedContextPolicy?.count ?? 40,
+    collectOverflow: dependencies.canCompact,
     budget: input.guardedContextPolicy?.budget ?? 12000, minReactors: input.guardedContextPolicy?.minReactors ?? 1, burstIds: (input.currentBurst ?? []).map((event) => event.messageId),
     ...(input.currentEvent ? { event: input.currentEvent } : {}) });
   emitChatDiagnostic(dependencies.logger, { event: "context.guard.coverage", ...lease.report });
@@ -115,6 +118,10 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   const personaHash = configuration.persona.material.personalitySourceHash ?? hashContent(configuration.persona.material.text);
   const personaDrift = drift && drift.personalitySourceHash === personaHash && await lease.derived(drift.contextProvenance, personaDriftPayload(drift), "character_state") &&
     await lease.resource({ kind: "persona_drift", id: drift.epoch }) === drift.epoch ? drift.text : null;
+  const replyChainSummary = await dependencies.compact(lease).catch((error: unknown) => {
+    if (error instanceof SocialOutputSuppressed || input.turnSignal?.aborted) throw error;
+    dependencies.logger?.warn({ failure: safeFailure(error) }, "Guarded reply overflow summary omitted"); return null;
+  });
   emitChatDiagnostic(dependencies.logger, { event: "context.guard.sources", sessions: sessions.length, memories: memoryClaims.length,
     relations: relations.length, actors: lease.admittedActorIds.length, images: images.length, configurations: configuration.preferences ? 2 : 1, unavailable: ["legacy_derived"] });
   let request: ChatRequest = {
@@ -131,7 +138,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
       statement: record.statement, updatedAt: record.updatedAt, embedding: null, source: record.source === "administrator" ? "administrator" : record.source === "consolidation" ? "consolidation" : "community",
     })), causalChains, ...(aliasCandidates.length ? { aliasCandidates } : {}),
     message: lease.currentEvent?.type === "reaction_snapshot" ? `Respond only if useful to this authorized reaction snapshot: ${JSON.stringify(lease.currentEvent)}` : lease.current.content,
-    replyChain: lease.currentEvent?.type === "reaction_snapshot" ? [...lease.replyChain, lease.current] : lease.replyChain, replyChainSummary: null, channelHistory: lease.history, currentBurst: lease.burst,
+    replyChain: lease.currentEvent?.type === "reaction_snapshot" ? [...lease.replyChain, lease.current] : lease.replyChain, replyChainSummary, channelHistory: lease.history, currentBurst: lease.burst,
     ...(lease.currentEvent ? { currentEvent: lease.currentEvent } : {}),
     birthday: null, images, imageInputEnabled: capabilities.imageInputEnabled, webSearchMode: capabilities.webSearchMode, imageGenerationEnabled: capabilities.imageGenerationEnabled, includeSources: input.includeSources,
     triggerMode: input.triggerMode, botUserId: input.botUserId ?? null,

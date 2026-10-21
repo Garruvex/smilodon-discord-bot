@@ -13,7 +13,7 @@ import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { immutableSnapshot } from "../context/immutable-snapshot.js";
 import { isConversationSource } from "../context/conversation-source-registry.js";
 
-export const guardedContextLimits = { pageSize: 100, pages: 3, targetedPages: 5, replyDepth: 20, messageChars: 4000, replyChars: 6000, burstMessages: 16, burstChars: 6000, targetedMessages: 8,
+export const guardedContextLimits = { pageSize: 100, pages: 3, targetedPages: 5, replyDepth: 20, overflowDepth: 40, overflowChars: 12000, messageChars: 4000, replyChars: 6000, burstMessages: 16, burstChars: 6000, targetedMessages: 8,
   dependencies: 128, sourceReads: 4096, workMs: 20_000, phaseMs: 8_000, maxValidationPasses: 64 } as const;
 export interface GuardedContextSource {
   assets?: readonly GuardedAssetDescriptor[];
@@ -46,7 +46,7 @@ export interface GuardedContextPort {
 export type GuardedResourceKey = Pick<NonNullable<ContextProvenance["resources"]>[number], "kind" | "id">;
 export type GuardedContextPhase = "assembly" | "sessions" | "memory" | "assets" | "relations" | "identities" | "validation";
 export interface GuardedContextReport {
-  replyChain: number; replyBounded: boolean; burst: number; eligibleReactors: number; omittedReactors: number;
+  replyChain: number; replyOverflow: number; replyBounded: boolean; burst: number; eligibleReactors: number; omittedReactors: number;
   requested: number; fetched: number; examined: number; duplicates: number; unverifiedBot: number; invalidatedDerived: number;
   selectedIds: string[]; oldestTimestampMs: number | null; newestTimestampMs: number | null;
   eligible: number; selected: number; pages: number; targetedPages: number;
@@ -88,11 +88,12 @@ export class GuardedConversationContext {
   private readonly resources = new Map<string, NonNullable<ContextProvenance["resources"]>[number]>();
   private readonly assetDependencies = new Map<string, string>();
   private phaseQueue: Promise<void> = Promise.resolve();
-  private readonly coverageReport: GuardedContextReport = { replyChain: 0, replyBounded: false, burst: 0, eligibleReactors: 0, omittedReactors: 0, requested: 40, fetched: 0, examined: 0, duplicates: 0, unverifiedBot: 0, invalidatedDerived: 0, selectedIds: [], oldestTimestampMs: null, newestTimestampMs: null, eligible: 0, selected: 0, pages: 0, targetedPages: 0,
+  private readonly coverageReport: GuardedContextReport = { replyChain: 0, replyOverflow: 0, replyBounded: false, burst: 0, eligibleReactors: 0, omittedReactors: 0, requested: 40, fetched: 0, examined: 0, duplicates: 0, unverifiedBot: 0, invalidatedDerived: 0, selectedIds: [], oldestTimestampMs: null, newestTimestampMs: null, eligible: 0, selected: 0, pages: 0, targetedPages: 0,
     omitted: 0, truncated: 0, sourceReads: 0, status: "end" };
   private sourceCurrent!: ChannelHistoryMessage;
   private sourceHistory: ChannelHistoryMessage[] = [];
   private sourceReplyChain: ChannelHistoryMessage[] = [];
+  private sourceReplyOverflow: ChannelHistoryMessage[] = [];
   private sourceBurst: ChannelHistoryMessage[] = [];
   private sourceEvent: ConversationEvent | undefined;
   private reactionActors = new Map<string, ChatUser>();
@@ -103,6 +104,7 @@ export class GuardedConversationContext {
   public get current(): ChannelHistoryMessage { return immutableSnapshot(this.sourceCurrent); }
   public get history(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceHistory); }
   public get replyChain(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceReplyChain); }
+  public get replyOverflow(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceReplyOverflow); }
   public get burst(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceBurst); }
   public get currentEvent(): ConversationEvent | undefined { return this.sourceEvent ? immutableSnapshot(this.sourceEvent) : undefined; }
   public get report(): GuardedContextReport { return immutableSnapshot(this.coverageReport); }
@@ -187,7 +189,7 @@ export class GuardedConversationContext {
     return compact(source.event);
   }
 
-  public static async open(port: GuardedContextPort, input: { count: number; budget: number; minReactors?: number; burstIds: readonly string[]; event?: ConversationEvent }): Promise<GuardedConversationContext> {
+  public static async open(port: GuardedContextPort, input: { count: number; budget: number; minReactors?: number; burstIds: readonly string[]; event?: ConversationEvent; collectOverflow?: boolean }): Promise<GuardedConversationContext> {
     if (!isConversationSource(port)) throw new SocialOutputSuppressed();
     const lease = new GuardedConversationContext(port); port = lease.port;
     input = immutableSnapshot(input); lease.coverageReport.requested = input.count;
@@ -210,7 +212,17 @@ export class GuardedConversationContext {
       const boundedReply = budgetEligibleHistory(ancestors.reverse(), guardedContextLimits.replyDepth, guardedContextLimits.replyChars);
       lease.coverageReport.truncated += boundedReply.truncated; lease.coverageReport.omitted += boundedReply.budgetOmitted;
       for (const event of boundedReply.messages) if (await lease.retain(event.messageId)) lease.sourceReplyChain.push(event);
-      lease.coverageReport.replyChain = lease.sourceReplyChain.length; lease.coverageReport.replyBounded = !!reference;
+      lease.coverageReport.replyChain = lease.sourceReplyChain.length;
+      const keptIds = new Set(lease.sourceReplyChain.map((event) => event.messageId));
+      const overflow = ancestors.filter((event) => !keptIds.has(event.messageId)); const older: ChannelHistoryMessage[] = [];
+      for (let depth = 0; input.collectOverflow && reference && depth < guardedContextLimits.overflowDepth && !visited.has(reference); depth++) {
+        visited.add(reference); const source = await lease.read(reference); if (!source) break;
+        older.push(compact(source.event)); reference = source.event.replyToMessageId;
+      }
+      const boundedOverflow = budgetEligibleHistory([...older.reverse(), ...overflow], guardedContextLimits.overflowDepth, guardedContextLimits.overflowChars);
+      if (input.collectOverflow) for (const event of boundedOverflow.messages) if (await lease.retain(event.messageId)) lease.sourceReplyOverflow.push(event);
+      lease.coverageReport.replyOverflow = lease.sourceReplyOverflow.length;
+      lease.coverageReport.replyBounded = !!reference || lease.sourceReplyOverflow.length > 0 || boundedReply.budgetOmitted > 0 || boundedReply.truncated > 0 || boundedOverflow.countOmitted > 0 || boundedOverflow.budgetOmitted > 0;
       for (const id of [...new Set(input.burstIds)].slice(-guardedContextLimits.burstMessages)) {
         const source = await lease.read(id); const event = source ? compact(source.event) : null; if (event && event.authorId === current.authorId && id !== current.messageId) lease.sourceBurst.push(event);
       }
@@ -220,7 +232,7 @@ export class GuardedConversationContext {
       for (const event of boundedBurst.messages) if (await lease.retain(event.messageId)) lease.sourceBurst.push(event);
       lease.coverageReport.truncated += boundedBurst.truncated; lease.coverageReport.omitted += boundedBurst.budgetOmitted;
       lease.coverageReport.burst = lease.sourceBurst.length;
-      const exclude = new Set([current.messageId, ...lease.sourceReplyChain.map((event) => event.messageId), ...lease.sourceBurst.map((event) => event.messageId)]);
+      const exclude = new Set([current.messageId, ...lease.sourceReplyChain.map((event) => event.messageId), ...lease.sourceReplyOverflow.map((event) => event.messageId), ...lease.sourceBurst.map((event) => event.messageId)]);
       const candidates: ChannelHistoryMessage[] = []; let cursor: string | null = lease.sourceEvent.type === "reaction_snapshot" ? null : current.messageId;
       const backward = /\b(?:earlier|previous|above|before)\b|之前|前面|上面|剛剛|さっき|前の/iu.test(current.content);
       const maxPages = guardedContextLimits.pages + (backward ? guardedContextLimits.targetedPages : 0);
@@ -585,8 +597,8 @@ export class GuardedConversationContext {
     if (!this.port.loadAsset || !Number.isFinite(limit) || limit < 1) return [];
     return this.phase(async () => {
       const images: ChatImage[] = [];
-      const chainIds = new Set(this.sourceReplyChain.map((event) => event.messageId));
-      const candidates = [...new Map([this.sourceCurrent, ...[...this.sourceReplyChain].reverse(), ...[...this.sourceHistory].reverse()].map((event) => [event.messageId, event])).values()];
+      const chainIds = new Set([...this.sourceReplyChain, ...this.sourceReplyOverflow].map((event) => event.messageId));
+      const candidates = [...new Map([this.sourceCurrent, ...[...this.sourceReplyChain].reverse(), ...[...this.sourceHistory].reverse(), ...[...this.sourceReplyOverflow].reverse()].map((event) => [event.messageId, event])).values()];
       for (const event of candidates) {
         const source = await this.read(event.messageId); if (!source) continue;
         const assets = source.assets ?? [];
@@ -598,7 +610,7 @@ export class GuardedConversationContext {
           const dataUrl = await this.port.loadAsset!(event.messageId, asset.id, AbortSignal.any([this.signal, AbortSignal.timeout(3000)])).catch(() => null);
           if (!dataUrl || dataUrl.length > 12_000_000 || !dataUrl.startsWith(`data:${asset.contentType};base64,`)) continue;
           this.assetDependencies.set(event.messageId, guardedAssetsHash(assets));
-          for (const projected of new Set([this.sourceCurrent, ...this.sourceReplyChain, ...this.sourceHistory, ...this.sourceBurst])) if (projected.messageId === event.messageId) projected.imageCount++;
+          for (const projected of new Set([this.sourceCurrent, ...this.sourceReplyChain, ...this.sourceHistory, ...this.sourceReplyOverflow, ...this.sourceBurst])) if (projected.messageId === event.messageId) projected.imageCount++;
           images.push(Object.freeze({ dataUrl, source: event.messageId === this.sourceCurrent.messageId ? "current_message" : chainIds.has(event.messageId) ? "reply_chain" : "channel_history",
             sourceMessageId: event.messageId, sourceIndex: images.length }));
         }

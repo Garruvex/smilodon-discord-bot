@@ -495,12 +495,14 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
   }
 
   public async summarizeReplyChainOverflow(
-    hops: readonly { authorDisplayName: string; content: string }[],
+    hops: readonly { authorDisplayName: string; authorId?: string; timestampMs?: number; content: string }[],
+    options?: StructuredCallOptions,
   ): Promise<string> {
     const text = await this.callStructuredOutput(
       buildReplyChainOverflowSummaryPrompt(hops),
       "reply_chain_overflow_summary",
       replyChainOverflowSummaryJsonSchema,
+      options,
     );
     return parseReplyChainOverflowSummaryOutput(text).summary;
   }
