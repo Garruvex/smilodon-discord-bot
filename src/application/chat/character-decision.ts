@@ -6,6 +6,14 @@ import { contextualDecisionContract, contextualDecisionWireRevision, ContextualC
 import { contributionPolicy, type ContributionPolicy } from "./participation-policy.js";
 import { assertTurnActive, contextualTurnLimits, withTurnAbort } from "./turn-work-budget.js";
 import type { ContextualDecisionProviders } from "./contextual-decision-providers.js";
+import { approveModelOperation, approveDiagnosticModelOperation } from "../context/approved-model-operation.js";
+import type { GuardedConversationContext } from "./guarded-conversation-context.js";
+import type { StructuredCallOptions } from "./chat-provider.js";
+import { immutableSnapshot } from "../context/immutable-snapshot.js";
+import { SocialOutputSuppressed } from "./message-origin-store.js";
+import { isApprovedDecisionInput } from "../context/approved-decision-input.js";
+
+const diagnosticInputs = new WeakSet<object>();
 
 export const contributionLabels = ["answer", "relevant-joke", "specific-opinion", "personal-reaction", "useful-observation", "none", "acknowledgment-only", "repetition", "generic-advice", "speculative-help", "topic-hijack", "stale-information"] as const;
 const eligibleLabels = new Set<string>(contributionLabels.slice(0, 5));
@@ -210,7 +218,7 @@ export function generatedContributionAllowed(text: string, events: readonly Chan
   const draft = normalize(text);
   return !!draft && !closesExchange(text) && !events.some((event) => event.authorId === botId && normalize(event.content) === draft);
 }
-interface DecisionInput { supplementalFacts?: readonly { subjectId: string; statement: string }[]; reactionSnapshot?: Extract<ConversationEvent, { type: "reaction_snapshot" }>; canUseContext?: (() => Promise<boolean>) | undefined; useContextBoundary?: boolean; personality: string; events: readonly ChannelHistoryMessage[]; burst: readonly ChannelHistoryMessage[]; botId: string; fixedTarget: string | null; gapMs: number; speakingShare: number; thoughts: boolean; availableActions?: { text: boolean; reaction: boolean } | undefined; now?: number }
+interface DecisionInput { sourceContext?: GuardedConversationContext; supplementalFacts?: readonly { subjectId: string; statement: string }[]; reactionSnapshot?: Extract<ConversationEvent, { type: "reaction_snapshot" }>; canUseContext?: (() => Promise<boolean>) | undefined; useContextBoundary?: boolean; personality: string; events: readonly ChannelHistoryMessage[]; burst: readonly ChannelHistoryMessage[]; botId: string; fixedTarget: string | null; gapMs: number; speakingShare: number; thoughts: boolean; availableActions?: { text: boolean; reaction: boolean } | undefined; now?: number }
 export const decisionCallLimits = { totalMs: 12_000, attemptMs: 6_000, contextualAttemptMs: 12_000, contextualMinimumMs: 6_000, contextMs: 8_000, failuresBeforeCooldown: 3, cooldownMs: 30_000, probeCacheMs: 60_000 } as const;
 export interface DecisionHealth { configured: boolean; coolingDownProviders: number; lastSuccessAt: number | null; lastFailureAt: number | null }
 export class CharacterDecisionService {
@@ -227,8 +235,10 @@ export class CharacterDecisionService {
     if (this.probe && Date.now() - this.probe.at < decisionCallLimits.probeCacheMs) return this.probe.task;
     const current: ChannelHistoryMessage = { messageId: "diagnostic-source", timestampMs: Date.now(), authorId: "diagnostic-human", authorDisplayName: "Synthetic tester",
       content: "Diagnostic fixture: please answer whether two plus two equals four.", imageCount: 0 };
-    const task = this.evaluate({ personality: "Synthetic health check; no real conversation.", events: [], burst: [current], botId: "diagnostic-bot",
-      fixedTarget: current.messageId, gapMs: 60_000, speakingShare: 0, thoughts: false }).then(() => this.healthStatus());
+    const input = immutableSnapshot({ personality: "Synthetic health check; no real conversation.", events: [], burst: [current], botId: "diagnostic-bot",
+      fixedTarget: current.messageId, gapMs: 60_000, speakingShare: 0, thoughts: false });
+    diagnosticInputs.add(input);
+    const task = this.evaluate(input).then(() => this.healthStatus());
     this.probe = { at: Date.now(), task }; return task;
   }
   public async evaluate(input: DecisionInput & { contextual?: boolean; signal?: AbortSignal; deadlineAt?: number }): Promise<DecisionOutcome> {
@@ -331,10 +341,15 @@ Data: ${JSON.stringify({ personality: input.personality, botId: input.botId, cur
       let timeout: ReturnType<typeof setTimeout> | undefined;
       const controller = new AbortController();
       try {
-        const raw = await withTurnAbort(input.signal, () => Promise.race([provider.generateCharacterData(prompt, schema, { signal: input.signal ? AbortSignal.any([controller.signal, input.signal]) : controller.signal, maxAttempts: 1,
+        const options: StructuredCallOptions = { signal: input.signal ? AbortSignal.any([controller.signal, input.signal]) : controller.signal, maxAttempts: 1,
+          ...(input.canUseContext ? { beforeAttempt: async (): Promise<void> => { if (!await input.canUseContext!()) throw new SocialOutputSuppressed(); } } : {}),
           onUsage: (usage) => { timing.inputTokens = usage.inputTokens; timing.outputTokens = usage.outputTokens; timing.totalTokens = usage.totalTokens;
             if (usage.cachedInputTokens !== null) timing.cachedInputTokens = usage.cachedInputTokens;
-            if (usage.reasoningTokens !== null) timing.reasoningTokens = usage.reasoningTokens; } }), new Promise<never>((_resolve, reject) => {
+            if (usage.reasoningTokens !== null) timing.reasoningTokens = usage.reasoningTokens; } };
+        if (input.sourceContext && !isApprovedDecisionInput(input)) throw new SocialOutputSuppressed();
+        const approved = input.sourceContext ? approveModelOperation(input.sourceContext, "generateCharacterData", [prompt, schema], options) :
+          diagnosticInputs.has(input) ? approveDiagnosticModelOperation(prompt, schema, options) : options;
+        const raw = await withTurnAbort(input.signal, () => Promise.race([provider.generateCharacterData(prompt, schema, approved), new Promise<never>((_resolve, reject) => {
           timeout = setTimeout(() => { controller.abort(); reject(new DOMException("Decision deadline exceeded", "TimeoutError")); }, timeoutMs);
         })]));
         const result: CharacterDecision = contract ? contract.parse(raw) : decisionSchema.parse(raw);

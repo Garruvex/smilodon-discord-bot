@@ -11,6 +11,7 @@ import { personaLoreEmbeddingText } from "../chat/persona-bundle.js";
 import { parseExampleExchanges } from "../chat/example-exchange.js";
 import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
 import { isConfigurationContext, type GuardedConfigurationContext } from "./guarded-configuration-context.js";
+import { approveModelOperation } from "./approved-model-operation.js";
 
 // Closed configuration operations own input projection. Consumers cannot add
 // participant text through an arbitrary prompt or embedding override.
@@ -55,13 +56,13 @@ export class ConfigurationModelGateway {
   public async compile(context: GuardedConfigurationContext): Promise<readonly number[]> {
     if (!isConfigurationContext(context, "persona_upload") || !this.provider?.compilePersonaBundle) throw new SocialOutputSuppressed();
     await context.check();
-    const result = await this.provider.compilePersonaBundle(context.material.text, context.modelOptions("persona_compile"));
+    const result = await this.provider.compilePersonaBundle(context.material.text, approveModelOperation(context, "compilePersonaBundle", [context.material.text], context.modelOptions("persona_compile")));
     await context.check(); return result;
   }
   public async analyze(context: GuardedConfigurationContext): Promise<UserCustomizationAnalysisResult> {
     if (!isConfigurationContext(context, "user_preferences") || !this.provider?.analyzeUserCustomization) throw new SocialOutputSuppressed();
     await context.check();
-    const result = await this.provider.analyzeUserCustomization(context.material.text, context.modelOptions("preferences_analysis"));
+    const result = await this.provider.analyzeUserCustomization(context.material.text, approveModelOperation(context, "analyzeUserCustomization", [context.material.text], context.modelOptions("preferences_analysis")));
     await context.check(); return result;
   }
   public async embedConfiguration(context: GuardedConfigurationContext, keys: readonly string[]): Promise<(number[] | null)[]> {

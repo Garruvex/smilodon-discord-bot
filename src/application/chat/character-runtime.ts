@@ -4,6 +4,8 @@ import { isConfigurationContext, type GuardedConfigurationContext } from "../con
 import { GuardedConversationContext, isGuardedContext, projectDecisionContext, type GuardedContextPort } from "./guarded-conversation-context.js";
 import { ConversationModelGateway } from "../context/conversation-model-gateway.js";
 import { repairConversationRequest } from "../context/approved-conversation-request.js";
+import { approveModelOperation } from "../context/approved-model-operation.js";
+import { approveDecisionInput } from "../context/approved-decision-input.js";
 import { isBackgroundContext, type GuardedBackgroundContext } from "../context/guarded-background-context.js";
 import { selectDecisionContext } from "./decision-context-selection.js";
 import { resolveConversationTurnPlan, type ConversationTurnPlan } from "./conversation-turn-plan.js";
@@ -191,8 +193,9 @@ export class CharacterRuntime {
     };
     try {
       await check();
-      const result = await this.utility.generateCharacterData(prompt, schema, guarded || turn?.backgroundContext ? { beforeAttempt: check,
-        ...(turn?.request.turnSignal ? { signal: turn.request.turnSignal } : {}) } : undefined);
+      const authority = guarded ? turn.request.contextLease! : turn?.backgroundContext;
+      const result = await this.utility.generateCharacterData(prompt, schema, authority ? approveModelOperation(authority, "generateCharacterData", [prompt, schema], { beforeAttempt: check,
+        ...(turn?.request.turnSignal ? { signal: turn.request.turnSignal } : {}) }) : undefined);
       await check(); return result;
     } catch (error) { if (error instanceof SocialOutputSuppressed) throw error; return null; }
   }
@@ -314,7 +317,8 @@ export class CharacterRuntime {
       // contract. Its bot target cannot enter the legacy human-target schema.
       const shouldDecide = optional || request.triggerMode === "reaction" && guarded;
       const decisionStarted = Date.now();
-      const outcome = shouldDecide ? await this.decisions.evaluate({ personality: request.personality, events: decisionEvents, burst, botId: request.botUserId ?? "bot",
+      const decisionInput = { personality: request.personality, events: decisionEvents, burst, botId: request.botUserId ?? "bot",
+        ...(guarded ? { sourceContext: request.contextLease! } : {}),
         ...(guarded && (request.memories.length || request.guildKnowledge.length || request.causalChains.length || request.aliasCandidates?.length || guardedCharacterContext.length || request.personaLore.length || request.personaDrift || request.replyChainSummary) ? { supplementalFacts: [
           ...request.memories.map((record) => ({ subjectId: record.subjectUserId, statement: record.statement })),
           ...request.guildKnowledge.map((record) => ({ subjectId: record.subjectId, statement: record.statement })),
@@ -330,7 +334,8 @@ export class CharacterRuntime {
         ...(contextual && request.currentEvent?.type === "reaction_snapshot" ? { reactionSnapshot: request.currentEvent } : {}),
         ...(request.turnSignal ? { signal: request.turnSignal } : {}), ...(request.turnDeadlineAt ? { deadlineAt: request.turnDeadlineAt } : {}),
         speakingShare: decisionEvents.length ? decisionEvents.filter((event) => event.authorId === request.botUserId).length / decisionEvents.length : 0,
-        canUseContext: guarded ? (): Promise<boolean> => request.contextLease!.validate() : undefined, thoughts: !guarded && optional && enabled("thoughts"), availableActions: request.optionalActionsAvailable, now: turn.now }) : { status: "skipped" as const, decision: null };
+        canUseContext: guarded ? (): Promise<boolean> => request.contextLease!.validate() : undefined, thoughts: !guarded && optional && enabled("thoughts"), availableActions: request.optionalActionsAvailable, now: turn.now };
+      const outcome = shouldDecide ? await this.decisions.evaluate(guarded ? approveDecisionInput(decisionInput) : decisionInput) : { status: "skipped" as const, decision: null };
       const decision = outcome.decision; decisionStatus = outcome.status;
       const liveProfile = this.profiles.find(request.guildId);
       if (!liveProfile || this.fingerprint(liveProfile, request.channelId) !== fingerprint || (this.privacyVersions.get(request.guildId) ?? 0) !== privacyVersion) {

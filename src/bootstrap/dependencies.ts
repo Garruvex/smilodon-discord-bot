@@ -1,4 +1,5 @@
 import { GuardedEvaluationContext } from "../application/context/guarded-evaluation-context.js";
+import { guardUtilityTransport } from "../application/context/guarded-utility-transport.js";
 import { interviewProbes } from "../application/chat/character-evaluation.js";
 import { CommandModule } from "../application/commands/command.js";
 import { settingsAccessPolicy } from "../infrastructure/discord/settings/engine/settings-engine.js";
@@ -202,7 +203,7 @@ type ProviderConfig =
 // from. summaryModels defaults to the provider's own `models` when omitted
 // (utilityChat never sets it — it IS the summary/utility model already).
 export function createChatProviderFromConfig(config: ProviderConfig, logger: Logger): ChatProvider {
-  return instrumentModel(createRawChatProviderFromConfig(config, logger), logger);
+  return guardUtilityTransport(instrumentModel(createRawChatProviderFromConfig(config, logger), logger));
 }
 
 function createRawChatProviderFromConfig(config: ProviderConfig, logger: Logger): ChatProvider {
@@ -701,7 +702,7 @@ export function createDependencies(
   settingsEngine.bindChatToolRegistry(chatToolRegistry);
   const structuredUtility = utilityProvider?.generateCharacterData ? { generateCharacterData: utilityProvider.generateCharacterData.bind(utilityProvider) } : null;
   const structuredReply = chatProvider?.generateCharacterData ? { generateCharacterData: chatProvider.generateCharacterData.bind(chatProvider) } : null;
-  const dedicatedDecision = configuration.decision ? instrumentModel(new HttpDecisionProvider(configuration.decision), logger) : null;
+  const dedicatedDecision = configuration.decision ? guardUtilityTransport(instrumentModel(new HttpDecisionProvider(configuration.decision), logger)) : null;
   const contextualProviders = contextualDecisionProviders(dedicatedDecision, structuredReply, structuredUtility);
   logger.info({ contextualDecisionSource: contextualProviders.source, contextualDecisionModel: configuration.decision?.model ??
     (contextualProviders.source === "reply" || !configuration.utilityChat ? configuration.chat?.summaryModels[0] : configuration.utilityChat.models[0]) ?? null,

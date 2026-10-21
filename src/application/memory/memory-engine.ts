@@ -868,7 +868,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
     if (!this.conflictClassifier?.classifyMemoryConflict) return true;
     try {
       await checkMemoryContext(context);
-      const related = await this.conflictClassifier.classifyMemoryConflict(candidate.statement, memory.statement, memoryModelOptions(context, "conflict_classification"));
+      const related = await this.conflictClassifier.classifyMemoryConflict(candidate.statement, memory.statement, memoryModelOptions(context, "conflict_classification", [candidate.statement, memory.statement]));
       await checkMemoryContext(context); return related;
     } catch (error) {
       this.logger?.warn({ ...safeFailure(error), guildId: memory.guildId }, "Conflict classification failed; leaving both memories active rather than guessing");

@@ -7,11 +7,15 @@ import { contextualReplayAcceptance, contextualReplayThresholds } from "../appli
 import { contextualDecisionProviders } from "../application/chat/contextual-decision-providers.js";
 import { CharacterDecisionService, contextualDecisionPromptRevision } from "../application/chat/character-decision.js";
 import type { DecisionOutcome } from "../application/chat/character-decision.js";
-import { contextualDecisionContract, contextualDecisionWireRevision, ContextualContractError } from "../application/chat/contextual-decision-contract.js";
+import { contextualDecisionWireRevision } from "../application/chat/contextual-decision-contract.js";
 import { safeFailure } from "../application/diagnostics/chat-diagnostics.js";
 import { loadInstanceEnvironment } from "../config/instance-environment.js";
 import { loadConfiguration } from "../config/environment.js";
 import { createChatProviderFromConfig } from "../bootstrap/dependencies.js";
+import { approveDecisionInput } from "../application/context/approved-decision-input.js";
+import { guardUtilityTransport } from "../application/context/guarded-utility-transport.js";
+import { syntheticReplayContext } from "../application/chat/synthetic-replay-context.js";
+import { GuardedConversationContext } from "../application/chat/guarded-conversation-context.js";
 import { HttpDecisionProvider } from "../infrastructure/chat/http-decision-provider.js";
 import type { StructuredCharacterProvider } from "../application/chat/chat-provider.js";
 
@@ -49,7 +53,7 @@ async function main(): Promise<void> {
     const reply = config.chat === utilityConfig ? utility : config.chat ? createChatProviderFromConfig(config.chat, logger) : null;
     const structuredReply = reply?.generateCharacterData ? { generateCharacterData: reply.generateCharacterData.bind(reply) } : null;
     const structuredUtility = utility?.generateCharacterData ? { generateCharacterData: utility.generateCharacterData.bind(utility) } : null;
-    const dedicated = config.decision ? new HttpDecisionProvider(config.decision) : null;
+    const dedicated = config.decision ? guardUtilityTransport(new HttpDecisionProvider(config.decision)) : null;
     const selected = contextualDecisionProviders(dedicated, structuredReply, structuredUtility);
     primary = providerRole === "decision" ? selected.primary : providerRole === "reply" ? structuredReply : structuredUtility;
     fallback = providerRole === "decision" ? selected.fallback : null;
@@ -71,25 +75,15 @@ async function main(): Promise<void> {
       if (!live) { results.push({ id: fixture.id, language: fixture.language, scenario: fixture.scenario, status: "not_run", durationMs: 0, relationship: null, intent: null, action: null, referent: null, expectedMeaning: null, failures: [], policy: null, confidence: null, recipientConfidence: null, linkKind: null, evidenceCount: 0 }); continue; }
       const started = Date.now();
       const service = new CharacterDecisionService(primary, fallback);
-      let provider = primary;
-      if (probeMs !== null) provider = { generateCharacterData: async (prompt, schema): Promise<unknown> => primary!.generateCharacterData(prompt, schema, { signal: AbortSignal.timeout(probeMs), maxAttempts: 1 }) };
-      const input = { contextual: true, useContextBoundary: false, personality: "A fictional Discord bot named Pinecone. Use the language of the current speaker.",
-        events: fixture.events, burst: [fixture.current], botId: "1000000000000000200", fixedTarget: fixture.current.messageId,
-        gapMs: 60000, speakingShare: 0, thoughts: false };
-      let result: DecisionOutcome;
-      if (probeMs === null) result = await service.evaluate(input);
-      else {
-        const contract = contextualDecisionContract([...fixture.events, fixture.current], input.botId, fixture.current.messageId);
-        let wirePrompt = ""; let wireSchema: Record<string, unknown> = {};
-        await new CharacterDecisionService({ generateCharacterData: (prompt, schema): Promise<unknown> => {
-          wirePrompt = prompt; wireSchema = schema; return Promise.reject(new Error("Capture synthetic wire contract"));
-        } }).evaluate(input);
-        try {
-          const raw = await provider!.generateCharacterData(wirePrompt, wireSchema);
-          result = { status: "valid", decision: contract.parse(raw), attempts: [] };
-        } catch (error) { result = { status: "failed", decision: null, attempts: [{ providerRole: "primary", attempt: 1, status: "failed", durationMs: Date.now() - started,
-          ...(error instanceof ContextualContractError ? { failure: error.failure } : safeFailure(error)) }] }; }
-      }
+      const { port, botId } = await syntheticReplayContext(fixture);
+      const lease = await GuardedConversationContext.open(port, { count: 40, budget: 12000, burstIds: [fixture.current.messageId] });
+      const input = approveDecisionInput({ contextual: true, useContextBoundary: false, sourceContext: lease,
+        personality: "A fictional Discord bot named Pinecone. Use the language of the current speaker.",
+        events: lease.history, burst: lease.burst, botId, fixedTarget: lease.current.messageId,
+        canUseContext: (): Promise<boolean> => lease.validate(),
+        ...(probeMs === null ? {} : { signal: AbortSignal.timeout(probeMs) }),
+        gapMs: 60000, speakingShare: 0, thoughts: false });
+      const result: DecisionOutcome = await service.evaluate(input);
       const interpretation = result.decision?.contextual;
       const durationMs = Date.now() - started;
       const policy = await replayPolicyAssessment(fixture, result);

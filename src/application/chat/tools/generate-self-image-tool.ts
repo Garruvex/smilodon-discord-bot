@@ -5,6 +5,7 @@ import type { ChatTool, ChatToolContext, ChatToolResult } from "./chat-tool.js";
 import { hashContent } from "../../assets/content-hash.js";
 import { isGuardedContext } from "../guarded-conversation-context.js";
 import { SocialOutputSuppressed } from "../message-origin-store.js";
+import { approveModelOperation } from "../../context/approved-model-operation.js";
 
 interface GenerateSelfImageToolArgs {
   prompt: string;
@@ -53,9 +54,11 @@ export class GenerateSelfImageTool implements ChatTool<GenerateSelfImageToolArgs
       ctx.signal?.throwIfAborted(); await ctx.beforeModelAttempt?.();
     };
     await check();
-    const result = await this.chatProvider.generateReferenceImage(args.prompt, reference, {
+    const options = {
       ...(ctx.signal ? { signal: ctx.signal } : {}), beforeAttempt: check,
-    });
+    };
+    const result = await this.chatProvider.generateReferenceImage(args.prompt, reference, ctx.contextLease ?
+      approveModelOperation(ctx.contextLease, "generateReferenceImage", [args.prompt, reference], options) : options);
     await check();
     if (!result.ok) return { content: `Could not generate the image: ${result.reason}` };
     ctx.pendingGeneratedImages.push(...result.images);

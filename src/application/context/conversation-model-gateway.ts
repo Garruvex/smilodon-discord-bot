@@ -6,6 +6,7 @@ import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
 import { allowsDurableWrites } from "../memory/memory-channel-policy.js";
 import { personaDriftPayload, type ScopedPersonaDrift } from "../chat/persona-drift-provenance.js";
 import { withTurnAbort } from "../chat/turn-work-budget.js";
+import { approveModelOperation } from "./approved-model-operation.js";
 
 // Owns the session-to-model projection. Stored transcripts are candidates,
 // never caller authority: the lease verifies human sources and actual bot
@@ -46,9 +47,11 @@ export class ConversationModelGateway {
     const signal = base.signal ? AbortSignal.any([base.signal, timeout]) : timeout;
     const beforeAttempt = async (): Promise<void> => { signal.throwIfAborted(); await base.beforeAttempt!(); signal.throwIfAborted(); };
     await beforeAttempt();
-    const result = await withTurnAbort(signal, () => provider.summarizeReplyChainOverflow!(overflow.map((source) => ({
+    const messages = overflow.map((source) => ({
       authorId: source.authorId, authorDisplayName: source.authorDisplayName, timestampMs: source.timestampMs, content: source.content,
-    })), { beforeAttempt, signal, maxAttempts: 1 }));
+    }));
+    const result = await withTurnAbort(signal, () => provider.summarizeReplyChainOverflow!(messages,
+      approveModelOperation(context, "summarizeReplyChainOverflow", [messages], { beforeAttempt, signal, maxAttempts: 1 })));
     await beforeAttempt(); return result.trim().slice(0, 1000) || null;
   }
   private async sessions(context: GuardedConversationContext, candidates: readonly ChatSessionExchange[]): Promise<ChatSessionExchange[]> {
@@ -60,8 +63,10 @@ export class ConversationModelGateway {
     const sessions = await this.sessions(context, candidates);
     const provider = this.provider.summarizeDroppedExchanges ? this.provider : this.fallback;
     if (!sessions.length || !provider?.summarizeDroppedExchanges) return { facts: [], sessions };
-    const facts = await provider.summarizeDroppedExchanges(sessions.map((record) => ({ user: record.user.content, assistant: record.assistant.content })),
-      { id: context.current.authorId, displayName: context.current.authorDisplayName }, this.options(context));
+    const exchanges = sessions.map((record) => ({ user: record.user.content, assistant: record.assistant.content }));
+    const speaker = { id: context.current.authorId, displayName: context.current.authorDisplayName };
+    const facts = await provider.summarizeDroppedExchanges(exchanges, speaker,
+      approveModelOperation(context, "summarizeDroppedExchanges", [exchanges, speaker], this.options(context)));
     await this.options(context).beforeAttempt!(); return { facts, sessions };
   }
   public async extractCurrent(context: GuardedConversationContext): Promise<readonly PersonalMemoryExtractionAction[]> {
@@ -69,7 +74,9 @@ export class ConversationModelGateway {
     const provider = this.provider.extractPersonalMemories ? this.provider : this.fallback;
     const human = await context.humanCurrent(); if (!human || !provider?.extractPersonalMemories || context.scope.actorId !== human.authorId) return [];
     await this.options(context).beforeAttempt!();
-    const result = await provider.extractPersonalMemories(human.content, "", { id: human.authorId, displayName: human.authorDisplayName }, this.options(context));
+    const speaker = { id: human.authorId, displayName: human.authorDisplayName };
+    const result = await provider.extractPersonalMemories(human.content, "", speaker,
+      approveModelOperation(context, "extractPersonalMemories", [human.content, "", speaker], this.options(context)));
     await this.options(context).beforeAttempt!(); return result;
   }
   public async drift(context: GuardedConversationContext, candidates: readonly ChatSessionExchange[], previous: ScopedPersonaDrift | null,
@@ -81,7 +88,9 @@ export class ConversationModelGateway {
     if (await context.resource({ kind: "persona_drift", id: epoch }) !== epoch) throw new SocialOutputSuppressed();
     const currentText = previous && previous.guildId === context.scope.guildId && previous.channelId === context.scope.channelId &&
       previous.personalitySourceHash === personalitySourceHash && previous.epoch === epoch && await context.derived(previous.contextProvenance, personaDriftPayload(previous), "character_state") ? previous.text : "";
-    const result = await provider.evolvePersonaDrift(currentText, sessions.map((record) => ({ user: record.user.content, assistant: record.assistant.content })), this.options(context));
+    const exchanges = sessions.map((record) => ({ user: record.user.content, assistant: record.assistant.content }));
+    const result = await provider.evolvePersonaDrift(currentText, exchanges,
+      approveModelOperation(context, "evolvePersonaDrift", [currentText, exchanges], this.options(context)));
     await this.options(context).beforeAttempt!();
     const state = { guildId: context.scope.guildId, channelId: context.scope.channelId, epoch, personalitySourceHash, text: result.trim().slice(0, 1000), updatedAt: now };
     const contextProvenance = context.provenance(personaDriftPayload(state), "character_state");
