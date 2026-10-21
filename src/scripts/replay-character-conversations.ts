@@ -27,7 +27,7 @@ if (args.includes("--help")) {
   const fixture = JSON.parse(await readFile(resolve(argument("--participation-fixture")!), "utf8")) as unknown;
   const outputs = await replayParticipation(fixture);
   const path = resolve(argument("--output") ?? "participation-replay-review.json");
-  await writeFile(path, JSON.stringify({ synthetic: true, mode: "recorded-policy-comparison", hypotheticalOnly: true, humanReviewRequired: true, outputs }, null, 2), "utf8");
+  await writeFile(path, JSON.stringify({ synthetic: true, mode: "recorded-policy-comparison", scope: "Legacy deterministic policy helper with supplied proposals; not current contextual-flow acceptance.", hypotheticalOnly: true, humanReviewRequired: true, outputs }, null, 2), "utf8");
   process.stdout.write(`Participation replay: ${outputs.filter((row) => row.correct).length}/${outputs.length} labelled cases match. Review: ${path}\n`);
   if (outputs.some((row) => !row.correct)) process.exitCode = 1;
 } else {
@@ -40,6 +40,7 @@ if (args.includes("--help")) {
   const utility = configuration.utilityChat ? createChatProviderFromConfig(configuration.utilityChat, logger) : provider;
   const personality = await readFile(resolve(personaPath), "utf8");
   const settingsPath = argument("--settings"); const settings = settingsPath ? characterSettingsSchema.parse(JSON.parse(await readFile(resolve(settingsPath), "utf8")) as unknown) : characterSettingsSchema.parse({});
+  if (settings.context.enabled && settings.context.retrievalMode === "eligible_count") throw new Error("Character replay exercises legacy direct/session behavior and has no Discord source lease. Use eval:contextual for guarded preflight acceptance.");
   const guildId = "100000000000000001";
   let document = guildConfigurationFileSchema.parse({ schemaVersion: 1, guild: { id: guildId, name: "Anonymized replay" },
     features: { chatbot: true, channelHistory: true }, chat: { sharedMemoryEnabled: true }, character: settings });
@@ -76,7 +77,7 @@ if (args.includes("--help")) {
         text: response.text, action: response.ambientAction, replyTargetMessageId: response.replyTargetMessageId ?? null };
     });
     const path = resolve(argument("--output") ?? "character-replay-review.json");
-    await writeFile(path, JSON.stringify({ consented: true, anonymized: true, evaluation: "human review required", outputs: output }, null, 2), "utf8");
+    await writeFile(path, JSON.stringify({ consented: true, anonymized: true, scope: "Legacy direct/session generation; excludes contextual admission, guarded retrieval and Discord effects.", evaluation: "human review required", outputs: output }, null, 2), "utf8");
     process.stdout.write(`Replay completed: ${output.length} turns. Review artifact: ${path}\nTemporary replay database: ${directory}\n`);
   } finally { conversation.stopScheduling(); await conversation.drain(); connection.close(); }
 }

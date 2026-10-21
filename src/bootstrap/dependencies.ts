@@ -114,6 +114,7 @@ import { CharacterEvalCommand, FeltLikeBotCommand } from "../infrastructure/disc
 import { resolveParticipation } from "../application/chat/participation-policy.js";
 import { SocialOutputSuppressed } from "../application/chat/message-origin-store.js";
 import { HttpDecisionProvider } from "../infrastructure/chat/http-decision-provider.js";
+import { contextualDecisionProviders } from "../application/chat/contextual-decision-providers.js";
 import { characterSettings, characterInactiveReason } from "../application/chat/character-settings.js";
 import { ChatToolRegistry } from "../application/chat/tools/chat-tool-registry.js";
 import { DiscordServerLookupTool } from "../infrastructure/discord/discord-server-lookup-tool.js";
@@ -686,10 +687,15 @@ export function createDependencies(
   ]);
   settingsEngine.bindChatToolRegistry(chatToolRegistry);
   const structuredUtility = utilityProvider?.generateCharacterData ? { generateCharacterData: utilityProvider.generateCharacterData.bind(utilityProvider) } : null;
+  const structuredReply = chatProvider?.generateCharacterData ? { generateCharacterData: chatProvider.generateCharacterData.bind(chatProvider) } : null;
+  const dedicatedDecision = configuration.decision ? instrumentModel(new HttpDecisionProvider(configuration.decision), logger) : null;
+  const contextualProviders = contextualDecisionProviders(dedicatedDecision, structuredReply, structuredUtility);
+  logger.info({ contextualDecisionSource: contextualProviders.source, contextualDecisionModel: configuration.decision?.model ??
+    (contextualProviders.source === "reply" || !configuration.utilityChat ? configuration.chat?.summaryModels[0] : configuration.utilityChat.models[0]) ?? null,
+    contextualFallbackSource: contextualProviders.fallback ? "reply" : null }, "Contextual decision provider selection");
   const characterRuntime = chatProvider ? new CharacterRuntime(guildConfigurationProvider, memoryRepository,
     structuredUtility,
-    chatProvider, configuration.decision ? instrumentModel(new HttpDecisionProvider(configuration.decision), logger)
-      : structuredUtility, personalMemoryExtractionQueueStore, undefined, logger.child({ component: "character" })) : null;
+    chatProvider, dedicatedDecision ?? structuredUtility, personalMemoryExtractionQueueStore, undefined, logger.child({ component: "character" }), contextualProviders) : null;
   if (characterRuntime) settingsEngine.bindCharacterRuntime(characterRuntime);
   const diagnosticCommand = commandRegistry.getAll().find((command): command is DiagnosticCommand => command instanceof DiagnosticCommand);
   diagnosticCommand?.bindProviderHealth({ decision: () => characterRuntime?.decisionHealth ?? null, generation: () => modelGenerationHealth(logger),

@@ -39,7 +39,7 @@ type Mode = "mention" | "reply" | "ping" | "name" | "followup" | "group" | "reac
 // Only Discord transport and structured providers are simulated. Dispatch,
 // adapters, access, profile parsing, provenance, lease, runtime, policy,
 // scheduler, delivery support and persistence are the production components.
-async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react" | "failed" | "invalid_generation" | "revoked" | "shadow" = "reply"): Promise<{
+async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react" | "failed" | "invalid_generation" | "revoked" | "shadow" = "reply", actorCount = 1): Promise<{
   execute: () => Promise<void>; records: Record<string, unknown>[];
   decision: ReturnType<typeof vi.fn<(prompt: string) => Promise<unknown>>>;
   reply: ReturnType<typeof vi.fn<(request: ChatRequest) => Promise<ChatResponse>>>;
@@ -109,8 +109,12 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
   const text = mode === "mention" ? `<@${botId}> Please check the second option.` : mode === "ping" ? `<@${botId}>` :
     mode === "name" ? "Pinecone, please check the second option." : mode === "group" ? "The game update is out. Anyone tried it?" : "The second one";
   const source = mode === "reaction" ? bot : makeMessage("current", text, actorId, Date.now(), mode === "reply" ? bot.id : undefined);
-  if (mode === "reaction") source.reactions.cache.set("👍", { emoji: { id: null, name: "👍" },
-    users: { fetch: () => Promise.resolve(new Collection([[actorId, members.get(actorId)!.user]])) } } as never);
+  if (mode === "reaction") {
+    const actors = [actorId];
+    for (let index = 1; index < actorCount; index++) { const id = `reactor-${index}`; actors.push(id); makeMessage(`reactor-source-${index}`, "hello", id, Date.now() - 250); }
+    source.reactions.cache.set("👍", { emoji: { id: null, name: "👍" },
+      users: { fetch: () => Promise.resolve(new Collection(actors.map((id) => [id, members.get(id)!.user]))) } } as never);
+  }
   const decision = vi.fn((prompt: string) => {
     expect(prompt).not.toContain("PRIVATE_SOURCE_TEXT");
     if (behavior === "failed") return Promise.reject(new Error("Synthetic provider failure"));
@@ -130,6 +134,11 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
     expect(JSON.stringify(request.channelHistory)).not.toContain("PRIVATE_SOURCE_TEXT");
     if (mode === "ping") expect(request.channelHistory.some((event) => event.messageId === "pending")).toBe(true);
     if (strategy !== "legacy_context") expect(request.contextLease).toBeDefined();
+    if (strategy === "contextual" && decision.mock.calls.length) {
+      const projection = JSON.parse(decision.mock.calls[0]![0].split("Data: ")[1]!) as { events: { evidenceKey: string; content: string }[] };
+      const generation = [...request.channelHistory, ...request.replyChain, ...(request.currentBurst ?? [])];
+      for (const event of projection.events) expect(generation.find((source) => source.messageId === event.evidenceKey)?.content).toBe(event.content);
+    }
     if (behavior === "revoked") members.get(actorId)!.roles.cache.set("restricted", { id: "restricted", name: "restricted" } as never);
     return Promise.resolve(decisionResponse({ text: "The second option is ready for testing.", responseIntent: "answer", ambientAction: "reply",
       ...(behavior === "invalid_generation" ? { referentSourceIds: ["private"], reactionEmoji: "👍", historyReactions: [{ messageId: "private", emoji: "👍" }] } : {}) }));
@@ -160,6 +169,11 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
 }
 
 describe("production Discord adapter to effect paths", () => {
+  it("does not confuse the bounded reactor-name projection with the full authorized audience", async () => {
+    const fixture = await setup("legacy_context", "reaction", "reply", 21); await fixture.execute();
+    expect(fixture.reply).toHaveBeenCalledOnce(); expect(fixture.reply.mock.calls[0]![0].mentionedUsers).toHaveLength(20);
+    expect(fixture.sent).toHaveLength(1); expect(fixture.sent[0]?.target).toBe("answer");
+  });
   for (const strategy of ["legacy_context", "guarded_legacy_decision", "contextual"] as const) {
     it.each(["mention", "reply", "ping", "name", "followup", "group", "reaction"] as const)(`${strategy}: %s reaches its planned lifecycle`, async (mode) => {
       const fixture = await setup(strategy, mode); await fixture.execute();

@@ -2,6 +2,31 @@
 
 Status: local engineering implemented behind `contextual_v1`; production activation and a scoped live Discord pilot have not occurred. The source-migration track remains separate. See the [implementation plan](chat-contextual-participation-plan-2026-10-21.md).
 
+## Final local acceptance after the common-flow audit
+
+The [alignment ledger](chat-plan-alignment-2026-10-21.md) records the full requirement-by-requirement closure. The service now resolves one effective turn plan, fails closed on missing/mismatched guarded prerequisites and authorizes immutable effect snapshots consumed by all three Discord adapters. Guarded reaction turns have typed preflight. Same-speaker exchange links and independent cross-speaker bot references replace citation-only grounding. Unwired refresh/count-first paths, the test-only decision wrapper, obsolete hook authority and empty addressing module have been retired. Persisted addressing controls remain read-compatible but are no longer offered as active settings.
+
+Twenty-one adapter/strategy combinations exercise all seven interactions through real dispatch, access, runtime, scheduling, delivery support and SQLite, with additional reaction/failure/revocation/shadow regressions. Architecture tests protect runner/permit ownership. Legacy context and legacy decisions inside guarded context remain explicit compatibility strategies. Legacy reactions use a validated transport snapshot plus their existing generation/action contract; guarded reactions use typed semantic preflight. These differences are documented rather than hidden behind optional port presence.
+
+The fixture is now revision 3: a different speaker's bare selection cannot inherit the earlier person's bot exchange or be reclassified as an open group invitation. Wire revision 4 adds application-bound exchange links. Prompt revision 2 clarifies that independent bot corrections and repair-response questions require acknowledgment/clarification without claiming an unverified repair. Policy revision 3 includes the stronger link/reaction rules.
+
+Acceptance thresholds were declared before the new results: at least 200 cases; at least 99% valid and 95% controlled expected-meaning checks; zero disallowed text replies; at most one required-reply miss; decision p95 at most 12 seconds. The CLI now fails when any of these preflight gates fails, including semantic/response failures despite valid schemas. These thresholds do not establish a production cost limit or full-turn latency.
+
+| Synthetic run | Valid / expected meaning | Unwanted text / required misses | Decision p95 | Result |
+| --- | --- | --- | --- | --- |
+| `contextual-live-replay-v4-policy3-2026-10-21.json` (utility, initial prompt) | 178/216 / 115/216 | 11 / 33 | 8.221 s | Failed |
+| `contextual-live-replay-v4-reply-reference-2026-10-21.json` (reply route, initial prompt) | 216/216 / 214/216 | 0 / 3 | 6.758 s | Failed required replies |
+| `contextual-live-replay-v4-prompt2-reply-2026-10-21.json` | 216/216 / 216/216 | 0 / 0 | 5.952 s | Passed preflight gates |
+| `contextual-live-replay-v4-final-routing-2026-10-21.json` (final default selector) | 216/216 / 216/216 | 0 / 0 | 6.189 s | Passed preflight gates |
+
+The final default run used Pinecone's existing structured reply route, `gpt-5.6-luna` with medium reasoning. It admitted all 72 required substantive replies; all 216 model attempts were measured and valid on primary, with no fallback recovery needed. It recorded 277,884 input tokens (277,236 cached), 58,301 output tokens (38,917 reasoning, included within output). Token counts are provider-reported; monetary cost requires the operator's applicable rates. Cancelled/unreported requests may have missing usage. These are controlled synthetic variations, not 216 independent human conversations; labels do not measure generated-answer quality.
+
+Provider routing revision 2 is shared between bootstrap/runtime and the replay: an explicit `DECISION_MODEL` remains primary; otherwise contextual interpretation uses the reply provider's structured route. Its configured summary-model override is honored and reported. A dedicated primary may fall back to that reply route within the existing budget. A failed reply route does not silently downgrade to the generic utility. If no reply structured capability exists, utility selection is explicit and needs its own acceptance run. Legacy decision routing remains unchanged. This intentional opt-in behavior change follows the failed utility and passing reply-route measurements; no instance environment or production guild setting was edited.
+
+`--provider-role decision` (default) now evaluates the actual production contextual selector; `--provider-role reply` and `--provider-role utility` are explicit comparisons. Historical reports without routing revision 2 retain their historical provider selection. The older character/policy replay tools now label their legacy scope and cannot be substituted for contextual acceptance.
+
+Remaining release gates: independent semantic review; an explicitly selected deployed shadow/live channel with deployed SHA; full-turn p50/p95 including coalescing and actual generation/delivery; a cost budget agreed before pilot results; and actual Discord delivery/notification observation. Memory, derived summaries, learned state, images and tools remain excluded from guarded text until the separate source migration passes. No production deployment, activation or Discord send was performed.
+
 ## Implemented checkpoints
 
 | Commit | Checkpoint |

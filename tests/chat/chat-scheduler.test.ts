@@ -24,9 +24,7 @@ describe("bounded channel scheduler", () => {
     const slow = scheduler.run("a:image", false, limits, () => gate);
     expect(await scheduler.run("b:chat", false, limits, () => Promise.resolve("available"))).toBe("available");
     release(); await slow;
-    expect(await scheduler.run("a:optional", true, limits, () => {
-      for (let i = 0; i < 130; i++) scheduler.recordModelAttempt(); return Promise.resolve("finished");
-    })).toBe("finished");
+    expect(await scheduler.run("a:optional", true, limits, () => Promise.resolve("finished"))).toBe("finished");
     expect(await scheduler.run("a:optional", true, limits, () => Promise.resolve("extra"))).toBeNull();
     expect(await scheduler.run("a:direct", false, limits, () => Promise.resolve("direct"))).toBe("direct");
     expect(await scheduler.run("b:optional", true, limits, () => Promise.resolve("other guild"))).toBe("other guild");

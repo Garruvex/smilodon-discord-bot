@@ -2,6 +2,7 @@ import { isGuardedContext, projectDecisionContext } from "./guarded-conversation
 import { selectDecisionContext } from "./decision-context-selection.js";
 import { resolveConversationTurnPlan, type ConversationTurnPlan } from "./conversation-turn-plan.js";
 import { contextualDecisionWireRevision } from "./contextual-decision-contract.js";
+import type { ContextualDecisionProviders } from "./contextual-decision-providers.js";
 import { z } from "zod";
 import { budgetEligibleHistory } from "./eligible-channel-history.js";
 import type { Logger } from "pino";
@@ -68,14 +69,15 @@ export class CharacterRuntime {
   public constructor(private readonly profiles: GuildConfigurationProvider, private readonly repository: MemoryRepository,
     private readonly utility: StructuredCharacterProvider | null, private readonly replyProvider: ChatProvider,
     decisionProvider: StructuredCharacterProvider | null = utility, coordinator: Pick<PersonalMemoryExtractionQueueStore, "runForSubject"> | null = null,
-    private readonly now: () => number = () => Date.now(), private readonly logger: Pick<Logger, "info" | "warn"> | null = null) {
+    private readonly now: () => number = () => Date.now(), private readonly logger: Pick<Logger, "info" | "warn"> | null = null,
+    contextualProviders: ContextualDecisionProviders | null = null) {
     this.registry = new CharacterModuleRegistry((moduleId, error) => this.logger?.warn({ moduleId, error }, "Character module hook failed"));
     this.memory = new CharacterMemory(repository, coordinator, (guildId) => this.profiles.find(guildId), (guildId, channelId, id) => {
       const profile = this.profiles.find(guildId); if (!profile) return false;
       return this.registry.has(id) && !(id === "canon" && characterSettings(profile).modules.canon.freeze) &&
         !characterInactiveReason(characterSettings(profile), id, channelId, this.capabilities(profile, channelId));
     }); this.callbacks = new CharacterCallbacks(repository); this.decisions = new CharacterDecisionService(decisionProvider, utility,
-      (attempt) => emitChatDiagnostic(this.logger, { event: "model.decision.attempt", ...attempt }));
+      (attempt) => emitChatDiagnostic(this.logger, { event: "model.decision.attempt", ...attempt }), contextualProviders);
     this.registerModules();
   }
   public capabilities(profile: GuildConfiguration, channelId: string): CharacterCapabilities {

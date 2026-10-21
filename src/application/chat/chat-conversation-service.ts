@@ -870,7 +870,7 @@ export class ChatConversationService {
           reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits),
         } } : {}),
         canExecute: async () => (this.privacyVersions.get(input.guildId) ?? 0) === privacyVersion && (!input.canExecute || await input.canExecute()),
-        onModelAttempt: () => this.scheduler.recordModelAttempt() }, async (result) => {
+      }, async (result) => {
         const effects = authorizeConversationEffects(result, input.sourceMessageId ?? null);
         if (effects.action !== "reply" && effects.action !== "reply_and_react") throw new SocialOutputSuppressed();
         if ((this.privacyVersions.get(input.guildId) ?? 0) !== privacyVersion) {

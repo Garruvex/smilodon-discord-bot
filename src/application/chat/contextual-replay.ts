@@ -33,9 +33,9 @@ export function contextualReplayCases(): ContextualReplayCase[] {
         if (scenario === "elsewhere") { current.replyToMessageId = original.messageId; current.replyToAuthorId = originalActor; }
         const relationships: ContextualInterpretation["relationship"][] = scenario === "group" ? ["group"] : scenario === "unknown" ? ["unclear"] :
           scenario === "elsewhere" || scenario === "closing" ? ["elsewhere", "unclear"] : scenario === "correction" || scenario === "repair" ? ["followup"] :
-          speaker !== "other" ? ["followup"] : ["unclear", "group"];
+          speaker !== "other" ? ["followup"] : ["unclear"];
         result.push({ id: `${language}-${scenario}-${gap}-${speaker}`, language, scenario, events, current,
-          expectedRelationships: relationships, textAllowed: !["unknown", "elsewhere", "closing", "thanks"].includes(scenario) });
+          expectedRelationships: relationships, textAllowed: !["unknown", "elsewhere", "closing", "thanks"].includes(scenario) && !(scenario === "answer" && speaker === "other") });
       }
   return result;
 }

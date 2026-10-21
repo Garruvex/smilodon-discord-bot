@@ -55,6 +55,14 @@ function jsonResponse(payload: Record<string, unknown>): { text: string; functio
 }
 
 describe("GeminiChatProvider", () => {
+  it("reports structured token usage without affecting the decision result", async () => {
+    const { GeminiChatProvider } = await import("../../src/infrastructure/chat/gemini-chat-provider.js");
+    generateContentMock.mockResolvedValue({ ...jsonResponse({ ready: true }), usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 5, totalTokenCount: 17, thoughtsTokenCount: 2 } });
+    const provider = new GeminiChatProvider("test", ["test-model"], { maxOutputTokens: 2048, thinkingBudget: null });
+    const onUsage = vi.fn();
+    expect(await provider.generateCharacterData("Synthetic", { type: "object" }, { onUsage })).toEqual({ ready: true });
+    expect(onUsage).toHaveBeenCalledExactlyOnceWith({ inputTokens: 12, outputTokens: 5, totalTokens: 17, cachedInputTokens: null, reasoningTokens: 2 });
+  });
   it("guards both reply and attribution transports before sending source text", async () => {
     const { GeminiChatProvider } = await import("../../src/infrastructure/chat/gemini-chat-provider.js");
     const provider = new GeminiChatProvider("secret", ["gemini-3.6-flash"], { maxOutputTokens: 2048, thinkingBudget: null });

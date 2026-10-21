@@ -1,5 +1,7 @@
 # Participation improvements: implementation and rollout
 
+Scope note (2026-10-21): the legacy behavior below remains selectable for compatibility. The opted-in contextual flow uses neutral candidates, count-based guarded history, typed exchange/reaction links and shared effect permits; it does not use the legacy two-minute window as a relevance rule. Its provider selection and final acceptance are documented in the [alignment ledger](chat-plan-alignment-2026-10-21.md) and [release evidence](contextual-participation-release-2026-10-21.md). Retired addressing controls are no longer active settings.
+
 Workstreams 1–5, 2026-10-15. Implemented locally; live shadow evaluation, threshold calibration and human acceptance are pending. No production setting has been enabled by this work. [Workstream 6](relationship-memory-fading.md) is the separate committed memory change.
 
 ## Behavior

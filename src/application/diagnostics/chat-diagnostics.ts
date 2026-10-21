@@ -74,6 +74,7 @@ const eventSchema = z.discriminatedUnion("event", [
   z.object({ event: z.literal("context.decision.coverage"), available: count, selected: count, required: count, omittedRequired: count }),
   z.object({ event: z.literal("context.selection.filtered"), reason: z.enum(["scope", "window", "gap", "segment", "count", "budget"]), before: count, after: count }),
   z.object({ event: z.literal("model.decision.attempt"), providerRole: z.enum(["primary", "fallback"]), attempt: count, status: z.enum(["valid", "failed"]), durationMs: duration, failure: failureCategory.optional(), httpStatus: z.number().int().min(100).max(599).optional(),
+    inputTokens: count.optional(), outputTokens: count.optional(), totalTokens: count.optional(), cachedInputTokens: count.optional(), reasoningTokens: count.optional(),
     stage: z.enum(["context_validation", "model"]).optional(), contextDurationMs: duration.optional(), timeoutMs: duration.optional(),
     contractVersion: z.enum(["legacy", "contextual_v1"]).optional(), targetMode: z.enum(["fixed", "selectable"]).optional(), targetCandidates: count.optional(),
     wireRevision: z.number().int().positive().optional(),

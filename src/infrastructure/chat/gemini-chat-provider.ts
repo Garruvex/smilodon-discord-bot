@@ -1,4 +1,4 @@
-import type { StructuredCallOptions } from "../../application/chat/chat-provider.js";
+import { reportStructuredUsage, type StructuredCallOptions } from "../../application/chat/chat-provider.js";
 import { GoogleGenAI } from "@google/genai";
 import { performance } from "node:perf_hooks";
 import { diagnosticElapsed, emitChatDiagnostic, safeFailure } from "../../application/diagnostics/chat-diagnostics.js";
@@ -149,7 +149,6 @@ export class GeminiChatProvider implements ChatProvider {
     for (let roundTrip = 0; ; roundTrip++) {
       const response = await this.modelChain.run(async (model) => {
         await request.beforeModelAttempt?.();
-        request.onModelAttempt?.();
         return this.generateContent(model, buildChatInstructions(request, chatSafetyGuard), contents, this.buildTools(request, customTools), request.turnSignal);
       });
       const functionCalls = response.functionCalls ?? [];
@@ -168,7 +167,6 @@ export class GeminiChatProvider implements ChatProvider {
         ];
         const finalizeResponse = await this.modelChain.run(async (model) => {
           await request.beforeModelAttempt?.();
-          request.onModelAttempt?.();
           return this.generateContent(model, buildChatInstructions(request, chatSafetyGuard), contents, undefined, request.turnSignal);
         });
         return this.mergePendingImages(
@@ -433,6 +431,9 @@ export class GeminiChatProvider implements ChatProvider {
 
   public async generateCharacterData(prompt: string, schema: Record<string, unknown>, options?: StructuredCallOptions): Promise<unknown> {
     const response = await this.summaryModelChain.run((model) => this.generateStructured(model, prompt, schema, undefined, undefined, options?.signal), options);
+    const usage = response.usageMetadata;
+    if (usage) reportStructuredUsage(options, { inputTokens: usage.promptTokenCount ?? 0, outputTokens: usage.candidatesTokenCount ?? 0,
+      totalTokens: usage.totalTokenCount ?? 0, cachedInputTokens: usage.cachedContentTokenCount ?? null, reasoningTokens: usage.thoughtsTokenCount ?? null });
     return JSON.parse((response.text ?? "").trim()) as unknown;
   }
 

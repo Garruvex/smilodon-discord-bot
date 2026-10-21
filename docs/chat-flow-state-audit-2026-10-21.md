@@ -2,6 +2,8 @@
 
 Reviewed 2026-10-21 at source commit `865b345d`. This is a code review and local reproduction report, not a production configuration audit. No production behavior, configuration or deployment was changed for this review.
 
+Follow-up: the local repairs, real adapter-to-effect coverage, dead-code removals and final provider evidence are recorded in the [alignment ledger](chat-plan-alignment-2026-10-21.md). F1–F6 below describe the historical audited revision, not unresolved defects in the finished local implementation. Intentional legacy strategies and separate universal-source gaps remain explicitly documented. Deployment/pilot acceptance is still separate.
+
 ## Assessment
 
 The redesign introduced useful shared components, but did not finish migrating the system to one mandatory pipeline. The current implementation is a staged compatibility architecture: a shared Discord eligibility service, an opt-in registered context lease, a shared decision engine, and multiple runners/adapters that still choose which pieces to invoke.

@@ -76,7 +76,10 @@ export class ConversationDecisionEngine {
       const snapshot = request.currentEvent;
       const actors = snapshot?.type === "reaction_snapshot" ? [...new Set(snapshot.reactions.flatMap((item) => item.actorIds))] : [];
       if (snapshot?.type !== "reaction_snapshot" || snapshot.channelId !== request.channelId || snapshot.targetAuthorId !== botId ||
-          !snapshot.complete || !actors.length || actors.some((id) => !request.mentionedUsers.some((user) => user.id === id && user.kind !== "bot"))) return denied("invalid_evidence", "failed");
+          !snapshot.complete || !actors.length || actors.includes(botId) ||
+          request.mentionedUsers.some((user) => !actors.includes(user.id) || user.kind === "bot")) return denied("invalid_evidence", "failed");
+      // The scheduler authorizes the full actor list before this boundary;
+      // mentionedUsers is only its bounded display-name projection (max 20).
       if (request.optionalActionsAvailable?.text === false && request.optionalActionsAvailable.reaction === false) return denied("action_unavailable");
       const result = this.result(request, trigger, now, policyVersion, "legacy_reaction_generation", "ready", "reply", "contribute");
       result.decision.responseToEventId = snapshot.targetMessageId; result.decision.recipientIds = actors;

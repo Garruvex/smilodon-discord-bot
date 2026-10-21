@@ -1,4 +1,4 @@
-import type { StructuredCallOptions } from "../../application/chat/chat-provider.js";
+import { reportStructuredUsage, type StructuredCallOptions } from "../../application/chat/chat-provider.js";
 import type { Logger } from "pino";
 import { z } from "zod";
 
@@ -89,7 +89,6 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
       : { role: "user", content: userContent };
     const body = await this.modelChain.run(async (model) => {
       await request.beforeModelAttempt?.();
-      request.onModelAttempt?.();
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
@@ -204,6 +203,8 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
       });
       if (!response.ok) throw new ChatProviderError(`Character utility call returned HTTP ${response.status}.`, response.status, null);
       const body = responseSchema.parse(await response.json());
+      if (body.usage) reportStructuredUsage(options, { inputTokens: body.usage.prompt_tokens, outputTokens: body.usage.completion_tokens,
+        totalTokens: body.usage.total_tokens, cachedInputTokens: null, reasoningTokens: null });
       return JSON.parse(body.choices[0]!.message.content) as unknown;
     }, options);
   }

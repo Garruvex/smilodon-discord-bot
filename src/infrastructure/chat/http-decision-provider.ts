@@ -1,8 +1,9 @@
-import type { StructuredCallOptions } from "../../application/chat/chat-provider.js";
+import { reportStructuredUsage, type StructuredCallOptions } from "../../application/chat/chat-provider.js";
 import type { StructuredCharacterProvider } from "../../application/chat/chat-provider.js";
 import { ChatProviderError } from "../../application/chat/chat-provider.js";
 import { z } from "zod";
-const responseSchema = z.object({ choices: z.array(z.object({ message: z.object({ content: z.string() }) })).min(1) });
+const responseSchema = z.object({ choices: z.array(z.object({ message: z.object({ content: z.string() }) })).min(1),
+  usage: z.object({ prompt_tokens: z.number().int().nonnegative(), completion_tokens: z.number().int().nonnegative(), total_tokens: z.number().int().nonnegative() }).optional().catch(undefined) });
 export class HttpDecisionProvider implements StructuredCharacterProvider {
   public constructor(private readonly configuration: { baseUrl: string; apiKey: string; model: string }) {}
   public async generateCharacterData(prompt: string, schema: Record<string, unknown>, options?: StructuredCallOptions): Promise<unknown> {
@@ -13,6 +14,9 @@ export class HttpDecisionProvider implements StructuredCharacterProvider {
       signal: options?.signal ?? AbortSignal.timeout(10_000),
     });
     if (!response.ok) throw new ChatProviderError(`Decision endpoint returned HTTP ${response.status}`, response.status, null);
-    return JSON.parse(responseSchema.parse(await response.json()).choices[0]!.message.content) as unknown;
+    const body = responseSchema.parse(await response.json());
+    if (body.usage) reportStructuredUsage(options, { inputTokens: body.usage.prompt_tokens, outputTokens: body.usage.completion_tokens,
+      totalTokens: body.usage.total_tokens, cachedInputTokens: null, reasoningTokens: null });
+    return JSON.parse(body.choices[0]!.message.content) as unknown;
   }
 }

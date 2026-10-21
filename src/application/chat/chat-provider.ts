@@ -31,7 +31,6 @@ export interface ChatRequest {
   capabilityToolNames?: readonly string[];
   aliasCandidates?: readonly { alias: string; subjectIds: readonly string[] }[];
   functionalToolExecuted?: boolean;
-  onModelAttempt?: () => void;
   beforeModelAttempt?: () => Promise<void>;
   // Style permission only. Silence requires validated contextual social/closing
   // intent; the current message's length cannot grant it or disable tools.
@@ -153,7 +152,10 @@ export interface ChatRequest {
   historyReactionsEnabled?: boolean;
 }
 
-export interface StructuredCallOptions { signal?: AbortSignal; maxAttempts?: number }
+export interface StructuredCallOptions { signal?: AbortSignal; maxAttempts?: number; onUsage?: (usage: ChatUsage) => void }
+export function reportStructuredUsage(options: Pick<StructuredCallOptions, "onUsage"> | undefined, usage: ChatUsage): void {
+  try { options?.onUsage?.(usage); } catch { /* Usage observers cannot affect admission or retries. */ }
+}
 export interface StructuredCharacterProvider {
   generateCharacterData(prompt: string, schema: Record<string, unknown>, options?: StructuredCallOptions): Promise<unknown>;
 }

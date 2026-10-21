@@ -1,4 +1,4 @@
-import type { StructuredCallOptions } from "../../application/chat/chat-provider.js";
+import { reportStructuredUsage, type StructuredCallOptions } from "../../application/chat/chat-provider.js";
 import { z } from "zod";
 import { performance } from "node:perf_hooks";
 import { diagnosticElapsed, emitChatDiagnostic, safeFailure } from "../../application/diagnostics/chat-diagnostics.js";
@@ -288,7 +288,6 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     observer?: ChatResponseObserver,
   ): Promise<unknown> {
     await request.beforeModelAttempt?.();
-      request.onModelAttempt?.();
     const response = await fetch(`${this.baseUrl}/responses`, {
       method: "POST",
       headers: {
@@ -394,7 +393,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     instructions: string,
     schemaName: string,
     jsonSchema: object,
-    options?: { maxOutputTokens?: number; timeoutMs?: number; signal?: AbortSignal; maxAttempts?: number; beforeAttempt?: () => Promise<void> },
+    options?: StructuredCallOptions & { maxOutputTokens?: number; timeoutMs?: number; beforeAttempt?: () => Promise<void> },
   ): Promise<string> {
     const body = await this.summaryModelChain.run(async (model) => {
       await options?.beforeAttempt?.();
@@ -432,6 +431,9 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
       return response.json();
     }, options);
     const parsed = responseSchema.parse(body);
+    if (parsed.usage) reportStructuredUsage(options, { inputTokens: parsed.usage.input_tokens, outputTokens: parsed.usage.output_tokens,
+      totalTokens: parsed.usage.total_tokens, cachedInputTokens: parsed.usage.input_tokens_details?.cached_tokens ?? null,
+      reasoningTokens: parsed.usage.output_tokens_details?.reasoning_tokens ?? null });
     const texts: string[] = [];
     for (const item of parsed.output) {
       if (item.type !== "message") continue;

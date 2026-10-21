@@ -135,11 +135,6 @@ export class ChatScheduler {
     });
   }
 
-  public recordModelAttempt(): void {
-    // Provider usage logs track attempts. Admission is per optional turn,
-    // never an exception in the middle of an accepted tool workflow.
-  }
-
   public reserveOutput(key: string, kind: "text" | "reaction", limits: ChatActivityLimits, optional: boolean): ((success: boolean) => void) | null {
     type ReservationEvent = Extract<ChatDiagnosticEvent, { event: "chat.output.reservation" }>;
     const reservationId = randomUUID();
