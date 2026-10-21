@@ -1,10 +1,12 @@
 import { z } from "zod";
 
 import { hashContent } from "../assets/content-hash.js";
-import type { ExampleExchange } from "./example-exchange.js";
 import type { EmbeddingsClient } from "./embeddings-client.js";
-import { embedTextsBestEffort } from "./embedding-batch.js";
+import { ConfigurationModelGateway } from "../context/configuration-model-gateway.js";
 import { deriveStyleProfile } from "./character-voice.js";
+import { parseExampleExchanges } from "./example-exchange.js";
+import { isConfigurationContext, type GuardedConfigurationContext } from "../context/guarded-configuration-context.js";
+import { SocialOutputSuppressed } from "./message-origin-store.js";
 
 // Sidecar JSON written next to an uploaded examples.md
 // (guild-assets/{guildId}/examples.bundle.json), self-contained (not
@@ -72,11 +74,14 @@ export function exampleExchangeEmbeddingText(exchange: { tags: string; user: str
  * came from the same model and embedding-text scheme.
  */
 export async function buildExampleExchangeBundle(
-  content: string,
-  exchanges: readonly ExampleExchange[],
+  context: GuardedConfigurationContext,
   embeddingsClient: EmbeddingsClient,
   previousBundle: ExampleExchangeBundle | null = null,
 ): Promise<ExampleExchangeBundle> {
+  if (!isConfigurationContext(context, "examples_upload")) throw new SocialOutputSuppressed();
+  await context.check(); const content = context.material.text; const parsed = parseExampleExchanges(content);
+  if ("error" in parsed) throw new Error("Invalid authored examples configuration");
+  const exchanges = parsed.exchanges;
   const reusable = previousBundle?.embeddingModel === embeddingsClient.modelId
     && previousBundle.embeddingTextVersion === exampleExchangeEmbeddingTextVersion
     ? new Map(previousBundle.exchanges
@@ -85,7 +90,7 @@ export async function buildExampleExchangeBundle(
     : new Map<string, number[] | null>();
   const texts = exchanges.map(exampleExchangeEmbeddingText);
   const missing = [...new Set(texts.filter((text) => !reusable.has(text)))];
-  const fresh = missing.length > 0 ? await embedTextsBestEffort(missing, embeddingsClient) : [];
+  const fresh = missing.length > 0 ? await new ConfigurationModelGateway(null, embeddingsClient).embedConfiguration(context, missing) : [];
   const freshByText = new Map(missing.map((text, index) => [text, fresh[index] ?? null]));
   const embedded = exchanges.map((exchange, index) => ({
     tags: exchange.tags,
@@ -93,6 +98,7 @@ export async function buildExampleExchangeBundle(
     character: exchange.character,
     embedding: reusable.get(texts[index]!) ?? freshByText.get(texts[index]!) ?? null,
   }));
+  await context.check();
   return {
     sourceHash: hashContent(content),
     exchanges: embedded,

@@ -1,3 +1,4 @@
+import { configurationFixture } from "../helpers/configuration-context-fixture.js";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -10,6 +11,8 @@ const exchanges = [
   { tags: "greeting", user: "hi", character: "hey there" },
   { tags: "exam", user: "my exam went badly", character: "rip" },
 ];
+
+const content = exchanges.map((exchange) => `### Example\nTags: ${exchange.tags}\nUser: ${exchange.user}\nCharacter: ${exchange.character}`).join("\n\n");
 
 function previous(overrides: Partial<ExampleExchangeBundle> = {}): ExampleExchangeBundle {
   return {
@@ -25,7 +28,7 @@ describe("buildExampleExchangeBundle", () => {
   it("embeds each example's situation (tags + User line), not the Character reply", async () => {
     const embed = vi.fn((_text: string) => Promise.resolve([1, 0]));
 
-    const bundle = await buildExampleExchangeBundle("content", exchanges, { embed, modelId: "test-model" });
+    const bundle = await buildExampleExchangeBundle(await configurationFixture(content, "examples_upload"), { embed, modelId: "test-model" });
 
     expect(embed.mock.calls.map(([text]) => text)).toEqual(["greeting\nhi", "exam\nmy exam went badly"]);
     expect(bundle.embeddingTextVersion).toBe(exampleExchangeEmbeddingTextVersion);
@@ -34,7 +37,7 @@ describe("buildExampleExchangeBundle", () => {
   it("reuses a previous vector for an unchanged situation, even if the reply text changed", async () => {
     const embed = vi.fn((_text: string) => Promise.resolve([1, 0]));
 
-    const bundle = await buildExampleExchangeBundle("content", exchanges, { embed, modelId: "test-model" }, previous());
+    const bundle = await buildExampleExchangeBundle(await configurationFixture(content, "examples_upload"), { embed, modelId: "test-model" }, previous());
 
     expect(embed.mock.calls.map(([text]) => text)).toEqual(["exam\nmy exam went badly"]);
     expect(bundle.exchanges.map((exchange) => exchange.embedding)).toEqual([[7, 7], [1, 0]]);
@@ -44,7 +47,7 @@ describe("buildExampleExchangeBundle", () => {
     for (const stale of [previous({ embeddingModel: "other-model" }), previous({ embeddingTextVersion: 1 })]) {
       const embed = vi.fn((_text: string) => Promise.resolve([1, 0]));
 
-      const bundle = await buildExampleExchangeBundle("content", exchanges, { embed, modelId: "test-model" }, stale);
+      const bundle = await buildExampleExchangeBundle(await configurationFixture(content, "examples_upload"), { embed, modelId: "test-model" }, stale);
 
       expect(embed).toHaveBeenCalledTimes(2);
       expect(bundle.exchanges[0]!.embedding).toEqual([1, 0]);

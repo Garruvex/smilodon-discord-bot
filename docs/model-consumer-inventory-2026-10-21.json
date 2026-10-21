@@ -34,9 +34,6 @@
   "src/application/chat/guild-memory-selector.ts": [
     "embed"
   ],
-  "src/application/chat/persona-bundle-compiler.ts": [
-    "compilePersonaBundle"
-  ],
   "src/application/chat/persona-lore-selector.ts": [
     "embed"
   ],
@@ -53,6 +50,10 @@
   "src/application/context/channel-summary-scheduler.ts": [
     "extractPersonalMemories"
   ],
+  "src/application/context/configuration-model-gateway.ts": [
+    "analyzeUserCustomization",
+    "compilePersonaBundle"
+  ],
   "src/application/memory/memory-engine.ts": [
     "classifyMemoryConflict",
     "embed"
@@ -61,9 +62,6 @@
     "extractPersonalMemories",
     "generateCharacterData",
     "summarizeChannelMessages"
-  ],
-  "src/infrastructure/discord/commands/common/customize-command.ts": [
-    "analyzeUserCustomization"
   ],
   "src/scripts/replay-character-conversations.ts": [
     "generateCharacterData"

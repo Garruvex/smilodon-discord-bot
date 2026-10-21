@@ -151,8 +151,9 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
     };
   }
 
-  public async analyzeUserCustomization(rawText: string): Promise<UserCustomizationAnalysisResult> {
+  public async analyzeUserCustomization(rawText: string, options?: StructuredCallOptions): Promise<UserCustomizationAnalysisResult> {
     const body = await this.summaryModelChain.run(async (model) => {
+      await options?.beforeAttempt?.();
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
@@ -167,7 +168,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
             json_schema: { name: "user_customization_analysis", strict: true, schema: userCustomizationAnalysisJsonSchema },
           },
         }),
-        signal: AbortSignal.timeout(30_000),
+        signal: options?.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000),
       });
       if (!response.ok) {
         const errorBody: unknown = await response.json().catch(() => null);
@@ -182,7 +183,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
         );
       }
       return response.json();
-    });
+    }, options);
     const parsed = responseSchema.parse(body);
     const analysis = parseUserCustomizationAnalysisOutput(parsed.choices[0]!.message.content);
     if (!analysis.ok) {

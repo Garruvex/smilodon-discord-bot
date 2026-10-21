@@ -177,6 +177,10 @@ export function assemblePersonaBundle(
   return { core, chunks };
 }
 
+export function personaEmbeddingSources(content: string): readonly { heading: string; text: string }[] {
+  return splitLoreChunks(parsePersonalitySections(content).sections.map((section) => ({ heading: section.heading, text: section.body })));
+}
+
 // Coarsest boundary first: paragraphs, then lines, then sentences (kept
 // with their trailing punctuation/whitespace), then a hard character cut.
 function splitTextUnits(text: string, level: number): string[] {

@@ -738,6 +738,7 @@ export function createDependencies(
     logger.child({ component: "persona-source" }),
     personaDriftStore,
     embeddingsClient,
+    guildConfigurationProvider,
   );
   if (characterRuntime) {
     characterRuntime.bindPersonaVersion(async (guildId) => (await personaSource.resolve(guildConfigurationProvider.require(guildId))).personalitySourceHash);

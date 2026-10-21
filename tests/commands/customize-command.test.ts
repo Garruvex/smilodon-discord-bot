@@ -42,6 +42,17 @@ afterEach(() => {
 });
 
 describe("CustomizeCommand", () => {
+  it("does not overwrite preferences changed while a model review is in flight", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, arrayBuffer: () => Promise.resolve(new TextEncoder().encode("Be brief").buffer) }));
+    let current: string | null = null; const save = vi.fn();
+    const store = makeStore({ save, load: () => Promise.resolve(current) });
+    const command = new CustomizeCommand(store, { reply: vi.fn(), analyzeUserCustomization: (): Promise<{ ok: true; markdown: string }> => {
+      current = "- Tone: serious"; return Promise.resolve({ ok: true as const, markdown: "- Tone: brief" });
+    } });
+    const { context, edit } = makeContext({ subcommand: "set", attachment: { name: "style.md", size: 10, url: "https://discord.example/style.md" } });
+    await command.execute(context);
+    expect(save).not.toHaveBeenCalled(); expect(edit).toHaveBeenCalledWith(expect.stringContaining("couldn't review"));
+  });
   it("saves the model's normalized markdown when the analysis accepts the file", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,
@@ -59,7 +70,7 @@ describe("CustomizeCommand", () => {
 
     await command.execute(context);
 
-    expect(analyzeUserCustomization).toHaveBeenCalledWith("Be playful and call me Ash.");
+    expect(analyzeUserCustomization).toHaveBeenCalledWith("Be playful and call me Ash.", expect.objectContaining({ beforeAttempt: expect.any(Function) as unknown }));
     expect(save).toHaveBeenCalledWith("guild", "user", "- Nickname: Ash\n- Tone: playful");
     expect(edit).toHaveBeenCalledWith(expect.stringContaining("Nickname: Ash"));
   });

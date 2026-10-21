@@ -1,5 +1,6 @@
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
 import type { ExampleExchange } from "./example-exchange.js";
+import type { GuardedConfigurationContext } from "../context/guarded-configuration-context.js";
 
 // One retrievable lore/knowledge section of a compiled personality bundle
 // (see persona-bundle-compiler.ts). `embedding` is null when embeddings
@@ -17,6 +18,7 @@ export interface PersonaLoreChunk {
  * not rewrite the persona from conversation context.
  */
 export interface ResolvedPersona {
+  configurationContext?: GuardedConfigurationContext;
   personality: string;
   // Retrievable lore chunks from a compiled personality bundle — empty when
   // no bundle exists or it's stale relative to the current file (see

@@ -95,7 +95,7 @@ export class GuardedConversationContext {
   private readonly identityActors = new Set<string>();
   private aliasObservationIncomplete = false;
   private readonly port: Readonly<GuardedContextPort>;
-  private constructor(port: GuardedContextPort) { this.port = Object.freeze({ ...port }); registered.add(this); }
+  private constructor(port: GuardedContextPort) { this.port = Object.freeze({ ...port }); registered.add(this); Object.seal(this); }
   public get current(): ChannelHistoryMessage { return immutableSnapshot(this.sourceCurrent); }
   public get history(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceHistory); }
   public get replyChain(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceReplyChain); }

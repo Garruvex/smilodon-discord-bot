@@ -417,12 +417,13 @@ export class GeminiChatProvider implements ChatProvider {
     }
   }
 
-  public async analyzeUserCustomization(rawText: string): Promise<UserCustomizationAnalysisResult> {
-    const response = await this.summaryModelChain.run((model) => this.generateStructured(
+  public async analyzeUserCustomization(rawText: string, options?: StructuredCallOptions): Promise<UserCustomizationAnalysisResult> {
+    const response = await this.summaryModelChain.run(async (model) => { await options?.beforeAttempt?.(); return this.generateStructured(
       model,
       buildUserCustomizationAnalysisPrompt(rawText),
       userCustomizationAnalysisJsonSchema,
-    ));
+      undefined, undefined, options?.signal,
+    ); }, options);
     const analysis = parseUserCustomizationAnalysisOutput((response.text ?? "").trim());
     if (!analysis.ok) {
       return { ok: false, reason: analysis.reason ?? "That file couldn't be accepted as a customization." };
@@ -510,14 +511,15 @@ export class GeminiChatProvider implements ChatProvider {
     });
   }
 
-  public async compilePersonaBundle(content: string): Promise<readonly number[]> {
-    const response = await this.summaryModelChain.run((model) => this.generateStructured(
+  public async compilePersonaBundle(content: string, options?: StructuredCallOptions): Promise<readonly number[]> {
+    const response = await this.summaryModelChain.run(async (model) => { await options?.beforeAttempt?.(); return this.generateStructured(
       model,
       buildPersonaBundleCompilationPrompt(content),
       personaBundleCompilationJsonSchema,
       personaBundleCompilationMaxOutputTokens,
       personaBundleCompilationTimeoutMs,
-    ));
+      options?.signal,
+    ); }, options);
     return [...parsePersonaBundleSectionSelection((response.text ?? "").trim(), content)];
   }
 

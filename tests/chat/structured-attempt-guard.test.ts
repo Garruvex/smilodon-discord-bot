@@ -11,7 +11,7 @@ vi.mock("@google/genai", () => ({ GoogleGenAI: vi.fn().mockImplementation(functi
 afterEach(() => { vi.unstubAllGlobals(); generateContent.mockReset(); });
 
 describe.each(["responses", "compatible", "gemini"] as const)("%s structured attempt authorization", (kind) => {
-  it.each(["character", "conflict"] as const)("checks the source guard before each %s fallback", async (operation) => {
+  it.each((["character", "conflict", "preferences", "compile"] as const).filter((operation) => kind !== "compatible" || operation !== "compile"))("checks the source guard before each %s fallback", async (operation) => {
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: "rate_limit" } }), { status: 429 }));
     vi.stubGlobal("fetch", fetch);
     generateContent.mockRejectedValue(new ChatProviderError("limited", 429, "rate_limit"));
@@ -22,7 +22,9 @@ describe.each(["responses", "compatible", "gemini"] as const)("%s structured att
     let attempts = 0;
     const options = { beforeAttempt: (): Promise<void> => ++attempts === 1 ? Promise.resolve() : Promise.reject(new Error("source_revoked")) };
     const pending = operation === "character" ? provider.generateCharacterData!("AUTHORIZED_SENTINEL", {}, options)
-      : provider.classifyMemoryConflict!("AUTHORIZED_OLD", "AUTHORIZED_NEW", options);
+      : operation === "conflict" ? provider.classifyMemoryConflict!("AUTHORIZED_OLD", "AUTHORIZED_NEW", options)
+        : operation === "preferences" ? provider.analyzeUserCustomization!("AUTHORIZED_PREFERENCES", options)
+          : provider.compilePersonaBundle!("## Voice\nAUTHORIZED_CONFIGURATION", options);
     await expect(pending).rejects.toThrow("source_revoked");
     expect(attempts).toBe(2);
     expect(kind === "gemini" ? generateContent : fetch).toHaveBeenCalledOnce();

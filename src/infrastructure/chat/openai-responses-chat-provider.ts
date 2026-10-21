@@ -448,11 +448,12 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     return texts.join("\n").trim();
   }
 
-  public async analyzeUserCustomization(rawText: string): Promise<UserCustomizationAnalysisResult> {
+  public async analyzeUserCustomization(rawText: string, options?: StructuredCallOptions): Promise<UserCustomizationAnalysisResult> {
     const text = await this.callStructuredOutput(
       buildUserCustomizationAnalysisPrompt(rawText),
       "user_customization_analysis",
       userCustomizationAnalysisJsonSchema,
+      options,
     );
     const analysis = parseUserCustomizationAnalysisOutput(text);
     if (!analysis.ok) {
@@ -581,12 +582,12 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     });
   }
 
-  public async compilePersonaBundle(content: string): Promise<readonly number[]> {
+  public async compilePersonaBundle(content: string, options?: StructuredCallOptions): Promise<readonly number[]> {
     const text = await this.callStructuredOutput(
       buildPersonaBundleCompilationPrompt(content),
       "persona_bundle_compilation",
       personaBundleCompilationJsonSchema,
-      { maxOutputTokens: personaBundleCompilationMaxOutputTokens, timeoutMs: personaBundleCompilationTimeoutMs },
+      { ...options, maxOutputTokens: personaBundleCompilationMaxOutputTokens, timeoutMs: personaBundleCompilationTimeoutMs },
     );
     return [...parsePersonaBundleSectionSelection(text, content)];
   }

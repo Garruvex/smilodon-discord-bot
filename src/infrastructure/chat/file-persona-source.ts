@@ -22,6 +22,8 @@ import type { PersonaDriftStore } from "../../application/chat/persona-drift-sto
 import type { PersonaLoreChunk } from "../../application/chat/persona-source.js";
 import type { PersonaSource, ResolvedPersona } from "../../application/chat/persona-source.js";
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
+import { GuardedConfigurationContext } from "../../application/context/guarded-configuration-context.js";
+import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 
 export const defaultPersonality = `You are a friendly Discord community assistant.
 Reply conversationally and concisely in the user's language.
@@ -40,6 +42,7 @@ export class FilePersonaSource implements PersonaSource {
     // of silently comparing vectors from an incompatible semantic space
     // until someone happens to reupload. See stripStaleEmbeddings below.
     private readonly embeddingsClient: EmbeddingsClient | null = null,
+    private readonly profiles: Pick<GuildConfigurationProvider, "find"> | null = null,
   ) {}
 
   public async resolve(profile: GuildConfiguration): Promise<ResolvedPersona> {
@@ -47,10 +50,21 @@ export class FilePersonaSource implements PersonaSource {
     const personaDrift = profile.chat.personaDriftEnabled && this.personaDriftStore
       ? await this.resolvePersonaDrift(profile.guildId, sourceHash)
       : null;
+    const examplePool = this.loadExampleExchanges(profile);
+    const material = { text: personality, loreChunks, examples: examplePool };
+    const fingerprint = hashContent(JSON.stringify(material));
+    const configurationContext = await GuardedConfigurationContext.open({ kind: "persona", guildId: profile.guildId, ownerUserId: null }, material, () => {
+      const current = this.profiles ? this.profiles.find(profile.guildId) : profile;
+      if (!current || resolveGuildPersonalityPath(current, this.runtimeDataDirectory) !== resolveGuildPersonalityPath(profile, this.runtimeDataDirectory) ||
+          resolveGuildExamplesPath(current, this.runtimeDataDirectory) !== resolveGuildExamplesPath(profile, this.runtimeDataDirectory)) return false;
+      const fresh = this.loadPersonaMaterial(current);
+      return hashContent(JSON.stringify({ text: fresh.personality, loreChunks: fresh.loreChunks, examples: this.loadExampleExchanges(current) })) === fingerprint;
+    });
     return {
+      configurationContext,
       personality,
       loreChunks,
-      examplePool: this.loadExampleExchanges(profile),
+      examplePool,
       personaDrift,
       personalitySourceHash: sourceHash,
     };

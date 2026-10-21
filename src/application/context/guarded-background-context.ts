@@ -32,6 +32,7 @@ export class GuardedBackgroundContext {
     Object.defineProperty(this, "messages", { writable: false, configurable: false });
     Object.defineProperty(this, "purpose", { writable: false, configurable: false });
     registered.add(this);
+    Object.seal(this);
   }
 
   public static async open(purpose: BackgroundModelPurpose, messages: readonly ChannelHistoryMessage[], reader: ChannelHistoryReader,

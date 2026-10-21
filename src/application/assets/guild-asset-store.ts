@@ -13,6 +13,7 @@ import { parseExampleExchanges } from "../chat/example-exchange.js";
 import type { PersonaBundleCompiler } from "../chat/persona-bundle-compiler.js";
 import { parsePersonaBundle, serializePersonaBundle } from "../chat/persona-bundle.js";
 import type { EmbeddingsClient } from "../chat/embeddings-client.js";
+import { GuardedConfigurationContext } from "../context/guarded-configuration-context.js";
 
 // The uploaded-personality.md size cap — also reused by FilePersonaSource as
 // the char-truncation limit for the content it sends, so that limit can
@@ -178,7 +179,9 @@ export class GuildAssetStore {
       const previousBundle = parsePersonaBundle(
         await readFile(resolve(directory, "personality.bundle.json"), "utf8").catch(() => "null"),
       );
-      const bundle = await this.personaBundleCompiler.compile(content, previousBundle);
+      const source = await GuardedConfigurationContext.open({ kind: "persona_upload", guildId, ownerUserId: null }, { text: content },
+        async () => (await readFile(resolve(directory, "personality.md"), "utf8").catch(() => "")).trim() === content);
+      const bundle = await this.personaBundleCompiler.compile(source, previousBundle);
       if (!bundle) return [];
       const target = resolve(directory, "personality.bundle.json");
       const temporary = `${target}.tmp`;
@@ -223,7 +226,7 @@ export class GuildAssetStore {
     const temporary = `${target}.tmp`;
     await writeFile(temporary, `${content}\n`, "utf8");
     await rename(temporary, target);
-    await this.embedExamplesBundle(directory, guildId, content, parsed.exchanges);
+    await this.embedExamplesBundle(directory, guildId, content);
     return `${relativeDirectory}/examples.md`;
   }
 
@@ -231,13 +234,15 @@ export class GuildAssetStore {
   // just means this guild's example selection stays lexical-only until the
   // next successful upload (see RelevantExampleExchangeSelector, FilePersonaSource).
   private async embedExamplesBundle(
-    directory: string, guildId: string, content: string, exchanges: readonly { tags: string; user: string; character: string }[],
+    directory: string, guildId: string, content: string,
   ): Promise<void> {
     if (!this.embeddingsClient) return;
     try {
       const target = resolve(directory, "examples.bundle.json");
       const previousBundle = parseExampleExchangeBundle(await readFile(target, "utf8").catch(() => "null"));
-      const bundle = await buildExampleExchangeBundle(content, exchanges, this.embeddingsClient, previousBundle);
+      const source = await GuardedConfigurationContext.open({ kind: "examples_upload", guildId, ownerUserId: null }, { text: content },
+        async () => (await readFile(resolve(directory, "examples.md"), "utf8").catch(() => "")).trim() === content);
+      const bundle = await buildExampleExchangeBundle(source, this.embeddingsClient, previousBundle);
       const temporary = `${target}.tmp`;
       await writeFile(temporary, serializeExampleExchangeBundle(bundle), "utf8");
       await rename(temporary, target);

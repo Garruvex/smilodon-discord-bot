@@ -5,7 +5,10 @@ import type { ChatProvider } from "./chat-provider.js";
 import { personaLoreEmbeddingText, personaLoreEmbeddingTextVersion, type PersonaBundle } from "./persona-bundle.js";
 import { assemblePersonaBundle } from "./persona-bundle-compilation.js";
 import type { EmbeddingsClient } from "./embeddings-client.js";
-import { embedTextsBestEffort } from "./embedding-batch.js";
+import { ConfigurationModelGateway } from "../context/configuration-model-gateway.js";
+import { isConfigurationContext, type GuardedConfigurationContext } from "../context/guarded-configuration-context.js";
+import { safeFailure } from "../diagnostics/chat-diagnostics.js";
+import { SocialOutputSuppressed } from "./message-origin-store.js";
 
 // Independent classification samples per upload (self-consistency) — a
 // section is only treated as lore if a majority of samples agree, so one
@@ -28,11 +31,12 @@ const classificationMajorityThreshold = Math.floor(classificationSampleCount / 2
  * file when no bundle is present.
  */
 export class PersonaBundleCompiler {
+  private readonly gateway: ConfigurationModelGateway;
   public constructor(
-    private readonly provider: ChatProvider,
-    private readonly embeddingsClient: EmbeddingsClient | null,
+    provider: ChatProvider,
+    embeddingsClient: EmbeddingsClient | null,
     private readonly logger: Logger | null = null,
-  ) {}
+  ) { this.gateway = new ConfigurationModelGateway(provider, embeddingsClient); }
 
   // `previousBundle` (the guild's last compiled bundle, if any) lets a
   // reupload reuse embeddings for chunks whose text didn't change — most
@@ -40,11 +44,13 @@ export class PersonaBundleCompiler {
   // every time is pure waste. Purely a cost optimization: a miss (no
   // previous bundle, or every chunk's text changed) just re-embeds
   // everything, same as before this existed.
-  public async compile(content: string, previousBundle: PersonaBundle | null = null): Promise<PersonaBundle | null> {
-    if (!this.provider.compilePersonaBundle) return null;
+  public async compile(context: GuardedConfigurationContext, previousBundle: PersonaBundle | null = null): Promise<PersonaBundle | null> {
+    if (!isConfigurationContext(context, "persona_upload")) throw new SocialOutputSuppressed();
+    await context.check(); const content = context.material.text;
+    if (!this.gateway.canCompile) return null;
     try {
       const samples = await Promise.all(
-        Array.from({ length: classificationSampleCount }, () => this.provider.compilePersonaBundle!(content)),
+        Array.from({ length: classificationSampleCount }, () => this.gateway.compile(context)),
       );
       const votes = new Map<number, number>();
       for (const sample of samples) {
@@ -59,7 +65,7 @@ export class PersonaBundleCompiler {
       // same embeddings provider+model+dimensionality as this compile —
       // otherwise switching providers could reuse vectors from an
       // incompatible semantic space (see EmbeddingsClient.modelId).
-      const embeddingModel = this.embeddingsClient?.modelId ?? null;
+      const embeddingModel = this.gateway.embeddingModelId;
       const previousEmbeddingByText = previousBundle?.embeddingModel === embeddingModel
         && previousBundle.embeddingTextVersion === personaLoreEmbeddingTextVersion
         ? new Map(
@@ -70,13 +76,13 @@ export class PersonaBundleCompiler {
         : new Map<string, number[] | null>();
       const embeddingTexts = result.chunks.map(personaLoreEmbeddingText);
       const textsNeedingEmbedding = [...new Set(embeddingTexts.filter((text) => !previousEmbeddingByText.has(text)))];
-      const freshEmbeddings = this.embeddingsClient && textsNeedingEmbedding.length > 0
-        ? await embedTextsBestEffort(textsNeedingEmbedding, this.embeddingsClient)
+      const freshEmbeddings = embeddingModel && textsNeedingEmbedding.length > 0
+        ? await this.gateway.embedConfiguration(context, textsNeedingEmbedding)
         : [];
       const freshEmbeddingByText = new Map(textsNeedingEmbedding.map((text, index) => [text, freshEmbeddings[index] ?? null]));
 
       const failedEmbeddingCount = [...freshEmbeddingByText.values()].filter((embedding) => embedding === null).length;
-      if (this.embeddingsClient && failedEmbeddingCount > 0) {
+      if (embeddingModel && failedEmbeddingCount > 0) {
         this.logger?.warn(
           { failedEmbeddingCount, chunkCount: result.chunks.length },
           "Embedding persona lore chunks partially failed; those chunks will be retrievable lexically",
@@ -89,6 +95,7 @@ export class PersonaBundleCompiler {
           ?? freshEmbeddingByText.get(embeddingTexts[index]!)
           ?? null,
       }));
+      await context.check();
       return {
         sourceHash: hashContent(content),
         core: result.core,
@@ -98,7 +105,8 @@ export class PersonaBundleCompiler {
         embeddingTextVersion: personaLoreEmbeddingTextVersion,
       };
     } catch (error) {
-      this.logger?.warn({ error }, "Personality bundle compilation failed; the full file will be sent as-is");
+      if (error instanceof SocialOutputSuppressed) throw error;
+      this.logger?.warn({ failure: safeFailure(error) }, "Personality bundle compilation failed; the full file will be sent as-is");
       return null;
     }
   }

@@ -251,6 +251,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
             { guildId: message.guildId, sourceMessageId: message.id }, reserve);
         },
         personality: persona.personality,
+        ...(persona.configurationContext ? { configurationContext: persona.configurationContext } : {}),
         examplePool: persona.examplePool,
         loreChunks: persona.loreChunks,
         personaDrift: persona.personaDrift,

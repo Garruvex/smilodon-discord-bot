@@ -10,8 +10,10 @@ import type { ChannelMessageSummarizer } from "../context/channel-message-summar
 import type { CausalChainLink } from "../memory/memory.js";
 import type { ChannelMemoryMode } from "../memory/memory-channel-policy.js";
 import type { ParticipationDecision } from "./participation-decision.js";
+import type { GuardedConfigurationContext } from "../context/guarded-configuration-context.js";
 
 export interface ChatRequest {
+  configurationContext?: GuardedConfigurationContext;
   turnPlan?: ActiveConversationTurnPlan;
   contextLease?: GuardedConversationContext;
   interactionMode?: ConversationInteraction;
@@ -474,7 +476,7 @@ export interface ChatReplyProvider {
 }
 
 export interface UserCustomizationAnalyzer {
-  analyzeUserCustomization(rawText: string): Promise<UserCustomizationAnalysisResult>;
+  analyzeUserCustomization(rawText: string, options?: StructuredCallOptions): Promise<UserCustomizationAnalysisResult>;
 }
 
 // Standalone call (own prompt/schema, outside the main reply turn — same
@@ -502,7 +504,7 @@ export interface ConversationConsolidator {
 // see persona-bundle-compiler.ts, which owns turning the merged vote into
 // the final core/chunks split.
 export interface PersonaCompiler {
-  compilePersonaBundle(content: string): Promise<readonly number[]>;
+  compilePersonaBundle(content: string, options?: StructuredCallOptions): Promise<readonly number[]>;
 }
 
 // Standalone call nudging the guild's persona-drift overlay from recent

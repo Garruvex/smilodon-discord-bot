@@ -3,8 +3,11 @@ import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 import type { UserCustomizationStore } from "../../../../application/chat/user-customization-store.js";
 import type { ChatProvider } from "../../../../application/chat/chat-provider.js";
 import { userCustomizationLimits, validateUserCustomization } from "../../../../application/chat/user-customization-policy.js";
+import { GuardedConfigurationContext } from "../../../../application/context/guarded-configuration-context.js";
+import { ConfigurationModelGateway } from "../../../../application/context/configuration-model-gateway.js";
 
 export class CustomizeCommand implements BotCommand {
+  private readonly gateway: ConfigurationModelGateway;
   public readonly definition = {
     name: "customize",
     description: "Customize how the chatbot interacts with you specifically. Its identity and rules stay the same.",
@@ -31,8 +34,8 @@ export class CustomizeCommand implements BotCommand {
     // dependencies.ts) — analysis of a customization submission is exactly
     // the kind of cheap structured-extraction task the utility split exists
     // for, not the main persona model.
-    private readonly utilityProvider: ChatProvider | null,
-  ) {}
+    utilityProvider: ChatProvider | null,
+  ) { this.gateway = new ConfigurationModelGateway(utilityProvider); }
 
   public async execute(context: CommandContext): Promise<void> {
     if (!context.interaction.guildId) {
@@ -99,13 +102,17 @@ export class CustomizeCommand implements BotCommand {
     // plain style-preference fields and strips anything that reads as an
     // attempt to redefine identity or override rules, rather than storing
     // the user's raw text verbatim.
-    if (!this.utilityProvider?.analyzeUserCustomization) {
+    if (!this.gateway.canAnalyze) {
       await context.responses.edit("Chat isn't configured on this bot, so customization can't be reviewed right now.");
       return;
     }
     let markdown: string;
+    const previous = await this.store.load(guildId, userId);
+    const source = await GuardedConfigurationContext.open({ kind: "user_preferences", guildId, ownerUserId: userId }, { text: validation.value },
+      async () => await this.store.load(guildId, userId) === previous);
     try {
-      const analysis = await this.utilityProvider.analyzeUserCustomization(validation.value);
+      const analysis = await this.gateway.analyze(source);
+      await source.check();
       if (!analysis.ok) {
         await context.responses.edit(`That customization wasn't accepted: ${analysis.reason}`);
         return;
@@ -116,6 +123,7 @@ export class CustomizeCommand implements BotCommand {
       return;
     }
 
+    await source.check();
     await this.store.save(guildId, userId, markdown);
     await context.responses.edit(
       `Your customization has been saved as:\n\`\`\`\n${markdown.slice(0, 1_500)}\n\`\`\`\n` +

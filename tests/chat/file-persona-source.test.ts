@@ -47,7 +47,7 @@ describe("FilePersonaSource", () => {
   it("returns the stable default persona when no guild persona is configured", async () => {
     const source = new FilePersonaSource("unused", logger());
 
-    await expect(source.resolve(profile())).resolves.toEqual({
+    await expect(source.resolve(profile())).resolves.toMatchObject({
       personality: defaultPersonality,
       loreChunks: [],
       examplePool: [],
@@ -71,6 +71,9 @@ describe("FilePersonaSource", () => {
     expect(resolved.personality).toBe("A stable custom persona.");
     expect(resolved.loreChunks).toEqual([]);
     expect(resolved.examplePool).toEqual([]);
+    await expect(resolved.configurationContext?.check()).resolves.toBeUndefined();
+    writeFileSync(join(assetDirectory, "personality.md"), "An edited persona.", "utf8");
+    await expect(resolved.configurationContext?.check()).rejects.toThrow();
   });
 
   it("uses a compiled bundle's core/chunks when its hash matches the current file", async () => {
