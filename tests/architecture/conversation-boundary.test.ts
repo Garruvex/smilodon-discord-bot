@@ -20,6 +20,8 @@ describe("conversation execution ownership", () => {
         const module = node.moduleSpecifier.text;
         const owner = file.endsWith(`${path.sep}application${path.sep}chat${path.sep}chat-conversation-service.ts`);
         if (module.endsWith("/guarded-chat-turn.js") && !owner) offenders.push(path.relative(root, file));
+        if (module.endsWith("/synthetic-replay-context.js") && !file.includes(`${path.sep}scripts${path.sep}replay-`) &&
+            !file.endsWith(`${path.sep}chat${path.sep}contextual-replay-policy.ts`)) offenders.push(path.relative(root, file));
         const bindings = node.importClause?.namedBindings;
         if (module.endsWith("/conversation-effects.js") && !owner && bindings &&
           (ts.isNamespaceImport(bindings) || bindings.elements.some((item) => (item.propertyName ?? item.name).text === "authorizeConversationEffects"))) offenders.push(path.relative(root, file));

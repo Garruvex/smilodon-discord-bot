@@ -27,6 +27,19 @@ Provider routing revision 2 is shared between bootstrap/runtime and the replay: 
 
 Remaining release gates: independent semantic review; an explicitly selected deployed shadow/live channel with deployed SHA; full-turn p50/p95 including coalescing and actual generation/delivery; a cost budget agreed before pilot results; and actual Discord delivery/notification observation. Memory, derived summaries, learned state, images and tools remain excluded from guarded text until the separate source migration passes. No production deployment, activation or Discord send was performed.
 
+### Full application lifecycle supplement
+
+The final `conversation-lifecycle-live-with-verification-2026-10-21.json` adds **21/21 passing real-provider application turns**: all seven modes in Traditional Chinese, English and Japanese. It includes actual configured decision, reply and optional attribution-verification calls, registered context, policy/effect validation and SQLite session persistence. Bare pings have an earlier untagged substantive request. A denied-source sentinel is excluded before every tested provider boundary. Application p50 was **6.712 s**, p95 **10.504 s**. Delivery and source access are simulated, and coalescing/Discord adapters are verified separately by production-component tests. This is not deployed Discord latency or human acceptance of generated wording. The earlier lifecycle artifact without `with-verification` omitted the injected verifier and is retained as a narrower historical probe.
+
+Reproduce with source dependencies or the compiled production entry point (inventory is the default without `--live`):
+
+```sh
+npm run eval:conversation -- --live --instance pinecone --output lifecycle.json
+node dist/scripts/replay-conversation-lifecycle.js --live --instance pinecone --output /tmp/lifecycle.json
+```
+
+Final local checks after the supplement: **4,856 passed / 7 skipped**, typecheck, production compilation, changed-file ESLint, migration consistency and whitespace checks passed. The seven skipped suites need external database services; no newly skipped chat tests were introduced. Architecture tests prevent production consumers from importing the synthetic context builder.
+
 ## Implemented checkpoints
 
 | Commit | Checkpoint |

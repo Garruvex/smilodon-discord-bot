@@ -23,6 +23,8 @@
     "eval:character-replay": "tsx src/scripts/replay-character-conversations.ts",
     "eval:contextual": "tsx src/scripts/replay-contextual-participation.ts",
     "eval:contextual:built": "node dist/scripts/replay-contextual-participation.js",
+    "eval:conversation": "tsx src/scripts/replay-conversation-lifecycle.ts",
+    "eval:conversation:built": "node dist/scripts/replay-conversation-lifecycle.js",
     "dev": "tsx watch src/bootstrap/start.ts",
     "dev:once": "tsx src/bootstrap/start.ts",
     "db:backfill-memories": "tsx src/scripts/migrate-memories-to-central-schema.ts",
