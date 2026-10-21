@@ -28,6 +28,8 @@ Validation: 103 focused tests passed; the full suite passed 4,881 tests with 7 s
 
 ## Remaining implementation checkpoints (updated)
 
+Checkpoint 4 inventories the remaining model consumers in [model consumer migration](model-consumer-migration-2026-10-21.md) and its machine-readable artifact. A type-aware architecture test detects new/removed capability consumers, including bound callbacks; gateway/lease imports are restricted to their application owner. This inventories the work and prevents ordinary unreviewed growth. It does not close the remaining legacy/raw consumer gaps.
+
 1. Effective capability/source availability is now surfaced in operator status; expand it as each new source migrates.
 2. The first background source boundary is implemented; complete the provider-consumer inventory and migrate the remaining consumers behind the shared mandatory boundary.
 3. Migrate summary and personal-memory producers and records with claim-level evidence, subject/purpose/audience authorization and invalidation. Legacy batch identifiers alone do not establish re-readable source provenance.

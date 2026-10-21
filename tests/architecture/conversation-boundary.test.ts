@@ -20,6 +20,9 @@ describe("conversation execution ownership", () => {
         const module = node.moduleSpecifier.text;
         const owner = file.endsWith(`${path.sep}application${path.sep}chat${path.sep}chat-conversation-service.ts`);
         if (module.endsWith("/guarded-chat-turn.js") && !owner) offenders.push(path.relative(root, file));
+        if ((module.endsWith("/background-model-gateway.js") || module.endsWith("/guarded-background-context.js")) &&
+            !file.endsWith(`${path.sep}context${path.sep}channel-summary-scheduler.ts`) &&
+            !file.endsWith(`${path.sep}context${path.sep}background-model-gateway.ts`)) offenders.push(path.relative(root, file));
         if (module.endsWith("/synthetic-replay-context.js") && !file.includes(`${path.sep}scripts${path.sep}replay-`) &&
             !file.endsWith(`${path.sep}chat${path.sep}contextual-replay-policy.ts`)) offenders.push(path.relative(root, file));
         const bindings = node.importClause?.namedBindings;

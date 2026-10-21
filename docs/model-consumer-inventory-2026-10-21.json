@@ -1,0 +1,79 @@
+{
+  "src/application/chat/caching-embeddings-client.ts": [
+    "embed",
+    "embedMany"
+  ],
+  "src/application/chat/character-decision.ts": [
+    "generateCharacterData"
+  ],
+  "src/application/chat/character-modules/voice.ts": [
+    "reply"
+  ],
+  "src/application/chat/character-runtime.ts": [
+    "generateCharacterData",
+    "reply"
+  ],
+  "src/application/chat/chat-conversation-service.ts": [
+    "evolvePersonaDrift",
+    "extractPersonalMemories",
+    "reply",
+    "summarizeDroppedExchanges",
+    "summarizeReplyChainOverflow",
+    "verifyAttribution"
+  ],
+  "src/application/chat/embedding-batch.ts": [
+    "embed",
+    "embedMany"
+  ],
+  "src/application/chat/example-exchange-selector.ts": [
+    "embed"
+  ],
+  "src/application/chat/guarded-chat-turn.ts": [
+    "reply"
+  ],
+  "src/application/chat/guild-memory-selector.ts": [
+    "embed"
+  ],
+  "src/application/chat/persona-bundle-compiler.ts": [
+    "compilePersonaBundle"
+  ],
+  "src/application/chat/persona-lore-selector.ts": [
+    "embed"
+  ],
+  "src/application/chat/tools/generate-self-image-tool.ts": [
+    "generateReferenceImage"
+  ],
+  "src/application/chat/user-memory-selector.ts": [
+    "embed"
+  ],
+  "src/application/context/background-model-gateway.ts": [
+    "extractPersonalMemories",
+    "summarizeChannelMessages"
+  ],
+  "src/application/context/channel-summary-scheduler.ts": [
+    "extractPersonalMemories"
+  ],
+  "src/application/memory/memory-engine.ts": [
+    "classifyMemoryConflict",
+    "embed"
+  ],
+  "src/bootstrap/dependencies.ts": [
+    "extractPersonalMemories",
+    "generateCharacterData",
+    "summarizeChannelMessages"
+  ],
+  "src/infrastructure/discord/commands/common/customize-command.ts": [
+    "analyzeUserCustomization"
+  ],
+  "src/scripts/replay-character-conversations.ts": [
+    "generateCharacterData"
+  ],
+  "src/scripts/replay-contextual-participation.ts": [
+    "generateCharacterData"
+  ],
+  "src/scripts/replay-conversation-lifecycle.ts": [
+    "generateCharacterData",
+    "reply",
+    "verifyAttribution"
+  ]
+}
