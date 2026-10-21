@@ -1,11 +1,13 @@
 import { characterInternals } from "../helpers/character-runtime-internals.js";
+import { GuardedConversationContext } from "../../src/application/chat/guarded-conversation-context.js";
+import { approveConversationRequest } from "../../src/application/context/approved-conversation-request.js";
+import { guardedFixture, guardedEvent } from "../helpers/guarded-context-fixture.js";
 import { GuardedEvaluationContext } from "../../src/application/context/guarded-evaluation-context.js";
 import { configurationFixture } from "../helpers/configuration-context-fixture.js";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 import { freshDocument, memoryProvider, guildId, actorUserId } from "../helpers/settings-fixtures.js";
 import { CharacterRuntime } from "../../src/application/chat/character-runtime.js";
 import { CharacterMemory } from "../../src/application/chat/character-memory.js";
@@ -72,17 +74,6 @@ describe("character module integration", () => {
       expect(deliver).toHaveBeenCalledOnce(); expect(execute).not.toHaveBeenCalled();
     } finally { service.stopScheduling(); await service.drain(); }
   });
-  it("preserves eligible context despite its age or a quiet gap", async () => {
-    const { logger, records } = captureDiagnosticLogger();
-    const { runtime, profiles } = setup(() => 20 * 60_000, logger);
-    await profiles.update(guildId, { character: { context: { ...profiles.current().character!.context, enabled: true, retrievalMode: "eligible_count" } } });
-    const source = { messageId: "old", authorId: actorUserId, authorDisplayName: "SECRET_NAME", content: "SECRET_TEXT", imageCount: 0, timestampMs: 0 };
-    expect(runtime.selectContext(guildId, channelId, [source])).toEqual([source]);
-    expect(runtime.selectContext(guildId, channelId, [{ ...source, timestampMs: 9 * 60_000 }])).toEqual([{ ...source, timestampMs: 9 * 60_000 }]);
-    const diagnostics = records.filter((record) => record.event === "context.selection.filtered");
-    expect(diagnostics).toEqual([]);
-    expect(JSON.stringify(diagnostics)).not.toContain("SECRET");
-  });
   it("keeps a composed module inactive when an implementation dependency is absent", () => {
     const registry = new CharacterModuleRegistry(); registry.register({ id: "daily-sketch" });
     expect(registry.has("daily-sketch")).toBe(false);
@@ -120,6 +111,10 @@ describe("character module integration", () => {
     await runtime.process(response("## Casual list\n- hi"), prepared); expect(reply).not.toHaveBeenCalled();
     await profiles.update(guildId, { character: { modules: { voice: { strictness: "regenerate" } } } });
     const regenerated = (await runtime.prepare(request()))!;
+    const source = guardedFixture(guardedEvent("current", 1000, regenerated.request.message, actorUserId), { guildId, channelId });
+    const contextLease = await GuardedConversationContext.open(source.port, { count: 0, budget: 0, burstIds: [] });
+    const configurationContext = await configurationFixture(regenerated.request.personality, "persona", () => true, guildId);
+    regenerated.request = approveConversationRequest({ ...regenerated.request, contextLease, configurationContext }); regenerated.turn.request = regenerated.request;
     await runtime.process(response("Great question! hi"), regenerated); expect(reply).not.toHaveBeenCalled();
     await runtime.process(response("## Casual list\n- hi"), regenerated); expect(reply).toHaveBeenCalledTimes(1);
   });

@@ -1410,7 +1410,7 @@ describe("ChatConversationService", () => {
     // never touched the guild-wide drift overlay from this isolated channel.
     await new Promise((resolveTick) => setTimeout(resolveTick, 20));
     expect(evolvePersonaDrift).not.toHaveBeenCalled();
-    await expect(driftStore.get("guild")).resolves.toBeNull();
+    await expect(driftStore.getScoped("guild", "channel")).resolves.toBeNull();
     rmSync(driftDirectory, { recursive: true, force: true });
   });
 

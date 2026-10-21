@@ -4,6 +4,24 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const root = path.resolve(__dirname, "../../src");
+const authorityModule = /\/(?:approved-(?:conversation-request|model-operation|memory-ingest|decision-input)|guarded-(?:conversation-context|background-context|configuration-context|evaluation-context|memory-gateway|model-transport|embedding-transport)|conversation-(?:source-registry|configuration|effects)|(?:background|conversation|configuration)-model-gateway|memory-engine|character-memory|synthetic-replay-context|openai-(?:compatible-chat-provider|responses-chat-provider|embeddings-client)|gemini-(?:chat-provider|embeddings-client)|http-decision-provider)\.(?:js|ts)$/u;
+function indirectAuthorityImports(source: ts.SourceFile): string[] {
+  const imports: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isExportDeclaration(node) && !node.isTypeOnly && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier) && authorityModule.test(node.moduleSpecifier.text)) {
+      const values = node.exportClause && ts.isNamedExports(node.exportClause) ? node.exportClause.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
+      if (values.some((value) => value !== "defaultPersonality") || values.includes("defaultPersonality") && !node.moduleSpecifier.text.endsWith("/conversation-configuration.js")) imports.push(node.moduleSpecifier.text);
+    }
+    if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || ts.isIdentifier(node.expression) && node.expression.text === "require")) {
+      const module = node.arguments[0]; if (module && ts.isStringLiteral(module) && authorityModule.test(module.text)) imports.push(module.text);
+    }
+    if (ts.isImportEqualsDeclaration(node) && !node.isTypeOnly && ts.isExternalModuleReference(node.moduleReference)) {
+      const module = node.moduleReference.expression; if (module && ts.isStringLiteral(module) && authorityModule.test(module.text)) imports.push(module.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source); return imports;
+}
 function sources(directory: string): string[] {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const file = path.join(directory, entry.name);
@@ -26,6 +44,9 @@ describe("conversation execution ownership", () => {
         if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) continue;
         const module = node.moduleSpecifier.text;
         const relative = path.relative(root, file).replaceAll(path.sep, "/");
+        if (/\/(?:openai-(?:compatible-chat-provider|responses-chat-provider|embeddings-client)|gemini-(?:chat-provider|embeddings-client)|http-decision-provider)\.js$/u.test(module) && !node.importClause?.isTypeOnly) {
+          if (relative !== "bootstrap/dependencies.ts" && !(module.endsWith("/http-decision-provider.js") && ["scripts/replay-contextual-participation.ts", "scripts/replay-conversation-lifecycle.ts"].includes(relative))) offenders.push(relative);
+        }
         if (module.endsWith("/approved-model-operation.js") && !node.importClause?.isTypeOnly) {
           const bindings = node.importClause?.namedBindings;
           const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
@@ -140,6 +161,24 @@ describe("conversation execution ownership", () => {
       expect(source, path.relative(root, file)).not.toMatch(/resolve(?:ReplyChain|ChannelHistory)\(/u);
       expect(source, path.relative(root, file)).not.toMatch(/result\.(?:reactionEmoji|historyReactions)/u);
     }
+  });
+  it("forbids value re-exports, dynamic imports and require aliases of protected authorities/transports", () => {
+    const offenders = sources(root).flatMap((file) => indirectAuthorityImports(ts.createSourceFile(file, fs.readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true)).map((module) => ({ file: path.relative(root, file), module })));
+    expect(offenders).toEqual([]);
+  });
+  it.each([
+    'export { approveModelOperation as issue } from "./approved-model-operation.js";',
+    'export * from "./approved-memory-ingest.js";',
+    'export * as raw from "./memory-engine.js";',
+    'const owner = await import("./conversation-source-registry.js");',
+    'const owner = require("./openai-responses-chat-provider.js");',
+    'import owner = require("./guarded-model-transport.js");',
+  ])("recognizes indirect authority access: %s", (text) => {
+    expect(indirectAuthorityImports(ts.createSourceFile("fixture.ts", text, ts.ScriptTarget.Latest, true))).toHaveLength(1);
+  });
+  it("permits type-only exports and the public default personality constant", () => {
+    const source = 'export type { ModelAuthority } from "./approved-model-operation.js"; export { type Memory } from "./memory-engine.js"; export { defaultPersonality } from "./conversation-configuration.js";';
+    expect(indirectAuthorityImports(ts.createSourceFile("fixture.ts", source, ts.ScriptTarget.Latest, true))).toEqual([]);
   });
   it("has one live context path independently of participation rollout", () => {
     const service = fs.readFileSync(path.join(root, "application/chat/chat-conversation-service.ts"), "utf8");

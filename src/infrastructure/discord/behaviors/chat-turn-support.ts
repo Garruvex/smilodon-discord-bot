@@ -15,7 +15,7 @@ import type { SocialChatEligibility, SocialTrigger } from "./social-chat-eligibi
 import { SocialOutputSuppressed, type MessageOriginStore, type MessageOrigin, type MessageOriginRecord } from "../../../application/chat/message-origin-store.js";
 
 import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
-import type { ChannelHistoryMessage, ChatImage, ChatSource, GeneratedChatImage } from "../../../application/chat/chat-provider.js";
+import type { ChannelHistoryMessage, ChatSource, GeneratedChatImage } from "../../../application/chat/chat-provider.js";
 import { planChatDelivery } from "../../../application/chat/chat-message-chunker.js";
 import { planImageDelivery } from "../../../application/chat/chat-image-delivery.js";
 import type { GuildConfiguration } from "../../../config/guild-configuration.js";
@@ -289,46 +289,6 @@ export class ChatTurnSupport {
     });
   }
 
-  public selectImageAttachments(
-    current: readonly Attachment[],
-    // Reply-chain attachments grouped by hop, nearest-to-current hop first.
-    chainNearestFirst: readonly (readonly Attachment[])[],
-    limit: number,
-  ): {
-    selected: Array<{ attachment: Attachment; source: ChatImage["source"]; sourceIndex: number }>;
-    droppedUnsupported: number;
-    droppedOverLimit: number;
-  } {
-    const isImageLike = (attachment: Attachment): boolean => Boolean(attachment.contentType?.startsWith("image/"));
-    const chainImageLike = chainNearestFirst.flatMap((attachments) => attachments.filter(isImageLike));
-    const currentImageLike = current.filter(isImageLike);
-    const supportedCurrent = currentImageLike.filter((attachment) => this.isSupportedImageAttachment(attachment));
-    const supportedChain = chainImageLike.filter((attachment) => this.isSupportedImageAttachment(attachment));
-    const droppedUnsupportedAttachments = [
-      ...currentImageLike.filter((attachment) => !this.isSupportedImageAttachment(attachment)),
-      ...chainImageLike.filter((attachment) => !this.isSupportedImageAttachment(attachment)),
-    ];
-    if (droppedUnsupportedAttachments.length > 0) {
-      this.logger.warn(
-        {
-          droppedCount: droppedUnsupportedAttachments.length,
-        },
-        "Dropped image attachment(s): unsupported content type or size",
-      );
-    }
-    const droppedUnsupported = droppedUnsupportedAttachments.length;
-    // Current message first, then chain images nearest-to-current first, so
-    // recency wins once truncated to the limit — the cap is a hard total
-    // across both sources combined, not per-source or per-hop.
-    const candidates: Array<{ attachment: Attachment; source: ChatImage["source"] }> = [
-      ...supportedCurrent.map((attachment) => ({ attachment, source: "current_message" as const })),
-      ...supportedChain.map((attachment) => ({ attachment, source: "reply_chain" as const })),
-    ];
-    const selected = candidates.slice(0, limit).map((item, sourceIndex) => ({ ...item, sourceIndex }));
-    const droppedOverLimit = Math.max(0, candidates.length - limit);
-    return { selected, droppedUnsupported, droppedOverLimit };
-  }
-
   private normalizeContentType(contentType: string | null): string | null {
     return contentType?.split(";", 1)[0]?.trim().toLowerCase() ?? null;
   }
@@ -346,22 +306,6 @@ export class ChatTurnSupport {
       attachment.size > 0 &&
       attachment.size <= maximumImageBytes,
     );
-  }
-
-  public async loadImages(
-    attachments: readonly { attachment: Attachment; source: ChatImage["source"]; sourceIndex: number }[],
-  ): Promise<{ images: ChatImage[]; droppedFailed: number }> {
-    const images: ChatImage[] = [];
-    let droppedFailed = 0;
-    for (const { attachment, source, sourceIndex } of attachments) {
-      const dataUrl = await this.loadImageDataUrl(attachment);
-      if (dataUrl) {
-        images.push({ dataUrl, source, sourceIndex });
-      } else {
-        droppedFailed += 1;
-      }
-    }
-    return { images, droppedFailed };
   }
 
   private async loadImageDataUrl(attachment: Attachment, signal?: AbortSignal): Promise<string | null> {
