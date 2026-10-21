@@ -1,6 +1,7 @@
 import { GuardedConversationContext, isGuardedContext, projectDecisionContext, type GuardedContextPort } from "./guarded-conversation-context.js";
 import { ConversationModelGateway } from "../context/conversation-model-gateway.js";
 import { repairConversationRequest } from "../context/approved-conversation-request.js";
+import { isBackgroundContext, type GuardedBackgroundContext } from "../context/guarded-background-context.js";
 import { selectDecisionContext } from "./decision-context-selection.js";
 import { resolveConversationTurnPlan, type ConversationTurnPlan } from "./conversation-turn-plan.js";
 import { contextualDecisionWireRevision } from "./contextual-decision-contract.js";
@@ -172,7 +173,7 @@ export class CharacterRuntime {
   }
   private query(turn: CharacterTurn): CharacterCandidateQuery {
     return { guildId: turn.request.guildId, channelId: turn.request.channelId, userId: turn.request.currentUser.id, now: turn.validationNow ?? turn.now,
-      ...(isGuardedContext(turn.request.contextLease) ? { sourceContext: turn.request.contextLease } : {}) };
+      ...(isGuardedContext(turn.request.contextLease) ? { sourceContext: turn.request.contextLease } : turn.backgroundContext ? { sourceContext: turn.backgroundContext } : {}) };
   }
   private profile(turn: CharacterTurn): GuildConfiguration { return this.profiles.require(turn.request.guildId); }
   private async generate(prompt: string, schema = textSchema, turn?: CharacterTurn): Promise<unknown> {
@@ -182,11 +183,11 @@ export class CharacterRuntime {
       if (guarded) {
         await turn.request.beforeModelAttempt?.();
         if (!await turn.request.contextLease!.validate()) throw new SocialOutputSuppressed();
-      }
+      } else if (turn?.backgroundContext) await turn.backgroundContext.check();
     };
     try {
       await check();
-      const result = await this.utility.generateCharacterData(prompt, schema, guarded ? { beforeAttempt: check,
+      const result = await this.utility.generateCharacterData(prompt, schema, guarded || turn?.backgroundContext ? { beforeAttempt: check,
         ...(turn?.request.turnSignal ? { signal: turn.request.turnSignal } : {}) } : undefined);
       await check(); return result;
     } catch (error) { if (error instanceof SocialOutputSuppressed) throw error; return null; }
@@ -200,7 +201,7 @@ export class CharacterRuntime {
       subjectType: "persona", subjectId: "character", topic: "character", slot, statement, status: "active", source: "consolidation", importance: 1,
       embedding: null, embeddingModel: null, expiresAt: null, now: turn.now, sourceMessageId: null,
       assertedByUserId: null, structuredValue: { personaHash: personaFingerprint(turn.request) }, sourceChannelId: null,
-      ...(isGuardedContext(turn.request.contextLease) ? { sourceContext: turn.request.contextLease, audience: "channel", channelId: turn.request.channelId,
+      ...(isGuardedContext(turn.request.contextLease) || turn.backgroundContext ? { sourceContext: turn.backgroundContext ?? turn.request.contextLease!, audience: "channel", channelId: turn.request.channelId,
         isolationChannelId: resolveChannelMemoryMode(this.profile(turn).chat.channelMemoryModes, turn.request.channelId) === "isolated" ? turn.request.channelId : null } : {}) };
   }
   private ready(turn: CharacterTurn, id: CharacterModuleId): boolean {
@@ -434,11 +435,21 @@ export class CharacterRuntime {
   public extractConversationMemories(userMessage: string, reply: ChatResponse, prepared: CharacterPreparedTurn): Promise<readonly PersonalMemoryExtractionAction[] | null> {
     return this.stillEligible(prepared) ? this.registry.extractMemories(userMessage, reply, prepared.turn) : Promise.resolve(null);
   }
-  public async afterMemoryConsolidation(guildId: string, channelId: string, subjectIds: readonly string[], requestFor: (userId: string) => Promise<ChatRequest>): Promise<void> {
+  public async afterMemoryConsolidation(context: GuardedBackgroundContext, subjectIds: readonly string[]): Promise<void> {
+    if (!isBackgroundContext(context, "summary") && !isBackgroundContext(context, "memory_extraction")) throw new SocialOutputSuppressed();
+    await context.check(); const { guildId, channelId } = context.messages[0]!;
     const profile = this.profiles.find(guildId); if (!profile || this.stopped || characterInactiveReason(characterSettings(profile), "relationships", channelId, this.capabilities(profile, channelId))) return;
     for (const userId of [...new Set(subjectIds)].slice(0, 5)) {
-      const request = await requestFor(userId);
-      await this.registry.consolidateModule("relationships", { text: "", userMemoryActions: [], guildKnowledgeCandidates: [], sources: [], usage: null, webSearchUsed: false, generatedImages: [], ambientAction: "ignore", reactionEmoji: null, historyReactions: [] }, { request, settings: characterSettings(this.profiles.require(guildId)), capabilities: this.capabilities(profile, channelId), now: this.now() });
+      if (!context.messages.some((message) => message.authorId === userId)) continue;
+      await context.check();
+      // Closed relationship lifecycle input, never a model request. No raw
+      // persona, participant memories or synthetic evaluation text is loaded.
+      const request: ChatRequest = { guildId, channelId, personality: "", personaLore: [], personaDrift: null, exampleExchanges: [], userCustomization: null,
+        currentUser: { id: userId, displayName: "", roleNames: [] }, mentionedUsers: [], recentHistory: [], memories: [], guildKnowledge: [], causalChains: [],
+        message: "", replyChain: [], replyChainSummary: null, channelHistory: [], birthday: null, images: [], webSearchMode: "off",
+        imageGenerationEnabled: false, includeSources: false, triggerMode: "direct" };
+      await this.registry.consolidateModule("relationships", { text: "", userMemoryActions: [], guildKnowledgeCandidates: [], sources: [], usage: null, webSearchUsed: false, generatedImages: [], ambientAction: "ignore", reactionEmoji: null, historyReactions: [] },
+        { request, backgroundContext: context, settings: characterSettings(this.profiles.require(guildId)), capabilities: this.capabilities(profile, channelId), now: this.now() });
     }
   }
   public async probe(request: ChatRequest): Promise<string> {

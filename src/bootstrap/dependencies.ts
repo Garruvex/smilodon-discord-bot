@@ -759,8 +759,7 @@ export function createDependencies(
           webSearchMode: "off", imageGenerationEnabled: false, includeSources: false, triggerMode: "direct", botUserId: discordClient.user?.id ?? null };
       };
     characterRuntime.bindProbeSchedule((guildId, channelId, question) => evaluationRequest(guildId, channelId, "character-evaluation", question));
-    channelSummaryScheduler?.bindCharacterConsolidation((guildId, channelId, subjectIds) => characterRuntime.afterMemoryConsolidation(guildId, channelId, subjectIds,
-      (userId) => evaluationRequest(guildId, channelId, userId, "")));
+    channelSummaryScheduler?.bindCharacterConsolidation((context, subjectIds) => characterRuntime.afterMemoryConsolidation(context, subjectIds));
     commandRegistry.register(new CharacterEvalCommand(guildConfigurationProvider, messageOriginStore, evaluationStore, characterRuntime, evaluationRequest));
   }
   if (chatConversationService) for (const command of commandRegistry.getAll()) {

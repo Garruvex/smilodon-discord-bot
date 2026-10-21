@@ -2,10 +2,12 @@ import type { ChatRequest, ChatResponse, ChannelHistoryMessage, PersonalMemoryEx
 import type { ContributionPolicy } from "./participation-policy.js";
 import type { CharacterDecision } from "./character-decision.js";
 import { characterDependencies, characterInactiveReason, characterModuleIds, type CharacterCapabilities, type CharacterModuleId, type CharacterSettings } from "./character-settings.js";
+import type { GuardedBackgroundContext } from "../context/guarded-background-context.js";
 
 export interface CharacterTurn {
   request: ChatRequest; settings: CharacterSettings; capabilities: CharacterCapabilities; now: number;
   validationNow?: number;
+  backgroundContext?: GuardedBackgroundContext;
 }
 export interface CharacterModule {
   id: CharacterModuleId;

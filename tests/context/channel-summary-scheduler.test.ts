@@ -21,6 +21,7 @@ import type { GuildConfigurationProvider } from "../../src/config/guild-configur
 import type { MemoryEngine } from "../../src/application/memory/memory.js";
 import type { ChannelSummaryCheckpointStore } from "../../src/application/context/channel-summary-checkpoint-store.js";
 import type { PersonalMemoryExtractionQueueStore } from "../../src/application/context/personal-memory-extraction-queue.js";
+import { isBackgroundContext, type GuardedBackgroundContext } from "../../src/application/context/guarded-background-context.js";
 
 const dayMs = 24 * 60 * 60 * 1_000;
 // Mirrors DiscordChannelHistoryReader's page size so capped-scan tests still
@@ -619,6 +620,32 @@ describe("ChannelSummaryScheduler — promoting self-reports to portable private
 });
 
 describe("ChannelSummaryScheduler — durable personal-memory extraction queue", () => {
+  it.each(["success", "failed", "revoked_after_completion"] as const)("opens fresh reflection authority after successful job completion only: %s", async (scenario) => {
+    const { engine, checkpointStore, extractionQueue } = testEngine();
+    const source = fakeMessage("m1", "alice", "I like green apples", now - 1000);
+    const historyReader = fakeHistoryReader(fakeChannel([source]));
+    const completed = extractionQueue.markSucceeded.bind(extractionQueue);
+    vi.spyOn(extractionQueue, "markSucceeded").mockImplementation(async (...args) => {
+      await completed(...args);
+      if (scenario === "revoked_after_completion") source.content = "edited after completing the job";
+    });
+    const summarizer: ChannelMessageSummarizer & Partial<PersonalMemoryExtractor> = {
+      summarizeChannelMessages: () => Promise.resolve({ facts: [], relations: [] }),
+      extractPersonalMemories: () => scenario === "failed" ? Promise.reject(new Error("synthetic failure")) : Promise.resolve([
+        { action: "upsert", aboutSpeaker: true, importance: "medium", sourceQuote: "I like green apples", topic: "preference", slot: "food.fruit", statement: "likes green apples" },
+      ]),
+    };
+    const scheduler = new ChannelSummaryScheduler(historyReader, fakeProfileProvider([fakeProfile({ contextScanChannelIds: ["channel"] })]),
+      engine, checkpointStore, extractionQueue, summarizer, silentLogger);
+    const reflection = vi.fn(async (context: GuardedBackgroundContext, subjects: readonly string[]) => {
+      expect(isBackgroundContext(context, "memory_extraction")).toBe(true); await context.check();
+      expect(context.messages.map((message) => message.id)).toEqual(["m1"]); expect(subjects).toEqual(["alice"]);
+      // Taking this lock would deadlock if reflection ran inside a worker.
+      await extractionQueue.runForSubject("guild", "alice", () => Promise.resolve());
+    });
+    scheduler.bindCharacterConsolidation(reflection); await scheduler.checkNow(new Date(now));
+    expect(reflection).toHaveBeenCalledTimes(scenario === "success" ? 1 : 0);
+  });
   it("advances the channel's own checkpoint even while a member's extraction job is still pending retry — the two are fully decoupled", async () => {
     const { engine, checkpointStore, extractionQueue } = testEngine();
     const historyReader = fakeHistoryReader(fakeChannel([

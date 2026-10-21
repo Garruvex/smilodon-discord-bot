@@ -9,9 +9,19 @@ import type { PersonalMemoryExtractionQueueStore } from "../context/personal-mem
 import { isGuardedContext, type GuardedConversationContext } from "./guarded-conversation-context.js";
 import { memoryClaimPayload } from "../memory/memory-claim-provenance.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
+import { isBackgroundContext, type GuardedBackgroundContext } from "../context/guarded-background-context.js";
 
-export type CharacterCandidateQuery = CandidateQuery & { sourceContext?: GuardedConversationContext };
-export type CharacterMemoryWrite = Omit<RepositoryIngestInput, "guildId" | "moduleId"> & { sourceContext?: GuardedConversationContext };
+type CharacterSourceContext = GuardedConversationContext | GuardedBackgroundContext;
+export type CharacterCandidateQuery = CandidateQuery & { sourceContext?: CharacterSourceContext };
+export type CharacterMemoryWrite = Omit<RepositoryIngestInput, "guildId" | "moduleId"> & { sourceContext?: CharacterSourceContext };
+
+async function checkSource(context: CharacterSourceContext, guildId: string, channelId: string): Promise<void> {
+  if (isGuardedContext(context)) { if (!await context.validate()) throw new SocialOutputSuppressed(); }
+  else if (isBackgroundContext(context, "summary") || isBackgroundContext(context, "memory_extraction")) await context.check();
+  else throw new SocialOutputSuppressed();
+  const scope = isGuardedContext(context) ? context.scope : context.messages[0]!;
+  if (scope.guildId !== guildId || scope.channelId !== channelId) throw new SocialOutputSuppressed();
+}
 
 const dependencySchema = z.object({ id: z.string(), updatedAt: z.number(), subjectId: z.string(), sourceIds: z.array(z.string()).default([]) });
 const metadataSchema = z.object({ dependencies: z.array(dependencySchema).default([]), personaHash: z.string().optional() }).passthrough();
@@ -33,8 +43,9 @@ export class CharacterMemory {
     private readonly canWrite: ((guildId: string, channelId: string, moduleId: CharacterModuleId) => boolean) | null = null) {}
   public async sourceEligible(memory: Memory, profile: GuildConfiguration, query: CharacterCandidateQuery): Promise<boolean> {
     if (query.sourceContext) {
-      if (!isGuardedContext(query.sourceContext)) throw new SocialOutputSuppressed();
-      const admitted = memory.moduleId ? await query.sourceContext.characterMemories([memory], true, query.now) : await query.sourceContext.memories([memory], true, query.now);
+      await checkSource(query.sourceContext, query.guildId, query.channelId);
+      const admitted = isGuardedContext(query.sourceContext) ? memory.moduleId ? await query.sourceContext.characterMemories([memory], true, query.now) : await query.sourceContext.memories([memory], true, query.now)
+        : await query.sourceContext.classificationClaims([memory], query.now);
       if (!admitted.length) return false;
     }
     if (this.resolveProfile) { const current = this.resolveProfile(profile.guildId); if (!current) return false; profile = current; }
@@ -98,7 +109,7 @@ export class CharacterMemory {
   }
   private async writeChecked(profile: GuildConfiguration, channelId: string, moduleId: CharacterModuleId, input: CharacterMemoryWrite, dependencies: readonly Memory[]): Promise<Memory | null> {
     const { sourceContext, ...record } = input;
-    if (sourceContext && (!isGuardedContext(sourceContext) || !await sourceContext.validate())) throw new SocialOutputSuppressed();
+    if (sourceContext) await checkSource(sourceContext, profile.guildId, channelId);
     input = { ...input, topic: `character.${moduleId}` };
     if (this.resolveProfile) { const current = this.resolveProfile(profile.guildId); if (!current) return null; profile = current; }
     if (this.canWrite && !this.canWrite(profile.guildId, channelId, moduleId)) return null;
@@ -125,7 +136,7 @@ export class CharacterMemory {
     const structuredValue = { ...metadata, dependencies: dependencies.map((source, index) => ({ id: source.id, updatedAt: source.updatedAt, subjectId: source.subjectId, sourceIds: sourceLists[index]!.map((evidence) => evidence.id) })),
         supportingSubjects: [...new Set([...dependencies.map((source) => source.subjectId), ...sources.flatMap((evidence) => evidence.assertedByUserId ? [evidence.assertedByUserId] : [])])],
         supportingSourceMessageIds: [...new Set(sources.flatMap((source) => source.sourceMessageId ? [source.sourceMessageId] : []))] };
-    if (sourceContext && !await sourceContext.validate()) throw new SocialOutputSuppressed();
+    if (sourceContext) await checkSource(sourceContext, profile.guildId, channelId);
     const claim = { ...record, topic: `character.${moduleId}`, guildId: profile.guildId, moduleId, structuredValue };
     const contextProvenance = sourceContext?.provenance(memoryClaimPayload(claim), "memory_claim") ?? null;
     if (sourceContext && !contextProvenance) throw new SocialOutputSuppressed();

@@ -1,5 +1,5 @@
 import type { Logger } from "pino";
-import { emitChatDiagnostic, withDiagnosticScope } from "../diagnostics/chat-diagnostics.js";
+import { emitChatDiagnostic, safeFailure, withDiagnosticScope } from "../diagnostics/chat-diagnostics.js";
 
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
@@ -172,8 +172,8 @@ function resolveEvidenceAsserter(
 
 export class ChannelSummaryScheduler {
   private readonly modelGateway: BackgroundModelGateway;
-  private characterConsolidation: ((guildId: string, channelId: string, subjectIds: readonly string[]) => Promise<void>) | null = null;
-  public bindCharacterConsolidation(handler: (guildId: string, channelId: string, subjectIds: readonly string[]) => Promise<void>): void { this.characterConsolidation = handler; }
+  private characterConsolidation: ((context: GuardedBackgroundContext, subjectIds: readonly string[]) => Promise<void>) | null = null;
+  public bindCharacterConsolidation(handler: (context: GuardedBackgroundContext, subjectIds: readonly string[]) => Promise<void>): void { this.characterConsolidation = handler; }
   private checkTimer: NodeJS.Timeout | null = null;
   // Guards against an overlapping tick: if a checkNow() call is still
   // processing guilds when the next interval fires (or start()'s immediate
@@ -508,8 +508,8 @@ export class ChannelSummaryScheduler {
         );
         return false;
       }
-      await this.characterConsolidation?.(profile.guildId, channelId, result.ingested.filter((memory) => memory.subjectType === "member").map((memory) => memory.subjectId))
-        .catch((error: unknown) => this.logger.warn({ error, guildId: profile.guildId, channelId }, "Character reflection after consolidation failed"));
+      await this.characterConsolidation?.(context, result.ingested.filter((memory) => memory.subjectType === "member").map((memory) => memory.subjectId))
+        .catch((error: unknown) => this.logger.warn({ failure: safeFailure(error), guildId: profile.guildId, channelId }, "Character reflection after consolidation failed"));
     }
 
     // Enqueues one durable extraction job per distinct author with messages
@@ -625,6 +625,7 @@ export class ChannelSummaryScheduler {
     if (!this.summarizer.extractPersonalMemories) return;
     const jobs = await this.extractionQueue.dequeueDue(maxJobsProcessedPerTick, now);
     if (jobs.length === 0) return;
+    const reflections: { messages: readonly ChannelHistoryMessage[]; subjectId: string }[] = [];
 
     // The whole per-job body is wrapped in its own try/catch below — a
     // queue-store call itself failing (fail()'s own markFailed/
@@ -717,6 +718,7 @@ export class ChannelSummaryScheduler {
           }
         }
         await this.extractionQueue.markSucceeded(job.guildId, job.channelId, job.batchId, job.subjectId);
+        reflections.push({ messages: context.messages, subjectId: job.subjectId });
         } catch (error) {
           this.logger.error(
             { error, guildId: job.guildId, channelId: job.channelId, subjectId: job.subjectId },
@@ -727,7 +729,11 @@ export class ChannelSummaryScheduler {
     }));
     // Run after workers release their subject locks: reflection uses the
     // same mutation boundary as forgetting and must not nest that lock.
-    for (const job of jobs) await this.characterConsolidation?.(job.guildId, job.channelId, [job.subjectId])
-      .catch((error: unknown) => this.logger.warn({ error, guildId: job.guildId, channelId: job.channelId }, "Character reflection after extraction failed"));
+    if (this.characterConsolidation) for (const reflection of reflections) try {
+      // Job completion releases its lease. Reopen actual source authority
+      // independently; a failed/deleted job never starts reflection.
+      const context = await this.openContext("memory_extraction", reflection.messages);
+      await this.characterConsolidation(context, [reflection.subjectId]);
+    } catch (error) { this.logger.warn({ failure: safeFailure(error) }, "Character reflection after extraction failed"); }
   }
 }
