@@ -15,6 +15,14 @@ function trace(events: ChatDiagnosticEvent[], overrides: Partial<RetainedChatTra
 }
 
 describe("recorded chat explanations", () => {
+  it.each(["approval", "source", "result"] as const)("explains an unrecovered %s gate rejection without inventing provider failure or intentional silence", (phase) => {
+    const rejected: ChatDiagnosticEvent = { event: "model.gateway.rejected", purpose: "reply", phase };
+    expect(explainChatTrace([trace([rejected, turn("failed")])])).toMatchObject({ outcome: "suppressed", reason: `model_gateway_${phase}`, modelFailures: 0 });
+    expect(explainChatTrace([trace([rejected])])).toMatchObject({ outcome: "suppressed", reason: `model_gateway_${phase}` });
+    expect(explainChatTrace([trace([rejected, turn("text_delivered")])]).outcome).toBe("delivered");
+    expect(explainChatTrace([trace([rejected, decision(), turn("no_text_delivery")])]).outcome).toBe("intentional_silence");
+    expect(explainChatTrace([trace([rejected, { event: "chat.model.completed", purpose: "reply", status: "valid", durationMs: 1 }, turn("failed")])]).outcome).toBe("failed");
+  });
   it("distinguishes pending cooldown and expiry from intentional silence", () => {
     const candidate = { event: "chat.candidate.changed" as const, candidateId: "candidate", action: "scheduled" as const, reason: "cooldown" as const, messages: 1, delayMs: 25000 };
     expect(explainChatTrace([trace([candidate])])).toMatchObject({ outcome: "incomplete", reason: "candidate_cooldown" });

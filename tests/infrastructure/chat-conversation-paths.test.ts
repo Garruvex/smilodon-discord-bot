@@ -11,7 +11,8 @@ import { ChatConversationService } from "../../src/application/chat/chat-convers
 import { GuardedConversationContext } from "../../src/application/chat/guarded-conversation-context.js";
 import type { ChatRequest, ChatResponse } from "../../src/application/chat/chat-provider.js";
 import type { PersonaSource } from "../../src/application/chat/persona-source.js";
-import { DefaultMemoryEngine } from "../../src/application/memory/memory-engine.js";
+import { createGuardedMemoryEngine } from "../../src/application/context/guarded-memory-gateway.js";
+import { guardModelTransport } from "../../src/application/context/guarded-model-transport.js";
 import type { ApplicationConfiguration } from "../../src/config/configuration.js";
 import { AmbientChatBehavior } from "../../src/infrastructure/discord/behaviors/ambient-chat-behavior.js";
 import { MentionChatBehavior } from "../../src/infrastructure/discord/behaviors/mention-chat-behavior.js";
@@ -143,9 +144,10 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
     return Promise.resolve(decisionResponse({ text: "The second option is ready for testing.", responseIntent: "answer", ambientAction: "reply",
       ...(behavior === "invalid_generation" ? { referentSourceIds: ["private"], reactionEmoji: "👍", historyReactions: [{ messageId: "private", emoji: "👍" }] } : {}) }));
   });
-  const runtime = new CharacterRuntime(profiles, repository, null, { reply }, { generateCharacterData: decision }, null, Date.now, logger);
-  const memory = new DefaultMemoryEngine(repository, null, null, undefined, null, null, null, () => true);
-  const service = new ChatConversationService({ reply }, state, memory, undefined, undefined, undefined, null, null, null, logger, null, null, null, null, runtime);
+  const provider = guardModelTransport({ reply, generateCharacterData: decision }, logger);
+  const runtime = new CharacterRuntime(profiles, repository, null, provider, provider, null, Date.now, logger);
+  const memory = createGuardedMemoryEngine(repository, null, null, undefined, null, null, null, () => true);
+  const service = new ChatConversationService(provider, state, memory, undefined, undefined, undefined, null, null, null, logger, null, null, null, null, runtime);
   const persona: PersonaSource = { resolve: () => Promise.resolve({ personality: "A fictional test bot", personaDrift: null, examplePool: [], loreChunks: [], personalitySourceHash: "test" }) };
   const ambient = new AmbientChatBehavior(() => botId, config, profiles, service, persona, logger, watches, null, eligibility, origins);
   const proactive = new ProactiveChatBehavior(() => botId, profiles, service, eligibility, ambient, logger);

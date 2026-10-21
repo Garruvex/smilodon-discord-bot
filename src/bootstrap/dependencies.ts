@@ -204,7 +204,7 @@ type ProviderConfig =
 // from. summaryModels defaults to the provider's own `models` when omitted
 // (utilityChat never sets it — it IS the summary/utility model already).
 export function createChatProviderFromConfig(config: ProviderConfig, logger: Logger): ChatProvider {
-  return guardModelTransport(instrumentModel(createRawChatProviderFromConfig(config, logger), logger));
+  return guardModelTransport(instrumentModel(createRawChatProviderFromConfig(config, logger), logger), logger);
 }
 
 function createRawChatProviderFromConfig(config: ProviderConfig, logger: Logger): ChatProvider {
@@ -392,7 +392,7 @@ export function registerCommands(
               configuration.embeddings.apiKey,
               configuration.embeddings.model,
             ), logger),
-      ))
+      ), logger)
     : null;
   commandRegistry.register(new BirthdayCommand(birthdayStore, guildConfigurationProvider));
   commandRegistry.register(new RemindCommand(reminderStore));
@@ -703,7 +703,7 @@ export function createDependencies(
   settingsEngine.bindChatToolRegistry(chatToolRegistry);
   const structuredUtility = utilityProvider?.generateCharacterData ? { generateCharacterData: utilityProvider.generateCharacterData.bind(utilityProvider) } : null;
   const structuredReply = chatProvider?.generateCharacterData ? { generateCharacterData: chatProvider.generateCharacterData.bind(chatProvider) } : null;
-  const dedicatedDecision = configuration.decision ? guardModelTransport(instrumentModel(new HttpDecisionProvider(configuration.decision), logger)) : null;
+  const dedicatedDecision = configuration.decision ? guardModelTransport(instrumentModel(new HttpDecisionProvider(configuration.decision), logger), logger) : null;
   const contextualProviders = contextualDecisionProviders(dedicatedDecision, structuredReply, structuredUtility);
   logger.info({ contextualDecisionSource: contextualProviders.source, contextualDecisionModel: configuration.decision?.model ??
     (contextualProviders.source === "reply" || !configuration.utilityChat ? configuration.chat?.summaryModels[0] : configuration.utilityChat.models[0]) ?? null,

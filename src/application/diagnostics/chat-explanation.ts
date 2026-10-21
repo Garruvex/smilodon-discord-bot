@@ -53,6 +53,10 @@ export function explainChatTrace(traces: readonly RetainedChatTrace[]): ChatExpl
   const gateway = last("chat.gateway.completed"); const queue = last("chat.queue.changed");
   const candidate = last("chat.candidate.changed"); const deadline = last("chat.turn.deadline");
   const plan = last("chat.turn.plan");
+  const admission = last("model.gateway.rejected");
+  const admissionIndex = events.findLastIndex((event) => event.event === "model.gateway.rejected");
+  const recoveredAdmission = events.slice(admissionIndex + 1).some((event) => event.event === "chat.model.completed" && event.status === "valid" ||
+    event.event === "chat.decision.resolved" && event.status === "ready");
   const hasDelivery = events.some(confirmed);
   if (turn?.outcome === "delivered_state_unsaved") result.outcome = "delivered_unsaved";
   else if (delivery?.status === "partial" && delivery.deliveredParts > 0) result.outcome = "partial_delivery";
@@ -61,6 +65,7 @@ export function explainChatTrace(traces: readonly RetainedChatTrace[]): ChatExpl
   else if (delivery?.status === "failed") { result.outcome = "delivery_failed"; result.reason = delivery.failure ?? null; }
   else if (deadline) { result.outcome = "suppressed"; result.reason = "turn_deadline"; }
   else if (plan?.state === "blocked") { result.outcome = "suppressed"; result.reason = plan.reason ?? "plan_blocked"; }
+  else if (admission && !recoveredAdmission && (!turn || turn.outcome === "failed")) { result.outcome = "suppressed"; result.reason = `model_gateway_${admission.phase}`; }
   else if (turn?.outcome === "failed") { result.outcome = "failed"; result.reason = turn.failure ?? null; }
   else if (last("chat.trace.interrupted")) result.outcome = "interrupted_unknown";
   else if (validation?.status === "changed") { result.outcome = "source_invalidated"; result.reason = "context_changed"; }

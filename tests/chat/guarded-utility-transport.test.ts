@@ -14,6 +14,17 @@ async function fixture(): Promise<{ source: ReturnType<typeof guardedFixture>; c
 }
 
 describe("mandatory utility transport", () => {
+  it("exposes only frozen capabilities and keeps raw clients and credentials inside the facade", () => {
+    const raw = { apiKey: "PRIVATE_CREDENTIAL", configuration: { secret: "PRIVATE_CONFIGURATION" },
+      inner: { generateCharacterData: (): Promise<unknown> => Promise.resolve({}) }, nativeWebSearchSupported: true,
+      generateCharacterData: (): Promise<unknown> => Promise.resolve({}) };
+    const transport = guardModelTransport(raw);
+    expect(Object.isFrozen(transport)).toBe(true); expect(Object.getPrototypeOf(transport)).toBeNull();
+    expect(Object.keys(transport).sort()).toEqual(["generateCharacterData", "nativeWebSearchSupported"]);
+    expect(transport.apiKey).toBeUndefined(); expect(transport.configuration).toBeUndefined(); expect(transport.inner).toBeUndefined();
+    expect(transport.nativeWebSearchSupported).toBe(true); expect("reply" in transport).toBe(false);
+    expect(() => { transport.generateCharacterData = raw.inner.generateCharacterData; }).toThrow();
+  });
   it.each(["missing", "callback", "copy", "payload", "purpose", "reuse"])("rejects %s authority before dispatch", async (kind) => {
     const { context } = await fixture(); const call = vi.fn((_first: string, _second?: unknown, _options?: StructuredCallOptions) => Promise.resolve({ text: "ok" }));
     const transport = guardModelTransport({ generateCharacterData: call, analyzeUserCustomization: call });
