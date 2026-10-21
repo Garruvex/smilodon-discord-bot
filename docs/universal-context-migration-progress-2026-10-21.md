@@ -101,3 +101,13 @@ Bot, session, memory and callback proof checks now share one dependency validato
 Configuration-only evaluation request construction no longer performs participant-memory recall. The remaining evaluation/runtime and configuration consumers still need their explicit-purpose gateway migration; this checkpoint does not certify them merely because their request now omits personal memory.
 
 Validation: **4,933 passed, 7 skipped, zero failed**, typecheck, production compilation and changed-file lint. New tests exercise the real scheduled callback worker with verified, legacy, revoked, tampered and changed-during-generation records, plus a same-requester private-to-public derived-text regression. No paid provider calls or Discord sends occurred.
+
+## Checkpoint 11: scoped memory model processing and embedding caches
+
+Guarded memory query/fact embeddings now carry source revalidation into the concrete OpenAI/Gemini transport, cancellation and purpose/audience/source-version cache partitioning. Cache keys hash text rather than retaining plaintext keys, and both hits and completed requests recheck authority; a revoked in-flight result is evicted. Batches carry the same attempt and cancellation contract.
+
+Canonicalization, candidate corroboration and conflict classification now admit only verified, currently readable claims before ranking or external processing. Candidate status has a distinct classification-only admission path; it does not become a fact in reply recall. Background classification is restricted to claims whose complete sources are present in its authorized batch; unsupported historical/resource dependencies stay excluded. Corroboration persists the merged witness manifest in both repositories; an unguarded merge cannot inherit a complete proof. Conflict retries and supersession recheck authority. Memory warnings use safe metadata rather than raw exception payloads.
+
+Actual transport tests also found and closed missing utility-attempt hooks in Gemini and OpenAI-compatible providers. Character and conflict fallback tests now exercise every transport with fake HTTP/SDK responses and verify that revoked sources are never dispatched a second time.
+
+Validation: **4,949 passed, 7 skipped, zero failed**, typecheck, production compilation and changed-file lint. Tests cover cache partitioning/revocation, transport cancellation, unproven/revoked conflict inputs, changes during classification and merged-witness invalidation. No paid model, embedding or production call occurred. Legacy callers without registered contexts, configuration consumers, graph/alias evidence and remaining functional tools still require migration before mandatory universal-boundary closure.

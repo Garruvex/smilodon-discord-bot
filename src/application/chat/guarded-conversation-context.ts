@@ -20,6 +20,7 @@ export interface GuardedAssetDescriptor { id: string; contentType: string; size:
 export const guardedAssetsHash = (assets: readonly GuardedAssetDescriptor[]): string => hashContent(JSON.stringify(
   [...assets].map(({ id, contentType, size }) => ({ id, contentType, size })).sort((a, b) => a.id.localeCompare(b.id))));
 export interface GuardedContextPort {
+  turnSignal?: AbortSignal;
   resource?: (key: GuardedResourceKey, signal: AbortSignal) => Promise<string | null>;
   work?: (phase: "assembly" | "sessions" | "memory" | "assets" | "validation", status: "completed" | "deadline" | "failed", durationMs: number) => void;
   loadAsset?: (messageId: string, assetId: string, signal: AbortSignal) => Promise<string | null>;
@@ -62,6 +63,7 @@ const compact = (event: ChannelHistoryMessage): ChannelHistoryMessage => ({ ...e
 // complete text provenance only for the closed, whitelisted assembly below.
 // It is deliberately narrower than the separately planned universal gateway.
 export class GuardedConversationContext {
+  public get cancellationSignal(): AbortSignal | undefined { return this.port.turnSignal; }
   private remainingMs: number = guardedContextLimits.workMs;
   private reads = 0;
   private passes = 0;
@@ -299,7 +301,11 @@ export class GuardedConversationContext {
     return this.claims(records, retain, now, true);
   }
 
-  private async claims(records: readonly Memory[], retain: boolean, now: number, character: boolean): Promise<Memory[]> {
+  public async classificationClaims(records: readonly Memory[], now = Date.now()): Promise<Memory[]> {
+    return this.claims(records, true, now, false, true);
+  }
+
+  private async claims(records: readonly Memory[], retain: boolean, now: number, character: boolean, classification = false): Promise<Memory[]> {
     return this.phase(async () => {
       const allowed: Memory[] = []; let chars = 0;
       for (const record of records.slice(0, 128)) {
@@ -310,7 +316,8 @@ export class GuardedConversationContext {
             proof.audience.userId !== null && proof.audience.userId !== this.port.actorId ||
             record.audience === "private" && (this.port.audienceUserId !== record.ownerUserId || this.port.actorId !== record.ownerUserId) ||
             (character ? !record.moduleId || !canRecall(record, { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.actorId ?? "" }, now)
-              : !canRecallOrdinaryMemory(record, { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.actorId ?? "" }, now))) continue;
+              : !canRecallOrdinaryMemory(classification && record.status === "candidate" ? { ...record, status: "active" } : record,
+                { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.actorId ?? "" }, now))) continue;
         const subject = record.subjectType === "member" ? await this.port.actor(record.subjectId, this.signal) : null;
         if (record.subjectType === "member" && !subject) continue;
         let valid = await this.proofSourcesCurrent(proof);

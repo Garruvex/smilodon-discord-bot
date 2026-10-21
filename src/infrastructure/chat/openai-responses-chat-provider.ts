@@ -481,11 +481,12 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     return parseDroppedExchangeConsolidationOutput(text).facts;
   }
 
-  public async classifyMemoryConflict(existingStatement: string, newStatement: string): Promise<boolean> {
+  public async classifyMemoryConflict(existingStatement: string, newStatement: string, options?: StructuredCallOptions): Promise<boolean> {
     const text = await this.callStructuredOutput(
       buildMemoryConflictClassificationPrompt(existingStatement, newStatement),
       "memory_conflict_classification",
       memoryConflictClassificationJsonSchema,
+      options,
     );
     return parseMemoryConflictClassificationOutput(text).related;
   }

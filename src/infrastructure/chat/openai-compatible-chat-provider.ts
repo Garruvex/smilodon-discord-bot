@@ -19,6 +19,7 @@ import {
 } from "../../application/chat/channel-message-summarization.js";
 import { buildChatContext, buildChatInstructions, chatModelJsonSchema, parseChatModelOutput } from "./chat-structured-output.js";
 import { ModelFallbackChain } from "./model-fallback-chain.js";
+import { buildMemoryConflictClassificationPrompt, memoryConflictClassificationJsonSchema, parseMemoryConflictClassificationOutput } from "../../application/chat/memory-conflict-classification.js";
 import {
   buildUserCustomizationAnalysisPrompt,
   parseUserCustomizationAnalysisOutput,
@@ -194,8 +195,14 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
     return { ok: true, markdown };
   }
 
+  public async classifyMemoryConflict(existingStatement: string, newStatement: string, options?: StructuredCallOptions): Promise<boolean> {
+    const result = await this.generateCharacterData(buildMemoryConflictClassificationPrompt(existingStatement, newStatement), memoryConflictClassificationJsonSchema, options);
+    return parseMemoryConflictClassificationOutput(JSON.stringify(result)).related;
+  }
+
   public generateCharacterData(prompt: string, schema: Record<string, unknown>, options?: StructuredCallOptions): Promise<unknown> {
     return this.summaryModelChain.run(async (model) => {
+      await options?.beforeAttempt?.(); options?.signal?.throwIfAborted();
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST", headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ model, messages: [{ role: "system", content: prompt }],

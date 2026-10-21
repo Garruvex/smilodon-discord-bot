@@ -435,7 +435,8 @@ export class GeminiChatProvider implements ChatProvider {
   }
 
   public async generateCharacterData(prompt: string, schema: Record<string, unknown>, options?: StructuredCallOptions): Promise<unknown> {
-    const response = await this.summaryModelChain.run((model) => this.generateStructured(model, prompt, schema, undefined, undefined, options?.signal), options);
+    const response = await this.summaryModelChain.run(async (model) => { await options?.beforeAttempt?.();
+      return this.generateStructured(model, prompt, schema, undefined, undefined, options?.signal); }, options);
     const usage = response.usageMetadata;
     if (usage) reportStructuredUsage(options, { inputTokens: usage.promptTokenCount ?? 0, outputTokens: usage.candidatesTokenCount ?? 0,
       totalTokens: usage.totalTokenCount ?? 0, cachedInputTokens: usage.cachedContentTokenCount ?? null, reasoningTokens: usage.thoughtsTokenCount ?? null });
@@ -454,12 +455,13 @@ export class GeminiChatProvider implements ChatProvider {
     return parseDroppedExchangeConsolidationOutput((response.text ?? "").trim()).facts;
   }
 
-  public async classifyMemoryConflict(existingStatement: string, newStatement: string): Promise<boolean> {
-    const response = await this.summaryModelChain.run((model) => this.generateStructured(
+  public async classifyMemoryConflict(existingStatement: string, newStatement: string, options?: StructuredCallOptions): Promise<boolean> {
+    const response = await this.summaryModelChain.run(async (model) => { await options?.beforeAttempt?.(); return this.generateStructured(
       model,
       buildMemoryConflictClassificationPrompt(existingStatement, newStatement),
       memoryConflictClassificationJsonSchema,
-    ));
+      undefined, undefined, options?.signal,
+    ); }, options);
     return parseMemoryConflictClassificationOutput((response.text ?? "").trim()).related;
   }
 

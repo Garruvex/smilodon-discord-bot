@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { EmbeddingsClient } from "../../application/chat/embeddings-client.js";
+import type { EmbeddingsClient, EmbeddingCallOptions } from "../../application/chat/embeddings-client.js";
 
 const embeddingsResponseSchema = z.object({
   data: z.array(z.object({ index: z.number().int().nonnegative(), embedding: z.array(z.number()) })).min(1),
@@ -22,16 +22,17 @@ export class OpenAiEmbeddingsClient implements EmbeddingsClient {
     this.modelId = `openai:${baseUrl}:${model}`;
   }
 
-  public async embed(text: string): Promise<number[]> {
-    return (await this.request(text, 1))[0]!;
+  public async embed(text: string, options?: EmbeddingCallOptions): Promise<number[]> {
+    return (await this.request(text, 1, options))[0]!;
   }
 
-  public async embedMany(texts: readonly string[]): Promise<number[][]> {
+  public async embedMany(texts: readonly string[], options?: EmbeddingCallOptions): Promise<number[][]> {
     if (texts.length === 0) return [];
-    return this.request(texts, texts.length);
+    return this.request(texts, texts.length, options);
   }
 
-  private async request(input: string | readonly string[], expectedCount: number): Promise<number[][]> {
+  private async request(input: string | readonly string[], expectedCount: number, options?: EmbeddingCallOptions): Promise<number[][]> {
+    await options?.beforeAttempt?.(); options?.signal?.throwIfAborted();
     const response = await fetch(`${this.baseUrl}/embeddings`, {
       method: "POST",
       headers: {
@@ -39,7 +40,7 @@ export class OpenAiEmbeddingsClient implements EmbeddingsClient {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ model: this.model, input }),
-      signal: AbortSignal.timeout(15_000),
+      signal: options?.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000),
     });
     if (!response.ok) {
       throw new Error(`Embeddings provider returned HTTP ${response.status}.`);

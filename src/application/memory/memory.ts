@@ -303,6 +303,7 @@ export interface CandidateWithAsserters {
 }
 
 export interface PromoteCandidateCommand {
+  contextProvenance?: ContextProvenance | null;
   guildId: string;
   memoryId: string;
   // Other candidate rows under the same identity that corroborated this

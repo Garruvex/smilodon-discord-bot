@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 
-import type { EmbeddingsClient } from "../../application/chat/embeddings-client.js";
+import type { EmbeddingsClient, EmbeddingCallOptions } from "../../application/chat/embeddings-client.js";
 
 export class GeminiEmbeddingsClient implements EmbeddingsClient {
   private readonly client: GoogleGenAI;
@@ -31,12 +31,13 @@ export class GeminiEmbeddingsClient implements EmbeddingsClient {
     this.modelId = `gemini:${model}:${outputDimensionality}`;
   }
 
-  public async embed(text: string): Promise<number[]> {
-    return (await this.embedMany([text]))[0]!;
+  public async embed(text: string, options?: EmbeddingCallOptions): Promise<number[]> {
+    return (await this.embedMany([text], options))[0]!;
   }
 
-  public async embedMany(texts: readonly string[]): Promise<number[][]> {
+  public async embedMany(texts: readonly string[], options?: EmbeddingCallOptions): Promise<number[][]> {
     if (texts.length === 0) return [];
+    await options?.beforeAttempt?.(); options?.signal?.throwIfAborted();
     const response = await this.client.models.embedContent({
       model: this.model,
       // Separate Content objects produce separate vectors in input order;
@@ -45,7 +46,7 @@ export class GeminiEmbeddingsClient implements EmbeddingsClient {
       config: {
         taskType: "SEMANTIC_SIMILARITY",
         outputDimensionality: this.outputDimensionality,
-        abortSignal: AbortSignal.timeout(15_000),
+        abortSignal: options?.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000),
       },
     });
     const embeddings = response.embeddings ?? [];

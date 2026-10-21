@@ -535,6 +535,8 @@ export class SqliteMemoryRepository implements MemoryRepository {
         eq(schema.memories.status, "candidate"),
       )).get();
       if (!target) return null;
+      const contextProvenance = memoryClaimProof(command.contextProvenance, target);
+      if (command.contextProvenance && !contextProvenance) return null;
       const identity = identityCondition(toMemory(target));
       const active = transaction.select({ id: schema.memories.id }).from(schema.memories)
         .where(and(identity, eq(schema.memories.status, "active"))).get();
@@ -551,6 +553,7 @@ export class SqliteMemoryRepository implements MemoryRepository {
         transaction.delete(schema.memories).where(inArray(schema.memories.id, absorbed)).run();
       }
       return transaction.update(schema.memories).set({
+        contextProvenance,
         status: "active", expiresAt: null, validFrom: new Date(command.now), updatedAt: new Date(command.now),
       }).where(eq(schema.memories.id, target.id)).returning().get() ?? null;
     });

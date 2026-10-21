@@ -568,9 +568,11 @@ export class PostgresMemoryRepository implements MemoryRepository {
       await transaction.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${identityLockKey(targetMemory)}, 0))`);
       // Re-check under the lock: a concurrent promotion may have absorbed
       // (deleted) this row while we waited.
-      const stillCandidate = await transaction.select({ id: schema.memories.id }).from(schema.memories)
+      const stillCandidate = await transaction.select().from(schema.memories)
         .where(and(eq(schema.memories.id, target.id), eq(schema.memories.status, "candidate"))).limit(1);
       if (stillCandidate.length === 0) return null;
+      const contextProvenance = memoryClaimProof(command.contextProvenance, stillCandidate[0]!);
+      if (command.contextProvenance && !contextProvenance) return null;
       const identity = identityCondition(targetMemory);
       const active = await transaction.select({ id: schema.memories.id }).from(schema.memories)
         .where(and(identity, eq(schema.memories.status, "active"))).limit(1);
@@ -587,6 +589,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
         await transaction.delete(schema.memories).where(inArray(schema.memories.id, absorbed));
       }
       const [promoted] = await transaction.update(schema.memories).set({
+        contextProvenance,
         status: "active", expiresAt: null, validFrom: new Date(command.now), updatedAt: new Date(command.now),
       }).where(and(eq(schema.memories.id, target.id), eq(schema.memories.status, "candidate"))).returning();
       return promoted ? toMemory(promoted) : null;

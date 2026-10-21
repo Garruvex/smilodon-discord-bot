@@ -527,7 +527,7 @@ export interface PersonaDriftEvolver {
 // ChatConversationService), and intentionally answers just one question:
 // same underlying fact as the existing statement, or not.
 export interface MemoryConflictClassifier {
-  classifyMemoryConflict(existingStatement: string, newStatement: string): Promise<boolean>;
+  classifyMemoryConflict(existingStatement: string, newStatement: string, options?: StructuredCallOptions): Promise<boolean>;
 }
 
 // Standalone call (own prompt/schema) condensing the portion of a Discord

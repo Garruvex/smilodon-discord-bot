@@ -34,7 +34,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   // Guarded generation delivers its confirmed final assets through the same
   // effect and per-part source checks as text, never a speculative preview.
   void observer;
-  const port = guardedToolResourcePort(input.guardedContextPort, dependencies.toolRegistry, { currentUser: input.currentUser,
+  const port = guardedToolResourcePort({ ...input.guardedContextPort, ...(input.turnSignal ? { turnSignal: input.turnSignal } : {}) }, dependencies.toolRegistry, { currentUser: input.currentUser,
     channelIsNsfw: input.channelIsNsfw ?? false, channelMode: input.resolveMemoryMode?.() ?? "shared", isOwner: input.isOwner ?? false });
   assertTurnActive(input.turnSignal);
   if (port.guildId !== input.guildId || port.channelId !== input.channelId || input.sourceMessageId !== port.sourceMessageId ||

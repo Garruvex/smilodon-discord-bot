@@ -7,6 +7,13 @@ afterEach(() => {
 });
 
 describe("OpenAiEmbeddingsClient", () => {
+  it("checks authorization and cancellation before dispatching a batch", async () => {
+    const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock);
+    const client = new OpenAiEmbeddingsClient("https://example.test", "secret", "test");
+    await expect(client.embedMany(["SECRET"], { beforeAttempt: () => Promise.reject(new Error("revoked")) })).rejects.toThrow("revoked");
+    await expect(client.embed("SECRET", { signal: AbortSignal.abort() })).rejects.toThrow();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it("keeps scalar requests for single-text embedding calls", async () => {
     const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
       if (typeof init?.body !== "string") throw new Error("Expected a JSON request body.");
