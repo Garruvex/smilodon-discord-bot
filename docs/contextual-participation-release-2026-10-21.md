@@ -60,6 +60,10 @@ That policy measurement exposed two application defects. First, the legacy unkno
 
 Replay reports from this correction onward identify `policyRevision: 2`. Earlier policy reports used revision 1 implicitly; the wire remains revision 3. A fresh provider run is a stochastic comparison, not a replay of identical saved proposals.
 
+The generator handoff also distinguishes requested answers from unsolicited contributions. It asks for an answer/clarification to the grounded follow-up, permits a brief requested confirmation and forbids claiming an unverified repair/status. Integration tests inspect that actual handoff and ensure social-only generated intent cannot satisfy the substantive request. The synthetic provider replay measures preflight only; it does not establish generated-answer or Discord-delivery quality.
+
+Fixture revision 2's text-policy counter is narrower than complete recipient accuracy: a different speaker's answer case allows group/unclear interpretations and does not forbid all text. A wrong followup to that speaker can therefore escape the text-policy counter even while failing the raw relationship check. Review accepted cross-speaker followups separately; zero text-policy violations must not be described as zero false interruptions. Tightening that fixture requires a labelled fixture/scoring revision, not silently changing historical totals.
+
 `model.decision.attempt` identifies the wire revision. The new `chat.decision.proposed` event records only controlled relationship/referent/intent/action labels and the evidence count. Compare it with `chat.decision.resolved` to distinguish model interpretation from policy suppression. Message text, generated contribution text and model reasoning are excluded from this event.
 
 Inventory only, with no API calls:

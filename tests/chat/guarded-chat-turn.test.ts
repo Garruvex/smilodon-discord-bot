@@ -70,7 +70,12 @@ describe("guarded turn acceptance", () => {
     const result = await service.run({ ...input, triggerMode: "spontaneous", contextualCandidate: true }, send);
     expect(reply).toHaveBeenCalledTimes(scenario === "followup" || scenario === "social_generation" ? 1 : 0);
     expect(send).toHaveBeenCalledTimes(scenario === "followup" ? 1 : 0);
-    if (scenario === "followup") expect(result.conversationDecision?.decision).toMatchObject({ action: "reply", intent: "answer", participationKind: "continuation" });
+    if (scenario === "followup") {
+      expect(result.conversationDecision?.decision).toMatchObject({ action: "reply", intent: "answer", participationKind: "continuation" });
+      const instructions = reply.mock.calls[0]![0].characterContext?.filter((entry) => entry.moduleId === "participation").map((entry) => entry.text).join(" ");
+      expect(instructions).toContain("grounded follow-up");
+      expect(instructions).not.toContain("Serve only this accepted contribution");
+    }
     if (scenario === "social_generation") expect(result.conversationDecision?.decision.reasonCode).toBe("substantive_requires_answer");
   });
   it.each(["ordinary_clause", "known_recipient"] as const)("requires recipient evidence rather than an arbitrary comma prefix: %s", async (scenario) => {

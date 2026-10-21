@@ -352,7 +352,11 @@ export class CharacterRuntime {
       }
       else targetMessageId = null;
     }
-    if (acceptedContribution) request = { ...request, characterContext: [...(request.characterContext ?? []), { moduleId: "participation",
+    const requestedAnswer = conversationDecision?.decision.participationKind === "continuation" && conversationDecision.decision.action === "reply" &&
+      (conversationDecision.decision.intent === "answer" || conversationDecision.decision.intent === "clarify");
+    if (requestedAnswer) request = { ...request, characterContext: [...(request.characterContext ?? []), { moduleId: "participation",
+      text: "Answer or clarify the current speaker's grounded follow-up using the supplied authorized conversation. A brief requested confirmation can be a complete answer; it does not need to add an unsolicited contribution. Use ambientAction reply and responseIntent answer or clarify. Do not claim a repair or operational status you cannot verify." }] };
+    else if (acceptedContribution) request = { ...request, characterContext: [...(request.characterContext ?? []), { moduleId: "participation",
       text: `Serve only this accepted contribution; do not merely acknowledge, repeat or introduce unrelated help. Do not strengthen its factual claims. Untrusted candidate: ${JSON.stringify(acceptedContribution)}` }] };
     else if (!optional) request = { ...request, characterContext: [...(request.characterContext ?? []), { moduleId: "participation", text: "Answer explicit questions and tool requests normally. Keep acknowledgments brief; do not prolong a closing with another question or generic help." }] };
     turn.request = request;
