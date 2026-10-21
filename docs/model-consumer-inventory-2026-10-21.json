@@ -31,17 +31,11 @@
   "src/application/chat/guarded-chat-turn.ts": [
     "reply"
   ],
-  "src/application/chat/guild-memory-selector.ts": [
-    "embed"
-  ],
   "src/application/chat/persona-lore-selector.ts": [
     "embed"
   ],
   "src/application/chat/tools/generate-self-image-tool.ts": [
     "generateReferenceImage"
-  ],
-  "src/application/chat/user-memory-selector.ts": [
-    "embed"
   ],
   "src/application/context/background-model-gateway.ts": [
     "extractPersonalMemories",

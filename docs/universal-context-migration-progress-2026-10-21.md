@@ -165,3 +165,9 @@ Guarded turns now consume registered persona material, select authorized lore/ex
 Persona/preference fingerprints are separate protected resource dependencies in reply, session, memory and callback provenance. File/path changes invalidate derived reuse; another requester cannot recover another owner's preference-derived answer through a bot quote. Callback reconstruction loads fresh registered configuration sources. Issuance imports remain limited to the application owner and composition; manifests and diagnostics contain fingerprints/counts, not configuration text.
 
 Validation: full suite **5,011 passed, 7 skipped, zero failed**, followed by **12 configuration/callback tests** including the added owner-isolation and callback-invalidation scenarios, plus architecture checks. Typecheck, production compilation, changed-file lint and diff checks passed. No paid call, production setting or Discord send occurred. Remaining work is the mandatory model/operation boundary and compatibility/runtime consumer migration; unused legacy selectors are being audited before removal.
+
+## Checkpoint 19: remove unused pre-engine selectors
+
+The reference audit confirmed that the old guild/user memory selectors had no production imports or composition wiring. Removed both implementations, their three obsolete guild-selector tests, stale code comments and consumer-inventory entries. Active recall still uses the source-checked unified memory engine; no active path or feature was disabled to remove these raw embedding sites.
+
+Validation: **24 architecture/guarded-engine tests passed**, TypeScript typecheck, production compilation, changed-file lint and diff checks. The full-suite test count is expected to decrease by the three removed dead-code tests; that decrease is not a feature regression. Remaining active compatibility/runtime consumers still require the mandatory-boundary migration.

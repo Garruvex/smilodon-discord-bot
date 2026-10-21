@@ -44,7 +44,7 @@ export const chatMemoryLimits = {
   maxSessionSerializedChars: 16_000,
   sessionTtlMs: 48 * 60 * 60 * 1_000,
   // Budget for the subset of stored memories actually injected into a given
-  // turn's prompt (see RelevantUserMemorySelector) — separate from
+  // turn's prompt (see MemoryEngine.recall) — separate from
   // maxRecords, which bounds how many memories are kept in storage overall.
   maxSelectedChars: 6_000,
   // How far up a Discord reply chain to walk when the current message is a

@@ -241,11 +241,10 @@ are ingested without a session-exchange write.
   toward not superseding** — the worst case is a stale duplicate surviving
   longer, never a memory silently vanishing.
 
-`src/application/chat/guild-memory-selector.ts` and `user-memory-selector.ts`
-implement a very similar BM25+RRF selection but are **not wired into
-`dependencies.ts` or `ChatConversationService`** — they predate the unified
-`MemoryEngine.recall` path and are dead code today, kept here as a note so
-they aren't mistaken for an active part of this flow.
+Memory relevance selection uses the unified `MemoryEngine.recall` path.
+The unused guild/user selector implementations and their obsolete selector
+tests were removed during the universal-boundary migration. Guarded recall,
+embedding, ranking and revocation behavior are tested through the active engine.
 
 ## 5. Channel-context memory (scan / daily consolidation)
 

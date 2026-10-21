@@ -278,7 +278,7 @@ export interface ChatMemoryRecord {
   statement: string;
   updatedAt: number;
   // Null for a record written before vector recall was enabled, or when an
-  // embeddings call failed at write time — EmbeddingUserMemorySelector
+  // embeddings call failed at write time — MemoryEngine.recall
   // treats that as a 0 similarity contribution rather than an error.
   embedding: number[] | null;
 }
@@ -329,7 +329,7 @@ export interface GuildKnowledgeRecord {
   source: "self_report" | "community" | "administrator" | "consolidation";
   updatedAt: number;
   // Null for a record written before vector recall was enabled, or when an
-  // embeddings call failed at write time — EmbeddingGuildMemorySelector
+  // embeddings call failed at write time — MemoryEngine.recall
   // treats that as a 0 similarity contribution rather than an error.
   embedding: number[] | null;
 }
