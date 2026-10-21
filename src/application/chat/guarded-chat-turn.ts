@@ -173,6 +173,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   if (!dependencies.runtime && input.triggerMode !== "reaction" && !resolveConversationTrigger(input).explicit) throw new SocialOutputSuppressed();
   if (dependencies.runtime) {
     assertTurnActive(input.turnSignal);
+    request = approveConversationRequest(request, () => functionalToolExecuted);
     prepared = await dependencies.runtime.prepare(request);
     if (prepared) { request = prepared.request; if (!prepared.allowed) return { ...silent(), ...(prepared.conversationDecision ? { conversationDecision: prepared.conversationDecision } : {}) }; }
     if (prepared?.conversationDecision?.decision.action === "react") {

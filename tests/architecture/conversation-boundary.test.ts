@@ -37,6 +37,8 @@ describe("conversation execution ownership", () => {
       const checkSessionIssuers = (node: ts.Node): void => {
         const property = ts.isPropertyAccessExpression(node) ? node.name.text : ts.isElementAccessExpression(node) && node.argumentExpression && ts.isStringLiteral(node.argumentExpression) ? node.argumentExpression.text : null;
         if ((property === "sessionProvenance" || property === "recordSession") && relativeFile !== "infrastructure/discord/behaviors/chat-turn-support.ts") offenders.push(relativeFile);
+        if ((property === "prepareCore" || property === "processCore") && relativeFile !== "application/chat/character-runtime.ts" || property === "learnGuarded" && relativeFile !== "application/chat/guarded-chat-turn.ts") offenders.push(relativeFile);
+        if (property === "manageCanon" && relativeFile !== "infrastructure/discord/settings/groups/character.ts") offenders.push(relativeFile);
         ts.forEachChild(node, checkSessionIssuers);
       };
       checkSessionIssuers(source);
@@ -109,7 +111,8 @@ describe("conversation execution ownership", () => {
           const permitted = relative === "application/context/guarded-model-transport.ts" ? ["requireApprovedModelReply"] :
             relative === "application/context/configuration-model-gateway.ts" ? ["approveEvaluationRequest"] :
             relative === "application/chat/guarded-chat-turn.ts" ? ["approveConversationRequest"] :
-            ["application/chat/chat-conversation-service.ts", "application/chat/character-runtime.ts"].includes(relative) ? ["repairConversationRequest"] :
+            relative === "application/chat/character-runtime.ts" ? ["repairConversationRequest", "requireApprovedConversationRequest"] :
+            relative === "application/chat/chat-conversation-service.ts" ? ["repairConversationRequest"] :
               relative === "application/context/conversation-model-gateway.ts" ? ["requireApprovedConversationRequest"] : [];
           if (imported.some((name) => !permitted.includes(name))) offenders.push(relative);
         }

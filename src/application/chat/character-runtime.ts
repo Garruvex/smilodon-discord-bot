@@ -3,7 +3,7 @@ import { isEvaluationContext, type GuardedEvaluationContext } from "../context/g
 import { isConfigurationContext, type GuardedConfigurationContext } from "../context/guarded-configuration-context.js";
 import { GuardedConversationContext, isGuardedContext, projectDecisionContext, type GuardedContextPort } from "./guarded-conversation-context.js";
 import { ConversationModelGateway } from "../context/conversation-model-gateway.js";
-import { repairConversationRequest } from "../context/approved-conversation-request.js";
+import { repairConversationRequest, requireApprovedConversationRequest } from "../context/approved-conversation-request.js";
 import { approveModelOperation } from "../context/approved-model-operation.js";
 import { approveDecisionInput } from "../context/approved-decision-input.js";
 import { authorCharacterEdit, authoredCharacterResource } from "../context/authored-character-configuration.js";
@@ -224,6 +224,11 @@ export class CharacterRuntime {
       }, callbacks: this.callbacks, hasUtility: this.utility !== null })) this.registry.register(module);
   }
   public async prepare(request: ChatRequest): Promise<CharacterPreparedTurn | null> {
+    requireApprovedConversationRequest(request);
+    await request.beforeModelAttempt!();
+    return this.prepareCore(request);
+  }
+  private async prepareCore(request: ChatRequest): Promise<CharacterPreparedTurn | null> {
     if (request.botUserId) this.botIds.add(request.botUserId);
     const profile = this.profiles.find(request.guildId); if (!profile) return null;
     const settings = characterSettings(profile); const capabilities = this.capabilities(profile, request.channelId);
@@ -370,16 +375,21 @@ export class CharacterRuntime {
     return { turn, request, fingerprint, allowed, decisionStatus, acceptedContribution, exchangeId, targetMessageId, memoryContextSignature: JSON.stringify(context), participation, styleUserId, styleSignature, targetConfidence, ...(conversationDecision ? { conversationDecision } : {}) };
   }
   public async process(reply: ChatResponse, prepared: CharacterPreparedTurn): Promise<ChatResponse> {
+    requireApprovedConversationRequest(prepared.request);
+    if (prepared.turn.request !== prepared.request) throw new SocialOutputSuppressed();
+    await prepared.request.beforeModelAttempt!();
+    return this.processCore(reply, prepared);
+  }
+  private async processCore(reply: ChatResponse, prepared: CharacterPreparedTurn): Promise<ChatResponse> {
     const processed = await this.registry.postProcess(reply, prepared.turn);
     return { ...processed, ...(prepared.exchangeId ? { participationExchangeId: prepared.exchangeId } : {}), characterIsCurrent: () => this.stillEligible(prepared),
       characterCanDeliver: () => this.validatePrepared(prepared),
       ...(prepared.targetMessageId ? { replyTargetMessageId: prepared.targetMessageId,
         inferredAddressing: { label: "inferred" as const, confidence: prepared.targetConfidence, messageId: prepared.targetMessageId } } : {}) };
   }
-  public consolidate(reply: ChatResponse, prepared: CharacterPreparedTurn): Promise<void> {
-    return this.stillEligible(prepared) ? this.registry.consolidate(reply, prepared.turn) : Promise.resolve();
-  }
   public learnGuarded(reply: ChatResponse, prepared: CharacterPreparedTurn): Promise<readonly PersonalMemoryExtractionAction[] | null> {
+    requireApprovedConversationRequest(prepared.request);
+    if (prepared.turn.request !== prepared.request) throw new SocialOutputSuppressed();
     if (!isGuardedContext(prepared.request.contextLease)) throw new SocialOutputSuppressed();
     const work = (async (): Promise<readonly PersonalMemoryExtractionAction[] | null> => {
       if (!this.stillEligible(prepared) || !await prepared.request.contextLease!.validate()) return null;
@@ -388,9 +398,6 @@ export class CharacterRuntime {
       return this.registry.extractMemories(prepared.request.message, reply, prepared.turn);
     })();
     this.trackJob(work); return work;
-  }
-  public extractConversationMemories(userMessage: string, reply: ChatResponse, prepared: CharacterPreparedTurn): Promise<readonly PersonalMemoryExtractionAction[] | null> {
-    return this.stillEligible(prepared) ? this.registry.extractMemories(userMessage, reply, prepared.turn) : Promise.resolve(null);
   }
   public async afterMemoryConsolidation(context: GuardedBackgroundContext, subjectIds: readonly string[]): Promise<void> {
     if (!isBackgroundContext(context, "summary") && !isBackgroundContext(context, "memory_extraction")) throw new SocialOutputSuppressed();
