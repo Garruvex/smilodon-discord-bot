@@ -96,11 +96,12 @@ export class RelevantPersonaLoreSelector implements PersonaLoreSelector {
         // along. The overflow summary stays lexical-only (in `context`
         // above) so this string matches memory recall's and the example
         // selector's exactly and the embedding is shared.
-        const queryEmbedding = await this.embeddingsClient.embed(buildEmbeddingQueryText({
+        const queryText = buildEmbeddingQueryText({
           message: input.message,
           recentHistory: input.recentHistory,
           replyToContent: input.replyChain?.at(-1)?.content,
-        }), memoryModelOptions(input.context, "recall_embedding"));
+        });
+        const queryEmbedding = await this.embeddingsClient.embed(queryText, memoryModelOptions(input.context, "recall_embedding", [queryText]));
         await checkMemoryContext(input.context);
         const compatible = input.chunks.filter((chunk) => chunk.embedding?.length === queryEmbedding.length);
         if (compatible.length > 0) {

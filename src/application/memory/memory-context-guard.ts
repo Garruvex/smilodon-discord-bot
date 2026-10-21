@@ -6,7 +6,7 @@ import type { EmbeddingCallOptions } from "../chat/embeddings-client.js";
 import { hashContent } from "../assets/content-hash.js";
 import type { AliasScope } from "./memory-alias-provenance.js";
 import type { ObservedSubjectName } from "./observed-subject-names.js";
-import { approveModelOperation } from "../context/approved-model-operation.js";
+import { approveModelOperation, approveEmbeddingOperation } from "../context/approved-model-operation.js";
 
 export async function checkMemoryContext(context: MemoryIngestInput["context"]): Promise<void> {
   if (context === undefined) return; // Explicit legacy compatibility; never issues a complete claim proof.
@@ -22,7 +22,8 @@ export function memoryModelOptions(context: MemoryIngestInput["context"], purpos
   if (!proof) throw new SocialOutputSuppressed();
   const options = { beforeAttempt: (): Promise<void> => checkMemoryContext(context), cacheScope: `${purpose}:${hashContent(JSON.stringify(proof))}`,
     ...(isGuardedContext(context) && context.cancellationSignal ? { signal: context.cancellationSignal } : {}) };
-  return purpose === "conflict_classification" ? approveModelOperation(context, "classifyMemoryConflict", payload, options) : options;
+  return purpose === "conflict_classification" ? approveModelOperation(context, "classifyMemoryConflict", payload, options) :
+    approveEmbeddingOperation(context, payload as readonly string[], options);
 }
 
 export async function authorizeClassificationClaims(context: MemoryIngestInput["context"], records: readonly Memory[], now: number): Promise<readonly Memory[]> {

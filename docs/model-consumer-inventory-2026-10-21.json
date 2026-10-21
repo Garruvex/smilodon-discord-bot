@@ -50,6 +50,10 @@
     "summarizeReplyChainOverflow",
     "verifyAttribution"
   ],
+  "src/application/context/guarded-embedding-transport.ts": [
+    "embed",
+    "embedMany"
+  ],
   "src/application/memory/memory-engine.ts": [
     "classifyMemoryConflict",
     "embed"

@@ -317,7 +317,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
     const queryText = buildEmbeddingQueryText({ message: input.message, recentHistory: input.recentHistory, replyToContent: input.replyToContent });
     if (this.embeddingsClient && queryText.trim()) {
       await checkMemoryContext(input.context);
-      const queryEmbedding = await this.embeddingsClient.embed(queryText, memoryModelOptions(input.context, "recall_embedding")).catch(() => null);
+      const queryEmbedding = await this.embeddingsClient.embed(queryText, memoryModelOptions(input.context, "recall_embedding", [queryText])).catch(() => null);
       if (queryEmbedding) {
         const withCosine = candidates.memories
           .filter((memory) => memory.embedding && memory.embedding.length === queryEmbedding.length)
@@ -616,7 +616,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
     // ChannelSummaryScheduler resolves one per fact from its evidence.
     const status = resolveInitialStatus(scope.audience, proposal.subjectType, proposal.subjectId, assertedByUserId, input.source);
     await checkMemoryContext(input.context);
-    const embedding = this.embeddingsClient ? await this.embeddingsClient.embed(statement, memoryModelOptions(input.context, "claim_embedding")).catch(() => null) : null;
+    const embedding = this.embeddingsClient ? await this.embeddingsClient.embed(statement, memoryModelOptions(input.context, "claim_embedding", [statement])).catch(() => null) : null;
     const ownerUserId = scope.audience === "private" ? proposal.ownerUserId ?? proposal.subjectId : null;
     // Canonicalize BEFORE writing, not after: findActiveBySubject/embedding
     // are already being computed here for the write itself, so reusing them

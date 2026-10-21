@@ -1,5 +1,6 @@
 import { GuardedEvaluationContext } from "../application/context/guarded-evaluation-context.js";
 import { guardUtilityTransport } from "../application/context/guarded-utility-transport.js";
+import { guardEmbeddingTransport } from "../application/context/guarded-embedding-transport.js";
 import { interviewProbes } from "../application/chat/character-evaluation.js";
 import { CommandModule } from "../application/commands/command.js";
 import { settingsAccessPolicy } from "../infrastructure/discord/settings/engine/settings-engine.js";
@@ -383,7 +384,7 @@ export function registerCommands(
   () => chatProvider?.imageGenerationSupported === true));
   commandRegistry.register(new VoteCommand(pollService));
   const embeddingsClient = configuration.embeddings
-    ? new CachingEmbeddingsClient(
+    ? guardEmbeddingTransport(new CachingEmbeddingsClient(
         instrumentModel(configuration.embeddings.provider === "gemini"
           ? new GeminiEmbeddingsClient(configuration.embeddings.apiKey, configuration.embeddings.model, embeddingDimensions)
           : new OpenAiEmbeddingsClient(
@@ -391,7 +392,7 @@ export function registerCommands(
               configuration.embeddings.apiKey,
               configuration.embeddings.model,
             ), logger),
-      )
+      ))
     : null;
   commandRegistry.register(new BirthdayCommand(birthdayStore, guildConfigurationProvider));
   commandRegistry.register(new RemindCommand(reminderStore));

@@ -134,11 +134,12 @@ export class RelevantExampleExchangeSelector implements ExampleExchangeSelector 
     const cosineScores = new Map<ExampleExchange, number>();
     if (this.embeddingsClient && input.records.some((record) => record.embedding)) {
       try {
-        const queryEmbedding = await this.embeddingsClient.embed(buildEmbeddingQueryText({
+        const queryText = buildEmbeddingQueryText({
           message: input.message,
           recentHistory: input.recentHistory,
           replyToContent: input.replyChain?.at(-1)?.content,
-        }), memoryModelOptions(input.context, "recall_embedding"));
+        });
+        const queryEmbedding = await this.embeddingsClient.embed(queryText, memoryModelOptions(input.context, "recall_embedding", [queryText]));
         await checkMemoryContext(input.context);
         const compatible = input.records.filter((record) => record.embedding?.length === queryEmbedding.length);
         if (compatible.length > 0) {

@@ -11,7 +11,7 @@ import { personaLoreEmbeddingText } from "../chat/persona-bundle.js";
 import { parseExampleExchanges } from "../chat/example-exchange.js";
 import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
 import { isConfigurationContext, type GuardedConfigurationContext } from "./guarded-configuration-context.js";
-import { approveModelOperation } from "./approved-model-operation.js";
+import { approveModelOperation, approveEmbeddingOperation } from "./approved-model-operation.js";
 
 // Closed configuration operations own input projection. Consumers cannot add
 // participant text through an arbitrary prompt or embedding override.
@@ -74,7 +74,7 @@ export class ConfigurationModelGateway {
       admitted = new Set(parsed.exchanges.map((exchange) => `${exchange.tags}\n${exchange.user}`));
     } else throw new SocialOutputSuppressed();
     if (keys.some((key) => !admitted.has(key))) throw new SocialOutputSuppressed();
-    const result = await embedTextsBestEffort(keys, this.embeddings, context.modelOptions("configuration_embedding"));
+    const result = await embedTextsBestEffort(keys, this.embeddings, approveEmbeddingOperation(context, keys, context.modelOptions("configuration_embedding")));
     await context.check(); return result;
   }
 }

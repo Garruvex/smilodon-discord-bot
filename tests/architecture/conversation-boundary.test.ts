@@ -31,7 +31,9 @@ describe("conversation execution ownership", () => {
           const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
           const issuers = ["application/context/conversation-model-gateway.ts", "application/context/background-model-gateway.ts", "application/context/configuration-model-gateway.ts",
             "application/memory/memory-context-guard.ts", "application/chat/character-runtime.ts", "application/chat/character-decision.ts", "application/chat/tools/generate-self-image-tool.ts"];
-          const permitted = relative === "application/context/guarded-utility-transport.ts" ? ["consumeModelOperation", "snapshotModelArguments"] :
+          const permitted = relative === "application/context/guarded-embedding-transport.ts" ? ["consumeEmbeddingOperation"] :
+            relative === "application/context/guarded-utility-transport.ts" ? ["consumeModelOperation", "snapshotModelArguments"] :
+            ["application/memory/memory-context-guard.ts", "application/context/configuration-model-gateway.ts"].includes(relative) ? ["approveModelOperation", "approveEmbeddingOperation"] :
             issuers.includes(relative) ? relative === "application/chat/character-decision.ts" ? ["approveModelOperation", "approveDiagnosticModelOperation"] : ["approveModelOperation"] : [];
           if (imported.some((name) => !permitted.includes(name))) offenders.push(relative);
         }
@@ -43,6 +45,7 @@ describe("conversation execution ownership", () => {
           if (imported.some((name) => !permitted.includes(name))) offenders.push(relative);
         }
         if (module.endsWith("/guarded-utility-transport.js") && !node.importClause?.isTypeOnly && !["bootstrap/dependencies.ts", "scripts/replay-contextual-participation.ts", "scripts/replay-conversation-lifecycle.ts"].includes(relative)) offenders.push(relative);
+        if (module.endsWith("/guarded-embedding-transport.js") && !node.importClause?.isTypeOnly && relative !== "bootstrap/dependencies.ts") offenders.push(relative);
         if (module.endsWith("/character-memory.js") && !node.importClause?.isTypeOnly) {
           const bindings = node.importClause?.namedBindings;
           const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
