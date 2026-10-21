@@ -11,6 +11,10 @@ Status: local engineering implemented behind `contextual_v1`; production activat
 | `0c84518c` | Contextual classification before participation policy, thresholds, output budgets and reservations; contextual reaction policy |
 | `023320b5` | Authorized ancestry/reference/exchange anchors in the decision projection; coverage diagnostics |
 | `7651874e` | End-to-end work cancellation, generation reserve, transport abort propagation, bounded waiting and explanations |
+| `f71d964c` | Real preflight policy measurement with synthetic authorized leases; targeted replay filters |
+| `d4433fd4` | Post-context referent resolution; safe proposal labels and wire-revision diagnostics |
+| `ea120c50` | Known-recipient evidence and separate policy for grounded substantive requests |
+| `6dbcd37b` | Carry requested answer/clarification intent into the generator handoff |
 
 The release/evaluation checkpoint additionally provides synthetic replay tooling, measured opt-in timeout tuning, per-channel/thread flow and shadow overrides, cross-submission deduplication, candidate-to-turn correlation, safe target-failure subreasons, and short evidence keys mapped back to authorized event IDs. Keys are references, never new read permissions.
 
@@ -44,7 +48,7 @@ The revision-2 full replay is recorded separately as `contextual-live-replay-v2-
 
 Revision-2 review: explicit human-recipient and open-group situations matched all 27 controlled checks each; correction cases matched 24/27 and repair questions 26/27. Ambiguous isolated questions remain weak (2/27), and gratitude/cross-speaker cases need review. The two invalid decisions were timeouts. The application separately rejects unsupported follow-ups and known explicit recipient corrections, including the wording represented in the corpus. An ambiguous message wrongly labelled as a group contribution is still a possible false interruption; the current evidence does not justify broad activation. Keep the new flow disabled outside an authorized shadow pilot while these semantic issues are assessed.
 
-## Reproduction
+## Follow-up evaluation and policy corrections
 
 The replay now also runs the real preflight decision engine against an in-memory synthetic authorization lease. Both participation modes and action budgets are available, isolating policy from scheduling, generation and Discord delivery. Per-case output distinguishes the raw proposal from the policy action, status and reason. Text-policy violations and required substantive-reply misses are separate counters; a provider failure remains a failure even when its final action is silent.
 
@@ -62,9 +66,21 @@ Replay reports from this correction onward identify `policyRevision: 2`. Earlier
 
 The generator handoff also distinguishes requested answers from unsolicited contributions. It asks for an answer/clarification to the grounded follow-up, permits a brief requested confirmation and forbids claiming an unverified repair/status. Integration tests inspect that actual handoff and ensure social-only generated intent cannot satisfy the substantive request. The synthetic provider replay measures preflight only; it does not establish generated-answer or Discord-delivery quality.
 
+Final wire-3/policy-2 evidence is `contextual-live-replay-v3-policy2-2026-10-21.json`: **215/216 valid (99.54%)**, **170/216 raw-label checks (78.70%)**, p50 **6.202 s** / p95 **8.851 s**. The validity gate passes. The one invalid response violated the contribution contract. Expected substantive-reply misses were **48/72**, compared with 59/72 in the separate policy-1 run; this still means only 24/72 required replies were admitted and is not acceptable responsiveness. Most remaining required misses were low recipient confidence (22) or unresolved recipient evidence (17); do not lower confidence thresholds merely to increase replies.
+
+| Required situation | Cases | Policy-2 admitted replies | Misses |
+| --- | --- | --- | --- |
+| Same-person/interleaved answer | 18 | 9 | 9 |
+| Contextual correction | 27 | 3 | 24 |
+| Repair-status question | 27 | 12 | 15 |
+
+The corpus text-policy counter remained zero, but manual audit found **two accepted wrong cross-speaker followups** among the nine different-speaker answer cases, as in the earlier policy-1 run. Thus neither responsiveness nor complete recipient safety passes. Keep activation unchanged. Next work should distinguish semantic exchange links from mere citation presence, record safe confidence/evidence diagnostics for calibration, and tighten the cross-speaker negative cases under an explicit fixture/scoring revision. Independent review and a scoped pilot remain subsequent gates. The reported latency is decision latency only, not an end-to-end response guarantee.
+
 Fixture revision 2's text-policy counter is narrower than complete recipient accuracy: a different speaker's answer case allows group/unclear interpretations and does not forbid all text. A wrong followup to that speaker can therefore escape the text-policy counter even while failing the raw relationship check. Review accepted cross-speaker followups separately; zero text-policy violations must not be described as zero false interruptions. Tightening that fixture requires a labelled fixture/scoring revision, not silently changing historical totals.
 
 `model.decision.attempt` identifies the wire revision. The new `chat.decision.proposed` event records only controlled relationship/referent/intent/action labels and the evidence count. Compare it with `chat.decision.resolved` to distinguish model interpretation from policy suppression. Message text, generated contribution text and model reasoning are excluded from this event.
+
+## Reproduction
 
 Inventory only, with no API calls:
 
