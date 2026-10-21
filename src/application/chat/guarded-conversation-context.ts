@@ -10,6 +10,8 @@ import type { ChatSessionExchange } from "./chat-state-store.js";
 import { budgetEligibleHistory } from "./eligible-channel-history.js";
 import { actorSourceHash, humanTextSourceHash, contextProvenanceLimits, dependencyMatchesSource, parseContextProvenance, parseScopedContextProvenance, type ContextProvenance } from "./context-provenance.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
+import { immutableSnapshot } from "../context/immutable-snapshot.js";
+import { isConversationSource } from "../context/conversation-source-registry.js";
 
 export const guardedContextLimits = { pageSize: 100, pages: 3, targetedPages: 5, replyDepth: 20, messageChars: 4000, replyChars: 6000, burstMessages: 16, burstChars: 6000, targetedMessages: 8,
   dependencies: 128, sourceReads: 4096, workMs: 20_000, phaseMs: 8_000, maxValidationPasses: 64 } as const;
@@ -82,17 +84,24 @@ export class GuardedConversationContext {
   private readonly resources = new Map<string, NonNullable<ContextProvenance["resources"]>[number]>();
   private readonly assetDependencies = new Map<string, string>();
   private phaseQueue: Promise<void> = Promise.resolve();
-  public readonly report: GuardedContextReport = { replyChain: 0, replyBounded: false, burst: 0, eligibleReactors: 0, omittedReactors: 0, requested: 40, fetched: 0, examined: 0, duplicates: 0, unverifiedBot: 0, invalidatedDerived: 0, selectedIds: [], oldestTimestampMs: null, newestTimestampMs: null, eligible: 0, selected: 0, pages: 0, targetedPages: 0,
+  private readonly coverageReport: GuardedContextReport = { replyChain: 0, replyBounded: false, burst: 0, eligibleReactors: 0, omittedReactors: 0, requested: 40, fetched: 0, examined: 0, duplicates: 0, unverifiedBot: 0, invalidatedDerived: 0, selectedIds: [], oldestTimestampMs: null, newestTimestampMs: null, eligible: 0, selected: 0, pages: 0, targetedPages: 0,
     omitted: 0, truncated: 0, sourceReads: 0, status: "end" };
-  public current!: ChannelHistoryMessage;
-  public history: ChannelHistoryMessage[] = [];
-  public replyChain: ChannelHistoryMessage[] = [];
-  public burst: ChannelHistoryMessage[] = [];
-  public currentEvent: ConversationEvent | undefined;
+  private sourceCurrent!: ChannelHistoryMessage;
+  private sourceHistory: ChannelHistoryMessage[] = [];
+  private sourceReplyChain: ChannelHistoryMessage[] = [];
+  private sourceBurst: ChannelHistoryMessage[] = [];
+  private sourceEvent: ConversationEvent | undefined;
   private reactionActors = new Map<string, ChatUser>();
   private readonly identityActors = new Set<string>();
   private aliasObservationIncomplete = false;
-  private constructor(private readonly port: GuardedContextPort) { registered.add(this); }
+  private readonly port: Readonly<GuardedContextPort>;
+  private constructor(port: GuardedContextPort) { this.port = Object.freeze({ ...port }); registered.add(this); }
+  public get current(): ChannelHistoryMessage { return immutableSnapshot(this.sourceCurrent); }
+  public get history(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceHistory); }
+  public get replyChain(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceReplyChain); }
+  public get burst(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceBurst); }
+  public get currentEvent(): ConversationEvent | undefined { return this.sourceEvent ? immutableSnapshot(this.sourceEvent) : undefined; }
+  public get report(): GuardedContextReport { return immutableSnapshot(this.coverageReport); }
 
   private phase<T>(operation: () => Promise<T>, phase: GuardedContextPhase = "assembly"): Promise<T> {
     const work = this.phaseQueue.then(() => this.runPhase(operation, phase));
@@ -105,7 +114,7 @@ export class GuardedConversationContext {
     let status: "completed" | "deadline" | "failed" = "failed";
     try {
       const result = await Promise.race([operation(), new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => { status = "deadline"; this.closed = true; controller.abort(); this.report.status = "deadline"; reject(new SocialOutputSuppressed()); },
+        timer = setTimeout(() => { status = "deadline"; this.closed = true; controller.abort(); this.coverageReport.status = "deadline"; reject(new SocialOutputSuppressed()); },
           Math.min(this.remainingMs, guardedContextLimits.phaseMs));
       })]);
       status = "completed"; return result;
@@ -120,20 +129,21 @@ export class GuardedConversationContext {
     if (this.closed || this.signal.aborted || path.has(id) || path.size >= guardedContextLimits.replyDepth) return null;
     const cached = this.cache.get(id); if (cached) return cached;
     if (++this.reads > guardedContextLimits.sourceReads) return null;
-    this.report.sourceReads = this.reads;
+    this.coverageReport.sourceReads = this.reads;
     const next = new Set(path).add(id);
     const pending = (async (): Promise<GuardedContextSource | null> => {
-      const source = await this.port.read(id, this.signal).catch(() => null);
+      const raw = await this.port.read(id, this.signal).catch(() => null);
+      const source = raw ? immutableSnapshot(raw) : null;
       if (!source || source.event.channelId !== this.port.channelId || source.event.messageId !== id || source.origin === "other") return null;
       if (source.event.author && source.event.author.id !== source.event.authorId) return null;
       if (this.assetDependencies.has(id) && guardedAssetsHash(source.assets ?? []) !== this.assetDependencies.get(id)) return null;
       if (source.origin === "chat") {
         const proof = parseScopedContextProvenance(source.provenance, { guildId: this.port.guildId, channelId: this.port.channelId,
           ...(this.port.actorId ? { userId: this.port.actorId } : {}) });
-        if (!proof || proof.purpose && proof.purpose !== "reply" || proof.coverage !== "complete") { this.report.unverifiedBot++; return null; }
-        if (proof.outputHash !== hashContent(source.event.content)) { this.report.invalidatedDerived++; return null; }
+        if (!proof || proof.purpose && proof.purpose !== "reply" || proof.coverage !== "complete") { this.coverageReport.unverifiedBot++; return null; }
+        if (proof.outputHash !== hashContent(source.event.content)) { this.coverageReport.invalidatedDerived++; return null; }
         if (proof.outputAssetsHash && proof.outputAssetsHash !== guardedAssetsHash(source.assets ?? [])) return null;
-        if (!await this.proofSourcesCurrent(proof, next)) { this.report.invalidatedDerived++; return null; }
+        if (!await this.proofSourcesCurrent(proof, next)) { this.coverageReport.invalidatedDerived++; return null; }
       }
       return source;
     })();
@@ -141,7 +151,7 @@ export class GuardedConversationContext {
   }
 
   private async retain(id: string): Promise<ChannelHistoryMessage | null> {
-    const source = await this.read(id); if (!source) { this.report.omitted++; return null; }
+    const source = await this.read(id); if (!source) { this.coverageReport.omitted++; return null; }
     const add = async (item: GuardedContextSource): Promise<boolean> => {
       if (this.evidence.has(item.event.messageId)) return true;
       if (!this.evidence.has(item.event.messageId) && this.evidence.size >= guardedContextLimits.dependencies) return false;
@@ -157,7 +167,7 @@ export class GuardedConversationContext {
     const before = new Set(this.evidence.keys());
     if (!await add(source)) {
       for (const key of this.evidence.keys()) if (!before.has(key)) this.evidence.delete(key);
-      this.report.omitted++; return null;
+      this.coverageReport.omitted++; return null;
     }
     // Keep external-source lineage when reusing a previously guarded answer.
     // Its protected Discord dependencies are still revalidated independently.
@@ -174,58 +184,60 @@ export class GuardedConversationContext {
   }
 
   public static async open(port: GuardedContextPort, input: { count: number; budget: number; minReactors?: number; burstIds: readonly string[]; event?: ConversationEvent }): Promise<GuardedConversationContext> {
-    const lease = new GuardedConversationContext(port); lease.report.requested = input.count;
+    if (!isConversationSource(port)) throw new SocialOutputSuppressed();
+    const lease = new GuardedConversationContext(port); port = lease.port;
+    input = immutableSnapshot(input); lease.coverageReport.requested = input.count;
     try { await lease.phase(async () => {
-      const current = await lease.retain(port.sourceMessageId); if (!current) { lease.report.status = "source_ineligible"; throw new SocialOutputSuppressed(); }
+      const current = await lease.retain(port.sourceMessageId); if (!current) { lease.coverageReport.status = "source_ineligible"; throw new SocialOutputSuppressed(); }
       if (port.actorId !== null && port.actorId !== current.authorId) throw new SocialOutputSuppressed();
       if (input.event?.type === "reaction_snapshot" && (input.event.targetMessageId !== current.messageId || input.event.channelId !== port.channelId ||
         input.event.targetAuthorId !== current.authorId || (await lease.read(current.messageId))?.origin !== "chat")) throw new SocialOutputSuppressed();
-      lease.current = current;
-      lease.currentEvent = input.event?.type === "reaction_snapshot" ? input.event : { type: "message", messageId: current.messageId,
+      lease.sourceCurrent = current;
+      lease.sourceEvent = input.event?.type === "reaction_snapshot" ? input.event : { type: "message", messageId: current.messageId,
         channelId: port.channelId, authorId: current.authorId, timestampMs: current.timestampMs,
         replyToMessageId: current.replyToMessageId ?? null, mentionedUserIds: [...current.content.matchAll(/<@!?(\d+)>/gu)].map((match) => match[1]!) };
       const ancestors: ChannelHistoryMessage[] = []; let reference = current.replyToMessageId;
       const visited = new Set([current.messageId]);
       for (let depth = 0; reference && depth < guardedContextLimits.replyDepth && !visited.has(reference); depth++) {
-        visited.add(reference); const source = await lease.read(reference); if (!source) { lease.report.omitted++; break; }
+        visited.add(reference); const source = await lease.read(reference); if (!source) { lease.coverageReport.omitted++; break; }
         const parent = compact(source.event); ancestors.push(parent); reference = parent.replyToMessageId;
       }
-      lease.replyChain = [];
+      lease.sourceReplyChain = [];
       const boundedReply = budgetEligibleHistory(ancestors.reverse(), guardedContextLimits.replyDepth, guardedContextLimits.replyChars);
-      lease.report.truncated += boundedReply.truncated; lease.report.omitted += boundedReply.budgetOmitted;
-      for (const event of boundedReply.messages) if (await lease.retain(event.messageId)) lease.replyChain.push(event);
-      lease.report.replyChain = lease.replyChain.length; lease.report.replyBounded = !!reference;
+      lease.coverageReport.truncated += boundedReply.truncated; lease.coverageReport.omitted += boundedReply.budgetOmitted;
+      for (const event of boundedReply.messages) if (await lease.retain(event.messageId)) lease.sourceReplyChain.push(event);
+      lease.coverageReport.replyChain = lease.sourceReplyChain.length; lease.coverageReport.replyBounded = !!reference;
       for (const id of [...new Set(input.burstIds)].slice(-guardedContextLimits.burstMessages)) {
-        const source = await lease.read(id); const event = source ? compact(source.event) : null; if (event && event.authorId === current.authorId && id !== current.messageId) lease.burst.push(event);
+        const source = await lease.read(id); const event = source ? compact(source.event) : null; if (event && event.authorId === current.authorId && id !== current.messageId) lease.sourceBurst.push(event);
       }
-      if (lease.currentEvent.type === "message") lease.burst.push(current);
-      const boundedBurst = budgetEligibleHistory(lease.burst, guardedContextLimits.burstMessages, guardedContextLimits.burstChars);
-      lease.burst = [];
-      for (const event of boundedBurst.messages) if (await lease.retain(event.messageId)) lease.burst.push(event);
-      lease.report.truncated += boundedBurst.truncated; lease.report.omitted += boundedBurst.budgetOmitted;
-      lease.report.burst = lease.burst.length;
-      const exclude = new Set([current.messageId, ...lease.replyChain.map((event) => event.messageId), ...lease.burst.map((event) => event.messageId)]);
-      const candidates: ChannelHistoryMessage[] = []; let cursor: string | null = lease.currentEvent.type === "reaction_snapshot" ? null : current.messageId;
+      if (lease.sourceEvent.type === "message") lease.sourceBurst.push(current);
+      const boundedBurst = budgetEligibleHistory(lease.sourceBurst, guardedContextLimits.burstMessages, guardedContextLimits.burstChars);
+      lease.sourceBurst = [];
+      for (const event of boundedBurst.messages) if (await lease.retain(event.messageId)) lease.sourceBurst.push(event);
+      lease.coverageReport.truncated += boundedBurst.truncated; lease.coverageReport.omitted += boundedBurst.budgetOmitted;
+      lease.coverageReport.burst = lease.sourceBurst.length;
+      const exclude = new Set([current.messageId, ...lease.sourceReplyChain.map((event) => event.messageId), ...lease.sourceBurst.map((event) => event.messageId)]);
+      const candidates: ChannelHistoryMessage[] = []; let cursor: string | null = lease.sourceEvent.type === "reaction_snapshot" ? null : current.messageId;
       const backward = /\b(?:earlier|previous|above|before)\b|之前|前面|上面|剛剛|さっき|前の/iu.test(current.content);
       const maxPages = guardedContextLimits.pages + (backward ? guardedContextLimits.targetedPages : 0);
       for (let page = 0; page < maxPages; page++) {
         let ids: readonly string[];
         try { ids = (await port.page(cursor, lease.signal)).slice(0, guardedContextLimits.pageSize); }
-        catch { lease.report.status = "fetch_failed"; break; }
-        if (page < guardedContextLimits.pages) lease.report.pages++; else lease.report.targetedPages++;
-        lease.report.fetched += ids.length;
+        catch { lease.coverageReport.status = "fetch_failed"; break; }
+        if (page < guardedContextLimits.pages) lease.coverageReport.pages++; else lease.coverageReport.targetedPages++;
+        lease.coverageReport.fetched += ids.length;
         for (const id of ids) {
-          lease.report.examined++;
-          if (exclude.has(id) || candidates.some((event) => event.messageId === id)) { lease.report.duplicates++; continue; }
-          const source = await lease.read(id); if (!source) { lease.report.omitted++; continue; }
-          lease.report.eligible++; candidates.push(compact(source.event));
+          lease.coverageReport.examined++;
+          if (exclude.has(id) || candidates.some((event) => event.messageId === id)) { lease.coverageReport.duplicates++; continue; }
+          const source = await lease.read(id); if (!source) { lease.coverageReport.omitted++; continue; }
+          lease.coverageReport.eligible++; candidates.push(compact(source.event));
           if (candidates.length >= input.count && !backward) break;
         }
         const next = ids.at(-1);
-        if (candidates.length >= input.count && !backward) { lease.report.status = "filled"; break; }
-        if (ids.length < guardedContextLimits.pageSize || !next) { lease.report.status = "end"; break; }
-        if (next === cursor) { lease.report.status = "no_progress"; break; }
-        cursor = next; lease.report.status = "scan_cap";
+        if (candidates.length >= input.count && !backward) { lease.coverageReport.status = "filled"; break; }
+        if (ids.length < guardedContextLimits.pageSize || !next) { lease.coverageReport.status = "end"; break; }
+        if (next === cursor) { lease.coverageReport.status = "no_progress"; break; }
+        cursor = next; lease.coverageReport.status = "scan_cap";
       }
       // A backward reference adds a bounded relevance search; it does not
       // turn every mention into a scan of the channel's entire history.
@@ -235,42 +247,42 @@ export class GuardedConversationContext {
         terms.reduce((total, term) => total + Number(event.content.toLowerCase().includes(term)), 0) * 2 + Number(event.authorId === current.authorId) }))
         .filter((item) => item.score > 0).sort((a, b) => b.score - a.score).slice(0, guardedContextLimits.targetedMessages).map((item) => item.event) : [];
       const bounded = budgetEligibleHistory([...baseline, ...targeted], input.count + targeted.length, input.budget);
-      lease.report.truncated += bounded.truncated; lease.history = [];
-      for (const event of bounded.messages) if (await lease.retain(event.messageId)) lease.history.push(event);
-      lease.report.selected = lease.history.length;
-      lease.report.omitted += Math.max(0, candidates.length - lease.history.length);
-      lease.report.selectedIds = lease.history.map((event) => event.messageId);
-      lease.report.oldestTimestampMs = lease.history[0]?.timestampMs ?? null;
-      lease.report.newestTimestampMs = lease.history.at(-1)?.timestampMs ?? null;
-      if (lease.currentEvent.type === "reaction_snapshot") {
+      lease.coverageReport.truncated += bounded.truncated; lease.sourceHistory = [];
+      for (const event of bounded.messages) if (await lease.retain(event.messageId)) lease.sourceHistory.push(event);
+      lease.coverageReport.selected = lease.sourceHistory.length;
+      lease.coverageReport.omitted += Math.max(0, candidates.length - lease.sourceHistory.length);
+      lease.coverageReport.selectedIds = lease.sourceHistory.map((event) => event.messageId);
+      lease.coverageReport.oldestTimestampMs = lease.sourceHistory[0]?.timestampMs ?? null;
+      lease.coverageReport.newestTimestampMs = lease.sourceHistory.at(-1)?.timestampMs ?? null;
+      if (lease.sourceEvent.type === "reaction_snapshot") {
         const reactions = [];
-        for (const reaction of lease.currentEvent.reactions.slice(0, 20)) {
+        for (const reaction of lease.sourceEvent.reactions.slice(0, 20)) {
           const actorIds = [];
           for (const id of reaction.actorIds.slice(0, 100)) {
-            if (!lease.canRetainActor(id)) { lease.report.omittedReactors++; continue; }
-            const actor = await port.actor(id, lease.signal); if (!actor) { lease.report.omittedReactors++; continue; }
-            if (lease.retainActor(actor)) actorIds.push(id); else lease.report.omittedReactors++;
+            if (!lease.canRetainActor(id)) { lease.coverageReport.omittedReactors++; continue; }
+            const actor = await port.actor(id, lease.signal); if (!actor || actor.id !== id) { lease.coverageReport.omittedReactors++; continue; }
+            if (lease.retainActor(actor)) actorIds.push(id); else lease.coverageReport.omittedReactors++;
           }
           if (actorIds.length) reactions.push({ ...reaction, actorIds });
         }
-        lease.report.eligibleReactors = lease.reactionActors.size;
-        if (lease.reactionActors.size < (input.minReactors ?? 1)) { lease.report.status = "ineligible_reaction"; throw new SocialOutputSuppressed(); }
-        lease.currentEvent = { ...lease.currentEvent, reactions };
+        lease.coverageReport.eligibleReactors = lease.reactionActors.size;
+        if (lease.reactionActors.size < (input.minReactors ?? 1)) { lease.coverageReport.status = "ineligible_reaction"; throw new SocialOutputSuppressed(); }
+        lease.sourceEvent = { ...lease.sourceEvent, reactions };
       }
-      const selected = new Map([current, ...lease.replyChain, ...lease.history, ...lease.burst].map((event) => [event.messageId, event]));
+      const selected = new Map([current, ...lease.sourceReplyChain, ...lease.sourceHistory, ...lease.sourceBurst].map((event) => [event.messageId, event]));
       for (const event of selected.values()) {
         const target = event.replyToMessageId ? selected.get(event.replyToMessageId) : null;
         event.replyToAuthorId = target?.authorId ?? null;
         event.replyToAuthorDisplayName = target?.authorDisplayName ?? null;
       }
-    }); } finally { port.coverage?.({ ...lease.report }); }
+    }); } finally { port.coverage?.({ ...lease.coverageReport }); }
     return lease;
   }
 
   public async sessions(exchanges: readonly ChatSessionExchange[]): Promise<ChatSessionExchange[]> {
     return this.phase(async () => {
       const selected: ChatSessionExchange[] = [];
-      if (!this.port.actorId || this.currentEvent?.type === "reaction_snapshot") return selected;
+      if (!this.port.actorId || this.sourceEvent?.type === "reaction_snapshot") return selected;
       const actorId = this.port.actorId;
       const candidates = exchanges.slice(-4).flatMap((exchange) => {
         const proof = parseScopedContextProvenance(exchange.contextProvenance, { guildId: this.port.guildId, channelId: this.port.channelId, userId: actorId });
@@ -280,7 +292,7 @@ export class GuardedConversationContext {
         return [{ exchange, proof, sourceId, deliveryIds }];
       });
       if (!candidates.length) return selected;
-      await this.port.prepareValidation?.([...new Set([this.current.messageId, ...candidates.flatMap(({ proof, sourceId, deliveryIds }) =>
+      await this.port.prepareValidation?.([...new Set([this.sourceCurrent.messageId, ...candidates.flatMap(({ proof, sourceId, deliveryIds }) =>
         [sourceId, ...deliveryIds, ...proof.dependencies.map((dependency) => dependency.messageId)])])], this.signal);
       for (const { exchange, proof, sourceId, deliveryIds } of candidates) {
         const human = await this.read(sourceId);
@@ -295,7 +307,7 @@ export class GuardedConversationContext {
           if (!await this.retainActors(proof)) continue;
           for (const entry of proof.resources ?? []) this.resources.set(`${entry.kind}:${entry.id}`, entry);
           for (const dependency of proof.dependencies) if (dependency.assetsHash) this.assetDependencies.set(dependency.messageId, dependency.assetsHash);
-          selected.push(exchange);
+          selected.push(immutableSnapshot(exchange));
         }
       }
       return selected;
@@ -359,7 +371,7 @@ export class GuardedConversationContext {
     if (identityOnly) { this.identityActors.add(actor.id); return true; }
     const prior = this.reactionActors.get(actor.id);
     if (prior && JSON.stringify(prior) !== JSON.stringify(actor)) throw new SocialOutputSuppressed();
-    this.reactionActors.set(actor.id, actor); return true;
+    this.reactionActors.set(actor.id, immutableSnapshot(actor)); return true;
   }
   private async retainActors(proof: ContextProvenance): Promise<boolean> {
     for (const entry of proof.actors ?? []) {
@@ -399,7 +411,7 @@ export class GuardedConversationContext {
       for (const id of [...new Set(ids)].slice(0, 100)) {
         if (!this.canRetainActor(id)) continue;
         const actor = await this.port.actor(id, this.signal); if (!actor || actor.id !== id) continue;
-        if (this.retainActor(actor)) admitted.push(actor);
+        if (this.retainActor(actor)) admitted.push(immutableSnapshot(actor));
       }
       return admitted;
   }
@@ -471,7 +483,7 @@ export class GuardedConversationContext {
 
   private async currentProfileAlias(scope: AliasScope, value: string, actor: ChatUser): Promise<ContextProvenance | null> {
     if (![actor.displayName, actor.username, actor.globalName, actor.guildNickname].includes(value)) return null;
-    const current = await this.read(this.current.messageId); if (!current) return null;
+    const current = await this.read(this.sourceCurrent.messageId); if (!current) return null;
     return parseContextProvenance({ version: 1, purpose: "identity_alias", coverage: "complete", unresolved: [],
       audience: { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.audienceUserId ?? (scope.audience === "private" ? scope.ownerUserId : null) },
       outputHash: hashContent(memoryAliasPayload(scope, value)), dependencies: [{ guildId: this.port.guildId, channelId: this.port.channelId,
@@ -562,8 +574,8 @@ export class GuardedConversationContext {
     if (!this.port.loadAsset || !Number.isFinite(limit) || limit < 1) return [];
     return this.phase(async () => {
       const images: ChatImage[] = [];
-      const chainIds = new Set(this.replyChain.map((event) => event.messageId));
-      const candidates = [...new Map([this.current, ...[...this.replyChain].reverse(), ...[...this.history].reverse()].map((event) => [event.messageId, event])).values()];
+      const chainIds = new Set(this.sourceReplyChain.map((event) => event.messageId));
+      const candidates = [...new Map([this.sourceCurrent, ...[...this.sourceReplyChain].reverse(), ...[...this.sourceHistory].reverse()].map((event) => [event.messageId, event])).values()];
       for (const event of candidates) {
         const source = await this.read(event.messageId); if (!source) continue;
         const assets = source.assets ?? [];
@@ -575,8 +587,8 @@ export class GuardedConversationContext {
           const dataUrl = await this.port.loadAsset!(event.messageId, asset.id, AbortSignal.any([this.signal, AbortSignal.timeout(3000)])).catch(() => null);
           if (!dataUrl || dataUrl.length > 12_000_000 || !dataUrl.startsWith(`data:${asset.contentType};base64,`)) continue;
           this.assetDependencies.set(event.messageId, guardedAssetsHash(assets));
-          for (const projected of new Set([this.current, ...this.replyChain, ...this.history, ...this.burst])) if (projected.messageId === event.messageId) projected.imageCount++;
-          images.push(Object.freeze({ dataUrl, source: event.messageId === this.current.messageId ? "current_message" : chainIds.has(event.messageId) ? "reply_chain" : "channel_history",
+          for (const projected of new Set([this.sourceCurrent, ...this.sourceReplyChain, ...this.sourceHistory, ...this.sourceBurst])) if (projected.messageId === event.messageId) projected.imageCount++;
+          images.push(Object.freeze({ dataUrl, source: event.messageId === this.sourceCurrent.messageId ? "current_message" : chainIds.has(event.messageId) ? "reply_chain" : "channel_history",
             sourceMessageId: event.messageId, sourceIndex: images.length }));
         }
       }
@@ -604,7 +616,7 @@ export class GuardedConversationContext {
     }, "validation");
       if (!valid) this.closed = true;
       this.port.validation?.(valid ? "current" : "changed", this.reads); return valid;
-    } catch { this.closed = true; this.port.validation?.(this.report.status === "deadline" ? "deadline" : "bounded", this.reads); return false; }
+    } catch { this.closed = true; this.port.validation?.(this.coverageReport.status === "deadline" ? "deadline" : "bounded", this.reads); return false; }
   }
 
   private inheritPublicTools(proof: ContextProvenance | null | undefined): void {

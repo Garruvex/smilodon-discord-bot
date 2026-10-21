@@ -6,6 +6,7 @@ import { memoryClaimProof } from "../memory/memory-claim-provenance.js";
 import type { Memory } from "../memory/memory.js";
 import { explicitSelfAlias, memoryAliasPayload, type AliasScope } from "../memory/memory-alias-provenance.js";
 import type { ObservedSubjectName } from "../memory/observed-subject-names.js";
+import { immutableSnapshot } from "./immutable-snapshot.js";
 
 const registered = new WeakSet<object>();
 export type BackgroundModelPurpose = "summary" | "memory_extraction";
@@ -24,7 +25,10 @@ export class GuardedBackgroundContext {
   private constructor(public readonly purpose: BackgroundModelPurpose, messages: readonly ChannelHistoryMessage[],
     private readonly reader: ChannelHistoryReader, private readonly policyCurrent: () => boolean | Promise<boolean>,
     private readonly report?: (status: BackgroundValidationStatus) => void) {
-    this.messages = Object.freeze(messages.map((message) => Object.freeze({ ...message })));
+    this.messages = immutableSnapshot(messages);
+    this.reader = Object.freeze({ ...reader, readBatch: reader.readBatch.bind(reader),
+      ...(reader.validateBatch ? { validateBatch: reader.validateBatch.bind(reader) } : {}),
+      ...(reader.canLearn ? { canLearn: reader.canLearn.bind(reader) } : {}) });
     Object.defineProperty(this, "messages", { writable: false, configurable: false });
     Object.defineProperty(this, "purpose", { writable: false, configurable: false });
     registered.add(this);

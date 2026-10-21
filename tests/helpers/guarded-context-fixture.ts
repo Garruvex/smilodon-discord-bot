@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 import type { ChannelHistoryMessage, ChatUser } from "../../src/application/chat/chat-provider.js";
 import type { GuardedContextPort, GuardedContextSource } from "../../src/application/chat/guarded-conversation-context.js";
+import { registerConversationSource } from "../../src/application/context/conversation-source-registry.js";
 
 export function guardedEvent(id: string, timestampMs: number, content: string, authorId = "alice", extra: Partial<ChannelHistoryMessage> = {}): ChannelHistoryMessage {
   return { messageId: id, channelId: "channel", authorId, authorDisplayName: authorId, timestampMs, content, imageCount: 0,
@@ -24,5 +25,5 @@ export function guardedFixture(current = guardedEvent("current", 4000, "@bot"), 
     }),
     actor: vi.fn((id: string) => Promise.resolve(structuredClone(actors.get(id) ?? null))),
   };
-  return { sources, denied, actors, port, setPolicy: (allowed): void => { policy = allowed; }, add };
+  return { sources, denied, actors, port: registerConversationSource(port), setPolicy: (allowed): void => { policy = allowed; }, add };
 }

@@ -1,5 +1,6 @@
 import type { ContextualReplayCase } from "./contextual-replay.js";
 import { GuardedConversationContext, type GuardedContextPort, type GuardedContextSource } from "./guarded-conversation-context.js";
+import { registerConversationSource } from "../context/conversation-source-registry.js";
 
 // Offline synthetic authorization premise only. Never use this port for live
 // Discord data. Bot text gets real registered provenance from its seed source.
@@ -18,9 +19,9 @@ export async function syntheticReplayContext(fixture: ContextualReplayCase, guil
     if (event.authorId === botId) {
       const human = event.replyToMessageId ? sources.get(event.replyToMessageId)?.event : null;
       if (!human) throw new Error("Synthetic bot exchange requires an earlier human source");
-      const prior = await GuardedConversationContext.open({ ...port, sourceMessageId: human.messageId, actorId: human.authorId }, { count: 40, budget: 12000, burstIds: [] });
+      const prior = await GuardedConversationContext.open(registerConversationSource({ ...port, sourceMessageId: human.messageId, actorId: human.authorId }), { count: 40, budget: 12000, burstIds: [] });
       sources.set(event.messageId, { event, origin: "chat", provenance: prior.provenance(event.content) });
     } else sources.set(event.messageId, { event, origin: "human", provenance: null });
   }
-  return { port, sources, botId };
+  return { port: registerConversationSource(port), sources, botId };
 }

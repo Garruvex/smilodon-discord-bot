@@ -18,6 +18,15 @@ describe("conversation execution ownership", () => {
       for (const node of source.statements) {
         if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) continue;
         const module = node.moduleSpecifier.text;
+        const relative = path.relative(root, file).replaceAll(path.sep, "/");
+        if (module.endsWith("/conversation-source-registry.js") && !node.importClause?.isTypeOnly) {
+          const bindings = node.importClause?.namedBindings;
+          const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.map((item) => (item.propertyName ?? item.name).text) : ["*"];
+          const permitted = relative === "infrastructure/discord/behaviors/chat-turn-support.ts" || relative === "application/chat/synthetic-replay-context.ts" ? ["registerConversationSource"]
+            : relative === "application/chat/guarded-tool-gateway.ts" ? ["extendConversationSource"]
+              : relative === "application/chat/guarded-conversation-context.ts" ? ["isConversationSource"] : [];
+          if (imported.some((name) => !permitted.includes(name))) offenders.push(relative);
+        }
         const owner = file.endsWith(`${path.sep}application${path.sep}chat${path.sep}chat-conversation-service.ts`);
         if (module.endsWith("/guarded-chat-turn.js") && !owner) offenders.push(path.relative(root, file));
         const typeOnly = node.importClause?.isTypeOnly;

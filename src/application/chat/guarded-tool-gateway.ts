@@ -10,6 +10,7 @@ import type { ChatToolRegistry } from "./tools/chat-tool-registry.js";
 import { isGuardedContext, type GuardedConversationContext, type GuardedResourceKey, type GuardedContextPort } from "./guarded-conversation-context.js";
 import type { ChatUser } from "./chat-provider.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
+import { extendConversationSource } from "../context/conversation-source-registry.js";
 
 // Only reviewed implementations can enter this boundary. A name or a model-
 // supplied "filtered" flag cannot turn an unknown tool into a source authority.
@@ -58,8 +59,8 @@ export async function resolveGuardedToolResource(registry: ChatToolRegistry | nu
 }
 
 export function guardedToolResourcePort(port: GuardedContextPort, registry: ChatToolRegistry | null,
-  context: { currentUser: ChatUser; channelMode: ChatToolContext["channelMode"]; channelIsNsfw: boolean; isOwner: boolean }): GuardedContextPort {
-  return { ...port, resource: (key, signal): Promise<string | null> => resolveGuardedToolResource(registry, key, {
+  context: { currentUser: ChatUser; channelMode: ChatToolContext["channelMode"]; channelIsNsfw: boolean; isOwner: boolean }, turnSignal?: AbortSignal): GuardedContextPort {
+  return extendConversationSource(port, { ...(turnSignal ? { turnSignal } : {}), resource: (key, signal): Promise<string | null> => resolveGuardedToolResource(registry, key, {
     ...context, guildId: port.guildId, channelId: port.channelId, music: null, pendingGeneratedImages: [], signal,
-  }) };
+  }) });
 }

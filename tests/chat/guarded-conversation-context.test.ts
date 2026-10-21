@@ -8,6 +8,11 @@ afterEach(() => vi.useRealTimers());
 const policy = { count: 40, budget: 12000, burstIds: [] };
 
 describe("guarded conversation context", () => {
+  it("rejects raw source objects and unregistered copies before resolving any content", async () => {
+    const fixture = guardedFixture();
+    await expect(GuardedConversationContext.open({ ...fixture.port }, policy)).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    expect(fixture.port.read).not.toHaveBeenCalled();
+  });
   it("does not reuse private derived text in a public destination even for the same requester", async () => {
     const fixture = guardedFixture(); fixture.port.audienceUserId = "alice";
     const privateLease = await GuardedConversationContext.open(fixture.port, policy);
@@ -127,9 +132,9 @@ describe("guarded conversation context", () => {
     fixture.add(guardedEvent("current", 3000, "followup")); fixture.port.sourceMessageId = "current";
     const session = { user: { content: "original question", createdAt: 1000, sourceMessageId: "question" },
       assistant: { content: "specific answer", createdAt: 2000, messageIds: ["answer"] }, contextProvenance: proof };
+    const prepareValidation = vi.fn(() => Promise.resolve()); fixture.port.prepareValidation = prepareValidation;
     const context = await GuardedConversationContext.open(fixture.port, policy);
     expect(context.history.map((event) => event.messageId)).toContain("answer");
-    const prepareValidation = vi.fn(() => Promise.resolve()); fixture.port.prepareValidation = prepareValidation;
     expect(await context.sessions([session])).toEqual([session]);
     expect(prepareValidation).toHaveBeenCalledExactlyOnceWith(expect.arrayContaining(["current", "question", "answer"]), expect.any(AbortSignal));
     fixture.sources.delete("question");
@@ -177,14 +182,34 @@ describe("guarded conversation context", () => {
 
   it("identifies a stalled session phase and cancels within its existing deadline", async () => {
     vi.useFakeTimers(); const fixture = guardedFixture();
-    const context = await GuardedConversationContext.open(fixture.port, policy);
     const work = vi.fn(); fixture.port.work = work;
     fixture.port.prepareValidation = (): Promise<void> => new Promise(() => {});
+    const context = await GuardedConversationContext.open(fixture.port, policy); work.mockClear();
     const pending = context.sessions([{ user: { content: context.current.content, createdAt: 4000, sourceMessageId: "current" },
       assistant: { content: "answer", createdAt: 4500, messageIds: ["delivered"] }, contextProvenance: context.provenance("answer") }]);
     const assertion = expect(pending).rejects.toBeInstanceOf(SocialOutputSuppressed);
     await vi.advanceTimersByTimeAsync(8000); await assertion;
     expect(work).toHaveBeenCalledExactlyOnceWith("sessions", "deadline", 8000);
     expect(context.provenance("reply")).toBeNull();
+  });
+
+  it("keeps immutable projections and original callbacks while rechecking actual source changes", async () => {
+    const fixture = guardedFixture();
+    fixture.add(guardedEvent("old", 1000, "original"));
+    // Model a transport which returns its cached object by reference.
+    fixture.port.read = (id): Promise<GuardedContextSource | null> => Promise.resolve(fixture.sources.get(id) ?? null);
+    const context = await GuardedConversationContext.open(fixture.port, policy);
+    const proof = context.provenance("answer");
+    expect(() => { context.current.content = "injected"; }).toThrow();
+    expect(() => { context.current.author!.displayName = "injected"; }).toThrow();
+    expect(() => { context.history.push(guardedEvent("injected", 1, "hidden")); }).toThrow();
+    expect(() => { context.report.selectedIds.push("injected"); }).toThrow();
+    fixture.port.read = (): Promise<GuardedContextSource | null> => Promise.resolve(null);
+    fixture.port.channelId = "other";
+    expect(await context.validate()).toBe(true);
+    expect(context.provenance("answer")).toEqual(proof);
+    fixture.sources.get("old")!.event.content = "edited";
+    expect(context.history[0]?.content).toBe("original");
+    expect(await context.validate()).toBe(false);
   });
 });

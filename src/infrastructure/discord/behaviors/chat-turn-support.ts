@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { retryAfterMs } from "../../../application/concurrency/retry-after.js";
 import { chatDeliveryText } from "../../../application/i18n/chat-delivery.js";
 import type { GuardedConversationContext, GuardedContextPort, GuardedContextSource } from "../../../application/chat/guarded-conversation-context.js";
+import { registerConversationSource } from "../../../application/context/conversation-source-registry.js";
 import { guardedAssetsHash, type GuardedAssetDescriptor } from "../../../application/chat/guarded-conversation-context.js";
 import { bindProvenanceOutput, type ContextProvenance } from "../../../application/chat/context-provenance.js";
 import type { Attachment, Message, User, GuildMember } from "discord.js";
@@ -114,7 +115,7 @@ export class ChatTurnSupport {
       if (!cache.has(id)) cache.set(id, source.guild?.members.fetch({ user: id, force: true }).catch(() => null) ?? Promise.resolve(null));
       return cache.get(id)!;
     };
-    return {
+    return registerConversationSource({
       guildId: source.guildId!, channelId: source.channelId, sourceMessageId: source.id, actorId: reaction ? null : source.author.id, persist: eligibility?.canPersistContext(source) ?? false,
       coverage: (report) => emitChatDiagnostic(this.logger, { event: "context.guard.coverage", ...report }),
       work: (phase, status, durationMs) => emitChatDiagnostic(this.logger, { event: "context.guard.work", phase, status, durationMs }),
@@ -183,7 +184,7 @@ export class ChatTurnSupport {
         const allowed = await eligibility.checkGuardedActor(source, actor);
         return allowed ? this.toChatUser(actor.user, actor) : null;
       },
-    };
+    });
   }
 
   public async refreshHistoryEvent(source: Message, event: ChannelHistoryMessage): Promise<ChannelHistoryMessage | null> {

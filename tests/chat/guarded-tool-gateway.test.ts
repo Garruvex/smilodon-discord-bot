@@ -83,11 +83,12 @@ describe("guarded tool source boundary", () => {
   });
 
   it("resolves only registered birthday sources and supplied eligible subjects", async () => {
-    const { context, fixture, lease } = await setup();
+    const { context, fixture } = await setup();
     const getBirthday = vi.fn().mockResolvedValue({ month: 10, day: 21, birthYear: 2000 });
     const tool = new BirthdayLookupTool({ getBirthday } as never, { find: (): unknown => ({ features: { birthdays: true }, timezone: "Asia/Taipei" }) } as never);
     const registry = new ChatToolRegistry([tool]);
     fixture.port.resource = (key, signal): Promise<string | null> => resolveGuardedToolResource(registry, key, { ...context, signal });
+    const lease = await GuardedConversationContext.open(fixture.port, { count: 10, budget: 4000, burstIds: [] });
     expect((await tool.execute({ userId: "unknown" }, { ...context, contextLease: lease })).content).toContain("supplied authorized");
     expect(getBirthday).not.toHaveBeenCalled();
     const result = await tool.execute({ userId: "alice" }, { ...context, contextLease: lease });
