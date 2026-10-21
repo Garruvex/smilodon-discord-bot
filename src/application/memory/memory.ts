@@ -357,6 +357,7 @@ export interface MemoryRepository {
   findModuleCandidates?(input: CandidateQuery & { moduleId: string }): Promise<RecallCandidates>;
   compareAndSetStructuredValue?(input: { guildId: string; memoryId: string; updatedAt: number; expected: unknown; value: unknown }): Promise<boolean>;
   findObservedAliases(input: CandidateQuery & { message: string }): Promise<{ alias: string; subjectId: string }[]>;
+  findAliasSources?(input: CandidateQuery & { message: string }): Promise<readonly Memory[]>;
   reclassifyPublicMemory(input: { guildId: string; memoryId: string; sourceMessageId: string; sourceChannelId: string;
     assertedByUserId: string; sourceQuote: string; mode: "shared" | "isolated"; sourceTimestampMs?: number; now: number }): Promise<boolean>;
   recordForgetCutoff(input: { guildId: string; subjectId: string; topic: string; slot: string; scopeKey: string; cutoff: number }): Promise<void>;
@@ -478,8 +479,10 @@ export interface CausalChainLink {
 }
 
 export interface MemoryContext {
+  // Internal minimal alias receipts; never serialized as ordinary facts.
+  aliasSources?: readonly Memory[];
   maxSerializedChars?: number;
-  aliasCandidates?: readonly { alias: string; subjectIds: readonly string[] }[];
+  aliasCandidates?: readonly { alias: string; subjectIds: readonly string[]; incomplete?: boolean }[];
   memories: readonly Memory[];
   // Rendered into the prompt by chat-structured-output.ts. See
   // CausalChainLink's doc comment for the hop-depth limitation.

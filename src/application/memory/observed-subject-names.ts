@@ -1,6 +1,6 @@
 import type { Memory } from "./memory.js";
 
-export interface ObservedSubjectName { value: string; observedAt: number }
+export interface ObservedSubjectName { value: string; observedAt: number; contextProvenance?: unknown }
 export function aliasQueryTokens(message: string): string[] {
   const normalized = message.slice(0, 1000).toLowerCase();
   const words = [...new Intl.Segmenter("zh", { granularity: "word" }).segment(normalized)]
@@ -10,7 +10,11 @@ export function aliasQueryTokens(message: string): string[] {
   // the two-character member label 苹果 was addressed.
   const tokens = new Set(words.filter((word) => word.length >= 2 && !/^\p{Script=Han}{2}$/u.test(word)));
   for (const token of normalized.match(/[\p{L}\p{N}_.-]+/gu) ?? []) if (token.length >= 2) tokens.add(token);
-  for (const match of normalized.matchAll(/[\p{Script=Latin}\d_.-]+(?: +[\p{Script=Latin}\d_.-]+){1,2}/gu)) tokens.add(match[0]);
+  for (const match of normalized.matchAll(/[\p{Script=Latin}\d_.-]+(?: +[\p{Script=Latin}\d_.-]+)+/gu)) {
+    const parts = match[0].split(/ +/u);
+    for (let size = 2; size <= 3; size++) for (let start = 0; start + size <= parts.length; start++) tokens.add(parts.slice(start, start + size).join(" "));
+  }
+  for (const token of normalized.split(/[\s,，。！？!?;；:：]+/u)) if (token.length >= 2) tokens.add(token);
   return [...tokens].slice(0, 96);
 }
 export function observedSubjectNames(memory: Pick<Memory, "structuredValue">): ObservedSubjectName[] {

@@ -1,9 +1,11 @@
 import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
 import type { ChannelHistoryMessage, ChannelHistoryReader } from "./channel-history-reader.js";
-import { backgroundSourceHash, parseContextProvenance, type ContextProvenance } from "../chat/context-provenance.js";
+import { backgroundSourceHash, humanTextSourceHash, parseContextProvenance, type ContextProvenance } from "../chat/context-provenance.js";
 import { hashContent } from "../assets/content-hash.js";
 import { memoryClaimProof } from "../memory/memory-claim-provenance.js";
 import type { Memory } from "../memory/memory.js";
+import { explicitSelfAlias, memoryAliasPayload, type AliasScope } from "../memory/memory-alias-provenance.js";
+import type { ObservedSubjectName } from "../memory/observed-subject-names.js";
 
 const registered = new WeakSet<object>();
 export type BackgroundModelPurpose = "summary" | "memory_extraction";
@@ -63,6 +65,29 @@ export class GuardedBackgroundContext {
       dependencies: this.messages.map((source) => ({ guildId: source.guildId, channelId: source.channelId, messageId: source.id,
         authorId: source.authorId, timestampMs: source.createdAt, projection: { kind: "background_text", chars: source.content.length },
         representationHash: backgroundSourceHash({ authorId: source.authorId, authorDisplayName: source.authorDisplayName, content: source.content, timestampMs: source.createdAt }) })) });
+  }
+
+  public async observeAliases(scope: AliasScope, requested: readonly string[], now: number): Promise<ObservedSubjectName[]> {
+    await this.check(); const first = this.messages[0]!;
+    if (scope.guildId !== first.guildId || scope.subjectType !== "member" || scope.channelId !== null && scope.channelId !== first.channelId ||
+        scope.isolationChannelId !== null && scope.isolationChannelId !== first.channelId) return [];
+    const own = this.messages.filter((message) => message.authorId === scope.subjectId);
+    const names = [...new Set([...requested, ...own.map((message) => message.authorDisplayName)].map((name) => name.trim()).filter((name) => name.length >= 2 && name.length <= 100))].slice(0, 16);
+    const admitted: ObservedSubjectName[] = [];
+    for (const value of names) {
+      const self = own.find((message) => explicitSelfAlias(message.content, value));
+      const source = self ?? own.find((message) => message.authorDisplayName === value); if (!source) continue;
+      const projection = { kind: self ? "human_text" as const : "background_text" as const, chars: source.content.length };
+      const representationHash = self ? humanTextSourceHash({ authorId: source.authorId, content: source.content, timestampMs: source.createdAt })
+        : backgroundSourceHash({ authorId: source.authorId, authorDisplayName: source.authorDisplayName, content: source.content, timestampMs: source.createdAt });
+      const proof = parseContextProvenance({ version: 1, purpose: "identity_alias", coverage: "complete", unresolved: [],
+        audience: { guildId: first.guildId, channelId: first.channelId, userId: scope.audience === "private" ? scope.ownerUserId : null },
+        outputHash: hashContent(memoryAliasPayload(scope, value)), dependencies: [{ guildId: source.guildId, channelId: source.channelId,
+          messageId: source.id, authorId: source.authorId, timestampMs: source.createdAt, projection, representationHash }],
+      });
+      if (proof) admitted.push({ value, observedAt: now, contextProvenance: proof });
+    }
+    return admitted;
   }
 
   public async classificationClaims(records: readonly Memory[], now: number): Promise<Memory[]> {

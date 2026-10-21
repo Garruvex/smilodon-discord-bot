@@ -586,7 +586,7 @@ export function buildChatContext(request: ChatRequest): string {
     `<conversation_relationships>\n${renderConversationRelationships(request)}\n</conversation_relationships>\n\n` +
     (request.aliasCandidates?.length ? `<observed_alias_candidates>\n${contextData(request.aliasCandidates)}\n` +
       `These are observed source-backed labels, not new account identities. Multiple subject IDs for one alias ` +
-      `are ambiguous: ask for a mention or clarification unless an explicit supplied ID resolves the reference.\n</observed_alias_candidates>\n\n` : "") +
+      `or incomplete=true are ambiguous: ask for a mention or clarification unless an explicit supplied ID resolves the reference.\n</observed_alias_candidates>\n\n` : "") +
     `<current_user>\n${request.currentEvent?.type === "reaction_snapshot" ? "No human speaker; this is a reaction snapshot. Execution identity: " : ""}${request.currentUser.id}: ${contextData(request.currentUser.displayName)}; ` +
     `live Discord roles: ${contextData(request.currentUser.roleNames)}\n</current_user>\n\n` +
     `<mentioned_users>\n${mentioned}\n</mentioned_users>\n\n` +

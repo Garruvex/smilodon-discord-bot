@@ -29,7 +29,7 @@ export interface ChatRequest {
   characterContext?: readonly { moduleId: string; text: string }[];
   participationOnly?: boolean;
   capabilityToolNames?: readonly string[];
-  aliasCandidates?: readonly { alias: string; subjectIds: readonly string[] }[];
+  aliasCandidates?: readonly { alias: string; subjectIds: readonly string[]; incomplete?: boolean }[];
   functionalToolExecuted?: boolean;
   beforeModelAttempt?: () => Promise<void>;
   // Style permission only. Silence requires validated contextual social/closing

@@ -117,6 +117,22 @@ function identityCondition(identity: MemoryIdentity): ReturnType<typeof and> {
 }
 
 export class PostgresMemoryRepository implements MemoryRepository {
+  public async findAliasSources(input: CandidateQuery & { message: string }): Promise<readonly Memory[]> {
+    const tokens = aliasQueryTokens(input.message); if (!tokens.length) return [];
+    const matches = await this.database.selectDistinct({ id: schema.memories.id, updatedAt: schema.memories.updatedAt })
+      .from(schema.memoryObservedAliases).innerJoin(schema.memories, eq(schema.memories.id, schema.memoryObservedAliases.memoryId)).where(and(
+        eq(schema.memoryObservedAliases.guildId, input.guildId), eq(schema.memories.guildId, input.guildId), inArray(schema.memoryObservedAliases.alias, tokens),
+        eq(schema.memories.subjectType, "member"), eq(schema.memories.status, "active"), isNull(schema.memories.moduleId),
+        or(isNull(schema.memories.expiresAt), gt(schema.memories.expiresAt, new Date(input.now))),
+        or(isNull(schema.memories.isolationChannelId), eq(schema.memories.isolationChannelId, input.channelId)),
+        or(eq(schema.memories.audience, "guild"), and(eq(schema.memories.audience, "channel"), eq(schema.memories.channelId, input.channelId)),
+          and(eq(schema.memories.audience, "private"), eq(schema.memories.ownerUserId, input.userId))),
+      )).orderBy(desc(schema.memories.updatedAt), asc(schema.memories.id)).limit(129);
+    if (!matches.length) return [];
+    return (await this.database.select().from(schema.memories).where(and(eq(schema.memories.guildId, input.guildId), inArray(schema.memories.id, matches.map((row) => row.id))))
+      .orderBy(desc(schema.memories.updatedAt), asc(schema.memories.id))).map(toMemory);
+  }
+
   public async findObservedAliases(input: CandidateQuery & { message: string }): Promise<{ alias: string; subjectId: string }[]> {
     const tokens = aliasQueryTokens(input.message);
     if (!tokens.length) return [];

@@ -4,6 +4,8 @@ import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
 import type { MemoryIngestInput, Memory } from "./memory.js";
 import type { EmbeddingCallOptions } from "../chat/embeddings-client.js";
 import { hashContent } from "../assets/content-hash.js";
+import type { AliasScope } from "./memory-alias-provenance.js";
+import type { ObservedSubjectName } from "./observed-subject-names.js";
 
 export async function checkMemoryContext(context: MemoryIngestInput["context"]): Promise<void> {
   if (context === undefined) return; // Explicit legacy compatibility; never issues a complete claim proof.
@@ -34,4 +36,10 @@ export async function authorizeRelationMembers(context: MemoryIngestInput["conte
     await context.check(); return new Set(context.messages.map((message) => message.authorId));
   }
   throw new SocialOutputSuppressed();
+}
+
+export async function observedNamesForContext(context: MemoryIngestInput["context"], scope: AliasScope, names: readonly string[], now: number): Promise<ObservedSubjectName[]> {
+  if (context === undefined) return names.filter((name) => name.trim()).map((name) => ({ value: name.slice(0, 100), observedAt: now }));
+  if (!isGuardedContext(context) && !isBackgroundContext(context, "summary") && !isBackgroundContext(context, "memory_extraction")) throw new SocialOutputSuppressed();
+  return context.observeAliases(scope, names, now);
 }

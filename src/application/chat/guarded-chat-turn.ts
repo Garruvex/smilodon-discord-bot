@@ -14,7 +14,8 @@ import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { ChatProviderError } from "./chat-provider.js";
 import { assertTurnActive } from "./turn-work-budget.js";
 import { effectiveChatCapabilities } from "./chat-capabilities.js";
-import type { MemoryEngine } from "../memory/memory.js";
+import type { MemoryEngine, MemoryContext } from "../memory/memory.js";
+import { groupObservedAliasRows } from "../memory/observed-subject-names.js";
 import { guardedMemoryProposals } from "./guarded-memory-proposals.js";
 import { guardedTools, guardedToolResourcePort } from "./guarded-tool-gateway.js";
 import type { ChatToolRegistry } from "./tools/chat-tool-registry.js";
@@ -54,7 +55,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   // prompt. Avoid re-fetching their complete provenance only to discard them.
   const sessions = await lease.sessions(state.exchanges.slice(-4).filter((exchange) => !known.has(exchange.user.sourceMessageId ?? "") ||
     !exchange.assistant.messageIds?.length || !exchange.assistant.messageIds.every((id) => known.has(id))));
-  const recalled = mode === "disabled" || mode === "session_only" ? { memories: [], causalChains: [] } : await dependencies.memory.recall({
+  const recalled: MemoryContext = mode === "disabled" || mode === "session_only" ? { memories: [], causalChains: [] } : await dependencies.memory.recall({
     guildId: input.guildId, channelId: input.channelId, userId: input.currentUser.id, channelMode: mode, context: lease,
     message: lease.current.content, recentHistory: sessions.flatMap((exchange) => [exchange.user, exchange.assistant]),
     subjectIds: [...new Set([lease.current.authorId, ...lease.replyChain.map((event) => event.authorId)])], now: dependencies.now(),
@@ -62,6 +63,8 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   // The source authority owns admission even if a repository/engine adapter
   // returns an unexpected row or unproven relationship metadata.
   const memoryClaims = await lease.memories(recalled.memories, true, dependencies.now());
+  const aliasObservation = await lease.aliases(recalled.aliasSources ?? [], lease.current.content, dependencies.now());
+  const aliasCandidates = groupObservedAliasRows(aliasObservation.rows, lease.current.content).map((alias) => ({ ...alias, ...(aliasObservation.incomplete ? { incomplete: true } : {}) }));
   const relationCandidates = recalled.causalChains.flatMap((chain) => chain.sourceRelation ? [chain.sourceRelation] : []);
   const relations = await lease.relations(relationCandidates);
   const causalChains = relations.filter((relation) => relation.kind === "consequence").map((relation) => ({
@@ -97,7 +100,7 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
     })), guildKnowledge: memoryClaims.filter((record) => record.audience !== "private").map((record) => ({
       id: record.id, subjectType: record.subjectType, subjectId: record.subjectId, topic: record.topic, slot: record.slot,
       statement: record.statement, updatedAt: record.updatedAt, embedding: null, source: record.source === "administrator" ? "administrator" : record.source === "consolidation" ? "consolidation" : "community",
-    })), causalChains,
+    })), causalChains, ...(aliasCandidates.length ? { aliasCandidates } : {}),
     message: lease.currentEvent?.type === "reaction_snapshot" ? `Respond only if useful to this authorized reaction snapshot: ${JSON.stringify(lease.currentEvent)}` : lease.current.content,
     replyChain: lease.currentEvent?.type === "reaction_snapshot" ? [...lease.replyChain, lease.current] : lease.replyChain, replyChainSummary: null, channelHistory: lease.history, currentBurst: lease.burst,
     ...(lease.currentEvent ? { currentEvent: lease.currentEvent } : {}),

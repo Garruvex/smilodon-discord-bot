@@ -304,11 +304,13 @@ export class CharacterRuntime {
       const shouldDecide = optional || request.triggerMode === "reaction" && guarded;
       const decisionStarted = Date.now();
       const outcome = shouldDecide ? await this.decisions.evaluate({ personality: request.personality, events: decisionEvents, burst, botId: request.botUserId ?? "bot",
-        ...(guarded && (request.memories.length || request.guildKnowledge.length || request.causalChains.length || guardedCharacterContext.length) ? { supplementalFacts: [
+        ...(guarded && (request.memories.length || request.guildKnowledge.length || request.causalChains.length || request.aliasCandidates?.length || guardedCharacterContext.length) ? { supplementalFacts: [
           ...request.memories.map((record) => ({ subjectId: record.subjectUserId, statement: record.statement })),
           ...request.guildKnowledge.map((record) => ({ subjectId: record.subjectId, statement: record.statement })),
           ...guardedCharacterContext.map((record) => ({ subjectId: `character:${record.moduleId}`, statement: record.text })),
           ...request.causalChains.map((record) => ({ subjectId: record.fromSubjectId, statement: `Untrusted source-backed relation: ${JSON.stringify(record)}` })),
+          ...(request.aliasCandidates ?? []).map((alias) => ({ subjectId: !alias.incomplete && alias.subjectIds.length === 1 ? alias.subjectIds[0]! : "ambiguous_alias",
+            statement: `Untrusted observed label; multiple IDs or incomplete=true require clarification, never guess: ${JSON.stringify(alias)}` })),
         ] } : {}),
         fixedTarget, contextual, useContextBoundary: !guarded && settings.context.retrievalMode !== "eligible_count", gapMs: settings.context.segmentGapMinutes * 60_000,
         ...(contextual && request.currentEvent?.type === "reaction_snapshot" ? { reactionSnapshot: request.currentEvent } : {}),

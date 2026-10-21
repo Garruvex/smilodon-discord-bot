@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { hashContent } from "../assets/content-hash.js";
-import type { ChatRequest, ChannelHistoryMessage } from "./chat-provider.js";
+import type { ChatRequest, ChannelHistoryMessage, ChatUser } from "./chat-provider.js";
 
 const id = z.string().min(1).max(128);
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
@@ -19,9 +19,9 @@ export const contextProvenanceSchema = z.object({
     // captured every field or the full original Discord message.
     representationHash: digest,
     assetsHash: digest.optional(),
-    projection: z.object({ kind: z.literal("background_text"), chars: z.number().int().positive().max(16000) }).strict().optional(),
+    projection: z.object({ kind: z.enum(["background_text", "human_text"]), chars: z.number().int().positive().max(16000) }).strict().optional(),
   }).strict()).max(contextProvenanceLimits.dependencies),
-  actors: z.array(z.object({ userId: id, representationHash: digest }).strict()).max(100).optional(),
+  actors: z.array(z.object({ userId: id, representationHash: digest, projection: z.literal("identity").optional() }).strict()).max(100).optional(),
   // Public provider-managed search is separate from protected Discord inputs.
   // This records use and citation identity, not factual truth or a fresh crawl.
   publicWeb: z.object({ citationHashes: z.array(digest).max(128) }).strict().optional(),
@@ -44,10 +44,17 @@ export type ContextProvenance = z.infer<typeof contextProvenanceSchema>;
 export function backgroundSourceHash(source: { authorId: string; authorDisplayName: string; content: string; timestampMs: number }): string {
   return hashContent(JSON.stringify(source));
 }
+export function humanTextSourceHash(source: { authorId: string; content: string; timestampMs: number }): string {
+  return hashContent(JSON.stringify(source));
+}
+export function actorSourceHash(actor: ChatUser, projection?: "identity"): string {
+  return hashContent(JSON.stringify(projection === "identity" ? { id: actor.id } : actor));
+}
 
 export function dependencyMatchesSource(dependency: ContextProvenance["dependencies"][number], source: ChannelHistoryMessage, conversationHash: string): boolean {
   return dependency.authorId === source.authorId && dependency.timestampMs === source.timestampMs && dependency.representationHash ===
-    (dependency.projection ? backgroundSourceHash({ authorId: source.authorId, authorDisplayName: source.authorDisplayName,
+    (dependency.projection?.kind === "human_text" ? humanTextSourceHash({ authorId: source.authorId, content: source.content.trim().slice(0, dependency.projection.chars), timestampMs: source.timestampMs }) :
+      dependency.projection ? backgroundSourceHash({ authorId: source.authorId, authorDisplayName: source.authorDisplayName,
       content: source.content.trim().slice(0, dependency.projection.chars), timestampMs: source.timestampMs }) : conversationHash);
 }
 

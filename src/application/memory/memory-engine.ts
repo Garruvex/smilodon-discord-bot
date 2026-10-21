@@ -4,7 +4,7 @@ import { safeFailure } from "../diagnostics/chat-diagnostics.js";
 
 import type { MemoryConflictClassifier } from "../chat/chat-provider.js";
 import type { EmbeddingsClient } from "../chat/embeddings-client.js";
-import { authorizeClassificationClaims, authorizeRelationMembers, checkMemoryContext, memoryModelOptions } from "./memory-context-guard.js";
+import { authorizeClassificationClaims, authorizeRelationMembers, checkMemoryContext, memoryModelOptions, observedNamesForContext } from "./memory-context-guard.js";
 import { memoryRelationPayload } from "./memory-relation-provenance.js";
 import { memoryClaimPayload } from "./memory-claim-provenance.js";
 import { allowsDurableWrites, resolveMemoryScope } from "./memory-channel-policy.js";
@@ -232,10 +232,11 @@ export class DefaultMemoryEngine implements MemoryEngine {
   public async recall(input: MemoryRecallInput): Promise<MemoryContext> {
     await checkMemoryContext(input.context);
     if (input.channelMode === "disabled") return { memories: [], causalChains: [] };
-    const aliasCandidates = input.context ? [] : groupObservedAliasRows(await this.repository.findObservedAliases({
-      guildId: input.guildId, channelId: input.channelId, userId: input.userId, now: input.now, message: input.message,
-    }), input.message);
-    const resolvedAliasIds = aliasCandidates.filter((alias) => alias.subjectIds.length === 1).flatMap((alias) => alias.subjectIds);
+    const aliasQuery = { guildId: input.guildId, channelId: input.channelId, userId: input.userId, now: input.now, message: input.message };
+    const aliasObservation = input.context ? await input.context.aliases(await this.repository.findAliasSources?.(aliasQuery) ?? [], input.message, input.now)
+      : { rows: await this.repository.findObservedAliases(aliasQuery), incomplete: false };
+    const aliasCandidates = groupObservedAliasRows(aliasObservation.rows, input.message).map((alias) => ({ ...alias, ...(aliasObservation.incomplete ? { incomplete: true } : {}) }));
+    const resolvedAliasIds = aliasCandidates.filter((alias) => !alias.incomplete && alias.subjectIds.length === 1).flatMap((alias) => alias.subjectIds);
     // onlySelfPrivateMemories bypasses findRecallCandidates entirely rather
     // than filtering its output: that query mixes every audience together
     // (private-of-caller, channel, guild) under one shared
@@ -268,7 +269,8 @@ export class DefaultMemoryEngine implements MemoryEngine {
           ...(input.filterSubjectIds?.length ? { subjectIds: input.filterSubjectIds } : {}),
         });
     if (input.context) candidates = { memories: await input.context.memories(candidates.memories, false, input.now) };
-    if (candidates.memories.length === 0) return input.context ? { memories: [],
+    if (candidates.memories.length === 0) return input.context ? { memories: [], ...(aliasCandidates.length ? { aliasCandidates } : {}),
+      ...("sources" in aliasObservation && aliasObservation.sources.length ? { aliasSources: aliasObservation.sources } : {}),
       causalChains: (await this.expandRelatedSubjects({ ...input, subjectIds: [...input.subjectIds, ...resolvedAliasIds] })).causalChains } : { memories: [], causalChains: [] };
     const { boostBySubjectId, causalChains } = await this.expandRelatedSubjects({ ...input, subjectIds: [...input.subjectIds, ...resolvedAliasIds] });
     const subjectIds = new Set(input.subjectIds);
@@ -378,7 +380,8 @@ export class DefaultMemoryEngine implements MemoryEngine {
       });
     }
     const verified = input.context ? await input.context.memories(selected, true, input.now) : selected;
-    return { memories: verified, causalChains, maxSerializedChars: this.limits.maxSelectedChars, ...(aliasCandidates.length ? { aliasCandidates } : {}) };
+    return { memories: verified, causalChains, maxSerializedChars: this.limits.maxSelectedChars, ...(aliasCandidates.length ? { aliasCandidates } : {}),
+      ...("sources" in aliasObservation && aliasObservation.sources.length ? { aliasSources: aliasObservation.sources } : {}) };
   }
 
   // Bounded multi-hop expansion out from the turn's subjectIds — see
@@ -630,10 +633,12 @@ export class DefaultMemoryEngine implements MemoryEngine {
       const claim = { guildId: input.guildId, kind: proposal.kind, audience: scope.audience, ownerUserId,
         channelId: scope.channelId, isolationChannelId: scope.isolationChannelId, subjectType: proposal.subjectType,
         subjectId: proposal.subjectId, topic: canonical.topic, slot: canonical.slot, statement };
+      const newNames = await observedNamesForContext(input.context, claim, proposal.observedSubjectNames ?? [], input.now);
+      const names = new Map([...newNames, ...observedSubjectNames(previous ?? { structuredValue: null })].map((name) => [name.value.toLowerCase(), name]));
+      for (const name of newNames) names.set(name.value.toLowerCase(), name);
+      await checkMemoryContext(input.context);
       const proof = input.context?.provenance(memoryClaimPayload(claim), "memory_claim") ?? null;
       if (input.context && !proof) throw new Error("Memory context cannot issue complete provenance");
-      const names = new Map(observedSubjectNames(previous ?? { structuredValue: null }).map((name) => [name.value, name]));
-      for (const name of proposal.observedSubjectNames ?? []) if (name.trim()) names.set(name.slice(0, 100), { value: name.slice(0, 100), observedAt: input.now });
       memory = await this.repository.ingest({
         contextProvenance: proof,
         guildId: input.guildId,

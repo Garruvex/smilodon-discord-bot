@@ -66,6 +66,24 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
 }
 
 describe("guarded turn acceptance", () => {
+  it.each(["verified", "unproven", "revoked"] as const)("independently projects alias evidence for decision and generation: %s", async (scenario) => {
+    const { service, input, fixture, engine, reply, decision } = await setup(5000, "alice", true);
+    fixture.sources.get("question")!.event.content = "Call me OldAlice. I like apples.";
+    fixture.sources.get("current")!.event.content = "OldAlice likes what?";
+    fixture.sources.get("current")!.event.replyToMessageId = null;
+    const source = await GuardedConversationContext.open(fixture.port, { count: 40, budget: 12000, burstIds: [] });
+    const row = (await engine.ingest({ guildId, channelId, channelMode: "shared", assertedByUserId: "alice", sourceMessageId: "question", source: "live", now: 3000,
+      ...(scenario === "unproven" ? {} : { context: source }), proposals: [{ action: "upsert", audience: "private", kind: "preference", ownerUserId: "alice",
+        subjectType: "member", subjectId: "alice", topic: "preference", slot: "food.fruit", statement: "likes apples", channelScoped: true, observedSubjectNames: ["OldAlice"] }] })).ingested[0]!;
+    vi.spyOn(engine, "recall").mockResolvedValue({ memories: [], causalChains: [], aliasSources: [row], aliasCandidates: [{ alias: "FORGED_ALIAS", subjectIds: ["unknown"] }] });
+    if (scenario === "revoked") fixture.denied.add("question");
+    decision.generateCharacterData.mockResolvedValue(contextualProposal({ relationship: "group", intent: "contribute", referent: "self_contained", linkKey: null, recipientEvidence: ["current"] }));
+    await service.run({ ...input, triggerMode: "spontaneous" }, (response) => Promise.resolve(response.text));
+    const aliases = reply.mock.calls[0]![0].aliasCandidates ?? [];
+    expect(aliases).toEqual(scenario === "verified" ? [{ alias: "oldalice", subjectIds: ["alice"] }] : []);
+    expect(JSON.stringify(decision.generateCharacterData.mock.calls).includes("oldalice")).toBe(scenario === "verified");
+    expect(JSON.stringify(aliases)).not.toContain("FORGED_ALIAS");
+  });
   it.each(["verified", "unproven", "actor_revoked"] as const)("independently authorizes graph context before exposing a recalled chain: %s", async (scenario) => {
     const { service, input, fixture, engine, reply } = await setup();
     fixture.actors.set("bob", { id: "bob", displayName: "Bob", roleNames: [] });
