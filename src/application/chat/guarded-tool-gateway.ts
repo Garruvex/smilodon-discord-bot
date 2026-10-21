@@ -92,11 +92,13 @@ export async function resolveGuardedToolResource(registry: ChatToolRegistry | nu
 
 export function guardedToolResourcePort(port: GuardedContextPort, registry: ChatToolRegistry | null,
   context: { currentUser: ChatUser; channelMode: ChatToolContext["channelMode"]; channelIsNsfw: boolean; isOwner: boolean }, turnSignal?: AbortSignal,
-  configuration?: ConversationConfiguration, drift?: Pick<PersonaDriftStore, "readScopedEpoch"> | null): GuardedContextPort {
+    configuration?: ConversationConfiguration, drift?: Pick<PersonaDriftStore, "readScopedEpoch"> | null,
+    characterConfiguration?: (id: string) => Promise<string | null>): GuardedContextPort {
   const source = { ...port }; const destination = { ...context };
   const persona = configuration?.persona; const preferences = configuration?.preferences;
   return extendConversationSource(port, { ...(turnSignal ? { turnSignal } : {}), resource: async (key, signal): Promise<string | null> => {
     signal.throwIfAborted();
+    if (key.kind === "character_configuration") return source.persist === false || !characterConfiguration ? null : characterConfiguration(key.id);
     if (key.kind === "persona_drift") {
       if (!drift || source.shareMemory !== true) return null;
       const epoch = await drift.readScopedEpoch(source.guildId, source.channelId); return epoch === key.id ? epoch : null;

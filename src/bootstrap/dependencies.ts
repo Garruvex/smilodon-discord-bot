@@ -800,7 +800,7 @@ export function createDependencies(
         return guardedToolResourcePort(callbackSources.createContextPort(source), chatToolRegistry, {
           currentUser: callbackSources.toChatUser(source.author, source.member), channelMode: resolveChannelMemoryMode(guildConfigurationProvider.require(guildId).chat.channelMemoryModes, channelId),
           channelIsNsfw: "nsfw" in source.channel && source.channel.nsfw, isOwner: configuration.ownerUserIds.has(source.author.id),
-        }, undefined, contextConfiguration, personaDriftStore);
+        }, undefined, contextConfiguration, personaDriftStore, (id) => characterRuntime.readCharacterConfiguration(guildId, channelId, id));
       },
       run: (guildId, channelId, operation) => chatConversationService.runCallback(guildId, channelId,
         resolveParticipation(guildConfigurationProvider.find(guildId)?.chat.participation, channelId).limits, operation),

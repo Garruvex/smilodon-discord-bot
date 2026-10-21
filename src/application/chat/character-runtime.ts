@@ -6,6 +6,7 @@ import { ConversationModelGateway } from "../context/conversation-model-gateway.
 import { repairConversationRequest } from "../context/approved-conversation-request.js";
 import { approveModelOperation } from "../context/approved-model-operation.js";
 import { approveDecisionInput } from "../context/approved-decision-input.js";
+import { authorCharacterEdit, authoredCharacterResource } from "../context/authored-character-configuration.js";
 import { isBackgroundContext, type GuardedBackgroundContext } from "../context/guarded-background-context.js";
 import { selectDecisionContext } from "./decision-context-selection.js";
 import { resolveConversationTurnPlan, type ConversationTurnPlan } from "./conversation-turn-plan.js";
@@ -76,7 +77,7 @@ export class CharacterRuntime {
   private evaluationAdmission: CharacterEvaluationAdmission | null = null;
   public constructor(private readonly profiles: GuildConfigurationProvider, private readonly repository: MemoryRepository,
     private readonly utility: StructuredCharacterProvider | null, private readonly replyProvider: ChatProvider,
-    decisionProvider: StructuredCharacterProvider | null = utility, coordinator: Pick<PersonalMemoryExtractionQueueStore, "runForSubject"> | null = null,
+    decisionProvider: StructuredCharacterProvider | null = utility, private readonly coordinator: Pick<PersonalMemoryExtractionQueueStore, "runForSubject"> | null = null,
     private readonly now: () => number = () => Date.now(), private readonly logger: Pick<Logger, "info" | "warn"> | null = null,
     contextualProviders: ContextualDecisionProviders | null = null) {
     this.registry = new CharacterModuleRegistry((moduleId, error) => this.logger?.warn({ moduleId, ...safeFailure(error) }, "Character module hook failed"));
@@ -453,6 +454,10 @@ export class CharacterRuntime {
       })].join("\n");
   }
   public async manageCanon(guildId: string, userId: string, channelId: string, operation: string, id: string | null, statement: string | null, moduleId: "canon" | "mood" | "daily-sketch" = "canon"): Promise<string> {
+    const edit = (): Promise<string> => this.manageCanonChecked(guildId, userId, channelId, operation, id, statement, moduleId);
+    return this.coordinator ? this.coordinator.runForSubject(guildId, "character", edit) : edit();
+  }
+  private async manageCanonChecked(guildId: string, userId: string, channelId: string, operation: string, id: string | null, statement: string | null, moduleId: "canon" | "mood" | "daily-sketch"): Promise<string> {
     if (operation === "clear") {
       await this.repository.recordForgetCutoff({ guildId, subjectId: "character", topic: `character.${moduleId}`, slot: "*", scopeKey: "*", cutoff: this.now() });
       return `Cleared ${await this.repository.clearModuleData?.(guildId, moduleId) ?? 0} ${moduleId} records.`;
@@ -465,10 +470,22 @@ export class CharacterRuntime {
       await this.repository.recordForgetCutoff({ guildId, subjectId: "character", topic: memory.topic, slot: memory.slot, scopeKey: memory.isolationChannelId ?? memory.channelId ?? "*", cutoff: this.now() });
       await this.repository.forget({ guildId, memoryId: memory.id }); return `${moduleId} entry deleted.`;
     }
+    if (operation !== "edit") return "Unknown ledger operation.";
     if (!statement?.trim() || statement.length > 200) return "Statements must contain 1–200 characters.";
-    await this.repository.ingest({ ...memory, moduleId, statement: statement.trim(), now: this.now(), sourceMessageId: null,
-      sourceChannelId: null, assertedByUserId: null, source: "administrator" });
+    const persona = await this.callbackPersona?.(guildId);
+    if (!isConfigurationContext(persona, "persona")) return "Character configuration authority is unavailable.";
+    await persona.check({ kind: "persona", guildId, ownerUserId: null });
+    const replacement = authorCharacterEdit(memory, channelId, userId, statement, this.now(), persona);
+    if (!replacement) return "This entry cannot be edited in that channel. Choose its original channel and an active character entry.";
+    await this.repository.ingest(replacement);
+    await persona.check({ kind: "persona", guildId, ownerUserId: null });
     return `${moduleId} entry updated.`;
+  }
+
+  public readCharacterConfiguration(guildId: string, channelId: string, id: string): Promise<string | null> {
+    const profile = this.profiles.find(guildId);
+    if (!profile || !this.capabilities(profile, channelId).context) return Promise.resolve(null);
+    return authoredCharacterResource(this.repository, guildId, channelId, id, this.now());
   }
 
   public recordDelivery(guildId: string, sourceMessageId: string | null, delivered: boolean, shadow: boolean): Promise<void> {

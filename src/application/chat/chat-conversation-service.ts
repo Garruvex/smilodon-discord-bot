@@ -351,6 +351,7 @@ export class ChatConversationService {
                 customization: this.userCustomizationStore, examples: this.exampleExchangeSelector, lore: this.personaLoreSelector,
                 drift: this.personaDriftStore, postTurn: (dropped, extraction) => { postTurn = runGuardedPostTurn(guarded, dropped, {
                   extraction,
+                    ...(this.characterRuntime ? { characterConfiguration: (id: string): Promise<string | null> => this.characterRuntime!.readCharacterConfiguration(guarded.guildId, guarded.channelId, id) } : {}),
                   provider: this.provider, utility: this.utilityProvider, memory: this.memoryEngine, customization: this.userCustomizationStore,
                   tools: this.toolRegistry, drift: this.personaDriftStore, logger: this.logger, now: this.now,
                   mutate: (operation) => this.runMemoryMutation(guarded.guildId, guarded.currentUser.id, operation),

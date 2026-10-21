@@ -56,7 +56,8 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
   void observer;
   const configuration = await conversationConfiguration(input.guildId, input.triggerMode === "reaction" ? null : input.currentUser.id, input.configurationContext, dependencies.customization);
   const port = guardedToolResourcePort(input.guardedContextPort, dependencies.toolRegistry, { currentUser: input.currentUser,
-    channelIsNsfw: input.channelIsNsfw ?? false, channelMode: input.resolveMemoryMode?.() ?? "shared", isOwner: input.isOwner ?? false }, input.turnSignal, configuration, dependencies.drift);
+    channelIsNsfw: input.channelIsNsfw ?? false, channelMode: input.resolveMemoryMode?.() ?? "shared", isOwner: input.isOwner ?? false }, input.turnSignal, configuration, dependencies.drift,
+    dependencies.runtime ? (id): Promise<string | null> => dependencies.runtime!.readCharacterConfiguration(input.guildId, input.channelId, id) : undefined);
   assertTurnActive(input.turnSignal);
   if (port.guildId !== input.guildId || port.channelId !== input.channelId || input.sourceMessageId !== port.sourceMessageId ||
     (input.triggerMode === "reaction" ? port.actorId !== null || input.currentEvent?.type !== "reaction_snapshot" : port.actorId !== input.currentUser.id))

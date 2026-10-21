@@ -4,7 +4,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const root = path.resolve(__dirname, "../../src");
-const authorityModule = /\/(?:approved-(?:conversation-request|model-operation|memory-ingest|decision-input)|guarded-(?:conversation-context|background-context|configuration-context|evaluation-context|memory-gateway|model-transport|embedding-transport)|conversation-(?:source-registry|configuration|effects)|(?:background|conversation|configuration)-model-gateway|memory-engine|character-memory|synthetic-replay-context|openai-(?:compatible-chat-provider|responses-chat-provider|embeddings-client)|gemini-(?:chat-provider|embeddings-client)|http-decision-provider)\.(?:js|ts)$/u;
+const authorityModule = /\/(?:approved-(?:conversation-request|model-operation|memory-ingest|decision-input)|guarded-(?:conversation-context|background-context|configuration-context|evaluation-context|memory-gateway|model-transport|embedding-transport)|conversation-(?:source-registry|configuration|effects)|(?:background|conversation|configuration)-model-gateway|authored-character-configuration|memory-engine|character-memory|synthetic-replay-context|openai-(?:compatible-chat-provider|responses-chat-provider|embeddings-client)|gemini-(?:chat-provider|embeddings-client)|http-decision-provider)\.(?:js|ts)$/u;
 function indirectAuthorityImports(source: ts.SourceFile): string[] {
   const imports: string[] = [];
   const visit = (node: ts.Node): void => {
@@ -44,6 +44,7 @@ describe("conversation execution ownership", () => {
         if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) continue;
         const module = node.moduleSpecifier.text;
         const relative = path.relative(root, file).replaceAll(path.sep, "/");
+        if (module.endsWith("/authored-character-configuration.js") && !node.importClause?.isTypeOnly && relative !== "application/chat/character-runtime.ts") offenders.push(relative);
         if (/\/(?:openai-(?:compatible-chat-provider|responses-chat-provider|embeddings-client)|gemini-(?:chat-provider|embeddings-client)|http-decision-provider)\.js$/u.test(module) && !node.importClause?.isTypeOnly) {
           if (relative !== "bootstrap/dependencies.ts" && !(module.endsWith("/http-decision-provider.js") && ["scripts/replay-contextual-participation.ts", "scripts/replay-conversation-lifecycle.ts"].includes(relative))) offenders.push(relative);
         }

@@ -24,6 +24,7 @@ export async function runGuardedPostTurn(input: GuardedChatConversationInput, dr
   tools: ChatToolRegistry | null; drift: PersonaDriftStore | null; logger: Logger | null; now: () => number;
   mutate: (operation: () => Promise<void>) => Promise<void>;
   extraction?: Promise<readonly PersonalMemoryExtractionAction[] | null>;
+  characterConfiguration?: (id: string) => Promise<string | null>;
 }): Promise<void> {
   const mode = input.resolveMemoryMode?.() ?? input.channelMemoryModes?.[input.channelId] ?? "shared";
   if (!allowsDurableWrites(mode) || input.shadowMode || input.triggerMode === "reaction") return;
@@ -31,7 +32,7 @@ export async function runGuardedPostTurn(input: GuardedChatConversationInput, dr
   if (!dependencies.extraction && !gateway.canExtract && (!dropped.length || !gateway.canConsolidate && !(input.personaDriftEnabled && dependencies.drift && gateway.canEvolveDrift))) return;
   const configuration = await conversationConfiguration(input.guildId, input.currentUser.id, input.configurationContext, dependencies.customization);
   const port = guardedToolResourcePort(input.guardedContextPort, dependencies.tools, { currentUser: input.currentUser,
-    channelMode: mode, channelIsNsfw: input.channelIsNsfw ?? false, isOwner: input.isOwner ?? false }, undefined, configuration, dependencies.drift);
+    channelMode: mode, channelIsNsfw: input.channelIsNsfw ?? false, isOwner: input.isOwner ?? false }, undefined, configuration, dependencies.drift, dependencies.characterConfiguration);
   if (port.guildId !== input.guildId || port.channelId !== input.channelId || port.sourceMessageId !== input.sourceMessageId || port.actorId !== input.currentUser.id) throw new SocialOutputSuppressed();
   const context = await GuardedConversationContext.open(port, { count: 0, budget: 0, burstIds: [] });
   if (!context.durableWritesAllowed) return;

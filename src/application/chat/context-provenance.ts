@@ -26,11 +26,12 @@ export const contextProvenanceSchema = z.object({
   // This records use and citation identity, not factual truth or a fresh crawl.
   publicWeb: z.object({ citationHashes: z.array(digest).max(128) }).strict().optional(),
   publicTools: z.array(z.object({ name: z.string().regex(/^[a-z_]{1,64}$/), outputHash: digest }).strict()).max(128).optional(),
-  resources: z.array(z.object({ kind: z.enum(["birthday", "server_metadata", "server_events", "self_reference_image", "music_queue", "persona_configuration", "user_preferences", "persona_drift"]), id,
+  resources: z.array(z.object({ kind: z.enum(["birthday", "server_metadata", "server_events", "self_reference_image", "music_queue", "persona_configuration", "user_preferences", "persona_drift", "character_configuration"]), id,
     representationHash: digest }).strict()).max(32).optional(),
   unresolved: z.array(z.enum(["unguarded_prompt_sources", "missing_current_event", "missing_source_scope", "conflicting_source", "dependency_cap"])).max(5),
 }).strict().superRefine((value, context) => {
-  if (value.coverage === "complete" && (value.unresolved.length > 0 || value.dependencies.length === 0))
+  const authoredConfiguration = value.purpose === "memory_claim" && value.resources?.some((resource) => resource.kind === "character_configuration");
+  if (value.coverage === "complete" && (value.unresolved.length > 0 || value.dependencies.length === 0 && !authoredConfiguration))
     context.addIssue({ code: z.ZodIssueCode.custom, message: "Complete provenance requires a closed dependency set" });
   const keys = value.dependencies.map((source) => `${source.guildId}:${source.channelId}:${source.messageId}`);
   if (new Set(keys).size !== keys.length)
