@@ -69,6 +69,25 @@ export class ConversationDecisionEngine {
     if (!admissible) return denied("scope_or_disabled");
     if (trigger.explicit) return { ...base, result: this.result(request, trigger, now, policyVersion, "explicit_request", "ready", "reply", "answer") };
     if (proposal?.contextual?.action === "silent") return { ...base, result: this.result(request, trigger, now, policyVersion, "contextual_abstention", "ready", "silent", proposal.contextual.intent) };
+    if (proposal?.contextual && request.currentEvent?.type === "reaction_snapshot" && isGuardedContext(request.contextLease)) {
+      const snapshot = request.currentEvent; const interpretation = proposal.contextual; const link = interpretation.link;
+      const actors = [...new Set(snapshot.reactions.flatMap((item) => item.actorIds))];
+      if (!link || link.kind !== "reaction" || link.botEventId !== snapshot.targetMessageId || proposal.target !== snapshot.targetMessageId ||
+          !actors.length || link.actorIds.length !== actors.length || link.actorIds.some((id) => !actors.includes(id)) ||
+          !events.some((event) => event.messageId === snapshot.targetMessageId && event.authorId === botId) ||
+          !proposal.recipientEvidence.includes(snapshot.targetMessageId) || proposal.recipientEvidence.some((id) => !events.some((event) => event.messageId === id))) return denied("invalid_evidence", "failed");
+      if (interpretation.relationship !== "group" || interpretation.referent === "unresolved") return denied("recipient_unclear");
+      const policy = resolveParticipation(settings, request.channelId);
+      const reaction = interpretation.action === "react" && policy.reactionsEnabled !== false && request.optionalActionsAvailable?.reaction !== false &&
+        proposal.recipientConfidence >= 0.7 && proposal.confidence >= 0.7 && proposal.opening === "clear" ? proposal.reaction : null;
+      if (interpretation.action === "react" && !reaction) return denied("reaction_unavailable");
+      const rejection = interpretation.action === "reply" ? optionalParticipationRejection("spontaneous", "others", proposal, false, contributionPolicy(settings)) : null;
+      if (rejection) return denied(rejection);
+      if (interpretation.action === "reply" && request.optionalActionsAvailable?.text === false) return denied("text_unavailable");
+      const result = this.result(request, trigger, now, policyVersion, reaction ? "reaction_only" : "accepted_contribution", "ready", reaction ? "react" : "reply", interpretation.intent, proposal.recipientEvidence);
+      result.decision.responseToEventId = snapshot.targetMessageId; result.decision.recipientIds = actors;
+      return { ...base, result, targetMessageId: snapshot.targetMessageId, targetConfidence: proposal.targetConfidence, reaction, contribution: reaction ? null : proposal.contribution };
+    }
     if (proposal?.contextual && isGuardedContext(request.contextLease)) {
       const failure = decisionSourceFailure(proposal, events.filter((event) => event.timestampMs <= now), botId,
         request.turnPlan?.decision === "contextual" || request.triggerMode === "continuation" ? current?.messageId ?? null : null);
@@ -86,8 +105,8 @@ export class ConversationDecisionEngine {
       if (interpretation.relationship === "elsewhere" || elsewhere) return denied("addressed_elsewhere");
       if (!(kind === "continuation" ? policy.continuationEnabled : policy.spontaneousEnabled)) return denied(kind === "continuation" ? "continuation_disabled" : "spontaneous_disabled");
       if (kind === "continuation" && (!current || !proposal.recipientEvidence.includes(current.messageId) ||
-          !(local === "continuing" || local === "bot" || groundedContextContinuation(events, current, botId, proposal,
-            interpretation.intent === "social" || interpretation.intent === "closing")))) return denied("recipient_unclear");
+          !groundedContextContinuation(events, current, botId, proposal,
+            interpretation.intent === "social" || interpretation.intent === "closing"))) return denied("recipient_unclear");
       const availability = request.contextualActionAvailability?.[kind] ?? request.optionalActionsAvailable;
       const substantive = interpretation.intent === "answer" || interpretation.intent === "clarify";
       const reaction = interpretation.action === "react" && !substantive && availability?.reaction !== false &&

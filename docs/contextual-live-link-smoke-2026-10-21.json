@@ -1,0 +1,196 @@
+{
+  "summary": {
+    "mode": "live_synthetic_decision_replay",
+    "fixtureRevision": 2,
+    "wireRevision": 4,
+    "policyRevision": 2,
+    "providerIdentity": {
+      "provider": "openai-responses",
+      "models": [
+        "gpt-5-nano"
+      ],
+      "reasoningEffort": "low"
+    },
+    "probeTimeoutMs": null,
+    "cases": 8,
+    "valid": 7,
+    "filters": {
+      "scenario": null,
+      "language": null
+    },
+    "expectedMeaning": 4,
+    "policyTextViolations": 0,
+    "policyRequiredReplyMisses": 0,
+    "policyScope": "Actual preflight engine with a synthetic authorized lease and both action budgets available; excludes scheduling, generation and delivery. Provider failures are reported separately from abstention.",
+    "p50Ms": 7102,
+    "p95Ms": 7807,
+    "validityGateMet": null,
+    "semanticReview": "Controlled expected-label checks; independent review and a scoped live pilot remain required.",
+    "tokenUsage": "unavailable",
+    "discordSends": 0
+  },
+  "results": [
+    {
+      "id": "zh-TW-answer-3000-same",
+      "language": "zh-TW",
+      "scenario": "answer",
+      "status": "valid",
+      "durationMs": 7807,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-closing-3000-same",
+      "language": "zh-TW",
+      "scenario": "closing",
+      "status": "valid",
+      "durationMs": 3995,
+      "policy": {
+        "status": "ready",
+        "action": "silent",
+        "reason": "contextual_abstention",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "social",
+      "action": "silent",
+      "referent": "unresolved",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-correction-3000-same",
+      "language": "zh-TW",
+      "scenario": "correction",
+      "status": "valid",
+      "durationMs": 7102,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-elsewhere-3000-same",
+      "language": "zh-TW",
+      "scenario": "elsewhere",
+      "status": "valid",
+      "durationMs": 7303,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "referent_unresolved",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "unresolved",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-group-3000-same",
+      "language": "zh-TW",
+      "scenario": "group",
+      "status": "valid",
+      "durationMs": 6541,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "self_contained",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-repair-3000-same",
+      "language": "zh-TW",
+      "scenario": "repair",
+      "status": "valid",
+      "durationMs": 7491,
+      "policy": {
+        "status": "ready",
+        "action": "reply",
+        "reason": "accepted_contribution",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "followup",
+      "intent": "answer",
+      "action": "reply",
+      "referent": "context_linked",
+      "expectedMeaning": true,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-thanks-3000-same",
+      "language": "zh-TW",
+      "scenario": "thanks",
+      "status": "valid",
+      "durationMs": 6211,
+      "policy": {
+        "status": "denied",
+        "action": "silent",
+        "reason": "addressed_elsewhere",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": "elsewhere",
+      "intent": "social",
+      "action": "react",
+      "referent": "self_contained",
+      "expectedMeaning": false,
+      "failures": []
+    },
+    {
+      "id": "zh-TW-unknown-3000-same",
+      "language": "zh-TW",
+      "scenario": "unknown",
+      "status": "failed",
+      "durationMs": 4056,
+      "policy": {
+        "status": "failed",
+        "action": "silent",
+        "reason": "decision_failed",
+        "textPolicyMet": true,
+        "requiredReplyMet": true
+      },
+      "relationship": null,
+      "intent": null,
+      "action": null,
+      "referent": null,
+      "expectedMeaning": false,
+      "failures": [
+        "invalid_evidence"
+      ]
+    }
+  ]
+}

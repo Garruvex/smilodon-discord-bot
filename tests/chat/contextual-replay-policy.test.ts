@@ -14,7 +14,7 @@ function outcome(scenario: string, extra: Record<string, unknown> = {}, speaker 
   const item = fixture(scenario, speaker);
   const contract = contextualDecisionContract([...item.events, item.current], bot, item.current.messageId);
   return { status: "valid" as const, attempts: [], decision: contract.parse(contextualProposal({
-    recipientEvidence: contract.evidenceSources.map((source) => source.key), ...extra,
+    linkKey: contract.links[0]?.key ?? null, recipientEvidence: contract.evidenceSources.map((source) => source.key), ...extra,
   })) };
 }
 describe("synthetic preflight policy measurement", () => {
@@ -25,9 +25,8 @@ describe("synthetic preflight policy measurement", () => {
     expect(await replayPolicyAssessment(fixture("repair"), { status: "failed", decision: null, attempts: [] }))
       .toMatchObject({ status: "failed", action: "silent", textPolicyMet: true, requiredReplyMet: false });
   });
-  it("measures policy suppression instead of counting a bad raw followup as delivery", async () => {
-    expect(await replayPolicyAssessment(fixture("unknown"), outcome("unknown")))
-      .toMatchObject({ status: "denied", action: "silent", textPolicyMet: true });
+  it("rejects a raw followup with no offered exchange link before policy", () => {
+    expect(() => outcome("unknown")).toThrow();
   });
   it("rejects linked group proposals without any supplied antecedent", async () => {
     expect(await replayPolicyAssessment(fixture("unknown"), outcome("unknown", { relationship: "group" })))

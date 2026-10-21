@@ -6,6 +6,24 @@ import { branchHuman, branchBot, branchCurrent } from "../helpers/conversation-d
 import { contextualProposal } from "../helpers/contextual-decision-fixtures.js";
 const events = [branchHuman, branchBot, branchCurrent];
 describe("contextual decision binding", () => {
+  it("offers different exchange-link types without letting a new speaker inherit another speaker's identity", () => {
+    const other = { ...branchCurrent, authorId: "bob" };
+    const contract = contextualDecisionContract([branchHuman, branchBot, other], "bot", other.messageId);
+    expect(contract.links.map((item) => item.key)).toEqual(["reference_1"]);
+    expect(() => contract.parse(contextualProposal({ linkKey: "speaker_1", recipientEvidence: ["original", "confirmed-reply", "current"] }))).toThrow();
+    expect(contract.parse(contextualProposal({ linkKey: "reference_1" })).contextual?.link).toMatchObject({ kind: "bot_reference", humanEventId: "original", botEventId: "confirmed-reply" });
+  });
+  it("binds a reaction to its supplied bot target and reactor audience without a human target choice", () => {
+    const snapshot = { type: "reaction_snapshot" as const, channelId: "channel", targetMessageId: "confirmed-reply", targetAuthorId: "bot", observedAt: 4000,
+      complete: true, exactReactionTimes: "unknown" as const, reactions: [{ emoji: "👍", emojiId: null, actorIds: ["alice"] }] };
+    const contract = contextualDecisionContract(events, "bot", snapshot.targetMessageId, snapshot);
+    const raw = contextualProposal({ relationship: "group", linkKey: "reaction", recipientEvidence: [] });
+    expect(new Ajv().compile(contract.schema)(raw)).toBe(true);
+    expect(contract.parse(raw)).toMatchObject({ target: "confirmed-reply", contribution: { recipientId: "group" },
+      contextual: { link: { kind: "reaction", actorIds: ["alice"] } } });
+    expect(() => contract.parse({ ...raw, targetKey: "candidate_1" })).toThrow();
+    expect(() => contract.parse({ ...raw, linkKey: "speaker_1" })).toThrow();
+  });
   it("requires the same referent enum in the advertised and local contract", () => {
     const contract = contextualDecisionContract(events, "bot", "current");
     const validate = new Ajv().compile(contract.schema);
@@ -18,9 +36,11 @@ describe("contextual decision binding", () => {
       .toMatchObject({ contextual: { referent: "unresolved", action: "silent" } });
   });
   it("maps short evidence keys back to authorized numeric source IDs", () => {
-    const numericEvents = events.map((event, index) => ({ ...event, messageId: `100000000000000000${index}` }));
+    const ids = new Map(events.map((event, index) => [event.messageId, `100000000000000000${index}`]));
+    const numericEvents = events.map((event) => ({ ...event, messageId: ids.get(event.messageId)!,
+      ...(event.replyToMessageId ? { replyToMessageId: ids.get(event.replyToMessageId)! } : {}) }));
     const contract = contextualDecisionContract(numericEvents, "bot", numericEvents.at(-1)!.messageId);
-    expect(contract.parse(contextualProposal({ recipientEvidence: ["event_1", "event_3"] })).recipientEvidence).toEqual([numericEvents[0]!.messageId, numericEvents[2]!.messageId]);
+    expect(new Set(contract.parse(contextualProposal({ recipientEvidence: ["event_1", "event_3"] })).recipientEvidence)).toEqual(new Set(numericEvents.map((event) => event.messageId)));
     expect(() => contract.parse(contextualProposal({ recipientEvidence: ["private_event"] }))).toThrow();
   });
   it("owns the current destination and recipient with no corresponding wire fields", () => {

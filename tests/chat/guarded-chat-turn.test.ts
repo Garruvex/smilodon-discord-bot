@@ -17,6 +17,7 @@ import { freshDocument, guildId, memoryProvider } from "../helpers/settings-fixt
 import { decisionProposal, decisionResponse } from "../helpers/conversation-decision-fixtures.js";
 import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 import { contextualProposal } from "../helpers/contextual-decision-fixtures.js";
+import { balancedChatLimits } from "../../src/application/chat/chat-scheduler.js";
 
 const channelId = "500000000000000001";
 const cleanups: (() => Promise<void>)[] = [];
@@ -25,7 +26,7 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false): 
   service: ChatConversationService; fixture: ReturnType<typeof guardedFixture>; input: ChatConversationInput;
   reply: ReturnType<typeof vi.fn<(request: ChatRequest) => Promise<ChatResponse>>>;
   engine: DefaultMemoryEngine; runtime: CharacterRuntime; state: SqliteChatStateStore;
-  decision: { generateCharacterData: ReturnType<typeof vi.fn> };
+  decision: { generateCharacterData: ReturnType<typeof vi.fn<(...args: unknown[]) => Promise<unknown>>> };
   records: Record<string, unknown>[];
   profiles: ReturnType<typeof memoryProvider>;
 }> {
@@ -36,7 +37,7 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false): 
   await profiles.update(guildId, { character: { context: { ...profiles.current().character!.context, enabled: true, retrievalMode: "eligible_count" } },
     chatParticipation: { flowVersion: contextual ? "contextual_v1" : "legacy", continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
   const reply = vi.fn((_request: ChatRequest) => Promise.resolve(decisionResponse({ text: "The carburetor needs a richer mixture at full throttle.", ambientAction: "reply", responseIntent: "answer" })));
-  const decision = { generateCharacterData: vi.fn(() => Promise.resolve(decisionProposal({
+  const decision = { generateCharacterData: vi.fn<(...args: unknown[]) => Promise<unknown>>(() => Promise.resolve(decisionProposal({
     recipientEvidence: ["current"], target: "current", boundary: "earlier",
     contribution: { text: "A carburetor answer", adds: "Mixture adjustment", label: "answer", motivation: 0.95, sourceMessageId: "current", recipientId: "alice" },
   }))) };
@@ -59,6 +60,33 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false): 
 }
 
 describe("guarded turn acceptance", () => {
+  it.each(["reply", "react", "silent", "failed", "invalid_link", "low_confidence", "actor_revoked", "source_changed", "budget", "shadow"] as const)("enforces reaction preflight through generation and effects: %s", async (scenario) => {
+    const { service, fixture, input, reply, decision } = await setup(5000, "alice", true);
+    fixture.port.sourceMessageId = "answer"; fixture.port.actorId = null;
+    const currentEvent = { type: "reaction_snapshot" as const, channelId, targetMessageId: "answer", targetAuthorId: "bot", observedAt: 5000,
+      complete: true, exactReactionTimes: "unknown" as const, reactions: [{ emoji: "👍", emojiId: null, actorIds: ["alice"] }] };
+    const proposal = contextualProposal({ relationship: "group", intent: "contribute", linkKey: "reaction", recipientEvidence: ["answer"] });
+    if (scenario === "react") { proposal.action = "react"; proposal.intent = "social"; proposal.reaction = "👍"; proposal.contribution = null; }
+    if (scenario === "silent") { proposal.action = "silent"; proposal.contribution = null; proposal.linkKey = null; proposal.recipientEvidence = []; }
+    if (scenario === "invalid_link") proposal.linkKey = "speaker_1";
+    if (scenario === "low_confidence") proposal.recipientConfidence = 0.2;
+    if (scenario === "actor_revoked") fixture.actors.delete("alice");
+    decision.generateCharacterData.mockImplementation(() => {
+      if (scenario === "failed") return Promise.reject(new Error("Unavailable"));
+      if (scenario === "source_changed") fixture.denied.add("question");
+      return Promise.resolve(proposal);
+    });
+    const send = vi.fn((response: ChatResponse) => Promise.resolve(response.text)); const effects = vi.fn(() => Promise.resolve());
+    const pending = service.run({ ...input, sourceMessageId: "answer", triggerMode: "reaction", currentEvent,
+      historyReactionsEnabled: true, afterDecision: effects, shadowMode: scenario === "shadow",
+      ...(scenario === "budget" ? { activityLimits: { ...balancedChatLimits, textPerWindow: 0 } } : {}) }, send);
+    if (scenario === "actor_revoked" || scenario === "source_changed") await expect(pending).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    else await pending;
+    expect(decision.generateCharacterData).toHaveBeenCalledTimes(scenario === "actor_revoked" ? 0 : 1);
+    expect(reply).toHaveBeenCalledTimes(scenario === "reply" || scenario === "shadow" ? 1 : 0);
+    expect(send).toHaveBeenCalledTimes(scenario === "reply" ? 1 : 0);
+    expect(effects).toHaveBeenCalledTimes(scenario === "reply" || scenario === "react" ? 1 : 0);
+  });
   it.each(["missing_guard", "disabled_context", "legacy_retrieval"] as const)("does not let a contextual turn fall back around its required stages: %s", async (scenario) => {
     const { service, input, profiles, reply, decision, records } = await setup(5000, "alice", true);
     if (scenario === "missing_guard") delete input.guardedContextPort;
@@ -102,7 +130,7 @@ describe("guarded turn acceptance", () => {
   it.each(["ordinary_clause", "known_recipient"] as const)("requires recipient evidence rather than an arbitrary comma prefix: %s", async (scenario) => {
     const { service, fixture, input, reply, decision } = await setup(963000, "bob", true);
     fixture.add(guardedEvent("current", 962000, scenario === "ordinary_clause" ? "我是在修你ㄟ，你剛剛壞掉了不回他，跟生日沒關係" : "bob，你剛剛選了哪個？"));
-    decision.generateCharacterData.mockResolvedValue(contextualProposal({ recipientEvidence: ["question", "answer", "current"] }));
+    decision.generateCharacterData.mockResolvedValue(contextualProposal({ linkKey: "reference_1", recipientEvidence: ["question", "answer", "current"] }));
     const result = await service.run({ ...input, triggerMode: "spontaneous" }, (response) => Promise.resolve(response.text));
     expect(reply).toHaveBeenCalledTimes(scenario === "ordinary_clause" ? 1 : 0);
     if (scenario === "known_recipient") expect(result.conversationDecision?.decision.reasonCode).toBe("addressed_elsewhere");
@@ -115,7 +143,7 @@ describe("guarded turn acceptance", () => {
     expect(decision.generateCharacterData).toHaveBeenCalledOnce();
     expect(reply).not.toHaveBeenCalled();
     expect(result.conversationDecision?.decision).toMatchObject({ action: "silent", reasonCode: "referent_unresolved" });
-    expect(records).toContainEqual(expect.objectContaining({ event: "model.decision.attempt", wireRevision: 3 }));
+    expect(records).toContainEqual(expect.objectContaining({ event: "model.decision.attempt", wireRevision: 4 }));
     expect(records).toContainEqual(expect.objectContaining({ event: "chat.decision.proposed", action: "reply", referent: "unresolved", relationship: "group" }));
     expect(records).toContainEqual(expect.objectContaining({ event: "chat.decision.resolved", action: "silent", reason: "referent_unresolved" }));
   });
@@ -186,7 +214,7 @@ describe("guarded turn acceptance", () => {
     await service.run({ ...input, triggerMode: "continuation" }, (response) => Promise.resolve(response.text)).catch((error: unknown) => {
       expect(error).toBeInstanceOf(SocialOutputSuppressed);
     });
-    if (scenario === "accepted" || scenario === "cross_participant" || scenario === "inactive_boundary") expect(reply).toHaveBeenCalledOnce();
+    if (scenario === "accepted" || scenario === "inactive_boundary") expect(reply).toHaveBeenCalledOnce();
     else expect(reply).not.toHaveBeenCalled();
     const completed = records.filter((record) => record.event === "chat.turn.completed");
     expect(completed).toHaveLength(1);
@@ -229,6 +257,7 @@ describe("guarded turn acceptance", () => {
     const { service, fixture, input, reply, decision } = await setup(5000, "alice", contextual);
     if (contextual && (triggerMode === "continuation" || triggerMode === "spontaneous")) decision.generateCharacterData.mockResolvedValue(contextualProposal({ recipientEvidence: ["question", "answer", "current"] }));
     if (triggerMode === "reaction") { fixture.port.sourceMessageId = "answer"; fixture.port.actorId = null;
+      decision.generateCharacterData.mockResolvedValue(contextualProposal({ relationship: "group", intent: "contribute", linkKey: "reaction", recipientEvidence: ["answer"] }));
       input.currentEvent = { type: "reaction_snapshot", channelId, targetMessageId: "answer", targetAuthorId: "bot", observedAt: 5000,
         complete: true, exactReactionTimes: "unknown", reactions: [{ emoji: "👍", emojiId: null, actorIds: ["alice"] }] };
       input.sourceMessageId = "answer";
@@ -237,6 +266,7 @@ describe("guarded turn acceptance", () => {
     const response = await service.run({ ...input, interactionMode, triggerMode,
     }, sent);
     expect(reply).toHaveBeenCalledOnce(); expect(sent).toHaveBeenCalledOnce();
+    expect(decision.generateCharacterData).toHaveBeenCalledTimes(triggerMode === "continuation" || triggerMode === "spontaneous" || triggerMode === "reaction" ? 1 : 0);
     const request = reply.mock.calls[0]![0];
     expect([...request.replyChain, ...request.channelHistory].map((event) => event.messageId)).toContain("question");
     expect(buildChatContext(request)).toContain("Explain the carburetor");

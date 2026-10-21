@@ -882,7 +882,7 @@ export class ChatConversationService {
       } : null;
       const response = await runTurn({ ...input, channelHistory: history,
         ...(contextualAvailability ? { contextualActionAvailability: contextualAvailability } : {}),
-        ...((input.triggerMode === "spontaneous" || input.triggerMode === "continuation") ? { optionalActionsAvailable: {
+        ...((input.triggerMode === "spontaneous" || input.triggerMode === "continuation" || input.triggerMode === "reaction") ? { optionalActionsAvailable: {
           text: contextualAvailability ? contextualAvailability.continuation.text || contextualAvailability.spontaneous.text : this.scheduler.outputAvailable(key, "text", limits),
           reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits),
         } } : {}),

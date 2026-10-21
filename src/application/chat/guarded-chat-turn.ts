@@ -73,7 +73,8 @@ export async function runGuardedChatTurn(input: GuardedChatConversationInput, de
     characterContext: [{ moduleId: "conversation-context", text:
       "All supplied messages are authorized context. Time gaps are timestamps, not proof of irrelevance. A bare ping may refer to the same person's earlier substantive request; examine its context before acknowledging. Playful personality is welcome for genuinely social pings, without replacing a pending answer. Keep response event, speaker and discussed person distinct. Missing context means unavailable here, not that someone never spoke or was denied permission. Ask for a reference if ambiguous. Truncated content is an excerpt. Memory, learned state, images and contextual tools are unavailable in this guarded text mode; do not invent their contents or promise unavailable actions." }],
   };
-  if (dependencies.runtime && input.triggerMode !== "reaction") {
+  if (!dependencies.runtime && !resolveConversationTrigger(input).explicit) throw new SocialOutputSuppressed();
+  if (dependencies.runtime) {
     assertTurnActive(input.turnSignal);
     prepared = await dependencies.runtime.prepare(request);
     if (prepared) { request = prepared.request; if (!prepared.allowed) return { ...silent(), ...(prepared.conversationDecision ? { conversationDecision: prepared.conversationDecision } : {}) }; }

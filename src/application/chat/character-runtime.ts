@@ -242,7 +242,7 @@ export class CharacterRuntime {
     const guarded = isGuardedContext(request.contextLease);
     const plan = request.turnPlan ?? resolveConversationTurnPlan(profile, request.channelId);
     if (!request.characterEvaluation && plan.state === "blocked") throw new SocialOutputSuppressed();
-    const contextual = guarded && plan.state === "ready" && plan.decision === "contextual";
+    const contextual = guarded && plan.state === "ready" && (plan.decision === "contextual" || request.currentEvent?.type === "reaction_snapshot");
     const events = guarded ? [...request.replyChain, ...request.channelHistory] : request.channelHistory;
     const burst = request.currentBurst?.length ? request.currentBurst : request.currentEvent?.type === "message" ? [{
       messageId: request.currentEvent.messageId, timestampMs: request.currentEvent.timestampMs, authorId: request.currentUser.id,
@@ -276,11 +276,12 @@ export class CharacterRuntime {
       const contextualProjection = contextual ? selectDecisionContext(request, settings.context.decisionMessages) : null;
       const decisionEvents = contextualProjection?.events ?? (guarded ? projectDecisionContext(request, settings.context.decisionMessages) : events.slice(-settings.context.decisionMessages));
       if (contextualProjection) emitChatDiagnostic(this.logger, { event: "context.decision.coverage", ...contextualProjection.coverage });
-      const fixedTarget = contextual && optional || request.triggerMode === "continuation" ? burst.at(-1)?.messageId ?? null : optional || request.triggerMode === "reaction" ? null : request.currentEvent?.type === "message" ? request.currentEvent.messageId : null;
+      const fixedTarget = contextual && request.currentEvent?.type === "reaction_snapshot" ? request.currentEvent.targetMessageId : contextual && optional || request.triggerMode === "continuation" ? burst.at(-1)?.messageId ?? null : optional || request.triggerMode === "reaction" ? null : request.currentEvent?.type === "message" ? request.currentEvent.messageId : null;
       const shouldDecide = optional || request.triggerMode === "reaction";
       const decisionStarted = Date.now();
       const outcome = shouldDecide ? await this.decisions.evaluate({ personality: request.personality, events: decisionEvents, burst, botId: request.botUserId ?? "bot",
         fixedTarget, contextual, useContextBoundary: !guarded && settings.context.retrievalMode !== "eligible_count", gapMs: settings.context.segmentGapMinutes * 60_000,
+        ...(contextual && request.currentEvent?.type === "reaction_snapshot" ? { reactionSnapshot: request.currentEvent } : {}),
         ...(request.turnSignal ? { signal: request.turnSignal } : {}), ...(request.turnDeadlineAt ? { deadlineAt: request.turnDeadlineAt } : {}),
         speakingShare: decisionEvents.length ? decisionEvents.filter((event) => event.authorId === request.botUserId).length / decisionEvents.length : 0,
         canUseContext: guarded ? (): Promise<boolean> => request.contextLease!.validate() : undefined, thoughts: !guarded && optional && enabled("thoughts"), availableActions: request.optionalActionsAvailable, now: turn.now }) : { status: "skipped" as const, decision: null };
@@ -293,7 +294,8 @@ export class CharacterRuntime {
       }
       if (decision?.contextual) emitChatDiagnostic(this.logger, { event: "chat.decision.proposed", wireRevision: contextualDecisionWireRevision,
         relationship: decision.contextual.relationship, referent: decision.contextual.referent, intent: decision.contextual.intent,
-        action: decision.contextual.action, evidenceCount: decision.recipientEvidence.length });
+        action: decision.contextual.action, evidenceCount: decision.recipientEvidence.length, linkKind: decision.contextual.link?.kind ?? null,
+        recipientConfidence: decision.recipientConfidence, confidence: decision.confidence });
       const assessment = this.decisionEngine.assess({ ...request, currentBurst: burst }, outcome, profile.chat.participation, true, turn.now, fingerprint);
       if (optional || request.triggerMode === "reaction") reportConversationDecision(this.logger, assessment.result, "preflight", resolveConversationTrigger(request).interaction);
       const local = assessment.local;

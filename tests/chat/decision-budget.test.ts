@@ -10,7 +10,7 @@ describe("bounded decision recovery", () => {
   it("allows the measured contextual latency while retaining the total model budget", async () => {
     vi.useFakeTimers();
     const { contextualProposal } = await import("../helpers/contextual-decision-fixtures.js");
-    const generateCharacterData = vi.fn(() => new Promise((resolve) => setTimeout(() => resolve(contextualProposal()), 8500)));
+    const generateCharacterData = vi.fn(() => new Promise((resolve) => setTimeout(() => resolve(contextualProposal({ relationship: "group", referent: "self_contained", linkKey: null })), 8500)));
     const pending = new CharacterDecisionService({ generateCharacterData }).evaluate({ ...input, contextual: true, useContextBoundary: false });
     await vi.advanceTimersByTimeAsync(8500);
     expect(await pending).toMatchObject({ status: "valid", attempts: [{ timeoutMs: 12000 }] });
