@@ -46,6 +46,10 @@ Revision-2 review: explicit human-recipient and open-group situations matched al
 
 ## Reproduction
 
+The replay now also runs the real preflight decision engine against an in-memory synthetic authorization lease. Both participation modes and action budgets are available, isolating policy from scheduling, generation and Discord delivery. Per-case output distinguishes the raw proposal from the policy action, status and reason. Text-policy violations and required substantive-reply misses are separate counters; a provider failure remains a failure even when its final action is silent.
+
+The targeted wire-revision-2 baseline `contextual-live-unknown-policy-v2-2026-10-21.json` recorded 27/27 valid decisions, 4/27 expected raw-label checks and **1/27 disallowed text replies after preflight policy**. These synthetic counts are not a production interruption rate. Targeted runs cannot satisfy the 200-case release gate. Use `--scenario unknown` or `--language en` to select a subset before applying `--limit`.
+
 Inventory only, with no API calls:
 
 ```text
