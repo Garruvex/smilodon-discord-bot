@@ -1,5 +1,5 @@
 import type { GuardedConversationContext } from "./guarded-conversation-context.js";
-import type { ActiveConversationTurnPlan } from "./conversation-turn-plan.js";
+import type { ConversationTurnPlan } from "./conversation-turn-plan.js";
 import type { ContextProvenance } from "./context-provenance.js";
 import type { ChatTool } from "./tools/chat-tool.js";
 import type { ChatInteraction } from "./chat-policy.js";
@@ -14,7 +14,7 @@ import type { GuardedConfigurationContext } from "../context/guarded-configurati
 
 export interface ChatRequest {
   configurationContext?: GuardedConfigurationContext;
-  turnPlan?: ActiveConversationTurnPlan;
+  turnPlan?: ConversationTurnPlan;
   contextLease?: GuardedConversationContext;
   characterGuardEnabled?: boolean;
   characterShadow?: boolean;

@@ -36,15 +36,9 @@ function moduleSetting(id: CharacterModuleId): SettingNode {
 export const character = group("character", [
   setting("controls", { enabled: toggle({ read: (p) => characterSettings(p).enabled, write: (v) => ({ character: { enabled: v } }) }) }),
   setting("context", {
-    "retrieval-mode": choice({ choices: ["legacy", "eligible_count"] as const, read: (p) => characterSettings(p).context.retrievalMode,
-      write: (v, p) => ({ character: { context: { ...characterSettings(p).context, retrievalMode: v } } }) }),
-    enabled: toggle({ read: (p) => characterSettings(p).context.enabled && p.features.channelHistory, write: (v, p) => ({ channelHistory: v, character: { context: { ...characterSettings(p).context, enabled: v } } }) }),
-    minutes: integer({ min: 1, max: 20, read: (p) => characterSettings(p).context.windowMinutes, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, windowMinutes: v } } }) }),
-    gap: integer({ min: 1, max: 20, read: (p) => characterSettings(p).context.segmentGapMinutes, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, segmentGapMinutes: v } } }) }),
+    enabled: toggle({ read: (p) => p.features.channelHistory, write: (v) => ({ channelHistory: v }) }),
     messages: integer({ min: 8, max: 48, read: (p) => characterSettings(p).context.maxMessages, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, maxMessages: v } } }) }),
     budget: integer({ min: 2000, max: 24000, read: (p) => characterSettings(p).context.budget, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, budget: v } } }) }),
-    summary: toggle({ read: (p) => characterSettings(p).context.summary, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, summary: v } } }) }),
-    shadow: toggle({ read: (p) => characterSettings(p).context.shadow, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, shadow: v } } }) }),
     "decision-messages": integer({ min: 5, max: 20, read: (p) => characterSettings(p).context.decisionMessages, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, decisionMessages: v } } }) }),
   }),
   ...activeCharacterModuleIds.map(moduleSetting),

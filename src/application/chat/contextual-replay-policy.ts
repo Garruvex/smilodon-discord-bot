@@ -21,7 +21,7 @@ export async function replayPolicyAssessment(fixture: ContextualReplayCase, outc
     memories: [], guildKnowledge: [], causalChains: [], message: lease.current.content, replyChain: lease.replyChain, replyChainSummary: null,
     channelHistory: lease.history, currentBurst: lease.burst, ...(lease.currentEvent ? { currentEvent: lease.currentEvent } : {}), contextLease: lease, birthday: null, images: [],
     webSearchMode: "off", imageGenerationEnabled: false, includeSources: false, interaction: "group_conversation", botUserId: botId,
-    turnPlan: { state: "ready", flow: "contextual_v1", context: "guarded_text", decision: "contextual", deadlineMs: 30000, contextPolicy: { count: 40, budget: 12000 } },
+    turnPlan: { context: "guarded_text", deadlineMs: 30000, contextPolicy: { count: 40, budget: 12000 } },
     optionalActionsAvailable: { text: true, reaction: true } };
   const result = new ConversationDecisionEngine().assess(request, outcome, { ...defaultParticipation, continuationEnabled: true,
     spontaneousEnabled: true, spontaneousChannelIds: [channelId] }, true, fixture.current.timestampMs + 1, "synthetic-policy").result;

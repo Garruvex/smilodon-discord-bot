@@ -16,7 +16,7 @@ export interface ValidatedConversationDecision {
 }
 export interface ConversationDecisionResult {
   status: "ready" | "denied" | "failed";
-  recovery: "none" | "grounded_reply" | "error_reply";
+  recovery: "none" | "error_reply";
   decision: ValidatedConversationDecision;
 }
 export interface ParticipationAssessment {
@@ -38,14 +38,6 @@ function contextVersion(request: ChatRequest): string {
 // Access/source eligibility and scheduling/delivery freshness remain external
 // mandatory gates; neither a model proposal nor fallback can override them.
 export class ConversationDecisionEngine {
-  public canUseGroundedContinuation(request: ChatRequest, now: number): boolean {
-    const events = [...request.channelHistory, ...request.replyChain, ...(request.currentBurst ?? [])];
-    const current = request.currentBurst?.at(-1);
-    if (!current || current.authorId !== request.currentUser.id || now < current.timestampMs || now - current.timestampMs >= 30_000 || localAddressing(events, current, request.botUserId ?? "bot", 120_000, request.aliasCandidates) !== "continuing") return false;
-    return events.some((event) => event.authorId === request.botUserId && event.replyToAuthorId === current.authorId &&
-      event.timestampMs < current.timestampMs && now - event.timestampMs <= 120_000 && event.replyToMessageId &&
-      events.some((human) => human.messageId === event.replyToMessageId && human.authorId === current.authorId && human.timestampMs < event.timestampMs));
-  }
   private result(request: Request, trigger: TriggerResolution, now: number, policyVersion: string, reasonCode: string,
     status: ConversationDecisionResult["status"], action: ValidatedConversationDecision["action"], intent: ConversationIntent,
     references: readonly string[] = [], recovery: ConversationDecisionResult["recovery"] = "none"): ConversationDecisionResult {
@@ -91,7 +83,7 @@ export class ConversationDecisionEngine {
     }
     if (proposal?.contextual && isGuardedContext(request.contextLease)) {
       const failure = decisionSourceFailure(proposal, events.filter((event) => event.timestampMs <= now), botId,
-        request.turnPlan?.decision === "contextual" || request.interaction === "implicit_followup" ? current?.messageId ?? null : null);
+        current?.messageId ?? null);
       if (failure) return denied(failure, "failed");
       const interpretation = proposal.contextual;
       if (current && isRecipientCorrection(current.content)) return denied("addressed_elsewhere");
@@ -135,12 +127,7 @@ export class ConversationDecisionEngine {
       }
     }
     if (!proposal) {
-      // Fallback is opt-in and skips ONLY a broken decision call. The
-      // confirmed same-person branch must still exist when delivery occurs.
-      const fallback = outcome.status !== "skipped" && request.interaction === "implicit_followup" &&
-        settings?.continuationFailureMode === "grounded_fallback" && this.canUseGroundedContinuation({ ...request, currentBurst: current ? [current] : [] }, now) && local === "continuing" && !elsewhere && request.optionalActionsAvailable?.text !== false;
-      if (fallback) return { ...base, targetMessageId: current!.messageId, targetConfidence: 1,
-        result: this.result(request, trigger, now, policyVersion, "decision_failure_grounded_continuation", "failed", "reply", "answer", [current!.messageId], "grounded_reply") };
+      // A missing or failed interpretation is silence, never a different path.
       return denied(outcome.status === "unavailable" ? "decision_unavailable" : "decision_failed", "failed");
     }
     const optional = isOptionalInteraction(request.interaction);
@@ -169,12 +156,10 @@ export class ConversationDecisionEngine {
     let reply = prior?.decision.action !== "react" && (trigger.explicit || response.ambientAction === "reply");
     const intent = response.responseIntent ?? prior?.decision.intent ?? (trigger.explicit ? "answer" : "contribute");
     if (trigger.explicit && response.ambientAction === "ignore" && request.allowSilentDirect && (intent === "social" || intent === "closing")) reply = false;
-    if (prior?.recovery === "grounded_reply") reply = true;
-    if (prior?.recovery === "grounded_reply" && intent !== "answer" && intent !== "clarify") return this.result(request, trigger, now, policyVersion, "fallback_requires_answer_or_clarification", "failed", "silent", "abstain");
     if (reply && !response.text.trim() && !response.generatedImages.length) return this.result(request, trigger, now, policyVersion, "empty_generated_reply", "failed", "silent", "abstain", [], trigger.explicit ? "error_reply" : "none");
     const groundedAnswer = prior?.decision.participationKind === "continuation" && (prior.decision.intent === "answer" || prior.decision.intent === "clarify");
     if (reply && groundedAnswer && intent !== "answer" && intent !== "clarify") return this.result(request, trigger, now, policyVersion, "substantive_requires_answer", "failed", "silent", "abstain");
-    const rejectedContribution = prior?.decision.action === "reply" && !trigger.explicit && prior.recovery !== "grounded_reply" && !groundedAnswer &&
+    const rejectedContribution = prior?.decision.action === "reply" && !trigger.explicit && !groundedAnswer &&
       !generatedContributionAllowed(response.text, [...request.channelHistory, ...request.replyChain], request.botUserId);
     if (rejectedContribution) reply = false;
     const react = response.reactionEmoji !== null || response.historyReactions.length > 0;

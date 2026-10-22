@@ -98,7 +98,8 @@ const eventSchema = z.discriminatedUnion("event", [
       code: z.enum(["invalid_type", "invalid_enum_value", "too_small", "too_big", "unrecognized_keys", "invalid"]) })).max(8).optional() }),
   z.object({ event: z.literal("chat.model.completed"), purpose: z.enum(["reply", "participation", "repair"]), status: z.enum(["valid", "failed"]), durationMs: duration, failure: failureCategory.optional(), httpStatus: z.number().int().min(100).max(599).optional() }),
   z.object({ event: z.literal("chat.turn.started"), interaction, candidateId: identifier.optional() }),
-  z.object({ event: z.literal("chat.turn.plan"), flow: z.enum(["legacy", "contextual_v1"]), context: z.enum(["legacy", "guarded_text"]),
+  // flow and the blocked context reasons are read-only for traces saved before the legacy flow was removed.
+  z.object({ event: z.literal("chat.turn.plan"), flow: z.enum(["legacy", "contextual_v1"]).optional(), context: z.enum(["legacy", "guarded_text"]),
     state: z.enum(["ready", "blocked"]), reason: z.enum(["profile_unavailable", "context_disabled", "legacy_retrieval", "channel_context_disabled", "guard_unavailable", "guard_mismatch"]).optional() }),
   z.object({ event: z.literal("chat.candidate.source"), candidateId: identifier, sourceMessageId: identifier }),
   z.object({ event: z.literal("chat.turn.deadline"), budgetMs: duration }),

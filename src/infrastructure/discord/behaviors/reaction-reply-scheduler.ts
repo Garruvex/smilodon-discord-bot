@@ -2,12 +2,11 @@ import type { Client, GuildTextBasedChannel, Message } from "discord.js";
 import type { Logger } from "pino";
 import { chatDeliveryText } from "../../../application/i18n/chat-delivery.js";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
-import { characterSettings } from "../../../application/chat/character-settings.js";
 import { conversationEffects } from "../../../application/chat/conversation-effects.js";
 
 import { ChatPolicy } from "../../../application/chat/chat-policy.js";
+import { buildChatTurnInput, type ChatTurnEnvironment } from "./chat-turn-request.js";
 import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
-import type { ChannelHistoryMessage } from "../../../application/chat/chat-provider.js";
 import { ChatStateCommitError, type ChatConversationService } from "../../../application/chat/chat-conversation-service.js";
 import type { MessageReactionWatch, MessageReactionWatchStore } from "../../../application/chat/message-reaction-watch.js";
 import type { PersonaSource } from "../../../application/chat/persona-source.js";
@@ -20,7 +19,6 @@ import type { IsGameChannel } from "./game-channel-guard.js";
 import { SocialOutputSuppressed, type MessageOriginStore } from "../../../application/chat/message-origin-store.js";
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
 import { resolveParticipation } from "../../../application/chat/participation-policy.js";
-import { resolveChannelMemoryMode } from "../../../application/memory/memory-channel-policy.js";
 
 class ReactionOutputSuppressed extends Error {}
 
@@ -89,6 +87,7 @@ export class ReactionReplyScheduler {
   private readonly perMessageQueue = new KeyedSerialQueue();
   private readonly turnSupport: ChatTurnSupport;
   private readonly policy: ChatPolicy;
+  private readonly turnEnvironment: ChatTurnEnvironment;
   // In-memory only — a process restart resets a watch's attempt count back
   // to zero, which just means a couple of extra retries in the worst case,
   // never fewer than intended. Not worth a schema migration/persisted
@@ -109,6 +108,7 @@ export class ReactionReplyScheduler {
   ) {
     this.turnSupport = new ChatTurnSupport(logger, eligibility, origins);
     this.policy = new ChatPolicy(configuration);
+    this.turnEnvironment = { profiles, ownerUserIds: configuration.ownerUserIds, support: this.turnSupport };
   }
 
   // true: still has attempts left, caller should leave the watch pending
@@ -376,20 +376,6 @@ export class ReactionReplyScheduler {
         globalName: member?.user?.globalName ?? null, guildNickname: member?.nickname ?? null,
         kind: "human" as const, roleNames: [] as string[] };
     }));
-    // `before: null` — fetch the most recent channel activity rather than
-    // "before message.id", since this turn is evaluated minutes after
-    // `message` was sent and needs to see whatever was said in between
-    // (see ChatTurnSupport.resolveChannelHistory's own doc comment).
-    const channelHistory: ChannelHistoryMessage[] = [];
-    const currentUser = {
-      ...this.turnSupport.toChatUser(author, message.member),
-      id: author.id,
-      displayName: message.member?.displayName ?? author.username,
-      roleNames: message.member?.roles.cache
-        .filter((role) => role.id !== guildId)
-        .map((role) => role.name.slice(0, 50))
-        .slice(0, 10) ?? [],
-    };
     const displayNames = new Map(mentionedUsers.map((user) => [user.id, user.displayName]));
     const syntheticPrompt = `(${reactorIds.size} ${reactorIds.size === 1 ? "person" : "people"} reacted to your message ` +
       `"${message.content.slice(0, chatMemoryLimits.maxUserMessageChars)}": ` +
@@ -402,17 +388,14 @@ export class ReactionReplyScheduler {
     };
 
     try {
-      const kept: Message[] = []; const overflow: Message[] = [];
-      const response = await this.conversation.run({
-        guildId, channelId: message.channelId, sourceMessageId: message.id,
+      const response = await this.conversation.run(buildChatTurnInput(this.turnEnvironment, profile, persona, {
+        interaction: "reaction", source: message, text: syntheticPrompt, botUserId: author.id, mentionedUsers,
         canExecute: async () => canTrigger() && await eligible(),
-        activityLimits: resolveParticipation(profile.chat.participation, message.channelId).limits,
-        resolveActivityLimits: () => resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).limits,
-        resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
-        guardedContextPort: this.turnSupport.createContextPort(message, true),
-          guardedContextPolicy: { count: characterSettings(profile).context.maxMessages, budget: characterSettings(profile).context.budget, minReactors: profile.chat.reactionReplyMinReactors },
-        shouldDeliver: () => !resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).shadowMode,
-        shadowMode: resolveParticipation(profile.chat.participation, message.channelId).shadowMode,
+        currentEvent: {
+          type: "reaction_snapshot", channelId: message.channelId, targetMessageId: message.id,
+          targetAuthorId: author.id, observedAt: Date.now(), complete: true, exactReactionTimes: "unknown",
+          reactions: reactions.map((reaction) => ({ emoji: reaction.emoji, emojiId: reaction.emojiId, actorIds: reaction.userIds })),
+        },
         afterDecision: async (result) => {
           const effects = conversationEffects(result); if (!effects) return;
           if (!await this.canDeliver(channel, guildId)) return;
@@ -425,30 +408,7 @@ export class ReactionReplyScheduler {
           await this.turnSupport.applyHistoryReactions(channel, effects.historyReactions,
             { guildId, sourceMessageId: message.id }, reserve);
         },
-        botUserId: author.id,
-        currentEvent: {
-          type: "reaction_snapshot", channelId: message.channelId, targetMessageId: message.id,
-          targetAuthorId: author.id, observedAt: Date.now(), complete: true, exactReactionTimes: "unknown",
-          reactions: reactions.map((reaction) => ({ emoji: reaction.emoji, emojiId: reaction.emojiId, actorIds: reaction.userIds })),
-        },
-        personality: persona.personality,
-        ...(persona.configurationContext ? { configurationContext: persona.configurationContext } : {}), examplePool: persona.examplePool, loreChunks: persona.loreChunks,
-        personaDrift: persona.personaDrift, personaDriftEnabled: profile.chat.personaDriftEnabled,
-        personalitySourceHash: persona.personalitySourceHash,
-        currentUser, mentionedUsers,
-        message: syntheticPrompt,
-        replyChain: this.turnSupport.toChannelHistoryMessages(kept),
-        replyChainOverflow: this.turnSupport.toChannelHistoryMessages(overflow), channelHistory,
-        images: [], webSearchMode: profile.chat.webSearchMode,
-        imageInputEnabled: profile.chat.imageInputEnabled, maxImagesPerRequest: profile.chat.maxImagesPerRequest,
-        imageGenerationEnabled: false, includeSources: profile.chat.includeSources,
-        interaction: "reaction",
-        channelHistoryEnabled: profile.features.channelHistory,
-        historyReactionsEnabled: profile.features.historyReactions && profile.features.channelHistory,
-        toolsEnabled: false,
-        channelMemoryModes: profile.chat.channelMemoryModes,
-        channelIsNsfw: "nsfw" in channel ? Boolean(channel.nsfw) : false,
-      }, async (deliveredResponse) => {
+      }), async (deliveredResponse) => {
         const selectedTarget = deliveredResponse.replyTargetMessageId ? await channel.messages.fetch(deliveredResponse.replyTargetMessageId).catch(() => null) : message;
         if (!selectedTarget || !await this.turnSupport.isEligible(selectedTarget, "reaction")) throw new SocialOutputSuppressed();
         const { deliveredText } = await this.turnSupport.deliverChatResponse({

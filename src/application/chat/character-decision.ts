@@ -98,10 +98,6 @@ export function closesExchange(text: string): boolean {
     isRecipientCorrection(text);
 }
 export interface RecipientAliases { alias: string; subjectIds: readonly string[] }
-// Admission hint only; a guarded decision still has to resolve the recipient.
-export function possiblePersonalFollowup(text: string): boolean {
-  return !closesExchange(text) && /(?:你|妳|您|あなた|君|きみ|お前|\b(?:you|your|yours)\b)/iu.test(text);
-}
 export function groundedContextContinuation(events: readonly ChannelHistoryMessage[], current: ChannelHistoryMessage, botId: string, proposal: CharacterDecision, allowSocialClosing = false): boolean {
   if (!["bot", "continuing"].includes(proposal.addressing) || proposal.target !== current.messageId ||
       proposal.contribution.recipientId !== current.authorId || closesExchange(current.content) && (!allowSocialClosing || isRecipientCorrection(current.content)) ||

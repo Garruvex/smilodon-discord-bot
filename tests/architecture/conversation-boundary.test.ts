@@ -157,10 +157,12 @@ describe("conversation execution ownership", () => {
   it("requires each live Discord conversation adapter to consume approved effects", () => {
     const adapters = sources(path.join(root, "infrastructure/discord")).filter((file) => /this\.conversation!?\.run\(/u.test(fs.readFileSync(file, "utf8")));
     expect(adapters).toHaveLength(3);
+    expect(fs.readFileSync(path.join(root, "infrastructure/discord/behaviors/chat-turn-request.ts"), "utf8")).toContain("guardedContextPort: support.createContextPort(");
     for (const file of adapters) {
       const source = fs.readFileSync(file, "utf8");
       expect(source, path.relative(root, file)).toContain("conversationEffects(result)");
-      expect(source, path.relative(root, file)).toContain("guardedContextPort: this.turnSupport.createContextPort(");
+      // Requests are assembled by the one shared builder, which owns the source port.
+      expect(source, path.relative(root, file)).toContain("buildChatTurnInput(");
       expect(source, path.relative(root, file)).not.toContain("usesGuardedContext");
       expect(source, path.relative(root, file)).not.toMatch(/resolve(?:ReplyChain|ChannelHistory)\(/u);
       expect(source, path.relative(root, file)).not.toMatch(/result\.(?:reactionEmoji|historyReactions)/u);

@@ -1,16 +1,13 @@
 import type { SettingsTextCatalog } from "../catalog.js";
 
 export const enChat: SettingsTextCatalog = {
-  "participation.thread-scope.flow-version": { label: "Conversation flow", description: "Choose this thread's flow; explicit observation access is required.", choices: { legacy: "Legacy", contextual_v1: "Contextual (pilot)" } },
   "participation.thread-scope.shadow": { label: "Shadow evaluation", description: "Evaluate optional decisions without sending in this thread." },
-  "participation.participation-channel.flow-version": { label: "Conversation flow", description: "Choose the flow for this exact channel.", choices: { legacy: "Legacy", contextual_v1: "Contextual (pilot)" } },
   "participation.participation-channel.shadow": { label: "Shadow evaluation", description: "Evaluate decisions without posting optional replies in this channel." },
-  "participation.controls.flow-version": { label: "Conversation flow", description: "Choose contextual participation; requires enabled eligible-count context.", choices: { legacy: "Legacy", contextual_v1: "Contextual (pilot)" } },
-  "participation.thread-scope": {"label": "Thread scope", "description": "Select a thread explicitly by ID; parent channels do not grant access.", "messages": {"invalid": "Choose a valid accessible thread in this server and at least one scope change.", "needs-observation": "Enable observation for this thread before allowing spontaneous replies.", "done": "Thread scope updated. Provider, history and participation controls still apply."}},
+  "participation.thread-scope": {"label": "Thread scope", "description": "Pick a thread by ID; parent channels don't include threads.", "messages": {"invalid": "Give a thread ID from this server and at least one change.", "needs-observation": "Turn on observe for this thread first.", "done": "Thread scope updated."}},
   "participation.thread-scope.thread-id": {"label": "Thread ID", "description": "ID of a thread the bot can access in this server."},
   "participation.thread-scope.observe": {"label": "Observe", "description": "Allow passive reading and optional follow-ups in this thread."},
   "participation.thread-scope.spontaneous": {"label": "Spontaneous", "description": "Include this thread in the spontaneous allow-list; global controls still apply."},
-  "participation.status": {"label": "Participation status", "description": "Show provider readiness and passive channel scope.", "messages": {"available": "Decision provider available. Participation also needs channel history, a selected channel and enabled controls.", "paused": "Optional participation is paused: no structured decision provider or utility fallback is available. Explicit requests remain available.", "scope": "Passive reading uses {count} selected channels. Threads require their own selection."}},
+  "participation.status": {"label": "Participation status", "description": "Show whether optional replies can run.", "messages": {"available": "Ready. Turn on follow-ups or group participation and pick channels.", "paused": "Paused: no chat model is configured. Mentions still work.", "scope": "Observing {count} channels. Threads need their own selection."}},
   "participation.observation-channels": {"label": "Observation and follow-up channels", "description": "Select channels for passive reading and optional replies. Empty means none."},
   "participation.observation-channels.channels": {"label": "Channels", "description": "Exact channels or threads; guild memory does not grant access to other channels."},
   "participation.controls.messages-per-decision": {"label": "Messages per decision", "description": "Human messages per spontaneous decision (1-20). Continuations and direct requests bypass this."},

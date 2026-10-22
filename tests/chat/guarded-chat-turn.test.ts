@@ -38,7 +38,7 @@ import type { UserCustomizationStore } from "../../src/application/chat/user-cus
 const channelId = "500000000000000001";
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { vi.useRealTimers(); for (const cleanup of cleanups.splice(0)) await cleanup(); });
-async function setup(now = 5000, originalAuthor = "alice", contextual = false, nativeWebSearchSupported = false, tools: ChatToolRegistry | null = null, imageGenerationSupported = false, customization: UserCustomizationStore | null = null, utility: ChatProvider | null = null, enrichment?: { examples: ExampleExchangeSelector; lore: PersonaLoreSelector }): Promise<{
+async function setup(now = 5000, originalAuthor = "alice", _unused = false, nativeWebSearchSupported = false, tools: ChatToolRegistry | null = null, imageGenerationSupported = false, customization: UserCustomizationStore | null = null, utility: ChatProvider | null = null, enrichment?: { examples: ExampleExchangeSelector; lore: PersonaLoreSelector }): Promise<{
   service: ChatConversationService; fixture: ReturnType<typeof guardedFixture>; input: ChatConversationInput;
   reply: ReturnType<typeof vi.fn<(request: ChatRequest) => Promise<ChatResponse>>>;
   engine: DefaultMemoryEngine; runtime: CharacterRuntime; state: SqliteChatStateStore;
@@ -50,8 +50,8 @@ async function setup(now = 5000, originalAuthor = "alice", contextual = false, n
   const repository = new SqliteMemoryRepository(connection.database); const state = new SqliteChatStateStore(connection.database);
   const document = freshDocument(); document.features.chatbot = true; document.features.channelHistory = true; document.channels.chatbot = [channelId];
   const profiles = memoryProvider(document);
-  await profiles.update(guildId, { character: { context: { ...profiles.current().character!.context, enabled: true, retrievalMode: "eligible_count" } },
-    chatParticipation: { flowVersion: contextual ? "contextual_v1" : "legacy", continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+  await profiles.update(guildId, {
+    chatParticipation: { continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
   const reply = vi.fn((_request: ChatRequest) => Promise.resolve(decisionResponse({ text: "The carburetor needs a richer mixture at full throttle.", ambientAction: "reply", responseIntent: "answer" })));
   const decision = { generateCharacterData: vi.fn<(...args: unknown[]) => Promise<unknown>>(() => Promise.resolve(decisionProposal({
     recipientEvidence: ["current"], target: "current", boundary: "earlier",
@@ -175,7 +175,6 @@ describe("guarded turn acceptance", () => {
     const { service, input, fixture, reply } = await setup(5000, "alice", false, false, null, false, null, { reply: vi.fn(), summarizeReplyChainOverflow });
     for (let index = 0; index < 25; index++) fixture.add(guardedEvent(`ancestor-${index}`, 100 + index, `AUTHORIZED_ANCESTOR_${index}`, "alice", { replyToMessageId: index ? `ancestor-${index - 1}` : null }));
     fixture.sources.get("current")!.event.replyToMessageId = "ancestor-24";
-    input.replyChainOverflow = [{ authorId: "hidden", authorDisplayName: "hidden", content: "UNREGISTERED_OVERFLOW", messageId: "fake", imageCount: 0, timestampMs: 0 }];
     if (scenario === "restricted") fixture.denied.add("ancestor-2");
     summarizeReplyChainOverflow.mockImplementation((hops) => {
       expect(hops).toHaveLength(scenario === "restricted" ? 2 : 5);
@@ -484,14 +483,21 @@ describe("guarded turn acceptance", () => {
     expect(send).toHaveBeenCalledTimes(scenario === "reply" ? 1 : 0);
     expect(effects).toHaveBeenCalledTimes(scenario === "reply" || scenario === "react" ? 1 : 0);
   });
-  it.each(["missing_guard", "disabled_context", "legacy_retrieval"] as const)("does not let a contextual turn fall back around its required stages: %s", async (scenario) => {
+  it.each(["missing_guard", "disabled_context", "legacy_retrieval"] as const)("requires guarded sources regardless of obsolete context selectors: %s", async (scenario) => {
     const { service, input, profiles, reply, decision, records } = await setup(5000, "alice", true);
     if (scenario === "missing_guard") delete input.guardedContextPort;
     else await profiles.update(guildId, { character: { context: { ...profiles.current().character!.context,
       ...(scenario === "disabled_context" ? { enabled: false } : { retrievalMode: "legacy" as const }) } } });
-    await expect(service.run(input, () => Promise.resolve("unexpected"))).rejects.toBeInstanceOf(SocialOutputSuppressed);
-    expect(reply).not.toHaveBeenCalled(); expect(decision.generateCharacterData).not.toHaveBeenCalled();
-    expect(records).toContainEqual(expect.objectContaining({ event: "chat.turn.plan", state: "blocked" }));
+    const send = vi.fn((response: ChatResponse) => Promise.resolve(response.text));
+    if (scenario === "missing_guard") {
+      await expect(service.run(input, send)).rejects.toBeInstanceOf(SocialOutputSuppressed);
+      expect(reply).not.toHaveBeenCalled(); expect(decision.generateCharacterData).not.toHaveBeenCalled();
+      expect(records).toContainEqual(expect.objectContaining({ event: "chat.turn.plan", state: "blocked" }));
+    } else {
+      await service.run(input, send);
+      expect(reply).toHaveBeenCalledOnce(); expect(send).toHaveBeenCalledOnce();
+      expect(records).toContainEqual(expect.objectContaining({ event: "chat.turn.plan", state: "ready" }));
+    }
     expect(records.filter((record) => record.event === "chat.turn.completed")).toHaveLength(1);
   });
   it("never exposes reactions to effect callbacks after invalid generation evidence", async () => {
@@ -594,15 +600,13 @@ describe("guarded turn acceptance", () => {
     }));
     expect(records.filter((record) => record.event === "chat.turn.completed")).toHaveLength(1);
   });
-  it.each(["accepted", "inactive_boundary", "cross_participant", "missing_evidence", "other_recipient", "private_source", "low_confidence", "decision_failed"] as const)("handles a sixteen-minute correction with guarded evidence: %s", async (scenario) => {
-    const { service, fixture, input, reply, runtime, decision, records } = await setup(963000, scenario === "cross_participant" ? "bob" : "alice");
+  it.each(["accepted", "invalid_link", "cross_participant", "missing_evidence", "other_recipient", "private_source", "low_confidence", "decision_failed"] as const)("handles a sixteen-minute correction with guarded evidence: %s", async (scenario) => {
+    const { service, fixture, input, reply, decision, records } = await setup(963000, scenario === "cross_participant" ? "bob" : "alice");
     const correction = guardedEvent("current", 962000, "我是在修你ㄟ 你剛剛壞掉了不回他\n跟大番薯沒關西");
     fixture.add(correction);
-    // The local episode window is empty, as after restart or a long gap.
-    expect(runtime.couldBeAddressed(guildId, channelId, correction, [], "bot")).toBe(true);
-    const proposal = decisionProposal({ recipientEvidence: ["question", "answer", "current"] });
-    if (scenario === "inactive_boundary") proposal.boundary = "invalid-legacy-boundary";
-    if (scenario === "missing_evidence") proposal.recipientEvidence = ["current"];
+    const proposal = contextualProposal({ recipientEvidence: ["question", "answer", "current"] });
+    if (scenario === "invalid_link") proposal.linkKey = "invalid-link";
+    if (scenario === "missing_evidence") { proposal.recipientEvidence = []; proposal.linkKey = null; }
     if (scenario === "low_confidence") proposal.recipientConfidence = 0.2;
     if (scenario === "other_recipient") fixture.add({ ...correction, replyToMessageId: "question" });
     if (scenario === "private_source") fixture.denied.add("question");
@@ -611,12 +615,12 @@ describe("guarded turn acceptance", () => {
     await service.run({ ...input, interaction: "implicit_followup" }, (response) => Promise.resolve(response.text)).catch((error: unknown) => {
       expect(error).toBeInstanceOf(SocialOutputSuppressed);
     });
-    if (scenario === "accepted" || scenario === "inactive_boundary") expect(reply).toHaveBeenCalledOnce();
+    if (scenario === "accepted") expect(reply).toHaveBeenCalledOnce();
     else expect(reply).not.toHaveBeenCalled();
     const completed = records.filter((record) => record.event === "chat.turn.completed");
     expect(completed).toHaveLength(1);
     expect(completed[0]).toMatchObject({ sourceMessageId: "current", interaction: "implicit_followup" });
-    if (scenario === "inactive_boundary") expect(completed[0]).toMatchObject({ outcome: "text_delivered", textDeliveryConfirmed: true });
+    if (scenario === "accepted") expect(completed[0]).toMatchObject({ outcome: "text_delivered", textDeliveryConfirmed: true });
   });
   it("skips redundant saved-session reads when both sides already exist in guarded history", async () => {
     const { service, fixture, input, reply, state } = await setup();
@@ -647,9 +651,9 @@ describe("guarded turn acceptance", () => {
     expect((await state.load(guildId, "alice", channelId, 5001)).exchanges).toEqual([]);
   });
 
-  it.each(chatInteractions.flatMap((interaction) => [false, true].map((contextual) => ({ interaction, contextual }))))("retains the authorized conversation for $interaction (contextual=$contextual)", async ({ interaction, contextual }) => {
-    const { service, fixture, input, reply, decision } = await setup(5000, "alice", contextual);
-    if (contextual && isOptionalInteraction(interaction)) decision.generateCharacterData.mockResolvedValue(contextualProposal({ recipientEvidence: ["question", "answer", "current"] }));
+  it.each(chatInteractions.map((interaction) => ({ interaction })))("retains the authorized conversation for $interaction", async ({ interaction }) => {
+    const { service, fixture, input, reply, decision } = await setup(5000, "alice");
+    if (isOptionalInteraction(interaction)) decision.generateCharacterData.mockResolvedValue(contextualProposal({ recipientEvidence: ["question", "answer", "current"] }));
     if (interaction === "reaction") { fixture.port.sourceMessageId = "answer"; fixture.port.actorId = null;
       decision.generateCharacterData.mockResolvedValue(contextualProposal({ relationship: "group", intent: "contribute", linkKey: "reaction", recipientEvidence: ["answer"] }));
       input.currentEvent = { type: "reaction_snapshot", channelId, targetMessageId: "answer", targetAuthorId: "bot", observedAt: 5000,

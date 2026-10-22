@@ -1,3 +1,4 @@
+import { contextualProposal } from "../helpers/contextual-decision-fixtures.js";
 import { characterInternals } from "../helpers/character-runtime-internals.js";
 import { GuardedConversationContext } from "../../src/application/chat/guarded-conversation-context.js";
 import { approveConversationRequest } from "../../src/application/context/approved-conversation-request.js";
@@ -70,14 +71,11 @@ describe("character module integration", () => {
     const reply = vi.spyOn(provider, "reply"); await expect(runtime.process(response(), prepared)).rejects.toBeInstanceOf(SocialOutputSuppressed); expect(reply).not.toHaveBeenCalled();
     expect(() => runtime.learnGuarded(response(), prepared)).toThrow(SocialOutputSuppressed);
   });
-  it("recovers a proven continuation without exposing tools, search or image generation", async () => {
+  it("stays silent on a follow-up when the decision fails, without a fallback reply", async () => {
     const { runtime, provider, profiles, repository, connection } = setup(() => 4000);
-    await profiles.update(guildId, { chatParticipation: { continuationEnabled: true, continuationFailureMode: "grounded_fallback" } });
+    await profiles.update(guildId, { chatParticipation: { continuationEnabled: true } });
     vi.mocked(provider.generateCharacterData!).mockRejectedValue(new Error("decision provider unavailable"));
-    vi.spyOn(provider, "reply").mockImplementation((request) => {
-      expect(request.enabledTools).toEqual([]); expect(request.webSearchMode).toBe("off"); expect(request.imageGenerationEnabled).toBe(false);
-      return Promise.resolve(response("The second option is cheaper"));
-    });
+    const reply = vi.spyOn(provider, "reply");
     const execute = vi.fn(() => Promise.resolve({ content: "must not run" }));
     const tools = new ChatToolRegistry([{ name: "action", description: "An action", parameters: {}, execute }]);
     const service = new ChatConversationService(provider, new SqliteChatStateStore(connection.database), new DefaultMemoryEngine(repository), undefined, undefined, undefined, null, null, tools, null, null, null, null, null, runtime, () => 4000);
@@ -88,8 +86,8 @@ describe("character module integration", () => {
     try {
       const result = await service.run({ ...request(), examplePool: [], loreChunks: [], toolsEnabled: true, webSearchMode: "auto", imageGenerationEnabled: true,
         interaction: "implicit_followup", sourceMessageId: "current", channelHistory: [human, bot], currentBurst: [current] }, deliver);
-      expect(result.conversationDecision).toMatchObject({ status: "failed", recovery: "grounded_reply", decision: { action: "reply" } });
-      expect(deliver).toHaveBeenCalledOnce(); expect(execute).not.toHaveBeenCalled();
+      expect(result.conversationDecision).toMatchObject({ status: "failed", recovery: "none", decision: { action: "silent" } });
+      expect(reply).not.toHaveBeenCalled(); expect(deliver).not.toHaveBeenCalled(); expect(execute).not.toHaveBeenCalled();
     } finally { service.stopScheduling(); await service.drain(); }
   });
   it("keeps a composed module inactive when an implementation dependency is absent", () => {
@@ -104,11 +102,8 @@ describe("character module integration", () => {
     expect(settings.modules.canon).not.toHaveProperty("intervalMinutes");
     expect(settings.modules.relationships).not.toHaveProperty("maxPerDay");
   });
-  it("skips shadow decisions on mentions, but allows live context-boundary decisions", async () => {
-    const { runtime, profiles, provider } = setup(); const generate = vi.spyOn(provider, "generateCharacterData");
-    await profiles.update(guildId, { character: { context: { ...profiles.current().character!.context, enabled: true } } });
-    await characterInternals(runtime).prepare(request()); expect(generate).not.toHaveBeenCalled();
-    await profiles.update(guildId, { character: { context: { ...profiles.current().character!.context, shadow: false } } });
+  it("never runs an optional decision for an explicit mention", async () => {
+    const { runtime, provider } = setup(); const generate = vi.spyOn(provider, "generateCharacterData");
     await characterInternals(runtime).prepare(request()); expect(generate).not.toHaveBeenCalled();
   });
   it("does not re-read character context for solicited tool/delivery checks after background learning", async () => {
@@ -461,7 +456,7 @@ describe("decision windows and continuation timing", () => {
     const human = { messageId: "human", timestampMs: 1000, authorId: actorUserId, authorDisplayName: "Alice", content: "Compare these two ideas", imageCount: 0 };
     const bot = { messageId: "bot-message", timestampMs: 2000, authorId: "bot", authorDisplayName: "Bot", content: "Here is the comparison", imageCount: 0, replyToAuthorId: actorUserId, replyToMessageId: "human" };
     const current = { ...human, messageId: "current", timestampMs: 4000, content: "What about the other tradeoff?" };
-    vi.mocked(provider.generateCharacterData!).mockResolvedValue({ addressing: "continuing", motivation: 0.9, confidence: 0.9, recipientConfidence: 0.9, targetConfidence: 0.9, recipientEvidence: ["current"], target: "current", boundary: "earlier", opening: "clear", contribution: { text: "The second option is cheaper", adds: "A specific tradeoff", label: "specific-opinion", motivation: 0.9, sourceMessageId: "current", recipientId: actorUserId }, thoughts: [], reaction: null });
+    vi.mocked(provider.generateCharacterData!).mockResolvedValue(contextualProposal({ recipientEvidence: ["human", "bot-message", "current"] }));
     let finish!: (reply: ChatResponse) => void;
     const pending = new Promise<ChatResponse>((resolve) => { finish = resolve; });
     const generation = vi.spyOn(provider, "reply").mockReturnValue(pending);
@@ -505,10 +500,8 @@ describe("decision windows and continuation timing", () => {
   it("uses the structured decision for a spontaneous reaction without calling the reply model", async () => {
     const { runtime, provider, profiles, repository, connection } = setup(() => 4000);
     await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
-    vi.mocked(provider.generateCharacterData!).mockResolvedValue({ addressing: "others", motivation: 0.5, confidence: 0.9,
-      recipientConfidence: 0.9, targetConfidence: 0.9, recipientEvidence: ["current"], target: "current", boundary: "earlier",
-      opening: "closed", contribution: { text: "", adds: "", label: "none", motivation: 0, sourceMessageId: "current", recipientId: "group" },
-      thoughts: [], reaction: "🎉" });
+    vi.mocked(provider.generateCharacterData!).mockResolvedValue(contextualProposal({ relationship: "group", intent: "social", action: "react",
+      referent: "self_contained", linkKey: null, recipientEvidence: ["current"], contribution: null, reaction: "🎉" }));
     const service = new ChatConversationService(provider, new SqliteChatStateStore(connection.database), new DefaultMemoryEngine(repository),
       undefined, undefined, undefined, null, null, null, null, null, null, null, null, runtime, () => 4000);
     const current = { messageId: "current", timestampMs: 4000, authorId: actorUserId, authorDisplayName: "Alice",

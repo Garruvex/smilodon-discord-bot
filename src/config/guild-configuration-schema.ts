@@ -102,11 +102,9 @@ const guildChatSchema = z.preprocess((value) => {
   return { ...rest, webSearchMode: webSearchEnabled ? "auto" : "off" };
 }, z.object({
   participation: z.object({
-    flowVersion: z.enum(["legacy", "contextual_v1"]).default("legacy"),
     messagesPerDecision: z.number().int().min(1).max(20).optional(),
     spontaneousThreshold: z.number().min(0).max(1).optional(),
     continuationThreshold: z.number().min(0).max(1).optional(),
-    continuationFailureMode: z.enum(["strict", "grounded_fallback"]).default("strict"),
     observationChannelIds: snowflakeList.optional(),
     continuationEnabled: z.boolean().default(false),
     spontaneousEnabled: z.boolean().default(false),
@@ -115,7 +113,7 @@ const guildChatSchema = z.preprocess((value) => {
     activity: z.enum(["quiet", "balanced", "lively"]).default("balanced"),
     shadowMode: z.boolean().default(false),
     channelOverrides: z.record(snowflake, z.object({
-      flowVersion: z.enum(["legacy", "contextual_v1"]).optional(), shadowMode: z.boolean().optional(),
+      shadowMode: z.boolean().optional(),
       continuationEnabled: z.boolean().optional(), spontaneousEnabled: z.boolean().optional(),
       reactionsEnabled: z.boolean().optional(), activity: z.enum(["quiet", "balanced", "lively"]).optional(),
     })).default({}),

@@ -69,8 +69,7 @@ async function main(): Promise<void> {
       botAdministratorRoleIds: [guildId], musicControllerRoleIds: [guildId], restrictedRoleIds: [], controlPanelChannelId: channelId });
     Object.assign(document.features, { chatbot: true, channelHistory: true, ambientReplies: true, reactionReplies: true, historyReactions: true });
     document.language = language; document.channels.chatbot = [channelId];
-    document.character.context.enabled = true; document.character.context.retrievalMode = "eligible_count";
-    Object.assign(document.chat.participation, { flowVersion: "contextual_v1", continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId] });
+    Object.assign(document.chat.participation, { continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId] });
     const profile = toGuildConfiguration(guildConfigurationFileSchema.parse(document), "synthetic-replay");
     const profiles = { find: () => profile, require: () => profile, getAll: () => [profile] } as unknown as GuildConfigurationProvider;
     const structured = (provider: StructuredCharacterProvider | null): StructuredCharacterProvider | null => provider ? { generateCharacterData: (prompt, schema, options): Promise<unknown> => {

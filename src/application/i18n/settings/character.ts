@@ -8,20 +8,19 @@ const moduleLabels: Record<Language, readonly string[]> = {
   ja: ["キャラクター設定", "人間関係", "保留する考え", "自然な記憶", "イベントの確認", "記憶の減衰", "口調チェック", "メッセージ分割", "気分", "暗黙の呼びかけ", "グループ会話", "架空の日常", "評価ツール"],
 };
 const fields: Record<string, readonly [string, string, string]> = {
-  "retrieval-mode": ["History mode", "歷史讀取方式", "履歴の取得方式"],
   probes: ["Scheduled interview probes", "定期角色訪談", "定期インタビュー"],
   enabled: ["Enabled", "啟用", "有効"], budget: ["Context limit (chars)", "背景字數上限", "文脈の文字数上限"], freeze: ["Freeze new canon entries", "停止新增設定", "新規設定の追加を停止"],
   shadow: ["Preview decisions", "試算模式", "判定のみ"], interval: ["Refresh / decay minutes", "更新／衰減分鐘", "更新・減衰の分数"], threshold: ["Motivation threshold (%)", "發言意願門檻（％）", "発言意欲の基準（％）"],
   hold: ["Hold seconds", "暫存秒數", "保留する秒数"], "max-per-day": ["Maximum per day", "每日上限", "一日の上限"], "min-delay": ["Delay after event (minutes)", "事件後等待分鐘", "イベント後の待機分数"],
   "half-life": ["Half-life days", "半衰期天數", "半減期の日数"], strictness: ["Repair mode", "修正方式", "修正方法"], "max-messages": ["Maximum messages", "訊息數上限", "メッセージ数の上限"], "max-delay": ["Total delay (milliseconds)", "總延遲毫秒", "遅延の合計（ミリ秒）"],
-  "include-others": ["Include other participants", "包含其他參與者", "他の参加者を含む"], minutes: ["Context window minutes", "上下文分鐘", "会話履歴の分数"], gap: ["New segment after silence (minutes)", "分段靜默分鐘", "会話を区切る無言時間"], messages: ["Recent-message target", "背景訊息目標數", "会話履歴の目標件数"], summary: ["Running summary", "持續摘要", "継続する要約"], "decision-messages": ["Decision window messages", "判斷視窗訊息數", "判断用の履歴件数"],
+  "include-others": ["Include other participants", "包含其他參與者", "他の参加者を含む"], messages: ["Messages to read", "讀取訊息數", "読むメッセージ数"], "decision-messages": ["Messages for decisions", "判斷用訊息數", "判断用のメッセージ数"],
   channel: ["Channel", "頻道", "チャンネル"], module: ["Module", "模組", "モジュール"], reset: ["Reset override", "重設覆寫", "上書きをリセット"], operation: ["Action", "操作", "操作"], id: ["Record ID", "紀錄 ID", "記録 ID"], statement: ["Updated statement", "修改內容", "更新した内容"],
 };
 type LocalizedText = readonly [string, string, string];
 const nodeDescriptions: Record<string, LocalizedText> = {
   character: ["Character continuity, memory and timing.", "角色的一致性、回憶方式及接話時機。", "キャラクターの一貫性、記憶、発言のタイミング。"],
   controls: ["Switch selected character features together.", "一併開關已選用的角色功能。", "選択済みの機能をまとめて切り替えます。"],
-  context: ["Choose history scope and guarded text context.", "設定歷史範圍與可讀文字上下文。", "履歴の範囲と許可された文字の文脈を設定します。"],
+  context: ["How much recent chat the bot reads.", "機器人讀取多少最近的對話。", "ボットが読む最近の会話の量。"],
   canon: ["Keep self-descriptions consistent.", "讓角色對自身的描述前後一致。", "自己紹介や好みを一貫させます。"],
   relationships: ["Recall past topics and events from member memories.", "依成員的記憶回顧過往話題與事件。", "参加者の記憶から過去の話題や出来事を振り返ります。"],
   thoughts: ["Wait for a good opening to speak.", "先保留想說的話，等適合的時機再接話。", "発言のタイミングを待ちます。"],
@@ -40,7 +39,6 @@ const nodeDescriptions: Record<string, LocalizedText> = {
   status: ["Show active features and unmet needs.", "查看指定頻道有哪些功能生效，以及未生效的原因。", "有効な機能と無効の理由を表示します。"],
 };
 const fieldDescriptions: Record<string, LocalizedText> = {
-  "retrieval-mode": ["Count eligible text messages.", "依可讀訊息數取歷史。", "許可された文字を件数で取得。"],
   enabled: ["Use this feature.", "在聊天中使用這項功能。", "会話でこの機能を使います。"],
   budget: ["Maximum context characters.", "提供的背景字數上限。", "提供する文脈の文字数上限。"],
   freeze: ["Stop learning; keep existing canon.", "停止學習新紀錄，既有角色紀錄仍會使用。", "新規学習を止め、既存の設定は使います。"],
@@ -55,11 +53,8 @@ const fieldDescriptions: Record<string, LocalizedText> = {
   "max-messages": ["Reply parts; 1 keeps a single message.", "回覆最多拆成幾則；1 表示不分段。", "返信の最大分割数。1なら分割しません。"],
   "max-delay": ["Total added delay between parts, in ms.", "分段訊息增加的總等待時間，單位毫秒。", "返信の間に加える待機時間の合計（ミリ秒）。"],
   "include-others": ["Include other recent participants.", "也判斷其他近期參與者的訊息是否在對機器人說話。", "他の最近の参加者の呼びかけも判断します。"],
-  minutes: ["Legacy mode: minutes of chat to include.", "舊版模式要參考最近幾分鐘的對話。", "従来方式で参照する会話の分数。"],
-  gap: ["Legacy silence gap in minutes.", "僅舊版：分段靜默分鐘。", "従来方式の無言間隔（分）。"],
-  messages: ["Recent-message target; keep short exchanges.", "最近訊息的目標上限；短對話會盡量完整保留。", "履歴の目標件数。短い会話は保ちます。"],
-  summary: ["Legacy summaries only.", "僅舊版摘要。", "従来の要約のみ。"],
-  "decision-messages": ["Messages used to judge timing and targets.", "用最近幾則訊息判斷接話時機與回覆對象。", "発言と返信先の判断に使う履歴の件数。"],
+  messages: ["Recent messages to read (8-48).", "讀取最近幾則訊息（8-48）。", "読む最近のメッセージ数（8-48）。"],
+  "decision-messages": ["Messages used to decide whether to join.", "判斷是否接話時參考的訊息數。", "参加するか判断するときのメッセージ数。"],
   probes: ["Schedule private interview questions.", "定期生成私下的角色訪談回答，供管理員檢查。", "非公開の質問に定期的に回答します。"],
   channel: ["Channel to inspect or configure.", "要查看或設定的頻道。", "確認・設定するチャンネル。"],
   module: ["Feature or record category.", "要設定的功能或紀錄類別。", "設定する機能または記録の種類。"],
@@ -70,9 +65,8 @@ const fieldDescriptions: Record<string, LocalizedText> = {
 };
 const optionDescriptions: Record<string, LocalizedText> = {
   "controls.enabled": ["Behavior switch; review tools are separate.", "控制角色行為總開關；評估工具可獨立使用。", "全体スイッチ。評価ツールは独立です。"],
-  "context.enabled": ["Extend history; off also disables history.", "開啟擴充視窗；關閉時也會停用頻道歷史。", "履歴を拡張します。無効なら履歴も止まります。"],
-  "context.budget": ["Characters of recent channel chat.", "最近頻道對話最多保留多少字。", "最近のチャンネル会話を含める文字数の上限。"],
-  "context.shadow": ["Legacy segment preview.", "僅舊版分段預覽。", "従来の区切り確認のみ。"],
+  "context.enabled": ["Read recent channel chat.", "讀取頻道最近的對話。", "チャンネルの最近の会話を読みます。"],
+  "context.budget": ["Maximum characters of chat to read.", "最多讀取的對話字數。", "読む会話の最大文字数。"],
   "thoughts.shadow": ["Evaluate thoughts without saying them.", "評估候選想法，暫時不主動說出它們。", "候補を評価し、自発的には発言しません。"],
   "addressing.shadow": ["Log addressing; keep current replies.", "記錄對話對象的判斷，先不套用於實際接話。", "判定を記録し、従来の返信方法を使います。"],
   "relationships.enabled": ["Requires memory sharing.", "須先開啟記憶共享。", "記憶の共有が必要です。"],
@@ -100,10 +94,9 @@ export function characterSettingsText(language: Language): SettingsTextCatalog {
     catalog[`character.${node}`] = { label, description: nodeDescriptions[node]![column], messages };
     const extras: Record<string, readonly string[]> = { canon: ["freeze"], relationships: ["interval"], thoughts: ["shadow", "hold"],
       callbacks: ["max-per-day", "min-delay"], voice: ["strictness"], "message-shape": ["max-messages", "max-delay"], mood: ["interval"], evaluation: ["probes", "interval"] };
-    const options = index >= 0 ? ["enabled", ...(["canon", "relationships", "recall-style", "mood", "group", "daily-sketch"].includes(node) ? ["budget"] : []), ...(extras[node] ?? [])] : ({ controls: ["enabled"], context: ["enabled", "retrieval-mode", "minutes", "gap", "messages", "budget", "summary", "shadow", "decision-messages"],
+    const options = index >= 0 ? ["enabled", ...(["canon", "relationships", "recall-style", "mood", "group", "daily-sketch"].includes(node) ? ["budget"] : []), ...(extras[node] ?? [])] : ({ controls: ["enabled"], context: ["enabled", "messages", "budget", "decision-messages"],
       channel: ["channel", "module", "enabled", "reset"], ledger: ["operation", "module", "channel", "id", "statement"], status: ["channel"] } as Record<string, string[]>)[node]!;
     for (const field of options) { const labels = fields[field]!; catalog[`character.${node}.${field}`] = { label: labels[column], description: (optionDescriptions[`${node}.${field}`] ?? fieldDescriptions[field])![column],
-      ...(field === "retrieval-mode" ? { choices: { legacy: ["Legacy", "舊版時間視窗", "従来の時間枠"][column]!, eligible_count: ["Eligible text", "可讀文字歷史", "許可された文字履歴"][column]! } } : {}),
       ...(field === "strictness" ? { choices: { trim: ["Trim safe phrases", "移除安全套語", "定型表現を除去"][column]!, regenerate: ["Regenerate once", "重新生成一次", "一度だけ再生成"][column]! } } : {}),
       ...(field === "module" ? { choices: node === "ledger" ? Object.fromEntries(["canon", "mood", "daily-sketch"].map((id) => [id, moduleLabels[language][characterModuleIds.indexOf(id as typeof characterModuleIds[number])]!]))
         : { ...Object.fromEntries(activeCharacterModuleIds.map((id) => [id, moduleLabels[language][characterModuleIds.indexOf(id)]!])), master: ["Master switch", "總開關", "全体の設定"][column]!, context: ["Conversation context", "對話上下文", "会話の文脈"][column]! } } : {}),

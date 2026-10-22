@@ -224,14 +224,9 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
   }
   request = { ...request, exampleExchanges: selectedExamples.map(({ tags, user, character }) => ({ tags, user, character })),
     personaLore: generationLore };
-  // Error recovery must stay grounded in the supplied text, and shadow turns
-  // must never initiate searches. Native search does not enable application
-  // tools or give access to additional Discord sources.
-  if (prepared?.conversationDecision?.recovery === "grounded_reply") request = { ...request, enabledTools: [],
-    webSearchMode: effectiveChatCapabilities(input, { guarded: true, nativeWebSearchSupported: dependencies.nativeWebSearchSupported === true, groundedRecovery: true }).webSearchMode };
   emitChatDiagnostic(dependencies.logger, { event: "chat.capabilities.resolved", webSearchConfigured: input.webSearchMode,
     webSearchEffective: request.webSearchMode, nativeWebSearchSupported: dependencies.nativeWebSearchSupported === true,
-    shadow: input.shadowMode ?? false, recovery: prepared?.conversationDecision?.recovery === "grounded_reply" });
+    shadow: input.shadowMode ?? false, recovery: false });
   await check();
   request = approveConversationRequest(request, () => effects.functionalToolExecuted);
   if (prepared) { prepared.request = request; prepared.turn.request = request; }

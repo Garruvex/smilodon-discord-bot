@@ -24,7 +24,7 @@ import { resolveChannelMemoryMode } from "../memory/memory-channel-policy.js";
 import { characterSettings, characterInactiveReason, type CharacterModuleId, type CharacterCapabilities } from "./character-settings.js";
 import { CharacterModuleRegistry, type CharacterTurn } from "./character-module-registry.js";
 import { CharacterMemory, type CharacterCandidateQuery, type CharacterMemoryWrite } from "./character-memory.js";
-import { addressedElsewhere, CharacterDecisionService, localAddressing, possiblePersonalFollowup, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
+import { CharacterDecisionService, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
 import { createCharacterModules } from "./character-modules/index.js";
 import { hash, personaFingerprint, serious } from "./character-modules/shared.js";
 import { resolveParticipation, contributionPolicy, passiveChannelAllowed } from "./participation-policy.js";
@@ -96,10 +96,6 @@ export class CharacterRuntime {
       memorySharing: profile.chat.sharedMemoryEnabled === true, continuation: participation.continuationEnabled, spontaneous: participation.spontaneousEnabled,
       excluded: !profile.features.chatbot || resolveChannelMemoryMode(profile.chat.channelMemoryModes, channelId) === "disabled" };
   }
-  public contextWindow(guildId: string, channelId: string): number | null {
-    const profile = this.profiles.find(guildId);
-    return profile && passiveChannelAllowed(profile, channelId) && characterSettings(profile).context.enabled && this.capabilities(profile, channelId).context ? characterSettings(profile).context.windowMinutes : null;
-  }
   public contextAllowed(guildId: string, channelId: string): boolean {
     const profile = this.profiles.find(guildId); return !!profile && passiveChannelAllowed(profile, channelId) && this.capabilities(profile, channelId).context;
   }
@@ -109,20 +105,12 @@ export class CharacterRuntime {
   }
   public get decisionHealth(): ReturnType<CharacterDecisionService["healthStatus"]> { return this.decisions.healthStatus(); }
   public checkDecisionHealth(): ReturnType<CharacterDecisionService["checkHealth"]> { return this.decisions.checkHealth(); }
-  public couldBeAddressed(guildId: string, channelId: string, event: ChannelHistoryMessage, history: readonly ChannelHistoryMessage[], botId: string): boolean {
-    const profile = this.profiles.find(guildId); if (!profile || !passiveChannelAllowed(profile, channelId)) return false;
-    const settings = characterSettings(profile);
-    const addressing = localAddressing(history, event, botId);
-    return addressing === "bot" || addressing === "continuing" ||
-      this.decisionAvailable && settings.context.enabled && settings.context.retrievalMode === "eligible_count" &&
-      possiblePersonalFollowup(event.content) && !addressedElsewhere(event, history, botId);
-  }
   private fingerprint(profile: GuildConfiguration, channelId: string): string {
     return hash(JSON.stringify([characterSettings(profile), this.capabilities(profile, channelId), profile.chat.channelMemoryModes, profile.chat.participation,
       profile.chat.webSearchMode, profile.chat.toolCallingEnabled, profile.chat.imageInputEnabled, profile.chat.imageGenerationEnabled, [...profile.channels.chatbot]]));
   }
   public stillEligible(prepared: CharacterPreparedTurn): boolean {
-    if (this.stopped && (prepared.turn.settings.enabled || prepared.turn.settings.context.enabled)) return false;
+    if (this.stopped) return false;
     const profile = this.profiles.find(prepared.request.guildId);
     return !!profile && this.fingerprint(profile, prepared.request.channelId) === prepared.fingerprint;
   }
@@ -130,12 +118,11 @@ export class CharacterRuntime {
     // Conversational style and opportunity age are pinned for the turn.
     // The source lease and ingress policy own current privacy/access checks.
     if (isGuardedContext(prepared.request.contextLease)) return this.profiles.find(prepared.request.guildId)?.features.chatbot === true;
-    const reject = (reason: "character_profile_changed" | "grounded_continuation_expired" | "persona_changed" | "target_preferences_changed" | "character_memory_changed"): false => {
+    const reject = (reason: "character_profile_changed" | "persona_changed" | "target_preferences_changed" | "character_memory_changed"): false => {
       emitChatDiagnostic(this.logger, { event: "chat.guard.rejected", gate: "character", reason }); return false;
     };
     if (!this.stillEligible(prepared)) return reject("character_profile_changed");
-    if (prepared.conversationDecision?.recovery === "grounded_reply" && !this.decisionEngine.canUseGroundedContinuation(prepared.request, this.now())) return reject("grounded_continuation_expired");
-    if (this.personaVersion && prepared.request.characterPersonaHash && (prepared.turn.settings.enabled || prepared.turn.settings.context.enabled) &&
+    if (this.personaVersion && prepared.request.characterPersonaHash &&
         await this.personaVersion(prepared.request.guildId) !== prepared.request.characterPersonaHash) return reject("persona_changed");
     if (prepared.styleUserId && prepared.styleSignature && this.targetPreferences &&
         JSON.stringify(await this.targetPreferences(prepared.request.guildId, prepared.styleUserId)) !== prepared.styleSignature) return reject("target_preferences_changed");
@@ -249,9 +236,8 @@ export class CharacterRuntime {
     if (guardedCharacterContext.length) {
       request = { ...request, characterContext: [...(request.characterContext ?? []), ...guardedCharacterContext] }; turn.request = request;
     }
-    const plan = request.turnPlan ?? resolveConversationTurnPlan(profile, request.channelId);
-    if (!request.characterEvaluation && plan.state === "blocked") throw new SocialOutputSuppressed();
-    const contextual = guarded && plan.state === "ready" && (plan.decision === "contextual" || request.currentEvent?.type === "reaction_snapshot");
+    // Guarded turns always use the contextual decision contract.
+    const contextual = guarded;
     const events = guarded ? [...request.replyChain, ...request.channelHistory] : request.channelHistory;
     const burst = request.currentBurst?.length ? request.currentBurst : request.currentEvent?.type === "message" ? [{
       messageId: request.currentEvent.messageId, timestampMs: request.currentEvent.timestampMs, authorId: request.currentUser.id,
@@ -279,7 +265,7 @@ export class CharacterRuntime {
       return { turn, request, fingerprint, allowed: false, decisionStatus, conversationDecision: denied, acceptedContribution: null, exchangeId: null,
         targetMessageId, memoryContextSignature: "[]", participation: { action: "ignore", reaction: null }, styleUserId, styleSignature, targetConfidence };
     }
-    if (!request.characterEvaluation && (capabilities.context && (optional || settings.context.enabled || enabled("thoughts")) || request.interaction === "reaction")) {
+    if (!request.characterEvaluation && (capabilities.context || request.interaction === "reaction")) {
       const contextualProjection = contextual ? selectDecisionContext(request, settings.context.decisionMessages) : null;
       const decisionEvents = contextualProjection?.events ?? (guarded ? projectDecisionContext(request, settings.context.decisionMessages) : events.slice(-settings.context.decisionMessages));
       if (contextualProjection) emitChatDiagnostic(this.logger, { event: "context.decision.coverage", ...contextualProjection.coverage });
@@ -301,7 +287,7 @@ export class CharacterRuntime {
           ...(request.aliasCandidates ?? []).map((alias) => ({ subjectId: !alias.incomplete && alias.subjectIds.length === 1 ? alias.subjectIds[0]! : "ambiguous_alias",
             statement: `Untrusted observed label; multiple IDs or incomplete=true require clarification, never guess: ${JSON.stringify(alias)}` })),
         ] } : {}),
-        fixedTarget, contextual, useContextBoundary: !guarded && settings.context.retrievalMode !== "eligible_count", gapMs: settings.context.segmentGapMinutes * 60_000,
+        fixedTarget, contextual, useContextBoundary: false, gapMs: 0,
         ...(contextual && request.currentEvent?.type === "reaction_snapshot" ? { reactionSnapshot: request.currentEvent } : {}),
         ...(request.turnSignal ? { signal: request.turnSignal } : {}), ...(request.turnDeadlineAt ? { deadlineAt: request.turnDeadlineAt } : {}),
         speakingShare: decisionEvents.length ? decisionEvents.filter((event) => event.authorId === request.botUserId).length / decisionEvents.length : 0,
@@ -331,10 +317,6 @@ export class CharacterRuntime {
         targetMessageId = assessment.targetMessageId;
         targetConfidence = assessment.targetConfidence;
         textRejectionReason = participation.action === "reply" ? null : conversationDecision.decision.reasonCode;
-      }
-      if (!guarded && settings.context.retrievalMode !== "eligible_count" && decision && settings.context.enabled && !settings.context.shadow && decision.boundary !== "earlier") {
-        const index = events.findIndex((event) => event.messageId === decision.boundary);
-        if (index >= 0) request = { ...request, channelHistory: events.slice(Math.min(index, Math.max(0, events.length - 8))) };
       }
       turn.request = request;
       if (!guarded) request = this.registry.applyDecision(turn, { decision, events, burst, optional, local, policy });

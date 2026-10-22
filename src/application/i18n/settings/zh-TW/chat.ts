@@ -1,16 +1,13 @@
 import type { SettingsTextCatalog } from "../catalog.js";
 
 export const zhTWChat: SettingsTextCatalog = {
-  "participation.thread-scope.flow-version": { label: "對話流程", description: "選擇此討論串的流程，需要明確允許觀察。", choices: { legacy: "舊流程", contextual_v1: "情境流程（試行）" } },
   "participation.thread-scope.shadow": { label: "影子評估", description: "此討論串只評估選擇性接話，不傳送回覆。" },
-  "participation.participation-channel.flow-version": { label: "對話流程", description: "選擇此頻道的對話流程。", choices: { legacy: "舊流程", contextual_v1: "情境流程（試行）" } },
   "participation.participation-channel.shadow": { label: "影子評估", description: "此頻道只評估接話決策，不傳送選擇性回覆。" },
-  "participation.controls.flow-version": { label: "對話流程", description: "情境流程先閱讀允許的上下文，再判斷是否接話；需要啟用合格訊息數上下文。", choices: { legacy: "舊流程", contextual_v1: "情境流程（試行）" } },
-  "participation.thread-scope": {"label": "討論串範圍", "description": "以 ID 個別選取討論串；選取上層頻道不會授予討論串存取權。", "messages": {"invalid": "請提供此伺服器內可存取的討論串 ID，並至少選擇一項範圍變更。", "needs-observation": "請先允許觀察此討論串，再開啟主動接話。", "done": "討論串範圍已更新；判斷服務、頻道歷史及參與控制仍然適用。"}},
+  "participation.thread-scope": {"label": "討論串範圍", "description": "以 ID 選擇討論串；母頻道不含討論串。", "messages": {"invalid": "請提供此伺服器的討論串 ID，並至少做一項變更。", "needs-observation": "請先為此討論串開啟觀察。", "done": "討論串範圍已更新。"}},
   "participation.thread-scope.thread-id": {"label": "討論串 ID", "description": "此伺服器中機器人可存取的討論串 ID。"},
   "participation.thread-scope.observe": {"label": "觀察", "description": "允許在此討論串被動讀取及選用接續對話。"},
   "participation.thread-scope.spontaneous": {"label": "主動接話", "description": "將此討論串加入主動接話清單；仍須符合全域參與控制。"},
-  "participation.status": {"label": "參與狀態", "description": "查看判斷服務是否可用，以及被動讀取的頻道範圍。", "messages": {"available": "判斷服務可用；接話仍須啟用頻道歷史、選取頻道，並開啟參與控制。", "paused": "選用接話已暫停：沒有可用的結構化判斷服務或備援服務；明確請求仍可使用。", "scope": "被動讀取使用 {count} 個指定頻道；討論串須個別選取。"}},
+  "participation.status": {"label": "參與狀態", "description": "查看選用接話能否運作。", "messages": {"available": "已就緒。請開啟延續接話或群組參與並選擇頻道。", "paused": "已暫停：未設定聊天模型。提及仍可使用。", "scope": "觀察 {count} 個頻道；討論串須個別選擇。"}},
   "participation.observation-channels": {"label": "觀察與接續對話頻道", "description": "選擇被動讀取及選用接話的頻道；空白表示不使用任何頻道。"},
   "participation.observation-channels.channels": {"label": "頻道", "description": "僅限選取的頻道或討論串；共用記憶不代表可讀取其他頻道。"},
   "participation.controls.messages-per-decision": {"label": "累積訊息數", "description": "累積幾則人類訊息後評估主動接話（1-20）；延續對話、明確呼叫或回覆機器人不必等待。"},

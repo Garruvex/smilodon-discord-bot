@@ -5,13 +5,10 @@ import { withDiscordCaller } from "../../../application/diagnostics/discord-diag
 import { SocialOutputSuppressed, type MessageOriginStore } from "../../../application/chat/message-origin-store.js";
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
 import { resolveParticipation } from "../../../application/chat/participation-policy.js";
-import { characterSettings } from "../../../application/chat/character-settings.js";
 import { conversationEffects } from "../../../application/chat/conversation-effects.js";
-import { resolveChannelMemoryMode } from "../../../application/memory/memory-channel-policy.js";
 
 import { BehaviorEvent, BehaviorResult, type BotBehavior } from "../../../application/behaviors/behavior.js";
-import type { ChannelHistoryMessage, ReplyChainMessage } from "../../../application/chat/chat-provider.js";
-import { ChatStateCommitError, type ChatConversationService, type ChatConversationInput } from "../../../application/chat/chat-conversation-service.js";
+import { ChatStateCommitError, type ChatConversationService } from "../../../application/chat/chat-conversation-service.js";
 import type { PersonaSource } from "../../../application/chat/persona-source.js";
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
@@ -19,6 +16,7 @@ import { addressesBotName } from "../../../domain/chat/name-mention.js";
 import type { MessageReactionWatchStore } from "../../../application/chat/message-reaction-watch.js";
 import { ChatTurnSupport } from "./chat-turn-support.js";
 import type { IsGameChannel } from "./game-channel-guard.js";
+import { buildChatTurnInput, type ChatTurnEnvironment } from "./chat-turn-request.js";
 
 // Handles messages that merely name the bot (per its configured
 // branding.displayName) without an explicit @mention. Unlike
@@ -34,6 +32,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
   // below explicitly defers to an existing @mention).
   public readonly priority = 90;
   private readonly turnSupport: ChatTurnSupport;
+  private readonly turnEnvironment: ChatTurnEnvironment;
 
   public constructor(
     private readonly clientUserId: () => string | null,
@@ -53,6 +52,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     this.turnSupport = new ChatTurnSupport(logger, eligibility, origins, (message) => {
       if (message.guildId) this.conversation?.excludeInteraction(message.guildId, message.channelId, message.id);
     });
+    this.turnEnvironment = { profiles, ownerUserIds: configuration.ownerUserIds, support: this.turnSupport };
   }
 
   public async matches(message: Message): Promise<boolean> {
@@ -81,45 +81,15 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     if (!profile) return BehaviorResult.Continue;
     if (!await this.turnSupport.isEligible(message, interaction)) return BehaviorResult.Continue;
     const participation = resolveParticipation(profile.chat.participation, message.channelId);
-
-
-    const replyChain: ReplyChainMessage[] = [];
-    const replyChainOverflow: ReplyChainMessage[] = [];
-    const channelHistory: ChannelHistoryMessage[] = [];
-
-
-    const mentionedUsers = message.mentions.users
-      .filter((user) => !user.bot && user.id !== message.author.id)
-      .map((user) => ({
-        ...this.turnSupport.toChatUser(user, message.mentions.members?.get(user.id) ?? null),
-        id: user.id,
-        displayName: message.mentions.members?.get(user.id)?.displayName ?? user.displayName,
-        roleNames: message.mentions.members?.get(user.id)?.roles.cache
-          .filter((role) => role.id !== message.guildId)
-          .map((role) => role.name.slice(0, 50))
-          .slice(0, 10) ?? [],
-      }));
-
     let textDelivered = false;
     try {
-      const images: ChatConversationInput["images"] = [];
-      const musicActor = this.turnSupport.resolveMusicActor(message, profile);
       const persona = await this.personaSource.resolve(profile);
       const eligible = this.turnSupport.createEligibilityCheck(message, interaction);
-      const response = await this.conversation.run({
-        guildId: message.guildId,
-        channelId: message.channelId,
-        sourceMessageId: message.id,
+      const currentBurst = this.turnSupport.toChannelHistoryMessages((await Promise.all(burst.map(async (item) =>
+        await this.turnSupport.isEligible(item, interaction) ? item : null))).filter((item): item is Message => item !== null)).map((event) => ({ ...event, content: event.content.slice(0, 500) }));
+      const response = await this.conversation.run(buildChatTurnInput(this.turnEnvironment, profile, persona, {
+        interaction, source: message, text: message.content, botUserId: this.clientUserId(), canExecute: eligible, currentBurst,
         ...(candidateId ? { candidateId } : {}),
-        channelHistoryEnabled: profile.features.channelHistory,
-        currentEvent: this.turnSupport.toMessageEvent(message), botUserId: this.clientUserId(),
-        canExecute: eligible,
-        activityLimits: participation.limits, shadowMode: participation.shadowMode,
-        resolveActivityLimits: () => resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits,
-        resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(message.guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
-        guardedContextPort: this.turnSupport.createContextPort(message, false),
-          guardedContextPolicy: { count: characterSettings(profile).context.maxMessages, budget: characterSettings(profile).context.budget },
-        shouldDeliver: () => !resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).shadowMode,
         afterDecision: async (result) => {
           const effects = conversationEffects(result); if (!effects) return;
           if (result.characterIsCurrent && !result.characterIsCurrent() || result.characterCanDeliver && !await result.characterCanDeliver()) return;
@@ -134,49 +104,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           await this.turnSupport.applyHistoryReactions(message.channel, effects.historyReactions,
             { guildId: message.guildId, sourceMessageId: message.id }, reserve);
         },
-        personality: persona.personality,
-        ...(persona.configurationContext ? { configurationContext: persona.configurationContext } : {}),
-        examplePool: persona.examplePool,
-        loreChunks: persona.loreChunks,
-        personaDrift: persona.personaDrift,
-        personaDriftEnabled: profile.chat.personaDriftEnabled,
-        personalitySourceHash: persona.personalitySourceHash,
-        currentUser: {
-          ...this.turnSupport.toChatUser(message.author, message.member),
-          id: message.author.id,
-          displayName: message.member?.displayName ?? message.author.username,
-          roleNames: message.member?.roles.cache
-            .filter((role) => role.id !== message.guildId)
-            .map((role) => role.name.slice(0, 50))
-            .slice(0, 10) ?? [],
-        },
-        mentionedUsers,
-        currentBurst: this.turnSupport.toChannelHistoryMessages((await Promise.all(burst.map(async (item) =>
-          await this.turnSupport.isEligible(item, interaction) ? item : null))).filter((item): item is Message => item !== null)).map((event) => ({ ...event, content: event.content.slice(0, 500) })),
-        message: message.content,
-        replyChain,
-        replyChainOverflow,
-        channelHistory,
-        images,
-        imageInputEnabled: profile.chat.imageInputEnabled, maxImagesPerRequest: profile.chat.maxImagesPerRequest,
-        webSearchMode: profile.chat.webSearchMode,
-        imageGenerationEnabled: interaction === "name_address" && !participation.shadowMode && profile.chat.imageGenerationEnabled,
-        includeSources: profile.chat.includeSources,
-        interaction,
-        allowSilentDirect: interaction === "name_address" && participation.barePingMode === "personality",
-        historyReactionsEnabled: profile.features.historyReactions && profile.features.channelHistory,
-        toolsEnabled: !participation.shadowMode && profile.chat.toolCallingEnabled,
-        ...(interaction === "name_address" ? {} : { allowedToolNames: new Set(["lookup_discord_server"]) }),
-        disabledToolNames: new Set(profile.chat.disabledTools),
-        channelMemoryModes: profile.chat.channelMemoryModes,
-        isOwner: this.configuration.ownerUserIds.has(message.author.id),
-        channelIsNsfw: "nsfw" in message.channel ? Boolean(message.channel.nsfw) : false,
-        musicActor: musicActor?.actor ?? null,
-        musicResolveAccessSubjectFields: musicActor?.resolveAccessSubjectFields,
-        musicVolumeMaximum: musicActor?.volumeMaximum,
-        musicControllerRoleIds: musicActor?.musicControllerRoleIds,
-        musicBotAdministratorRoleIds: musicActor?.botAdministratorRoleIds,
-      }, async (deliveredResponse) => {
+      }), async (deliveredResponse) => {
         const target = deliveredResponse.replyTargetMessageId && deliveredResponse.replyTargetMessageId !== message.id
           ? await message.channel.messages.fetch(deliveredResponse.replyTargetMessageId).catch(() => null) : message;
         if (!target || !await this.turnSupport.isEligible(target, interaction)) throw new SocialOutputSuppressed();
@@ -251,8 +179,6 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         ambientAction: response.ambientAction,
         reactionEmoji: response.reactionEmoji,
         historyReactionCount: response.historyReactions.length,
-        imageCount: images.length,
-        droppedImageCount: 0,
       }, `Ambient chat: ${outcome}`);
     } catch (error) {
       if (error instanceof SocialOutputSuppressed) return BehaviorResult.Continue;

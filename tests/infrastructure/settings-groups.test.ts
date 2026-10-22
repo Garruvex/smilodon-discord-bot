@@ -33,14 +33,12 @@ describe("settings registry", () => {
     await fixture.run("memory.context-opt-out", panelValues({ lists: { roles: ["333333333333333333"] } }));
     expect(fixture.profiles.current().chat.contextOptOutRoleIds).toEqual(["333333333333333333"]);
   });
-  it("persists an explicit eligible-text mode and can roll back without changing the history target", async () => {
+  it("exposes only the history switch and sizes for conversation context", async () => {
     const fixture = engineFixture(); const setting = fixture.engine.find("character.context")!;
-    const run = (mode: string): ReturnType<typeof fixture.engine.run> => fixture.engine.run(setting,
-      { guildId, guild: null, actorUserId, language: "en", values: slashValues({ "retrieval-mode": mode }) }, { kind: "panel" });
-    expect(fixture.profiles.current().character?.context.retrievalMode).toBe("legacy");
-    expect((await run("eligible_count")).kind).toBe("updated");
-    expect(fixture.profiles.current().character?.context).toMatchObject({ retrievalMode: "eligible_count", maxMessages: 40 });
-    await run("legacy"); expect(fixture.profiles.current().character?.context.retrievalMode).toBe("legacy");
+    expect(Object.keys((setting.node as { options: object }).options).sort()).toEqual(["budget", "decision-messages", "enabled", "messages"]);
+    const result = await fixture.engine.run(setting, { guildId, guild: null, actorUserId, language: "en", values: slashValues({ messages: 24 }) }, { kind: "panel" });
+    expect(result.kind).toBe("updated");
+    expect(fixture.profiles.current().character?.context).toMatchObject({ maxMessages: 24, budget: 12000 });
   });
   it("requires an accessible explicit thread and keeps scope selection separate from global enablement", async () => {
     const fixture = engineFixture(); const threadId = "600000000000000001";

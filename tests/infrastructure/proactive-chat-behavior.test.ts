@@ -39,8 +39,7 @@ async function evaluate(opportunities: (() => void)[]): Promise<void> {
 describe("spontaneous opportunities", () => {
   async function contextual(continuationOnly = false): Promise<ReturnType<typeof setup>> {
     const result = setup();
-    await result.profiles.update(guildId, { character: { context: { ...result.profiles.current().character!.context, enabled: true, retrievalMode: "eligible_count" } },
-      chatParticipation: { flowVersion: "contextual_v1", spontaneousEnabled: !continuationOnly } });
+    await result.profiles.update(guildId, { chatParticipation: { spontaneousEnabled: !continuationOnly } });
     return result;
   }
   it.each(["好了嗎", "然後呢", "可以回我嗎"])("evaluates one short contextual candidate without a wording prerequisite: %s", async (content) => {
@@ -81,22 +80,6 @@ describe("spontaneous opportunities", () => {
     expect(opportunities).toHaveLength(0);
     expect(info).toHaveBeenCalledWith(expect.objectContaining({ action: "expired", reason: "deadline" }), "chat.candidate.changed");
   });
-  it("logs the short-message threshold without including message content", async () => {
-    const { behavior, info } = setup();
-    await behavior.execute(message("short", "private fragment"));
-    expect(info).toHaveBeenCalledWith(expect.objectContaining({
-      event: "chat.admission.buffered", interaction: "group_conversation", reason: "batch_threshold", messages: 1, delayMs: 0,
-    }), "chat.admission.buffered");
-    expect(JSON.stringify(info.mock.calls)).not.toContain("private fragment");
-  });
-  it("evaluates five short fragments once", async () => {
-    const { behavior, opportunities, execute } = setup();
-    for (let i = 1; i <= 5; i++) await behavior.execute(message(String(i), "short fragment"));
-    expect(opportunities).toHaveLength(0);
-    await vi.advanceTimersByTimeAsync(0); await evaluate(opportunities);
-    expect(execute).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: "5" }), "group_conversation",
-      Array.from({ length: 5 }, (_, i): unknown => expect.objectContaining({ id: String(i + 1) })));
-  });
   it("uses a pause after three conversational turns", async () => {
     const { behavior, opportunities, execute } = setup();
     await behavior.execute(message("one", "What happened?", "alice"));
@@ -106,58 +89,28 @@ describe("spontaneous opportunities", () => {
     await vi.advanceTimersByTimeAsync(1); await evaluate(opportunities);
     expect(execute).toHaveBeenCalledOnce();
   });
-  it("lets one substantive post create a quiet-channel opportunity", async () => {
+  it("evaluates a burst once when the decision threshold is reached", async () => {
     const { behavior, opportunities, execute } = setup();
-    await behavior.execute(message("news", "The show got cancelled today and everyone is disappointed."));
-    await vi.advanceTimersByTimeAsync(11_999); expect(opportunities).toHaveLength(0);
-    await vi.advanceTimersByTimeAsync(1); await evaluate(opportunities);
-    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ id: "news" }), "group_conversation", [expect.objectContaining({ id: "news" })]);
+    for (let i = 1; i <= 5; i++) await behavior.execute(message(String(i), "short fragment"));
+    await vi.advanceTimersByTimeAsync(0); expect(opportunities).toHaveLength(1); await evaluate(opportunities);
+    expect(execute).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: "5" }), "group_conversation",
+      Array.from({ length: 5 }, (_, i): unknown => expect.objectContaining({ id: String(i + 1) })), expect.any(String));
   });
-  it("counts new messages immediately after a silent evaluation", async () => {
-    const { behavior, opportunities, execute } = setup();
-    for (let i = 1; i <= 5; i++) await behavior.execute(message(String(i), "first batch"));
-    await vi.advanceTimersByTimeAsync(0); await evaluate(opportunities);
-    for (let i = 6; i <= 10; i++) await behavior.execute(message(String(i), "next batch"));
-    await vi.advanceTimersByTimeAsync(0); await evaluate(opportunities);
-    expect(execute).toHaveBeenCalledTimes(2);
-    expect(execute).toHaveBeenLastCalledWith(expect.objectContaining({ id: "10" }), "group_conversation",
-      Array.from({ length: 5 }, (_, i): unknown => expect.objectContaining({ id: String(i + 6) })));
-  });
-  it("retains messages received during the evaluation interval", async () => {
-    const { behavior, opportunities, execute, setEvaluationDelay } = setup();
-    for (let i = 1; i <= 5; i++) await behavior.execute(message(String(i), "first batch"));
-    await vi.advanceTimersByTimeAsync(0); await evaluate(opportunities);
+  it("waits out the evaluation cooldown for a continuation-only candidate", async () => {
+    const { behavior, opportunities, execute, setEvaluationDelay, info } = await contextual(true);
     setEvaluationDelay(25_000);
-    for (let i = 6; i <= 10; i++) await behavior.execute(message(String(i), "second batch"));
-    await vi.advanceTimersByTimeAsync(24_999); expect(opportunities).toHaveLength(1);
+    const correction = message("correction", "我是在修你ㄟ 你剛剛壞掉了不回他\n跟大番薯沒關西");
+    await behavior.execute(correction);
+    await vi.advanceTimersByTimeAsync(24_999); expect(opportunities).toHaveLength(0);
     await vi.advanceTimersByTimeAsync(1); await evaluate(opportunities);
-    expect(execute).toHaveBeenCalledTimes(2);
-    expect(execute).toHaveBeenLastCalledWith(expect.objectContaining({ id: "10" }), "group_conversation",
-      Array.from({ length: 5 }, (_, i): unknown => expect.objectContaining({ id: String(i + 6) })));
+    expect(execute).toHaveBeenCalledExactlyOnceWith(correction, "implicit_followup", [correction], expect.any(String));
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({ action: "submitted" }), "chat.candidate.changed");
   });
   it("does not repeat an unchanged opportunity", async () => {
     const { behavior, opportunities, execute } = setup(1);
     await behavior.execute(message("one", "Hello")); await vi.advanceTimersByTimeAsync(0); await evaluate(opportunities);
     await vi.advanceTimersByTimeAsync(180_000);
     expect(opportunities).toHaveLength(1); expect(execute).toHaveBeenCalledOnce();
-  });
-  it("keeps continuation independent of spontaneous batching", async () => {
-    const { behavior, opportunities, execute, setContinuation } = setup();
-    await behavior.execute(message("one", "short fragment")); setContinuation(true);
-    const followup = message("followup", "why?"); await behavior.execute(followup);
-    await evaluate(opportunities);
-    expect(execute).toHaveBeenCalledExactlyOnceWith(followup, "implicit_followup", [followup]);
-  });
-  it("evaluates a short correction after the evaluation cooldown without more messages", async () => {
-    const { behavior, opportunities, execute, setContinuation, setEvaluationDelay, info } = setup();
-    setContinuation(true); setEvaluationDelay(25_000);
-    const correction = message("correction", "我是在修你ㄟ 你剛剛壞掉了不回他\n跟大番薯沒關西");
-    await behavior.execute(correction);
-    expect(info).toHaveBeenCalledWith(expect.objectContaining({ reason: "continuation_candidate", delayMs: 25000 }), "chat.admission.buffered");
-    await vi.advanceTimersByTimeAsync(24_999); expect(opportunities).toHaveLength(0);
-    await vi.advanceTimersByTimeAsync(1); await evaluate(opportunities);
-    expect(execute).toHaveBeenCalledExactlyOnceWith(correction, "implicit_followup", [correction]);
-    expect(info).toHaveBeenCalledWith(expect.objectContaining({ reason: "submitted" }), "chat.admission.buffered");
   });
   it("invalidates a scheduled decision when settings or eligibility change", async () => {
     const { behavior, profiles, opportunities, execute, check } = setup(1);

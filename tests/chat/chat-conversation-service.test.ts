@@ -1160,7 +1160,6 @@ describe("ChatConversationService", () => {
 
     await service.run({
       ...input("what did she say"),
-      replyChainOverflow: [{ messageId: "m1", timestampMs: 0, authorId: "authorA", authorDisplayName: "Alice", content: "I like apple", imageCount: 0 }],
     }, (r) => Promise.resolve(r.text));
 
     expect(summarizeReplyChainOverflow).not.toHaveBeenCalled();
@@ -1192,7 +1191,6 @@ describe("ChatConversationService", () => {
 
     await service.run({
       ...input("what did she say"),
-      replyChainOverflow: [{ messageId: "m1", timestampMs: 0, authorId: "authorA", authorDisplayName: "Alice", content: "I like apple", imageCount: 0 }],
     }, (r) => Promise.resolve(r.text));
 
     expect(reply).toHaveBeenCalledWith(expect.objectContaining({ replyChainSummary: null }), undefined);

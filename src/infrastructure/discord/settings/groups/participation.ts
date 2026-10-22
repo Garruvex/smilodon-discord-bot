@@ -11,24 +11,22 @@ export const participation = group("participation", [
         write: (v, p) => JSON.stringify(v) === JSON.stringify(p.chat.participation?.observationChannelIds ?? [...p.channels.chatbot]) ? {} : ({ chatParticipation: { observationChannelIds: [...v] } }) }),
     }),
     action("thread-scope", {
-      params: { "thread-id": { kind: "text", maxLength: 20, required: true }, observe: { kind: "toggle" }, spontaneous: { kind: "toggle" },
-        "flow-version": { kind: "choice", choices: ["legacy", "contextual_v1"] }, shadow: { kind: "toggle" } },
+      params: { "thread-id": { kind: "text", maxLength: 20, required: true }, observe: { kind: "toggle" }, spontaneous: { kind: "toggle" }, shadow: { kind: "toggle" } },
       run: async ({ profile, request, values, text, path }) => {
         const id = values.getString("thread-id") ?? "";
         const observe = values.getBoolean("observe"); const spontaneous = values.getBoolean("spontaneous");
-        const flowVersion = values.getString("flow-version") as "legacy" | "contextual_v1" | null; const shadow = values.getBoolean("shadow");
-        if (!/^\d{17,20}$/u.test(id) || !request.guild || observe === null && spontaneous === null && !flowVersion && shadow === null) return { ok: false, message: text.message(path, "invalid") };
+        const shadow = values.getBoolean("shadow");
+        if (!/^\d{17,20}$/u.test(id) || !request.guild || observe === null && spontaneous === null && shadow === null) return { ok: false, message: text.message(path, "invalid") };
         const thread = await request.guild.channels.fetch(id).catch(() => null);
         if (!thread?.isThread() || thread.guildId !== profile.guildId) return { ok: false, message: text.message(path, "invalid") };
         const observations = new Set(profile.chat.participation?.observationChannelIds ?? profile.channels.chatbot);
         const spontaneousChannels = new Set(profile.chat.participation?.spontaneousChannelIds ?? []);
         if (observe === true) observations.add(id); else if (observe === false) observations.delete(id);
         if (spontaneous === true && !observations.has(id)) return { ok: false, message: text.message(path, "needs-observation") };
-        if (flowVersion === "contextual_v1" && !observations.has(id)) return { ok: false, message: text.message(path, "needs-observation") };
         if (spontaneous === true) spontaneousChannels.add(id); else if (spontaneous === false || observe === false) spontaneousChannels.delete(id);
-        const override = { ...profile.chat.participation?.channelOverrides[id], ...(flowVersion ? { flowVersion } : {}), ...(shadow === null ? {} : { shadowMode: shadow }) };
+        const override = { ...profile.chat.participation?.channelOverrides[id], ...(shadow === null ? {} : { shadowMode: shadow }) };
         return { ok: true, message: text.message(path, "done"), patch: { chatParticipation: { observationChannelIds: [...observations], spontaneousChannelIds: [...spontaneousChannels],
-          ...(flowVersion || shadow !== null ? { channelOverrides: { [id]: override } } : {}) } } };
+          ...(shadow !== null ? { channelOverrides: { [id]: override } } : {}) } } };
       },
     }),
     chatSetting("continuation-limits", {
@@ -40,7 +38,6 @@ export const participation = group("participation", [
         write: (v, p) => v === resolveParticipation(p.chat.participation, "").limits.continuationPerWindow! ? {} : ({ chatParticipation: { advanced: { continuationPer10Minutes: v } } }) }),
     }),
     chatSetting("controls", {
-      "flow-version": choice({ choices: ["legacy", "contextual_v1"] as const, read: (p) => p.chat.participation?.flowVersion ?? "legacy", write: (v) => ({ chatParticipation: { flowVersion: v } }) }),
       "messages-per-decision": integer({ min: 1, max: 20, read: (p) => resolveParticipation(p.chat.participation, "").messagesPerDecision,
         write: (v, p) => v === resolveParticipation(p.chat.participation, "").messagesPerDecision ? {} : ({ chatParticipation: { messagesPerDecision: v } }) }),
       "spontaneous-threshold": integer({ min: 0, max: 100, read: (p) => contributionPolicy(p.chat.participation).spontaneousThreshold * 100,
@@ -77,7 +74,7 @@ export const participation = group("participation", [
     }),
     action("participation-channel", {
       params: { channel: { kind: "channel", textOnly: true, required: true },
-        "flow-version": { kind: "choice", choices: ["legacy", "contextual_v1"] }, shadow: { kind: "toggle" },
+        shadow: { kind: "toggle" },
         continuation: { kind: "toggle" }, spontaneous: { kind: "toggle" }, reactions: { kind: "toggle" },
         activity: { kind: "choice", choices: ["quiet", "balanced", "lively"] }, reset: { kind: "toggle" } },
       run: ({ profile, values, text, path }) => {
@@ -85,9 +82,7 @@ export const participation = group("participation", [
         if (!channelId) return Promise.resolve({ ok: false, message: text.message(path, "missing") });
         const configured = profile.chat.participation ?? defaultParticipation;
         const override = { ...configured.channelOverrides[channelId] };
-        const flowVersion = values.getString("flow-version") as "legacy" | "contextual_v1" | null;
         const shadow = values.getBoolean("shadow");
-        if (flowVersion) override.flowVersion = flowVersion;
         if (shadow !== null) override.shadowMode = shadow;
         const continuation = values.getBoolean("continuation");
         const spontaneous = values.getBoolean("spontaneous");

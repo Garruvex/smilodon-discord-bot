@@ -3,7 +3,7 @@ import { runGuardedPostTurn } from "./guarded-post-turn.js";
 import { ConversationModelGateway } from "../context/conversation-model-gateway.js";
 import { repairConversationRequest } from "../context/approved-conversation-request.js";
 import { authorizeConversationEffects } from "./conversation-effects.js";
-import type { ActiveConversationTurnPlan, ConversationTurnPlan } from "./conversation-turn-plan.js";
+import type { ConversationTurnPlan } from "./conversation-turn-plan.js";
 import { assertTurnActive, withTurnAbort } from "./turn-work-budget.js";
 import type { GuardedContextPort } from "./guarded-conversation-context.js";
 import type { Logger } from "pino";
@@ -12,7 +12,7 @@ import { currentDiagnosticTraceSequence, diagnosticElapsed, diagnosticStore, emi
 import type { CharacterRuntime } from "./character-runtime.js";
 
 import { stripUntrustedMarkers } from "./attribution-verification.js";
-import { type ChannelHistoryMessage, type ChatProvider, type ChatRequest, type ChatResponse, type ChatResponseObserver, type ReplyChainMessage } from "./chat-provider.js";
+import { type ChannelHistoryMessage, type ChatProvider, type ChatRequest, type ChatResponse, type ChatResponseObserver } from "./chat-provider.js";
 import type { ChatStateStore } from "./chat-state-store.js";
 import type { UserCustomizationStore } from "./user-customization-store.js";
 import { KeyedSerialQueue } from "../concurrency/keyed-serial-queue.js";
@@ -64,8 +64,6 @@ export interface ChatConversationInput
   // Turn-level restriction, intersected with the guild deny-list. Optional
   // participation may look up server facts without exposing action tools.
   allowedToolNames?: ReadonlySet<string>;
-  // Compatibility-only input, ignored. Registered source ancestry owns overflow.
-  replyChainOverflow?: readonly ReplyChainMessage[];
   // Compatibility-only pools; live selection uses registered configuration.
   examplePool: readonly ExampleExchange[];
   loreChunks: readonly PersonaLoreChunk[];
@@ -83,7 +81,7 @@ export interface ChatConversationInput
   personalitySourceHash?: string;
 }
 
-export type PlannedChatConversationInput = ChatConversationInput & { turnPlan: ActiveConversationTurnPlan };
+export type PlannedChatConversationInput = ChatConversationInput & { turnPlan: ConversationTurnPlan };
 export type GuardedChatConversationInput = PlannedChatConversationInput & { guardedContextPort: GuardedContextPort };
 
 export class ChatStateCommitError extends Error {
@@ -265,13 +263,12 @@ export class ChatConversationService {
       let timer: ReturnType<typeof setTimeout> | null = null;
       emitChatDiagnostic(this.logger, { event: "chat.turn.started", interaction: input.interaction, ...(input.candidateId ? { candidateId: input.candidateId } : {}) });
       try {
-        const plan: ConversationTurnPlan | null = this.characterRuntime ? this.characterRuntime.resolveTurnPlan(input.guildId, input.channelId) : {
-          state: "ready", flow: "legacy", context: "guarded_text", decision: "legacy", deadlineMs: 30000, contextPolicy: { count: 40, budget: 12000 } };
-        const failure = !plan ? "profile_unavailable" : plan.state === "blocked" ? plan.reason :
-          !input.guardedContextPort ? "guard_unavailable" : null;
-        emitChatDiagnostic(this.logger, { event: "chat.turn.plan", flow: plan?.flow ?? "legacy", context: plan?.context ?? "legacy",
+        const plan: ConversationTurnPlan | null = this.characterRuntime ? this.characterRuntime.resolveTurnPlan(input.guildId, input.channelId) :
+          { context: "guarded_text", deadlineMs: 30000, contextPolicy: { count: 40, budget: 12000 } };
+        const failure = !plan ? "profile_unavailable" : !input.guardedContextPort ? "guard_unavailable" : null;
+        emitChatDiagnostic(this.logger, { event: "chat.turn.plan", context: plan?.context ?? "guarded_text",
           state: failure ? "blocked" : "ready", ...(failure ? { reason: failure } : {}) });
-        if (failure || !plan || plan.state !== "ready") throw new SocialOutputSuppressed();
+        if (failure || !plan) throw new SocialOutputSuppressed();
         const controller = new AbortController();
         timer = setTimeout(() => {
           emitChatDiagnostic(this.logger, { event: "chat.turn.deadline", budgetMs: plan.deadlineMs }); controller.abort();
@@ -371,7 +368,7 @@ export class ChatConversationService {
           this.trackBackground(work);
         });
       };
-      const contextualAvailability = input.turnPlan.decision === "contextual" && isOptionalInteraction(input.interaction) ? {
+      const contextualAvailability = isOptionalInteraction(input.interaction) ? {
         continuation: { text: this.scheduler.outputAvailable(key, "text", { ...limits, continuation: true }), reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits) },
         spontaneous: { text: this.scheduler.outputAvailable(key, "text", { ...limits, continuation: false }), reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits) },
       } : null;
@@ -418,7 +415,7 @@ export class ChatConversationService {
   public observe(guildId: string, channelId: string, event: ChannelHistoryMessage): void {
     if (this.characterRuntime && !this.characterRuntime.contextAllowed(guildId, channelId)) return;
     if (event.timestampMs <= (this.forgottenBefore.get(`${guildId}:${event.authorId}`) ?? -Infinity)) return;
-    const retentionMs = (this.characterRuntime?.contextWindow(guildId, channelId) ?? 15) * 60_000;
+    const retentionMs = 15 * 60_000;
     this.episodes.observe(`${guildId}:${channelId}`, event, this.now(), retentionMs);
     this.characterRuntime?.observe(guildId, channelId, event);
     if (this.episodeStore) this.trackBackground(this.episodeStore.observe(guildId, channelId, event, this.now(), retentionMs).catch((error: unknown) =>
@@ -466,9 +463,6 @@ export class ChatConversationService {
   public get optionalDecisionAvailable(): boolean { return this.characterRuntime?.decisionAvailable ?? false; }
   public optionalEvaluationDelayMs(guildId: string, channelId: string, limits: ChatActivityLimits): number {
     return this.scheduler.evaluationDelayMs(`${guildId}:${channelId}`, limits);
-  }
-  public isImplicitlyAddressed(guildId: string, channelId: string, event: ChannelHistoryMessage, botId: string): boolean {
-    return this.characterRuntime?.couldBeAddressed(guildId, channelId, event, this.episodes.windowSnapshot(`${guildId}:${channelId}`, 2, this.now()), botId) ?? false;
   }
 
   public optionalOpportunityVersion(guildId: string, channelId: string): number {

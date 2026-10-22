@@ -31,12 +31,11 @@ export const characterSettingsSchema = z.object({
     enabled: z.boolean().optional(), modules: z.record(z.enum(characterModuleIds), z.boolean()).default({}),
     contextEnabled: z.boolean().optional(),
   })).default({}),
+  // Channel history is on/off through features.channelHistory. Retired
+  // time-window fields in stored configuration are ignored on read.
   context: z.object({
-    retrievalMode: z.enum(["legacy", "eligible_count"]).default("legacy"),
-    enabled: z.boolean().default(false), windowMinutes: z.number().int().min(1).max(20).default(15),
-    segmentGapMinutes: z.number().int().min(1).max(20).default(10),
     maxMessages: z.number().int().min(8).max(48).default(40), budget: z.number().int().min(2000).max(24000).default(12000),
-    summary: z.boolean().default(false), shadow: z.boolean().default(true), decisionMessages: z.number().int().min(5).max(20).default(10),
+    decisionMessages: z.number().int().min(5).max(20).default(10),
   }).default({}),
 }).default({});
 export type CharacterSettings = z.infer<typeof characterSettingsSchema>;

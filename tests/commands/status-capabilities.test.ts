@@ -12,7 +12,6 @@ describe("operator capability status", () => {
     document.chat.webSearchMode = "auto"; document.chat.toolCallingEnabled = true;
     document.chat.imageInputEnabled = true; document.chat.imageGenerationEnabled = true;
     const profiles = memoryProvider(document);
-    await profiles.update(guildId, { character: { context: { ...profiles.current().character!.context, enabled: true, retrievalMode: "eligible_count" } } });
     const profile = profiles.current();
     const setup = { initialize: vi.fn(), status: vi.fn(() => Promise.resolve({ configured: true, profileFile: "test.yaml", controlPanelChannelId: null,
       enabledFeatures: [], featureStates: [], access: null, music: null, chat: profile.chat, panel: null, botPermissions: { ok: true, missing: [] } })) };

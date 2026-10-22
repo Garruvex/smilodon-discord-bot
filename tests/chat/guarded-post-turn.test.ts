@@ -31,7 +31,7 @@ async function sources(): Promise<{ fixture: ReturnType<typeof guardedFixture>; 
   fixture.add(guardedEvent("current", 3000, "I like pears")); fixture.port.sourceMessageId = "current";
   const input: GuardedChatConversationInput = { ...decisionRequest({ interaction: "direct_mention", message: "UNTRUSTED_INPUT" }),
     sourceMessageId: "current", guardedContextPort: fixture.port, examplePool: [], loreChunks: [], personaDriftEnabled: true,
-    turnPlan: { state: "ready", flow: "legacy", context: "guarded_text", decision: "legacy", deadlineMs: 30000, contextPolicy: { count: 0, budget: 0 } } };
+    turnPlan: { context: "guarded_text", deadlineMs: 30000, contextPolicy: { count: 0, budget: 0 } } };
   return { fixture, exchange, input };
 }
 

@@ -1,7 +1,6 @@
 import { PermissionFlagsBits } from "discord.js";
 import { effectiveChatPolicy } from "../../../../application/chat/effective-chat-policy.js";
 import { guardedContextLimits } from "../../../../application/chat/guarded-conversation-context.js";
-import { chatMemoryLimits } from "../../../../application/chat/chat-memory-policy.js";
 import { report } from "../registry/builders.js";
 import type { NodeContext } from "../registry/types.js";
 
@@ -11,14 +10,12 @@ export function renderChatPolicy(context: Pick<NodeContext, "profile" | "text">,
   const reasons = (items: readonly string[]): string => items.map((reason) => t(reason)).join(", ") || t("none");
   const { limits } = policy.participation;
   const overview = [t("common", { reasons: reasons(policy.commonReasons) }),
-    `${text.label("participation.controls.flow-version")}: ${text.choice("participation.controls.flow-version", policy.participation.flowVersion ?? "legacy")}`,
-    t("pipeline", { mode: t(policy.turnPlan.context === "guarded_text" ? "guarded" : "legacy"), state: t(policy.turnPlan.state === "ready" ? "ready" : "blocked") }),
     ...policy.modes.map((mode) => `${t(mode.mode)}: ${t(mode.reasons.some((reason) => !reason.endsWith("_unknown")) ? "blocked" : mode.reasons.length ? "unverified" : mode.shadow ? "shadow" : "ready")}${mode.reasons.some((reason) => !policy.commonReasons.includes(reason)) ? ` (${reasons(mode.reasons.filter((reason) => !policy.commonReasons.includes(reason)))})` : ""}`),
     t("scope", { source: t(policy.observationInherited ? "inherited" : "explicit"), overrides: policy.participationOverrides.join(", ") || t("none"), context: t(policy.contextOverride ? "yes" : "no") }),
-    t("ping", { ping: t(policy.participation.barePingMode), fallback: t(policy.participation.continuationFailureMode ?? "strict") }), t("views")];
+    t("ping", { ping: t(policy.participation.barePingMode) }), t("views")];
   const contextLines = [t("common", { reasons: reasons(policy.commonReasons) }),
-    t("context", { mode: t(policy.guarded ? "guarded" : "legacy"), reasons: reasons(policy.historyReasons.filter((reason) => !policy.commonReasons.includes(reason))), count: policy.context.enabled ? policy.context.maxMessages : profile.chat.channelHistoryLimit, budget: policy.context.enabled ? policy.context.budget : chatMemoryLimits.maxChannelHistoryChars }),
-    ...(policy.guarded ? [t("bounds", { pages: guardedContextLimits.pages, pageSize: guardedContextLimits.pageSize, targeted: guardedContextLimits.targetedPages, depth: guardedContextLimits.replyDepth, seconds: guardedContextLimits.workMs / 1000 }), t("exclusions")] : []),
+    t("context", { reasons: reasons(policy.historyReasons.filter((reason) => !policy.commonReasons.includes(reason))), count: policy.context.maxMessages, budget: policy.context.budget }),
+    t("bounds", { pages: guardedContextLimits.pages, pageSize: guardedContextLimits.pageSize, targeted: guardedContextLimits.targetedPages, depth: guardedContextLimits.replyDepth, seconds: guardedContextLimits.workMs / 1000 }),
     t("storage", { memory: policy.memoryMode, scan: t(policy.scan ? "yes" : "no"), daily: t(policy.daily ? "yes" : "no") }),
     t("access", { chat: policy.roleCounts.chat, admin: policy.roleCounts.administrator, restricted: policy.roleCounts.restricted })];
   const activity = [

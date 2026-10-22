@@ -26,7 +26,7 @@ import { SqliteMemoryRepository } from "../../src/infrastructure/persistence/sql
 import { SqliteMessageOriginStore } from "../../src/infrastructure/persistence/sqlite-message-origin-store.js";
 import { SqliteMessageReactionWatchStore } from "../../src/infrastructure/persistence/sqlite-message-reaction-watch-store.js";
 import { createSqliteDatabaseConnection } from "../../src/infrastructure/database/sqlite-database.js";
-import { decisionProposal, decisionResponse } from "../helpers/conversation-decision-fixtures.js";
+import { decisionResponse } from "../helpers/conversation-decision-fixtures.js";
 import { contextualProposal } from "../helpers/contextual-decision-fixtures.js";
 import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 import { freshDocument, guildId, memoryProvider } from "../helpers/settings-fixtures.js";
@@ -35,13 +35,12 @@ const channelId = "500000000000000001"; const botId = "700000000000000001"; cons
 const cleanups: (() => Promise<void>)[] = [];
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(1792526400000); });
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
-type Strategy = "legacy_context" | "guarded_legacy_decision" | "contextual";
 type Mode = "mention" | "reply" | "ping" | "name" | "followup" | "group" | "reaction";
 
 // Only Discord transport and structured providers are simulated. Dispatch,
 // adapters, access, profile parsing, provenance, lease, runtime, policy,
 // scheduler, delivery support and persistence are the production components.
-async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react" | "failed" | "invalid_generation" | "revoked" | "shadow" = "reply", actorCount = 1, historyEnabled = true): Promise<{
+async function setup(mode: Mode, behavior: "reply" | "react" | "failed" | "invalid_generation" | "revoked" | "shadow" = "reply", actorCount = 1, historyEnabled = true): Promise<{
   execute: () => Promise<void>; records: Record<string, unknown>[];
   decision: ReturnType<typeof vi.fn<(prompt: string) => Promise<unknown>>>;
   reply: ReturnType<typeof vi.fn<(request: ChatRequest) => Promise<ChatResponse>>>;
@@ -61,9 +60,7 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
   document.chat.participation.continuationEnabled = true; document.chat.participation.spontaneousEnabled = true;
   document.chat.participation.spontaneousChannelIds = [channelId];
   document.chat.participation.messagesPerDecision = 1;
-  document.chat.participation.flowVersion = strategy === "contextual" ? "contextual_v1" : "legacy";
   document.chat.participation.shadowMode = behavior === "shadow";
-  document.character.context.enabled = true; document.character.context.retrievalMode = strategy === "legacy_context" ? "legacy" : "eligible_count";
   const profiles = memoryProvider(document);
   const config = { ownerUserIds: new Set<string>(), chat: null, chatDelivery: { maxGeneratedImageAggregateBytes: 1000000 } } as unknown as ApplicationConfiguration;
   const { logger, records } = captureDiagnosticLogger();
@@ -102,9 +99,8 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
     messages.set(id, message); return message;
   };
   const support = new ChatTurnSupport(logger, eligibility, origins);
-  const gap = strategy === "legacy_context" ? 3000 : 16 * 60000;
+  const gap = 16 * 60000;
   const original = makeMessage("question", "Please check the second test option.", actorId, Date.now() - gap);
-  if (strategy === "legacy_context") channel.messages.cache.set(original.id, original);
   const previous = await GuardedConversationContext.open(support.createContextPort(original), { count: 40, budget: 12000, burstIds: [] });
   const bot = makeMessage("answer", "Would you like the first or second option?", botId, Date.now() - gap + 1000, original.id);
   await origins.record({ messageId: bot.id, guildId, channelId, origin: "chat", sourceMessageId: original.id, createdAt: bot.createdTimestamp,
@@ -125,22 +121,19 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
     expect(prompt).not.toContain("PRIVATE_SOURCE_TEXT");
     if (behavior === "failed") return Promise.reject(new Error("Synthetic provider failure"));
     const reaction = mode === "reaction"; const target = reaction ? bot.id : source.id;
-    if (strategy === "contextual" || reaction) return Promise.resolve(contextualProposal({
+    return Promise.resolve(contextualProposal({
       relationship: reaction || mode === "group" ? "group" : "followup", referent: mode === "group" ? "self_contained" : "context_linked",
       intent: behavior === "react" ? "social" : reaction || mode === "group" ? "contribute" : "answer",
       action: behavior === "react" ? "react" : "reply", reaction: behavior === "react" ? "👍" : null,
       linkKey: reaction ? "reaction" : mode === "group" ? null : "speaker_1", recipientEvidence: [target],
       ...(behavior === "react" ? { contribution: null } : {}),
     }));
-    return Promise.resolve(decisionProposal({ target, recipientEvidence: [source.id, original.id, bot.id],
-      addressing: mode === "group" ? "others" : "continuing", contribution: { text: "A concrete second-option result", adds: "The requested result",
-        label: "answer", motivation: 0.95, sourceMessageId: target, recipientId: actorId } }));
   });
   const reply = vi.fn((request: ChatRequest) => {
     expect(JSON.stringify(request.channelHistory)).not.toContain("PRIVATE_SOURCE_TEXT");
     if (mode === "ping" && historyEnabled) expect(request.channelHistory.some((event) => event.messageId === "pending")).toBe(true);
     expect(request.contextLease).toBeDefined();
-    if (strategy === "contextual" && decision.mock.calls.length) {
+    if (decision.mock.calls.length) {
       const projection = JSON.parse(decision.mock.calls[0]![0].split("Data: ")[1]!) as { events: { evidenceKey: string; content: string }[] };
       const generation = [...request.channelHistory, ...request.replyChain, ...(request.currentBurst ?? [])];
       for (const event of projection.events) expect(generation.find((source) => source.messageId === event.evidenceKey)?.content).toBe(event.content);
@@ -177,7 +170,7 @@ async function setup(strategy: Strategy, mode: Mode, behavior: "reply" | "react"
 
 describe("production Discord adapter to effect paths", () => {
   it.each([false, true])("requires a currently authorized reactor, while allowing another reactor to lose interaction access (remaining=%s)", async (remaining) => {
-    const fixture = await setup("contextual", "reaction", "reply", remaining ? 2 : 1);
+    const fixture = await setup("reaction", "reply", remaining ? 2 : 1);
     fixture.reply.mockImplementation(() => {
       fixture.members.get(actorId)!.roles.cache.set("900000000000000002", { id: "900000000000000002", name: "Restricted" } as never);
       fixture.client.emit("guildMemberUpdate", {}, { guild: { id: guildId } });
@@ -188,7 +181,7 @@ describe("production Discord adapter to effect paths", () => {
     expect(fixture.sent).toHaveLength(remaining ? 1 : 0);
   });
   it.each(["mention", "reply", "ping", "name", "followup", "group", "reaction"] as const)("keeps a generated %s through an unrelated guild update", async (mode) => {
-    const fixture = await setup("contextual", mode);
+    const fixture = await setup(mode);
     fixture.reply.mockImplementation(async (request) => {
       const reads = fixture.fetch.mock.calls.length;
       fixture.client.emit("guildMemberUpdate", {}, { guild: { id: guildId } });
@@ -201,7 +194,7 @@ describe("production Discord adapter to effect paths", () => {
     expect(fixture.sent).toHaveLength(1);
   });
   it.each(["mention", "reply", "ping", "name", "followup", "group", "reaction"] as const)("blocks a generated %s after a contributing user opts out", async (mode) => {
-    const fixture = await setup("contextual", mode);
+    const fixture = await setup(mode);
     fixture.reply.mockImplementation(async () => {
       await fixture.profiles.update(guildId, { contextOptOutUserIds: [actorId] });
       return decisionResponse({ text: "Must not deliver excluded content.", responseIntent: "answer" });
@@ -211,7 +204,7 @@ describe("production Discord adapter to effect paths", () => {
     expect(fixture.sent).toHaveLength(0);
   });
   it.each(["current", "history"] as const)("reassembles edited %s evidence before delivering a direct answer", async (kind) => {
-    const fixture = await setup("contextual", "mention");
+    const fixture = await setup("mention");
     let attempts = 0;
     fixture.reply.mockImplementation((request) => {
       attempts++;
@@ -232,7 +225,7 @@ describe("production Discord adapter to effect paths", () => {
     expect(fixture.records).toContainEqual(expect.objectContaining({ event: "chat.context.refreshed", reason: "source_edited", attempt: 1 }));
   });
   it("bounds regeneration if the source keeps changing", async () => {
-    const fixture = await setup("contextual", "mention");
+    const fixture = await setup("mention");
     let attempts = 0;
     fixture.reply.mockImplementation(() => {
       attempts++;
@@ -246,7 +239,7 @@ describe("production Discord adapter to effect paths", () => {
     expect(fixture.records.filter((record) => record.event === "chat.context.refreshed")).toHaveLength(1);
   });
   it("keeps a non-triggering participant's messages in the authorized context", async () => {
-    const fixture = await setup("contextual", "mention");
+    const fixture = await setup("mention");
     const roleId = "900000000000000001";
     await fixture.profiles.update(guildId, { chatbotRoleIds: [roleId] });
     fixture.members.get(actorId)!.roles.cache.set(roleId, { id: roleId, name: "Chat" } as never);
@@ -256,7 +249,7 @@ describe("production Discord adapter to effect paths", () => {
     expect(fixture.reply.mock.calls[0]![0].channelHistory).toContainEqual(expect.objectContaining({ authorId: "non-triggering", content: "PUBLIC_BYSTANDER_CONTEXT" }));
   });
   it("delivers a direct tag after repeated nested model checks without another Discord history scan", async () => {
-    const fixture = await setup("contextual", "mention");
+    const fixture = await setup("mention");
     fixture.reply.mockImplementation(async (request) => {
       const reads = fixture.fetch.mock.calls.length;
       for (let index = 0; index < 20; index++) await request.beforeModelAttempt!();
@@ -271,7 +264,7 @@ describe("production Discord adapter to effect paths", () => {
     expect(fixture.records.some((record) => record.event === "context.guard.validation" && record.mode === "effect")).toBe(true);
   });
   it.each(["mention", "reply", "ping", "name"] as const)("history opt-out still permits the authorized current %s", async (mode) => {
-    const fixture = await setup("legacy_context", mode, "reply", 1, false); await fixture.execute();
+    const fixture = await setup(mode, "reply", 1, false); await fixture.execute();
     expect(fixture.reply).toHaveBeenCalledOnce();
     expect(fixture.reply.mock.calls[0]![0].channelHistory).toEqual([]);
     expect(fixture.reply.mock.calls[0]![0].replyChain).toEqual([]);
@@ -279,13 +272,13 @@ describe("production Discord adapter to effect paths", () => {
   });
 
   it("does not confuse the bounded reactor-name projection with the full authorized audience", async () => {
-    const fixture = await setup("legacy_context", "reaction", "reply", 21); await fixture.execute();
+    const fixture = await setup("reaction", "reply", 21); await fixture.execute();
     expect(fixture.reply).toHaveBeenCalledOnce(); expect(fixture.reply.mock.calls[0]![0].mentionedUsers).toHaveLength(21);
     expect(fixture.sent).toHaveLength(1); expect(fixture.sent[0]?.target).toBe("answer");
   });
-  for (const strategy of ["legacy_context", "guarded_legacy_decision", "contextual"] as const) {
-    it.each(["mention", "reply", "ping", "name", "followup", "group", "reaction"] as const)(`${strategy}: %s reaches its planned lifecycle`, async (mode) => {
-      const fixture = await setup(strategy, mode); await fixture.execute();
+  {
+    it.each(["mention", "reply", "ping", "name", "followup", "group", "reaction"] as const)("%s reaches its planned lifecycle", async (mode) => {
+      const fixture = await setup(mode); await fixture.execute();
       expect(fixture.reply).toHaveBeenCalledOnce();
       const optional = mode === "followup" || mode === "group" || mode === "reaction";
       expect(fixture.decision).toHaveBeenCalledTimes(optional ? 1 : 0);
@@ -298,12 +291,12 @@ describe("production Discord adapter to effect paths", () => {
     });
   }
   it.each(["followup", "reaction"] as const)("%s carries an approved emoji through the actual callback", async (mode) => {
-    const fixture = await setup("contextual", mode, "react"); await fixture.execute();
+    const fixture = await setup(mode, "react"); await fixture.execute();
     expect(fixture.decision).toHaveBeenCalledOnce(); expect(fixture.reply).not.toHaveBeenCalled();
     expect(fixture.sent).toEqual([]); expect(fixture.reacted).toEqual([`${fixture.source.id}:👍`]);
   });
   it.each(["failed", "invalid_generation", "revoked", "shadow"] as const)("cannot bypass authorization/effect ownership on %s", async (behavior) => {
-    const fixture = await setup("contextual", "followup", behavior); await fixture.execute();
+    const fixture = await setup("followup", behavior); await fixture.execute();
     expect(fixture.decision).toHaveBeenCalledOnce();
     expect(fixture.sent).toEqual([]); expect(fixture.reacted).toEqual([]);
     expect(fixture.reply).toHaveBeenCalledTimes(behavior === "failed" ? 0 : 1);

@@ -13,7 +13,7 @@ const approved = new WeakMap<ChatResponse, ApprovedConversationEffects>();
 // immutable effect snapshot rather than model-authored response fields.
 export function authorizeConversationEffects(response: ChatResponse, sourceMessageId: string | null): ApprovedConversationEffects {
   const result = response.conversationDecision;
-  const permitted = result && (result.status === "ready" || result.status === "failed" && result.recovery === "grounded_reply");
+  const permitted = result?.status === "ready";
   const action = permitted ? result.decision.action : "silent";
   const text = action === "reply" || action === "reply_and_react";
   const reaction = action === "react" || action === "reply_and_react";

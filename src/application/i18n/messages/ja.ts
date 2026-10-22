@@ -274,7 +274,6 @@ export const ja = {
   "setup.status.chat.tools": "ウェブ検索：{webSearch} · ツール：{tools}",
   "setup.status.chat.toolsWithDisabled": "ウェブ検索：{webSearch} · ツール：{tools}（{count} 個を無効化）",
   "setup.status.chat.effectiveTitle": "このチャンネルで利用可能な機能",
-  "setup.status.chat.flowBlocked": "現在の会話フロー設定では、このチャンネルでチャットを実行できません。",
   "setup.status.chat.excludedSources": "検証済みのメモリ、要約、キャラクター状態、画像と審査済みツールを使用します。誕生日／サーバー情報は出典を再検証します。未検証の保存・学習データと未移行ツールは除外します。",
   "setup.status.chat.images": "画像の読み取り：{read} · 画像の生成：{make}",
   "setup.status.chat.sources": "出典の表示：{sources} · ペルソナの変化：{drift}",

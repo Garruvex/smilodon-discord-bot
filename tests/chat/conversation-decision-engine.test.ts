@@ -5,7 +5,7 @@ import { branchHuman, branchBot, branchCurrent, decisionEvent, decisionProposal,
 
 const engine = new ConversationDecisionEngine();
 const failed = { status: "failed" as const, decision: null, attempts: [] };
-const fallback = { ...defaultParticipation, continuationEnabled: true, continuationFailureMode: "grounded_fallback" as const };
+const fallback = { ...defaultParticipation, continuationEnabled: true };
 describe("conversation decision authority", () => {
   it("does not use unguarded older exchanges to override recipient ambiguity", () => {
     const current = { ...branchCurrent, timestampMs: 962000, content: "I was fixing you, not the birthday" };
@@ -30,16 +30,9 @@ describe("conversation decision authority", () => {
     const result = engine.assess(decisionRequest(), { status: "valid", decision: decisionProposal({ opening: "closed" }), attempts: [] }, defaultParticipation, true, 4000, "policy").result;
     expect(result).toMatchObject({ status: "ready", decision: { action: "silent", reasonCode: "opening_not_clear" } });
   });
-  it("recovers only a proven same-person continuation behind the flag", () => {
-    const result = engine.assess(decisionRequest(), failed, fallback, true, 4000, "policy");
-    expect(result.result).toMatchObject({ status: "failed", recovery: "grounded_reply", decision: { action: "reply", responseToEventId: null, referentSourceIds: ["current"] } });
-    expect(engine.assess(decisionRequest(), failed, { ...fallback, continuationFailureMode: "strict" }, true, 4000, "policy").result.decision.action).toBe("silent");
-    expect(engine.finalize(decisionRequest(), decisionResponse(), 5000, "policy", result.result).decision.decisionId).toBe(result.result.decision.decisionId);
-  });
-  it.each(["social", "closing", "abstain", "contribute"] as const)("does not turn grounded recovery into %s output", (responseIntent) => {
-    const prior = engine.assess(decisionRequest(), failed, fallback, true, 4000, "policy").result;
-    const result = engine.finalize(decisionRequest(), decisionResponse({ responseIntent }), 5000, "policy", prior);
-    expect(result).toMatchObject({ status: "failed", recovery: "none", decision: { action: "silent", reasonCode: "fallback_requires_answer_or_clarification" } });
+  it("treats a failed interpretation of a proven follow-up as silence, not a separate reply path", () => {
+    expect(engine.assess(decisionRequest(), failed, fallback, true, 4000, "policy").result).toMatchObject({ status: "failed", recovery: "none", decision: { action: "silent", reasonCode: "decision_failed" } });
+    expect(engine.assess(decisionRequest(), { status: "unavailable", decision: null, attempts: [] }, fallback, true, 4000, "policy").result.decision.reasonCode).toBe("decision_unavailable");
   });
   it.each(["new_speaker", "interleaved", "closing", "other_recipient", "expired", "no_proof", "quota", "scope", "spontaneous", "reaction"])("refuses continuation recovery: %s", (reason) => {
     const request = decisionRequest(); let now = 4000;

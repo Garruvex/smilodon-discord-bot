@@ -158,6 +158,8 @@ function fakeMessage(reactorIds: readonly string[], overrides: {
     author: { id: botId, username: "Bot" },
     content: overrides.content ?? "hello!",
     channelId,
+    guildId,
+    channel: { nsfw: false },
     member: null,
     guild: {
       members: {

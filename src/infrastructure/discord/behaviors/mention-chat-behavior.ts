@@ -10,17 +10,16 @@ import { emitChatDiagnostic } from "../../../application/diagnostics/chat-diagno
 import { mentionInteraction } from "../../../application/chat/conversation-trigger.js";
 import { conversationEffects } from "../../../application/chat/conversation-effects.js";
 import { MentionChatAccess } from "./mention-chat-access.js";
+import { buildChatTurnInput, type ChatTurnEnvironment } from "./chat-turn-request.js";
 import { resolvesReplyToBot } from "./direct-reply-resolver.js";
-import { characterSettings } from "../../../application/chat/character-settings.js";
 import { SocialOutputSuppressed, type MessageOriginStore } from "../../../application/chat/message-origin-store.js";
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
 import { resolveParticipation, isLowSubstancePing } from "../../../application/chat/participation-policy.js";
-import { resolveChannelMemoryMode } from "../../../application/memory/memory-channel-policy.js";
 
 import { ChatPolicy } from "../../../application/chat/chat-policy.js";
 import { BehaviorEvent, BehaviorResult, type BotBehavior } from "../../../application/behaviors/behavior.js";
-import { ChatProviderError, type ChannelHistoryMessage, type ReplyChainMessage } from "../../../application/chat/chat-provider.js";
-import { ChatStateCommitError, type ChatConversationService, type ChatConversationInput } from "../../../application/chat/chat-conversation-service.js";
+import { ChatProviderError } from "../../../application/chat/chat-provider.js";
+import { ChatStateCommitError, type ChatConversationService } from "../../../application/chat/chat-conversation-service.js";
 import { ChannelTypingManager } from "../../../application/chat/channel-typing-manager.js";
 import type { PersonaSource } from "../../../application/chat/persona-source.js";
 import type { ApplicationConfiguration } from "../../../config/configuration.js";
@@ -46,6 +45,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
   private readonly chatAccess: MentionChatAccess;
   private readonly typing = new ChannelTypingManager();
   private readonly turnSupport: ChatTurnSupport;
+  private readonly turnEnvironment: ChatTurnEnvironment;
 
   public constructor(
     private readonly clientUserId: () => string | null,
@@ -68,6 +68,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     this.turnSupport = new ChatTurnSupport(logger, eligibility, origins, (message) => {
       if (message.guildId) this.conversation?.excludeInteraction(message.guildId, message.channelId, message.id);
     });
+    this.turnEnvironment = { profiles, ownerUserIds: configuration.ownerUserIds, support: this.turnSupport };
   }
 
   public async matches(message: Message): Promise<boolean> {
@@ -134,20 +135,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     const prompt = botId
       ? message.content.replace(new RegExp(`<@!?${botId}>`, "g"), "").trim()
       : message.content.trim();
-    const participation = resolveParticipation(profile.chat.participation, message.channelId);
     const lowSubstance = isLowSubstancePing(prompt, Boolean(message.reference?.messageId), message.attachments.size > 0);
-    // Oldest ancestor first, ending just before `message` itself.
-    const replyChain: ReplyChainMessage[] = [];
-    const replyChainOverflow: ReplyChainMessage[] = [];
-    const channelHistory: ChannelHistoryMessage[] = [];
-
-    // An empty tag is still a valid request when it's a reply — "@bot" on
-    // its own replying to someone else's message means "look at this", with
-    // the replied-to message standing in for the question (see the reply
-    // chain instructions in buildChatInstructions). Only bail out empty-
-    // handed when there's truly nothing to go on.
-    // A bare ping is a social acknowledgment opportunity. Let the persona
-    // use the available context instead of substituting a help-desk prompt.
 
     if (this.conversation.isBusy(message.guildId, message.author.id)) {
       await this.sendNote(
@@ -170,16 +158,6 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     };
     const previewState: { current: ScheduledChatPreview | null; closed: boolean } = { current: null, closed: false };
     try {
-      const images: ChatConversationInput["images"] = [];
-      const droppedFailed = 0;
-      const droppedImageCount = droppedFailed;
-      if (droppedImageCount > 0) {
-        await this.sendNote(
-          message.guildId,
-          message.author,
-          `${droppedImageCount} image${droppedImageCount > 1 ? "s" : ""} skipped — check the per-message image limit, or the file's size/format.`,
-        );
-      }
       const startedAt = Date.now();
       this.logger.info({
         guildId: message.guildId,
@@ -189,36 +167,12 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         model: this.configuration.chat?.models[0],
         provider: this.configuration.chat?.provider,
         maxOutputTokens: this.configuration.chat?.maxOutputTokens,
-        imageCount: images.length,
-        droppedImageCount,
         webSearchMode: profile.chat.webSearchMode,
       }, "Chat API request started");
-      const mentionedUsers = message.mentions.users
-        .filter((user) => !user.bot && user.id !== message.author.id)
-        .map((user) => ({
-          ...this.turnSupport.toChatUser(user, message.mentions.members?.get(user.id) ?? null),
-          id: user.id,
-          displayName: message.mentions.members?.get(user.id)?.displayName ?? user.displayName,
-          roleNames: message.mentions.members?.get(user.id)?.roles.cache
-            .filter((role) => role.id !== message.guildId)
-            .map((role) => role.name.slice(0, 50))
-            .slice(0, 10) ?? [],
-        }));
-      const musicActor = this.turnSupport.resolveMusicActor(message, profile);
       const persona = await this.personaSource.resolve(profile);
-      const response = await this.conversation.run({
-        guildId: message.guildId,
-        channelId: message.channelId,
-        sourceMessageId: message.id,
-        channelHistoryEnabled: profile.features.channelHistory,
-        currentEvent: this.turnSupport.toMessageEvent(message), botUserId: this.clientUserId(),
+      const response = await this.conversation.run(buildChatTurnInput(this.turnEnvironment, profile, persona, {
+        interaction, source: message, text: prompt, botUserId: this.clientUserId(),
         canExecute: this.turnSupport.createEligibilityCheck(message, interaction),
-        activityLimits: participation.limits,
-        resolveActivityLimits: () => resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits,
-        resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(message.guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
-        guardedContextPort: this.turnSupport.createContextPort(message, false),
-          guardedContextPolicy: { count: characterSettings(profile).context.maxMessages, budget: characterSettings(profile).context.budget },
-        allowSilentDirect: participation.barePingMode === "personality",
         afterDecision: async (result) => {
           const effects = conversationEffects(result); if (!effects) return;
           const reserve = (): ((success: boolean) => void) | null => this.conversation!.reserveReaction(message.guildId, message.channelId,
@@ -231,45 +185,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           await this.turnSupport.applyHistoryReactions(message.channel, effects.historyReactions,
             { guildId: message.guildId, sourceMessageId: message.id }, reserve);
         },
-        personality: persona.personality,
-        ...(persona.configurationContext ? { configurationContext: persona.configurationContext } : {}),
-        examplePool: persona.examplePool,
-        loreChunks: persona.loreChunks,
-        personaDrift: persona.personaDrift,
-        personaDriftEnabled: profile.chat.personaDriftEnabled,
-        personalitySourceHash: persona.personalitySourceHash,
-        currentUser: {
-          ...this.turnSupport.toChatUser(message.author, message.member),
-          id: message.author.id,
-          displayName: message.member?.displayName ?? message.author.username,
-          roleNames: message.member?.roles.cache
-            .filter((role) => role.id !== message.guildId)
-            .map((role) => role.name.slice(0, 50))
-            .slice(0, 10) ?? [],
-        },
-        mentionedUsers,
-        message: prompt,
-        replyChain,
-        replyChainOverflow,
-        channelHistory,
-        images,
-        imageInputEnabled: profile.chat.imageInputEnabled, maxImagesPerRequest: profile.chat.maxImagesPerRequest,
-        webSearchMode: profile.chat.webSearchMode,
-        imageGenerationEnabled: profile.chat.imageGenerationEnabled,
-        includeSources: profile.chat.includeSources,
-        interaction,
-        historyReactionsEnabled: profile.features.historyReactions && profile.features.channelHistory,
-        toolsEnabled: profile.chat.toolCallingEnabled,
-        disabledToolNames: new Set(profile.chat.disabledTools),
-        channelMemoryModes: profile.chat.channelMemoryModes,
-        isOwner: this.configuration.ownerUserIds.has(message.author.id),
-        channelIsNsfw: "nsfw" in message.channel ? Boolean(message.channel.nsfw) : false,
-        musicActor: musicActor?.actor ?? null,
-        musicResolveAccessSubjectFields: musicActor?.resolveAccessSubjectFields,
-        musicVolumeMaximum: musicActor?.volumeMaximum,
-        musicControllerRoleIds: musicActor?.musicControllerRoleIds,
-        musicBotAdministratorRoleIds: musicActor?.botAdministratorRoleIds,
-      }, async (deliveredResponse) => {
+      }), async (deliveredResponse) => {
         const emptyFallbackContent = deliveredResponse.generatedImages.length > 0
           ? "Here you go!"
           : "I ran out of words. Very premium of me.";
@@ -342,8 +258,6 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         userId: message.author.id,
         model: this.configuration.chat?.models[0],
         durationMs: Date.now() - startedAt,
-        imageCount: images.length,
-        droppedImageCount,
         generatedImageCount: response.generatedImages.length,
         webSearchUsed: response.webSearchUsed,
         sourceCount: response.sources.length,

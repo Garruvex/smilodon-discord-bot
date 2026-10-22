@@ -1,16 +1,13 @@
 import type { SettingsTextCatalog } from "../catalog.js";
 
 export const jaChat: SettingsTextCatalog = {
-  "participation.thread-scope.flow-version": { label: "会話フロー", description: "このスレッドのフローを選択します。観察の明示的な許可が必要です。", choices: { legacy: "従来", contextual_v1: "文脈フロー（試行）" } },
   "participation.thread-scope.shadow": { label: "シャドー評価", description: "このスレッドで任意の返信を送信せず判断を評価します。" },
-  "participation.participation-channel.flow-version": { label: "会話フロー", description: "このチャンネルの会話フローを選択します。", choices: { legacy: "従来", contextual_v1: "文脈フロー（試行）" } },
   "participation.participation-channel.shadow": { label: "シャドー評価", description: "このチャンネルで任意の返信を送信せず判断を評価します。" },
-  "participation.controls.flow-version": { label: "会話フロー", description: "許可された文脈から参加を判断します。対象メッセージ数による文脈の有効化が必要です。", choices: { legacy: "従来", contextual_v1: "文脈フロー（試行）" } },
-  "participation.thread-scope": {"label": "スレッドの範囲", "description": "スレッドをIDで個別に選択します。親チャンネルの設定は継承しません。", "messages": {"invalid": "参照可能なスレッドIDと、少なくとも一つの変更を指定してください。", "needs-observation": "自発的な発言を許可する前に、このスレッドの観察を有効にしてください。", "done": "スレッドの範囲を更新しました。判定サービス、会話履歴、参加設定も適用されます。"}},
+  "participation.thread-scope": {"label": "スレッドの範囲", "description": "スレッドをIDで選択します。親チャンネルはスレッドを含みません。", "messages": {"invalid": "このサーバーのスレッドIDと、一つ以上の変更を指定してください。", "needs-observation": "先にこのスレッドの観察を有効にしてください。", "done": "スレッドの範囲を更新しました。"}},
   "participation.thread-scope.thread-id": {"label": "スレッドID", "description": "このサーバーでボットが参照できるスレッドのID。"},
   "participation.thread-scope.observe": {"label": "観察", "description": "このスレッドの受動的な読み取りと会話継続を許可します。"},
   "participation.thread-scope.spontaneous": {"label": "自発的な発言", "description": "自発的な発言の許可リストに追加します。全体の参加設定も適用されます。"},
-  "participation.status": {"label": "参加の状態", "description": "判定サービスと受動的に読むチャンネルを確認します。", "messages": {"available": "判定サービスは利用可能です。会話履歴、チャンネル選択、参加機能の有効化も必要です。", "paused": "構造化判定サービスと代替サービスが利用できないため、自動参加は一時停止中です。明示的な依頼は利用できます。", "scope": "受動的に読むチャンネルは{count}件です。スレッドは個別に選択してください。"}},
+  "participation.status": {"label": "参加の状態", "description": "自動参加が動作できるか表示します。", "messages": {"available": "準備完了。会話の継続かグループ参加を有効にし、チャンネルを選んでください。", "paused": "一時停止中：会話モデルが未設定です。メンションは使えます。", "scope": "{count} 件のチャンネルを観察中。スレッドは個別に選択します。"}},
   "participation.observation-channels": {"label": "観察と会話継続のチャンネル", "description": "受動的な読み取りと自動参加の範囲。空ならどこも読みません。"},
   "participation.observation-channels.channels": {"label": "チャンネル", "description": "選択したチャンネル・スレッドのみ。共有記憶は他の場所を読む許可にはなりません。"},
   "participation.controls.messages-per-decision": {"label": "判定までのメッセージ数", "description": "自発的な参加を検討するまでのメッセージ数（1-20）。会話の継続や直接の呼びかけは待ちません。"},

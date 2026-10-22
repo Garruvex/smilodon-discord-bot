@@ -160,14 +160,13 @@ export class StatusCommand implements BotCommand {
       if (profile && channelId) {
         const plan = resolveConversationTurnPlan(profile, channelId);
         const effective = effectiveChatCapabilities({ ...chat, toolsEnabled: chat.toolCallingEnabled }, {
-          guarded: plan.context === "guarded_text", blocked: plan.state === "blocked" || !this.models.chat, nativeWebSearchSupported: this.nativeWebSearchSupported(),
+          guarded: plan.context === "guarded_text", blocked: !this.models.chat, nativeWebSearchSupported: this.nativeWebSearchSupported(),
           applicationToolsSupported: this.applicationToolsSupported(),
           imageGenerationSupported: this.imageGenerationSupported(),
         });
         embed.addFields({ name: text.chat.effectiveTitle, value: [
           text.chat.tools({ webSearch: effective.webSearchMode === "auto" ? text.auto : text.off, tools: onOff(text, effective.toolsEnabled) }),
           text.chat.images({ read: onOff(text, effective.imageInputEnabled), make: onOff(text, effective.imageGenerationEnabled) }),
-          ...(plan.state === "blocked" ? [text.chat.flowBlocked] : []),
           ...(plan.context === "guarded_text" ? [text.chat.excludedSources] : []),
         ].join("\n") });
       }

@@ -1,7 +1,6 @@
 import type { Guild } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 import { effectiveChatPolicy } from "../../src/application/chat/effective-chat-policy.js";
-import { characterSettings } from "../../src/application/chat/character-settings.js";
 import { defaultParticipation } from "../../src/application/chat/participation-policy.js";
 import { settingsText } from "../../src/application/i18n/settings/index.js";
 import { renderChatPolicy } from "../../src/infrastructure/discord/settings/groups/chat-policy-report.js";
@@ -12,21 +11,17 @@ const readiness = { reply: true, decision: true, botRead: true };
 function profile(): ReturnType<typeof freshProfile> {
   const p = freshProfile(); p.features.chatbot = true; p.features.channelHistory = true;
   p.channels.chatbot = new Set([channelId]);
-  p.character = { ...characterSettings(p), context: { ...characterSettings(p).context, enabled: true, retrievalMode: "eligible_count" } };
   return p;
 }
 
 describe("effective chat policy", () => {
-  it("reports contextual precondition failure from the same plan used by execution", () => {
-    const p = profile(); p.character!.context.enabled = false;
-    p.chat.participation = { ...defaultParticipation, flowVersion: "contextual_v1" };
-    const policy = effectiveChatPolicy(p, channelId, readiness);
-    expect(policy.turnPlan).toMatchObject({ state: "blocked", reason: "context_disabled" });
-    expect(policy.modes.every((mode) => mode.reasons.includes("context_disabled"))).toBe(true);
-    expect(renderChatPolicy({ profile: p, text: settingsText("en") }, channelId, readiness)).toContain("Effective pipeline:");
+  it("renders a short overview without legacy or pipeline wording", () => {
+    const out = renderChatPolicy({ profile: profile(), text: settingsText("en") }, channelId, readiness);
+    expect(out).toContain("Chat policy for");
+    expect(out).not.toMatch(/legacy|pipeline|flow/iu);
   });
   it("requires readable current sources for every direct-chat configuration", () => {
-    const p = profile(); p.character!.context.retrievalMode = "legacy";
+    const p = profile();
     const policy = effectiveChatPolicy(p, channelId, { ...readiness, botRead: false });
     expect(policy.historyReasons).toContain("bot_cannot_read");
     expect(policy.modes[0]?.reasons).toContain("bot_cannot_read");
@@ -62,7 +57,7 @@ describe("effective chat policy", () => {
   it("reports guarded exclusions even when history is off and keeps background scope independent", () => {
     const p = profile(); p.features.channelHistory = false; p.chat.contextDailyChannelIds = [channelId];
     const policy = effectiveChatPolicy(p, channelId, readiness);
-    expect(policy.guarded).toBe(true); expect(policy.historyReasons).toContain("history_disabled");
+    expect(policy.historyReasons).toContain("history_disabled");
     expect(policy.daily).toBe(true); expect(policy.scan).toBe(false);
     p.chat.channelMemoryModes = { [channelId]: "disabled" };
     expect(effectiveChatPolicy(p, channelId, readiness).historyReasons).toContain("memory_disabled");
@@ -87,27 +82,28 @@ describe("effective chat policy", () => {
       expect(result).not.toContain("participation.policy");
     }
     expect(JSON.stringify(p)).toBe(original);
-    expect(renderChatPolicy({ profile: p, text }, channelId, readiness, "context")).toContain(text.message("participation.policy", "exclusions"));
+    expect(renderChatPolicy({ profile: p, text }, channelId, readiness, "context")).toContain(text.message("participation.policy", "history_disabled"));
   });
 });
 
 describe("protected policy settings report", () => {
-  it("persists a pilot flow and shadow override without changing other channels", async () => {
+  it("persists a shadow override without changing other channels", async () => {
     const fixture = engineFixture();
-    await fixture.run("participation.participation-channel", slashValues({ channel: { id: channelId }, "flow-version": "contextual_v1", shadow: true }));
-    expect(fixture.profiles.current().chat.participation?.channelOverrides[channelId]).toMatchObject({ flowVersion: "contextual_v1", shadowMode: true });
-    expect(fixture.profiles.current().chat.participation?.flowVersion).toBe("legacy");
+    await fixture.run("participation.participation-channel", slashValues({ channel: { id: channelId }, shadow: true }));
+    expect(fixture.profiles.current().chat.participation?.channelOverrides[channelId]).toMatchObject({ shadowMode: true });
     expect(fixture.profiles.current().chat.participation?.channelOverrides["500000000000000099"]).toBeUndefined();
   });
-  it("requires explicit thread observation before selecting a contextual pilot", async () => {
+  it("requires explicit thread observation before enabling spontaneous participation", async () => {
     const fixture = engineFixture(); const id = "500000000000000099";
     const guild = { id: guildId, channels: { fetch: () => Promise.resolve({ guildId, isThread: () => true }) } } as unknown as Guild;
     const setting = fixture.engine.find("participation.thread-scope")!;
-    await fixture.engine.run(setting, { guildId, guild, actorUserId, language: "en", values: slashValues({ "thread-id": id, "flow-version": "contextual_v1", shadow: true }) }, { kind: "panel" });
+    await fixture.engine.run(setting, { guildId, guild, actorUserId, language: "en", values: slashValues({ "thread-id": id, spontaneous: true, shadow: true }) }, { kind: "panel" });
     expect(fixture.profiles.current().chat.participation?.channelOverrides[id]).toBeUndefined();
-    await fixture.engine.run(setting, { guildId, guild, actorUserId, language: "en", values: slashValues({ "thread-id": id, observe: true, "flow-version": "contextual_v1", shadow: true }) }, { kind: "panel" });
+    await fixture.engine.run(setting, { guildId, guild, actorUserId, language: "en", values: slashValues({ "thread-id": id, observe: true, spontaneous: true, shadow: true }) }, { kind: "panel" });
     expect(fixture.profiles.current().chat.participation?.observationChannelIds).toContain(id);
-    expect(fixture.profiles.current().chat.participation?.channelOverrides[id]).toMatchObject({ flowVersion: "contextual_v1", shadowMode: true });
+    expect(fixture.profiles.current().chat.participation?.spontaneousChannelIds).toContain(id);
+    expect(fixture.profiles.current().chat.participation?.spontaneousChannelIds).toContain(id);
+    expect(fixture.profiles.current().chat.participation?.channelOverrides[id]).toMatchObject({ shadowMode: true });
   });
   function fixture(allowed = true): { run: () => Promise<string>; fetch: ReturnType<typeof vi.fn> } {
     const { engine } = engineFixture({ deps: { chatProviderAvailable: true } });
@@ -126,14 +122,14 @@ describe("protected policy settings report", () => {
   });
   it("denies unreadable channels and hides fetch errors", async () => {
     const { run, fetch } = fixture(false);
-    expect(await run()).toContain("could not be verified");
+    expect(await run()).toBe(settingsText("en").message("participation.policy", "denied"));
     fetch.mockRejectedValue(new Error("SECRET_CHANNEL_ERROR"));
-    const result = await run(); expect(result).toContain("could not be verified"); expect(result).not.toContain("SECRET");
+    const result = await run(); expect(result).toBe(settingsText("en").message("participation.policy", "denied")); expect(result).not.toContain("SECRET");
   });
   it("does not select an arbitrary channel when the panel has no parameters", async () => {
     const fixture = engineFixture();
     const result = await fixture.run("participation.policy", slashValues({}));
     expect(result.kind).toBe("report");
-    if (result.kind === "report") expect(result.text).toContain("Choose a channel or thread");
+    if (result.kind === "report") expect(result.text).toBe(settingsText("en").message("participation.policy", "choose"));
   });
 });
