@@ -34,7 +34,7 @@ export class ConfigurationModelGateway {
       personaDrift: null, userCustomization: null, currentUser: { id: "synthetic-reviewer", displayName: "Reviewer", roleNames: [] },
       mentionedUsers: [], recentHistory: [], memories: [], guildKnowledge: [], causalChains: [], message: context.question,
       replyChain: [], replyChainSummary: null, channelHistory: [], birthday: null, images: [], enabledTools: [],
-      webSearchMode: "off" as const, imageGenerationEnabled: false, includeSources: false, triggerMode: "direct" as const,
+      webSearchMode: "off" as const, imageGenerationEnabled: false, includeSources: false, interaction: "direct_mention" as const,
       characterContext: candidate ? [{ moduleId: "synthetic-evaluation", text:
         "Answer this hypothetical character interview using authored persona configuration only. No participant history, memories or learned state is available. Do not invent remembered interactions. Answer explicit questions normally, keep acknowledgments brief, and do not prolong a closing with generic help." }] : [],
     }), beforeModelAttempt: check });

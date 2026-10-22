@@ -27,7 +27,7 @@ function baseRequest(overrides: Partial<ChatRequest> = {}): ChatRequest {
     webSearchMode: "off",
     imageGenerationEnabled: false,
     includeSources: false,
-    triggerMode: "direct",
+    interaction: "direct_mention",
     ...overrides,
   };
 }
@@ -60,7 +60,7 @@ describe("naturalness prompt regressions", () => {
     expect(context).toContain("Synthetic event note (not human-authored)");
   });
   it("does not turn reaction emoji into compulsory engagement", () => {
-    const instructions = buildChatInstructions(baseRequest({ triggerMode: "reaction" }), chatSafetyGuard);
+    const instructions = buildChatInstructions(baseRequest({ interaction: "reaction" }), chatSafetyGuard);
     expect(instructions).toContain("Default to silence");
     expect(instructions).toContain("Do not tag reactors");
     expect(instructions).not.toContain("prefer this to doing nothing at all");
@@ -141,20 +141,23 @@ describe("buildChatInstructions", () => {
     expect(instructions).toMatch(/a URL, filename, quote, or\s+exact wording you did not actually see/);
   });
 
-  it("only includes ambient-judgment guidance when triggerMode is ambient", () => {
-    const direct = buildChatInstructions(baseRequest({ triggerMode: "direct" }), chatSafetyGuard);
-    expect(direct).not.toMatch(/not directly addressed/);
+  it("treats a name address as explicit and keeps optional guidance for unaddressed turns", () => {
+    const direct = buildChatInstructions(baseRequest({ interaction: "direct_mention" }), chatSafetyGuard);
+    expect(direct).not.toMatch(/Optional participation/);
     expect(direct).toMatch(/Set ambientAction to "reply"/);
 
-    const ambient = buildChatInstructions(baseRequest({ triggerMode: "ambient" }), chatSafetyGuard);
-    expect(ambient).toMatch(/not directly addressed/);
-    expect(ambient).toMatch(/"ignore"/);
-    expect(ambient).toMatch(/reactionEmoji/);
-    expect(ambient).toMatch(/independent/i);
+    const named = buildChatInstructions(baseRequest({ interaction: "name_address" }), chatSafetyGuard);
+    expect(named).toMatch(/Set ambientAction to "reply"/);
+    expect(named).not.toMatch(/Optional participation/);
+
+    const group = buildChatInstructions(baseRequest({ interaction: "group_conversation" }), chatSafetyGuard);
+    expect(group).toMatch(/Optional participation/);
+    expect(group).toMatch(/"ignore"/);
+    expect(group).toMatch(/reactionEmoji/);
   });
 
   it("gives a reaction-triggered turn its own prompt section, distinct from ambient's, without the ambient-only \"name merely appeared\" framing", () => {
-    const reaction = buildChatInstructions(baseRequest({ triggerMode: "reaction" }), chatSafetyGuard);
+    const reaction = buildChatInstructions(baseRequest({ interaction: "reaction" }), chatSafetyGuard);
     expect(reaction).toMatch(/Reaction trigger/);
     expect(reaction).toMatch(/reacted/i);
     expect(reaction).not.toMatch(/name merely appeared/);
@@ -162,7 +165,7 @@ describe("buildChatInstructions", () => {
     expect(reaction).toMatch(/"ignore"/);
     expect(reaction).toMatch(/reactionEmoji/);
 
-    const ambient = buildChatInstructions(baseRequest({ triggerMode: "ambient" }), chatSafetyGuard);
+    const ambient = buildChatInstructions(baseRequest({ interaction: "name_address" }), chatSafetyGuard);
     expect(ambient).not.toMatch(/Reaction trigger/);
   });
 

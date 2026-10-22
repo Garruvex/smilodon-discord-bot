@@ -7,7 +7,7 @@ import { diagnosticRecord } from "../helpers/chat-trace-fixtures.js";
 
 const decision = (status: "ready" | "failed" = "ready"): ChatDiagnosticEvent => ({ event: "chat.decision.resolved", stage: "generation", interaction: "bare_ping", status,
   recovery: "none", decisionId: "decision", action: "silent", intent: "abstain", reason: status === "failed" ? "no_valid_decision" : "no_contribution", contextVersion: "v1", policyVersion: "v1" });
-const turn = (outcome: "no_text_delivery" | "text_delivered" | "delivered_state_unsaved" | "failed"): ChatDiagnosticEvent => ({ event: "chat.turn.completed", triggerMode: "direct", outcome,
+const turn = (outcome: "no_text_delivery" | "text_delivered" | "delivered_state_unsaved" | "failed"): ChatDiagnosticEvent => ({ event: "chat.turn.completed", interaction: "direct_mention", outcome,
   textDeliveryConfirmed: outcome === "text_delivered" || outcome === "delivered_state_unsaved", durationMs: 10 });
 function trace(events: ChatDiagnosticEvent[], overrides: Partial<RetainedChatTrace> = {}): RetainedChatTrace {
   return { traceId: "trace", processRunId: "run", truncated: false,
@@ -21,7 +21,7 @@ describe("recorded chat explanations", () => {
       { event: "model.operation.completed", purpose: "reply", status: "completed", durationMs: 8454 },
       { event: "model.gateway.rejected", purpose: "reply", phase: "result" },
       { event: "chat.model.completed", purpose: "reply", status: "failed", durationMs: 8808, failure: "guard_rejected" },
-      { event: "chat.turn.completed", triggerMode: "direct", outcome: "suppressed", textDeliveryConfirmed: false, durationMs: 12519 },
+      { event: "chat.turn.completed", interaction: "direct_mention", outcome: "suppressed", textDeliveryConfirmed: false, durationMs: 12519 },
     ];
     expect(explainChatTrace([trace(events)])).toMatchObject({ outcome: "suppressed", reason: "model_gateway_result", modelFailures: 0 });
     const olderBuildEvents = events.map((event): ChatDiagnosticEvent => event.event === "chat.model.completed" ? { ...event, failure: "provider_error" } : event);
@@ -44,7 +44,7 @@ describe("recorded chat explanations", () => {
     const candidate = { event: "chat.candidate.changed" as const, candidateId: "candidate", action: "scheduled" as const, reason: "cooldown" as const, messages: 1, delayMs: 25000 };
     expect(explainChatTrace([trace([candidate])])).toMatchObject({ outcome: "incomplete", reason: "candidate_cooldown" });
     expect(explainChatTrace([trace([{ ...candidate, action: "expired", reason: "deadline" }])])).toMatchObject({ outcome: "suppressed", reason: "candidate_expired" });
-    expect(explainChatTrace([trace([{ event: "chat.turn.deadline", budgetMs: 30000 }, { event: "chat.turn.completed", triggerMode: "spontaneous", outcome: "failed", textDeliveryConfirmed: false, durationMs: 30000, failure: "timeout" }])])).toMatchObject({ outcome: "suppressed", reason: "turn_deadline" });
+    expect(explainChatTrace([trace([{ event: "chat.turn.deadline", budgetMs: 30000 }, { event: "chat.turn.completed", interaction: "group_conversation", outcome: "failed", textDeliveryConfirmed: false, durationMs: 30000, failure: "timeout" }])])).toMatchObject({ outcome: "suppressed", reason: "turn_deadline" });
   });
   const cases: [string, ChatDiagnosticEvent[], ChatExplanationOutcome][] = [
     ["valid silence", [decision(), turn("no_text_delivery")], "intentional_silence"],
@@ -57,8 +57,8 @@ describe("recorded chat explanations", () => {
     ["failed delivery", [{ event: "chat.delivery.completed", plannedParts: 1, deliveredParts: 0, status: "failed", failure: "http_error" }, turn("failed")], "delivery_failed"],
     ["source changed", [{ event: "chat.output.suppressed", reason: "context_changed" }], "source_invalidated"],
     ["duplicate", [{ event: "chat.route.skipped", behaviorId: "mention", reason: "duplicate" }], "duplicate"],
-    ["access denial", [{ event: "context.eligibility.denied", sourceMessageId: "source", purpose: "direct", reason: "access_denied" }], "access_denied"],
-    ["feature off", [{ event: "context.eligibility.denied", sourceMessageId: "source", purpose: "direct", reason: "chat_disabled" }], "feature_disabled"],
+    ["access denial", [{ event: "context.eligibility.denied", sourceMessageId: "source", purpose: "direct_mention", reason: "access_denied" }], "access_denied"],
+    ["feature off", [{ event: "context.eligibility.denied", sourceMessageId: "source", purpose: "direct_mention", reason: "chat_disabled" }], "feature_disabled"],
     ["reaction confirmed", [{ event: "chat.output.reservation", reservationId: "reservation", kind: "reaction", optional: true, continuation: false, status: "committed", reason: "delivered" }], "reacted"],
     ["interrupted silence is still unknown", [decision(), { event: "chat.trace.interrupted", reason: "previous_process_incomplete", unfinishedSpans: 1, unfinishedJobs: 0, unfinishedOpportunities: 0 }], "interrupted_unknown"],
     ["model failure after a silent decision", [decision(), { event: "chat.model.completed", purpose: "reply", status: "failed", failure: "timeout", durationMs: 20 }], "provider_failed"],

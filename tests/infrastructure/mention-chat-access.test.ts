@@ -2,7 +2,7 @@ import type { GuildMember, Message } from "discord.js";
 import { GuildMemberRoleManager } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MentionChatAccess, memberLookupDeadlineMs } from "../../src/infrastructure/discord/behaviors/mention-chat-access.js";
-import { ChatAccessService } from "../../src/application/access/chat-access-service.js";
+import { ChatPolicy } from "../../src/application/chat/chat-policy.js";
 import type { ApplicationConfiguration } from "../../src/config/configuration.js";
 import { freshDocument, memoryProvider, guildId } from "../helpers/settings-fixtures.js";
 import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
@@ -12,7 +12,7 @@ function fixture(): { access: MentionChatAccess; message: Message; fetch: Return
   const document = freshDocument(); document.features.chatbot = true;
   const profiles = memoryProvider(document);
   const { logger } = captureDiagnosticLogger();
-  const access = new MentionChatAccess(new ChatAccessService({ ownerUserIds: new Set() } as unknown as ApplicationConfiguration), profiles, logger);
+  const access = new MentionChatAccess(new ChatPolicy({ ownerUserIds: new Set() } as unknown as ApplicationConfiguration), profiles, logger);
   const fetch = vi.fn<(options: unknown) => Promise<GuildMember | null>>();
   const message = { guildId, channelId: "channel", author: { id: "human" }, member: null, guild: { members: { fetch } } } as unknown as Message;
   const member = { roles: { cache: new Map([[document.roles.botAdministrator[0]!, {}]]) } } as unknown as GuildMember;

@@ -8,7 +8,7 @@ import { contextualDecisionProviders } from "../application/chat/contextual-deci
 import { contextualReplayCases } from "../application/chat/contextual-replay.js";
 import { syntheticReplayContext, syntheticReplayConfiguration } from "../application/chat/synthetic-replay-context.js";
 import type { ChatProvider, ChatResponse, ChatUser, StructuredCharacterProvider } from "../application/chat/chat-provider.js";
-import type { ConversationInteraction } from "../application/chat/conversation-trigger.js";
+import { chatInteractions, type ChatInteraction } from "../application/chat/chat-policy.js";
 import { conversationEffects } from "../application/chat/conversation-effects.js";
 import { createGuardedMemoryEngine } from "../application/context/guarded-memory-gateway.js";
 import { safeFailure } from "../application/diagnostics/chat-diagnostics.js";
@@ -24,10 +24,10 @@ import { createSqliteDatabaseConnection } from "../infrastructure/database/sqlit
 import { SqliteMemoryRepository } from "../infrastructure/persistence/sqlite-memory-repository.js";
 import { SqliteChatStateStore } from "../infrastructure/persistence/sqlite-chat-state-store.js";
 
-const modes: readonly ConversationInteraction[] = ["direct_mention", "explicit_reply", "bare_ping", "name_address", "implicit_followup", "group_conversation", "reaction"];
+const modes: readonly ChatInteraction[] = chatInteractions;
 const args = process.argv.slice(2);
 const argument = (name: string): string | undefined => { const index = args.indexOf(name); return index < 0 ? undefined : args[index + 1]; };
-interface Result { language: string; mode: ConversationInteraction; passed: boolean; durationMs: number; action: string | null; reason: string | null;
+interface Result { language: string; mode: ChatInteraction; passed: boolean; durationMs: number; action: string | null; reason: string | null;
   decisionCalls: number; generationCalls: number; verificationCalls: number; simulatedTextDeliveries: number; replyChars: number; generationTokens: number | null; failure?: ReturnType<typeof safeFailure> }
 async function main(): Promise<void> {
   if (args.includes("--help")) { process.stdout.write("Usage: npm run eval:conversation -- [--live --instance pinecone] [--output report.json]\n21 synthetic application-service turns: seven modes and three languages. Real configured decision/reply providers in live mode; simulated source access and delivery, zero Discord sends. No production settings change.\n"); return; }
@@ -102,8 +102,7 @@ async function main(): Promise<void> {
         personality: persona.material.text, configurationContext: persona,
         loreChunks: [], examplePool: [], personaDrift: null, currentUser: mode === "reaction" ? { id: botId, displayName: "Pinecone", roleNames: [], kind: "bot" } : human,
         mentionedUsers: [], message: fixture.current.content, replyChain: [], channelHistory: [], images: [], webSearchMode: "off", imageGenerationEnabled: false, includeSources: false,
-        toolsEnabled: false, historyReactionsEnabled: true, botUserId: botId, interactionMode: mode,
-        triggerMode: mode === "name_address" ? "ambient" : mode === "implicit_followup" ? "continuation" : mode === "group_conversation" ? "spontaneous" : mode === "reaction" ? "reaction" : "direct",
+        toolsEnabled: false, historyReactionsEnabled: true, botUserId: botId, interaction: mode,
         currentEvent: mode === "reaction" ? { type: "reaction_snapshot", channelId, targetMessageId: sourceId, targetAuthorId: botId, observedAt: started, complete: true,
           exactReactionTimes: "unknown", reactions: [{ emoji: "👍", emojiId: null, actorIds: [human.id] }] } : { type: "message", messageId: sourceId, channelId,
           timestampMs: started, authorId: human.id, replyToMessageId: fixture.current.replyToMessageId ?? null, mentionedUserIds: [] },

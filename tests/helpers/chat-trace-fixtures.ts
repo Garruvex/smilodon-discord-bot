@@ -5,7 +5,7 @@ export function diagnosticRecord(overrides: Partial<ChatDiagnosticRecord> = {}):
   return { schemaVersion: 1, processRunId: diagnosticProcessRunId, timestampMs: 1000, eventSequence: 1,
     scope: { operation: "chat_turn", traceId: "trace", spanId: "span", traceSequence: 1,
       guildId: "guild", channelId: "channel", sourceMessageId: "source" },
-    data: { event: "chat.turn.started", triggerMode: "direct" }, ...overrides };
+    data: { event: "chat.turn.started", interaction: "direct_mention" }, ...overrides };
 }
 
 export class MemoryChatTraceStore implements ChatTraceStore {

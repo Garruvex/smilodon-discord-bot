@@ -23,7 +23,7 @@ describe("chat diagnostic boundary", () => {
     vi.spyOn(store, "record").mockImplementation(() => { throw new Error("SECRET_RETENTION_FAILURE"); });
     attachDiagnosticStore(logger, store);
     withDiagnosticScope({ operation: "chat_turn", guildId: "guild", channelId: "channel", sourceMessageId: "source" }, () => {
-      emitChatDiagnostic(logger, { event: "chat.turn.started", triggerMode: "direct" });
+      emitChatDiagnostic(logger, { event: "chat.turn.started", interaction: "direct_mention" });
     });
     expect(records).toHaveLength(1);
     expect(diagnosticPipelineStatus(logger)).toMatchObject({ attempted: 1, retentionFailures: 1, logFailures: 0 });
@@ -31,8 +31,8 @@ describe("chat diagnostic boundary", () => {
   });
   it("counts invalid events, unscoped metadata and throwing log sinks without affecting callers", () => {
     const logger = { info: (): never => { throw new Error("SECRET"); }, warn: (): never => { throw new Error("SECRET"); } };
-    emitChatDiagnostic(logger, { event: "chat.turn.started", triggerMode: "direct" });
-    emitChatDiagnostic(logger, { event: "chat.turn.started", triggerMode: "invalid" } as never);
+    emitChatDiagnostic(logger, { event: "chat.turn.started", interaction: "direct_mention" });
+    emitChatDiagnostic(logger, { event: "chat.turn.started", interaction: "invalid" } as never);
     expect(diagnosticPipelineStatus(logger)).toEqual({ attempted: 2, invalidEvents: 1, unscopedEvents: 1, retentionFailures: 0, logFailures: 1 });
   });
   it("strips arbitrary runtime fields and emits no raw error content", () => {
@@ -61,7 +61,7 @@ describe("chat diagnostic boundary", () => {
     await Promise.all(["a", "b"].map((sourceMessageId) => withDiagnosticScope({ operation: "dispatch", sourceMessageId }, async () => {
       emitChatDiagnostic(logger, { event: "chat.ingress.received", kind: "message_created" });
       await Promise.resolve();
-      withDiagnosticScope({ operation: "chat_turn", sourceMessageId }, () => emitChatDiagnostic(logger, { event: "chat.turn.started", triggerMode: "direct" }));
+      withDiagnosticScope({ operation: "chat_turn", sourceMessageId }, () => emitChatDiagnostic(logger, { event: "chat.turn.started", interaction: "direct_mention" }));
     })));
     for (const id of ["a", "b"]) {
       const [ingress, turn] = records.filter((record) => record.sourceMessageId === id);
@@ -100,6 +100,6 @@ describe("chat diagnostic boundary", () => {
   it("does not let a failed telemetry sink interrupt processing", () => {
     const { logger } = captureDiagnosticLogger();
     vi.spyOn(logger, "info").mockImplementation(() => { throw new Error("sink failed"); });
-    expect(() => emitChatDiagnostic(logger, { event: "chat.turn.started", triggerMode: "direct" })).not.toThrow();
+    expect(() => emitChatDiagnostic(logger, { event: "chat.turn.started", interaction: "direct_mention" })).not.toThrow();
   });
 });

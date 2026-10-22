@@ -9,7 +9,6 @@ import { characterSettings } from "../../../application/chat/character-settings.
 import { conversationEffects } from "../../../application/chat/conversation-effects.js";
 import { resolveChannelMemoryMode } from "../../../application/memory/memory-channel-policy.js";
 
-import { ChatAccessService } from "../../../application/access/chat-access-service.js";
 import { BehaviorEvent, BehaviorResult, type BotBehavior } from "../../../application/behaviors/behavior.js";
 import type { ChannelHistoryMessage, ReplyChainMessage } from "../../../application/chat/chat-provider.js";
 import { ChatStateCommitError, type ChatConversationService, type ChatConversationInput } from "../../../application/chat/chat-conversation-service.js";
@@ -19,12 +18,12 @@ import type { GuildConfigurationProvider } from "../../../config/guild-configura
 import { addressesBotName } from "../../../domain/chat/name-mention.js";
 import type { MessageReactionWatchStore } from "../../../application/chat/message-reaction-watch.js";
 import { ChatTurnSupport } from "./chat-turn-support.js";
-import { isInGameChannel, type IsGameChannel } from "./game-channel-guard.js";
+import type { IsGameChannel } from "./game-channel-guard.js";
 
 // Handles messages that merely name the bot (per its configured
 // branding.displayName) without an explicit @mention. Unlike
 // MentionChatBehavior, which always replies, here the model itself judges
-// whether to reply, react with an emoji, both, or neither — see triggerMode
+// whether to reply, react with an emoji, both, or neither — see interaction
 // "ambient" on ChatRequest and ChatConversationService's short-circuit for
 // non-"reply" outcomes. Opt-in per guild via features.ambientReplies.
 export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCreated> {
@@ -34,7 +33,6 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
   // wins if a message somehow matched both (in practice it can't: matches()
   // below explicitly defers to an existing @mention).
   public readonly priority = 90;
-  private readonly chatAccess: ChatAccessService;
   private readonly turnSupport: ChatTurnSupport;
 
   public constructor(
@@ -47,11 +45,11 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     // See MentionChatBehavior's own doc comment on this same param.
     private readonly messageReactionWatchStore: MessageReactionWatchStore | null = null,
     // The narrator owns a D&D game's channels; chat stays out of them.
-    private readonly isGameChannel: IsGameChannel | null = null,
+    // Game ownership is enforced by the eligibility gate below.
+    _isGameChannel: IsGameChannel | null = null,
     eligibility: SocialChatEligibility | null = null,
     origins: MessageOriginStore | null = null,
   ) {
-    this.chatAccess = new ChatAccessService(configuration);
     this.turnSupport = new ChatTurnSupport(logger, eligibility, origins, (message) => {
       if (message.guildId) this.conversation?.excludeInteraction(message.guildId, message.channelId, message.id);
     });
@@ -65,42 +63,23 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     if (message.mentions.users.has(botId)) return false;
     const profile = this.profiles.find(message.guildId);
     if (!profile) return false;
-    // `named` is computed before the feature/access/cooldown gates below so
-    // those gates can log a debug reason only when the bot's name was
-    // actually said — logging on every unrelated message would be too
-    // noisy to be useful.
+    // Name matching runs first so the common gate records a denial reason
+    // only when the bot's name was actually said.
     const liveNickname = message.guild.members.me?.nickname ?? message.guild.members.me?.displayName;
     const named =
       addressesBotName(message.content, profile.displayName) ||
       (liveNickname ? addressesBotName(message.content, liveNickname) : false);
-    if (!named) return false;
-    const logContext = { guildId: message.guildId, channelId: message.channelId, messageId: message.id };
-    if (!profile.features.chatbot || !profile.features.ambientReplies) {
-      this.logger.debug(logContext, "Ambient chat: name mentioned but ambientReplies feature is disabled for this guild");
-      return false;
-    }
-    if (!this.conversation) {
-      this.logger.debug(logContext, "Ambient chat: name mentioned but no conversation service is configured");
-      return false;
-    }
-    if (!this.chatAccess.canUseMentionChat(profile, message.member, message.author.id, message.channelId)) {
-      this.logger.debug(logContext, "Ambient chat: name mentioned but access policy denied this user/channel");
-      return false;
-    }
-    if (await isInGameChannel(message, this.isGameChannel)) {
-      this.logger.debug(logContext, "Ambient chat: name mentioned in a D&D game channel, which the narrator owns");
-      return false;
-    }
-    if (!await this.turnSupport.isEligible(message, "ambient")) return false;
-    return true;
+    if (!named || !this.conversation) return false;
+    // Feature, access, game-channel and origin rules all live in the gate.
+    return this.turnSupport.isEligible(message, "name_address");
   }
 
-  public async execute(message: Message, trigger: "ambient" | "continuation" | "spontaneous" = "ambient", burst: readonly Message[] = [], candidateId?: string): Promise<BehaviorResult> {
-    if (trigger === "ambient" && message.guildId) this.conversation?.cancelOptionalOpportunity?.(message.guildId, message.channelId, "addressed_request");
+  public async execute(message: Message, interaction: "name_address" | "implicit_followup" | "group_conversation" = "name_address", burst: readonly Message[] = [], candidateId?: string): Promise<BehaviorResult> {
+    if (interaction === "name_address" && message.guildId) this.conversation?.cancelOptionalOpportunity?.(message.guildId, message.channelId, "addressed_request");
     if (!message.inGuild() || !this.conversation) return BehaviorResult.Continue;
     const profile = this.profiles.find(message.guildId);
     if (!profile) return BehaviorResult.Continue;
-    if (!await this.turnSupport.isEligible(message, trigger)) return BehaviorResult.Continue;
+    if (!await this.turnSupport.isEligible(message, interaction)) return BehaviorResult.Continue;
     const participation = resolveParticipation(profile.chat.participation, message.channelId);
 
 
@@ -126,7 +105,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       const images: ChatConversationInput["images"] = [];
       const musicActor = this.turnSupport.resolveMusicActor(message, profile);
       const persona = await this.personaSource.resolve(profile);
-      const eligible = this.turnSupport.createEligibilityCheck(message, trigger);
+      const eligible = this.turnSupport.createEligibilityCheck(message, interaction);
       const response = await this.conversation.run({
         guildId: message.guildId,
         channelId: message.channelId,
@@ -173,7 +152,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         },
         mentionedUsers,
         currentBurst: this.turnSupport.toChannelHistoryMessages((await Promise.all(burst.map(async (item) =>
-          await this.turnSupport.isEligible(item, trigger) ? item : null))).filter((item): item is Message => item !== null)).map((event) => ({ ...event, content: event.content.slice(0, 500) })),
+          await this.turnSupport.isEligible(item, interaction) ? item : null))).filter((item): item is Message => item !== null)).map((event) => ({ ...event, content: event.content.slice(0, 500) })),
         message: message.content,
         replyChain,
         replyChainOverflow,
@@ -181,14 +160,13 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         images,
         imageInputEnabled: profile.chat.imageInputEnabled, maxImagesPerRequest: profile.chat.maxImagesPerRequest,
         webSearchMode: profile.chat.webSearchMode,
-        imageGenerationEnabled: trigger === "ambient" && !participation.shadowMode && profile.chat.imageGenerationEnabled,
+        imageGenerationEnabled: interaction === "name_address" && !participation.shadowMode && profile.chat.imageGenerationEnabled,
         includeSources: profile.chat.includeSources,
-        triggerMode: trigger,
-        interactionMode: trigger === "ambient" ? "name_address" : trigger === "continuation" ? "implicit_followup" : "group_conversation",
-        allowSilentDirect: trigger === "ambient" && participation.barePingMode === "personality",
+        interaction,
+        allowSilentDirect: interaction === "name_address" && participation.barePingMode === "personality",
         historyReactionsEnabled: profile.features.historyReactions && profile.features.channelHistory,
         toolsEnabled: !participation.shadowMode && profile.chat.toolCallingEnabled,
-        ...(trigger === "ambient" ? {} : { allowedToolNames: new Set(["lookup_discord_server"]) }),
+        ...(interaction === "name_address" ? {} : { allowedToolNames: new Set(["lookup_discord_server"]) }),
         disabledToolNames: new Set(profile.chat.disabledTools),
         channelMemoryModes: profile.chat.channelMemoryModes,
         isOwner: this.configuration.ownerUserIds.has(message.author.id),
@@ -201,16 +179,16 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       }, async (deliveredResponse) => {
         const target = deliveredResponse.replyTargetMessageId && deliveredResponse.replyTargetMessageId !== message.id
           ? await message.channel.messages.fetch(deliveredResponse.replyTargetMessageId).catch(() => null) : message;
-        if (!target || !await this.turnSupport.isEligible(target, trigger)) throw new SocialOutputSuppressed();
+        if (!target || !await this.turnSupport.isEligible(target, interaction)) throw new SocialOutputSuppressed();
         const emptyFallbackContent = deliveredResponse.generatedImages.length > 0
           ? "Here you go!"
           : "I ran out of words. Very premium of me.";
         const { deliveredText, firstMessageId } = await this.turnSupport.deliverChatResponse({
           contextProvenance: deliveredResponse.contextProvenance ?? null,
           ...(deliveredResponse.contextLease ? { contextLease: deliveredResponse.contextLease } : {}),
-          sourceMessage: target, trigger, origin: deliveredResponse.outputOrigin ?? "chat",
+          sourceMessage: target, purpose: interaction, origin: deliveredResponse.outputOrigin ?? "chat",
           sender: {
-            first: (payload) => trigger !== "ambient" && target.id === message.id ? message.channel.send({ nonce: payload.nonce, enforceNonce: payload.enforceNonce, content: payload.content, files: [...payload.files], allowedMentions: { parse: [] } }) : target.reply({
+            first: (payload) => interaction !== "name_address" && target.id === message.id ? message.channel.send({ nonce: payload.nonce, enforceNonce: payload.enforceNonce, content: payload.content, files: [...payload.files], allowedMentions: { parse: [] } }) : target.reply({
               nonce: payload.nonce, enforceNonce: payload.enforceNonce,
               content: payload.content,
               files: [...payload.files],
@@ -242,7 +220,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
             replyToMessageId: target.id, replyToAuthorId: target.author.id,
           });
         if (deliveredResponse.outputOrigin !== "tool" && this.profiles.find(message.guildId)?.features.reactionReplies &&
-            this.messageReactionWatchStore && await this.turnSupport.isEligible(message, trigger)) {
+            this.messageReactionWatchStore && await this.turnSupport.isEligible(message, interaction)) {
           await this.messageReactionWatchStore.register(
             { guildId: message.guildId, channelId: message.channelId, messageId: firstMessageId },
             Date.now(),
@@ -267,7 +245,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         channelId: message.channelId,
         messageId: message.id,
         userId: message.author.id,
-        triggerMode: trigger,
+        interaction,
         shadowMode: participation.shadowMode,
         textDelivered,
         ambientAction: response.ambientAction,
@@ -278,15 +256,15 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       }, `Ambient chat: ${outcome}`);
     } catch (error) {
       if (error instanceof SocialOutputSuppressed) return BehaviorResult.Continue;
-      if (textDelivered || error instanceof ChatStateCommitError) return trigger === "ambient" ? BehaviorResult.StopPropagation : BehaviorResult.Continue;
+      if (textDelivered || error instanceof ChatStateCommitError) return interaction === "name_address" ? BehaviorResult.StopPropagation : BehaviorResult.Continue;
       this.logger.error(
         { error, guildId: message.guildId, channelId: message.channelId, messageId: message.id, userId: message.author.id },
         "Ambient chat request failed",
       );
-      if (trigger === "ambient" && await this.turnSupport.isEligible(message, "ambient")) {
+      if (interaction === "name_address" && await this.turnSupport.isEligible(message, "name_address")) {
         await withDiscordCaller("chat_text", () => message.reply({ content: "I couldn't answer that request right now. Please try again shortly.", allowedMentions: { repliedUser: false, parse: [] } }));
       }
     }
-    return trigger === "ambient" ? BehaviorResult.StopPropagation : BehaviorResult.Continue;
+    return interaction === "name_address" ? BehaviorResult.StopPropagation : BehaviorResult.Continue;
   }
 }

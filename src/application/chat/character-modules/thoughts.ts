@@ -15,7 +15,7 @@ export class ThoughtsModule implements CharacterModule {
     if (!decision || !input.optional || decision.opening !== "clear") { this.reservoir.delete(key); return request; }
     const current = input.burst.at(-1); if (!current) return request;
     const scope = JSON.stringify([exchangeBranch(input.events, current, request.botUserId ?? "bot"), decision.contribution.recipientId, decision.boundary, turn.settings, input.policy]);
-    const candidates = decision.thoughts.filter((candidate) => eligibleContribution(candidate, request.triggerMode === "spontaneous" ? "spontaneous" : "continuation", input.policy) && candidate.recipientId === decision.contribution.recipientId);
+    const candidates = decision.thoughts.filter((candidate) => eligibleContribution(candidate, request.interaction === "group_conversation" ? "spontaneous" : "continuation", input.policy) && candidate.recipientId === decision.contribution.recipientId);
     // Held candidates must be explicitly reassessed in the new valid decision.
     const held = (this.reservoir.get(key) ?? []).filter((thought) => thought.scope === scope && thought.expiresAt > turn.now &&
       candidates.some((candidate) => candidate.sourceMessageId === thought.candidate.sourceMessageId && candidate.text === thought.candidate.text));

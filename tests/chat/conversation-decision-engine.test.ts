@@ -13,13 +13,13 @@ describe("conversation decision authority", () => {
     const result = engine.assess(decisionRequest({ currentBurst: [current] }), { status: "valid", decision: proposal, attempts: [] }, fallback, true, 963000, "policy");
     expect(result.result.decision.action).toBe("silent");
   });
-  it.each(["direct_mention", "explicit_reply", "bare_ping", "name_address"] as const)("preserves %s without optional scoring", (interactionMode) => {
-    const request = decisionRequest({ triggerMode: interactionMode === "name_address" ? "ambient" : "direct", interactionMode });
+  it.each(["direct_mention", "explicit_reply", "bare_ping", "name_address"] as const)("preserves %s without optional scoring", (interaction) => {
+    const request = decisionRequest({ interaction });
     const result = engine.assess(request, failed, defaultParticipation, true, 4000, "policy");
     expect(result.result).toMatchObject({ status: "ready", decision: { action: "reply", reasonCode: "explicit_request" } });
   });
   it("requires validated social intent for explicit silence and preserves earlier request references", () => {
-    const request = decisionRequest({ triggerMode: "direct", interactionMode: "bare_ping", message: "", allowSilentDirect: true });
+    const request = decisionRequest({ interaction: "bare_ping", message: "", allowSilentDirect: true });
     expect(engine.finalize(request, decisionResponse({ ambientAction: "ignore", responseIntent: "answer", referentSourceIds: ["original"] }), 4000).decision).toMatchObject({ action: "reply", responseToEventId: null, referentSourceIds: ["original"], recipientIds: ["alice"] });
     expect(engine.finalize(request, decisionResponse({ text: "", ambientAction: "ignore", responseIntent: "social" }), 4000)).toMatchObject({ status: "ready", decision: { action: "silent", intent: "social" } });
     expect(engine.finalize(request, decisionResponse({ text: "", ambientAction: "ignore" }), 4000)).toMatchObject({ status: "failed", recovery: "error_reply" });
@@ -50,13 +50,13 @@ describe("conversation decision authority", () => {
     if (reason === "expired") now = 140_000;
     if (reason === "no_proof") request.channelHistory = [branchBot];
     if (reason === "quota") request.optionalActionsAvailable = { text: false, reaction: false };
-    if (reason === "spontaneous") request.triggerMode = "spontaneous";
-    if (reason === "reaction") request.triggerMode = "reaction";
+    if (reason === "spontaneous") request.interaction = "group_conversation";
+    if (reason === "reaction") request.interaction = "reaction";
     const result = engine.assess(request, failed, fallback, reason !== "scope", now, "policy").result;
     expect(result.decision.action).toBe("silent"); expect(result.recovery).toBe("none");
   });
   it("rejects unknown evidence in generated output without authorizing a reaction", () => {
-    const result = engine.finalize(decisionRequest({ triggerMode: "reaction" }), decisionResponse({ referentSourceIds: ["private-unknown"], reactionEmoji: "😂" }), 4000);
+    const result = engine.finalize(decisionRequest({ interaction: "reaction" }), decisionResponse({ referentSourceIds: ["private-unknown"], reactionEmoji: "😂" }), 4000);
     expect(result).toMatchObject({ status: "failed", recovery: "none", decision: { action: "silent", reasonCode: "invalid_evidence" } });
   });
   it.each(["target", "evidence", "recipient"])("rejects an ungrounded %s even if a caller labels the proposal valid", (kind) => {
@@ -64,10 +64,10 @@ describe("conversation decision authority", () => {
     if (kind === "target") proposal.target = "unapproved";
     if (kind === "evidence") proposal.recipientEvidence = ["unapproved"];
     if (kind === "recipient") proposal.contribution.recipientId = "unapproved";
-    const result = engine.assess(decisionRequest({ triggerMode: "spontaneous" }), { status: "valid", decision: proposal, attempts: [] }, fallback, true, 4000, "policy").result;
+    const result = engine.assess(decisionRequest({ interaction: "group_conversation" }), { status: "valid", decision: proposal, attempts: [] }, fallback, true, 4000, "policy").result;
     expect(result.status).toBe("failed"); expect(result.decision.action).toBe("silent"); expect(result.recovery).toBe("none");
   });
   it("preserves functional confirmations independently of playful silence", () => {
-    expect(engine.finalize(decisionRequest({ triggerMode: "direct", allowSilentDirect: true, functionalToolExecuted: true }), decisionResponse({ ambientAction: "ignore", responseIntent: "social" }), 4000).decision).toMatchObject({ action: "reply", reasonCode: "functional_confirmation" });
+    expect(engine.finalize(decisionRequest({ interaction: "direct_mention", allowSilentDirect: true, functionalToolExecuted: true }), decisionResponse({ ambientAction: "ignore", responseIntent: "social" }), 4000).decision).toMatchObject({ action: "reply", reasonCode: "functional_confirmation" });
   });
 });

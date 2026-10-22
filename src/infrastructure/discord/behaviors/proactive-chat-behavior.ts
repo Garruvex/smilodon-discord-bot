@@ -5,7 +5,7 @@ import type { ChatConversationService } from "../../../application/chat/chat-con
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
 import type { GuildConfiguration } from "../../../config/guild-configuration.js";
 import { resolveParticipation } from "../../../application/chat/participation-policy.js";
-import { characterSettings } from "../../../application/chat/character-settings.js";
+import { passiveScopeReasons } from "../../../application/chat/chat-policy.js";
 import { addressesBotName } from "../../../domain/chat/name-mention.js";
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
 import type { AmbientChatBehavior } from "./ambient-chat-behavior.js";
@@ -14,7 +14,7 @@ import { contextualFlow } from "../../../application/chat/contextual-flow.js";
 import { resolveConversationTurnPlan } from "../../../application/chat/conversation-turn-plan.js";
 import { ContextualCandidateBuffer } from "./contextual-candidate-buffer.js";
 
-type OptionalTrigger = "continuation" | "spontaneous";
+type OptionalTrigger = "implicit_followup" | "group_conversation";
 interface MessageBatch { messages: Message[]; seen: Set<string>; fingerprint: string; version: number; trigger: OptionalTrigger; participantId: string | null; timer?: ReturnType<typeof setTimeout>; firstAt: number }
 const pauseMs = 5_000;
 const singleMessagePauseMs = 12_000;
@@ -40,7 +40,7 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
   }
 
   private report(batch: MessageBatch, reason: "batch_threshold" | "pause_or_cooldown" | "continuation_candidate" | "submitted" | "invalidated", delayMs = 0): void {
-    emitChatDiagnostic(this.logger, { event: "chat.admission.buffered", triggerMode: batch.trigger, reason, messages: batch.messages.length, delayMs });
+    emitChatDiagnostic(this.logger, { event: "chat.admission.buffered", interaction: batch.trigger, reason, messages: batch.messages.length, delayMs });
   }
   private fingerprint(profile: GuildConfiguration, channelId: string): string {
     return JSON.stringify([profile.chat.participation, profile.features.chatbot, profile.features.channelHistory, profile.character,
@@ -58,19 +58,18 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
   private trigger(message: Message): OptionalTrigger | null {
     const botId = this.botId();
     const profile = message.guildId ? this.profiles.find(message.guildId) : null;
-    if (!botId || !profile || (!this.conversation.optionalDecisionAvailable && profile.chat.participation?.continuationFailureMode !== "grounded_fallback") || !profile.features.chatbot || !profile.features.channelHistory || characterSettings(profile).channelOverrides[message.channelId]?.contextEnabled === false ||
-        profile.chat.channelMemoryModes[message.channelId] === "disabled" || !message.inGuild() || message.author.bot || message.mentions.users.has(botId)) return null;
+    if (!botId || !profile || (!this.conversation.optionalDecisionAvailable && profile.chat.participation?.continuationFailureMode !== "grounded_fallback") || !profile.features.chatbot || passiveScopeReasons(profile, message.channelId, false).length > 0 || !message.inGuild() || message.author.bot || message.mentions.users.has(botId)) return null;
     if (addressesBotName(message.content, profile.displayName) || message.mentions.repliedUser?.id === botId ||
         message.reference?.messageId && message.channel?.messages?.cache?.get(message.reference.messageId)?.author.id === botId) return null;
     const policy = resolveParticipation(profile.chat.participation, message.channelId);
     if (resolveConversationTurnPlan(profile, message.channelId).state === "blocked") return null;
     if (contextualFlow(profile, message.channelId) && this.conversation.optionalDecisionAvailable && (!!message.content.trim() || (message.attachments?.size ?? 0) > 0))
-      return policy.spontaneousEnabled ? "spontaneous" : policy.continuationEnabled ? "continuation" : null;
+      return policy.spontaneousEnabled ? "group_conversation" : policy.continuationEnabled ? "implicit_followup" : null;
     if (policy.continuationEnabled && this.conversation.isImplicitlyAddressed(message.guildId, message.channelId, { messageId: message.id, timestampMs: message.createdTimestamp,
         authorId: message.author.id, authorDisplayName: message.author.displayName, content: message.content, imageCount: 0,
-        replyToMessageId: message.reference?.messageId ?? null }, botId)) return "continuation";
+        replyToMessageId: message.reference?.messageId ?? null }, botId)) return "implicit_followup";
     const hasContent = !!message.content.trim() || (message.attachments?.size ?? 0) > 0;
-    return this.conversation.optionalDecisionAvailable && policy.spontaneousEnabled && hasContent ? "spontaneous" : null;
+    return this.conversation.optionalDecisionAvailable && policy.spontaneousEnabled && hasContent ? "group_conversation" : null;
   }
   public async matches(message: Message): Promise<boolean> {
     const trigger = this.trigger(message);
@@ -95,7 +94,7 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
       this.bursts.delete(oldest);
     }
     const pending = this.pending(message, profile);
-    const participantId = trigger === "continuation" ? message.author.id : null;
+    const participantId = trigger === "implicit_followup" ? message.author.id : null;
     if (pending && (pending.trigger !== trigger || pending.participantId !== participantId) && pending.timer) clearTimeout(pending.timer);
     const batch = pending?.trigger === trigger && pending.participantId === participantId ? pending : { messages: [], seen: new Set<string>(), fingerprint: this.fingerprint(profile, message.channelId),
       version: this.conversation.optionalOpportunityVersion(message.guildId!, message.channelId), trigger, participantId, firstAt: Date.now() };
@@ -103,7 +102,7 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
     batch.seen.add(message.id); while (batch.seen.size > 64) batch.seen.delete(batch.seen.values().next().value!);
     batch.messages = [...batch.messages, message].slice(-20);
     this.bursts.set(key, batch);
-    if (trigger === "spontaneous") {
+    if (trigger === "group_conversation") {
       const maximum = resolveParticipation(profile.chat.participation, message.channelId).messagesPerDecision;
       const turns = batch.messages.reduce((count, item, index, items) => count + (index === 0 || item.author.id !== items[index - 1]!.author.id ? 1 : 0), 0);
       const substantive = batch.messages.some((item) => item.content.trim().length >= 40);

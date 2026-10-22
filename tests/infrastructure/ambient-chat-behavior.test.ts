@@ -11,6 +11,8 @@ import type { GuildConfigurationProvider } from "../../src/config/guild-configur
 import type { ChatConversationService } from "../../src/application/chat/chat-conversation-service.js";
 import type { ChatResponse } from "../../src/application/chat/chat-provider.js";
 import { ChatTurnSupport } from "../../src/infrastructure/discord/behaviors/chat-turn-support.js";
+import { SocialChatEligibility } from "../../src/infrastructure/discord/behaviors/social-chat-eligibility.js";
+import type { MessageOriginStore } from "../../src/application/chat/message-origin-store.js";
 import { defaultParticipation } from "../../src/application/chat/participation-policy.js";
 
 afterEach(() => vi.restoreAllMocks());
@@ -136,6 +138,8 @@ function behavior(profileValue: GuildConfiguration | null, conversation: ChatCon
     { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } as never,
     null,
     isGameChannel,
+    // The real common gate decides features, access and game ownership.
+    new SocialChatEligibility(configuration(), provider(profileValue), { find: () => Promise.resolve(null) } as unknown as MessageOriginStore, isGameChannel),
   );
 }
 
@@ -186,10 +190,10 @@ describe("AmbientChatBehavior outcome logs", () => {
     const source = { ...message(), id: "source", createdTimestamp: 1000, member: null, attachments: new Collection(), reply,
       author: { id: "human", username: "Human", displayName: "Human", bot: false }, mentions: { users: new Collection() } } as unknown as Message;
     expect(await subject.execute(source)).toBe(BehaviorResult.StopPropagation);
-    expect(run).toHaveBeenCalledWith(expect.objectContaining({ interactionMode: "name_address" }), expect.any(Function));
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ interaction: "name_address" }), expect.any(Function));
     expect(reply).toHaveBeenCalledOnce();
   });
-  it.each([["ambient", true], ["ambient", false], ["continuation", true], ["continuation", false], ["spontaneous", true], ["spontaneous", false]] as const)("does not report an unsent reply as delivered (%s shadow=%s)", async (trigger, shadowMode) => {
+  it.each([["name_address", true], ["name_address", false], ["implicit_followup", true], ["implicit_followup", false], ["group_conversation", true], ["group_conversation", false]] as const)("does not report an unsent reply as delivered (%s shadow=%s)", async (trigger, shadowMode) => {
     const configured = profile();
     configured.chat.participation = { ...defaultParticipation, shadowMode };
     configured.chat.toolCallingEnabled = true;
@@ -207,8 +211,8 @@ describe("AmbientChatBehavior outcome logs", () => {
     expect(error).not.toHaveBeenCalled();
     expect(run).toHaveBeenCalled();
     expect(run).toHaveBeenCalledWith(expect.objectContaining({ toolsEnabled: !shadowMode,
-      ...(trigger === "ambient" ? {} : { allowedToolNames: new Set(["lookup_discord_server"]) }) }), expect.any(Function));
-    expect(info).toHaveBeenCalledWith(expect.objectContaining({ triggerMode: trigger, shadowMode, textDelivered: false, ambientAction: "reply" }),
+      ...(trigger === "name_address" ? {} : { allowedToolNames: new Set(["lookup_discord_server"]) }) }), expect.any(Function));
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({ interaction: trigger, shadowMode, textDelivered: false, ambientAction: "reply" }),
       shadowMode ? "Ambient chat: previewed" : "Ambient chat: reply suppressed");
   });
 });

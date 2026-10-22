@@ -14,7 +14,7 @@ describe("restart reconciliation", () => {
   });
   it("does not mark completed or current-process traces", () => {
     const trace = previousTrace();
-    expect(reconcileTrace({ ...trace, records: [...trace.records, diagnosticRecord({ processRunId: "old-process", data: { event: "chat.turn.completed", triggerMode: "direct", outcome: "text_delivered", durationMs: 1, textDeliveryConfirmed: true } })] }, 2000)).toBeNull();
+    expect(reconcileTrace({ ...trace, records: [...trace.records, diagnosticRecord({ processRunId: "old-process", data: { event: "chat.turn.completed", interaction: "direct_mention", outcome: "text_delivered", durationMs: 1, textDeliveryConfirmed: true } })] }, 2000)).toBeNull();
     expect(reconcileTrace({ ...trace, processRunId: diagnosticRecord().processRunId }, 2000)).toBeNull();
   });
   it("detects pending queue work after dispatch already completed", () => {

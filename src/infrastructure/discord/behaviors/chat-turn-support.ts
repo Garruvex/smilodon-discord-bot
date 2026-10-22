@@ -12,7 +12,8 @@ import type { ChatUser, ConversationEvent } from "../../../application/chat/chat
 import type { Logger } from "pino";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
 import { eligibilityReason, emitChatDiagnostic, safeFailure } from "../../../application/diagnostics/chat-diagnostics.js";
-import type { SocialChatEligibility, SocialTrigger } from "./social-chat-eligibility.js";
+import type { SocialChatEligibility } from "./social-chat-eligibility.js";
+import type { ChatPurpose } from "../../../application/chat/chat-policy.js";
 import { SocialOutputSuppressed, type MessageOriginStore, type MessageOrigin, type MessageOriginRecord } from "../../../application/chat/message-origin-store.js";
 
 import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
@@ -286,38 +287,38 @@ export class ChatTurnSupport {
     });
   }
 
-  public async isEligible(message: Message, trigger: SocialTrigger = "direct"): Promise<boolean> {
+  public async isEligible(message: Message, purpose: ChatPurpose = "direct_mention"): Promise<boolean> {
     if (!this.eligibility) return true;
-    const result = await this.eligibility.check(message, trigger);
+    const result = await this.eligibility.check(message, purpose);
     const reason = eligibilityReason.safeParse(result.reason);
     if (!result.eligible && reason.success) emitChatDiagnostic(this.logger, { event: "context.eligibility.denied",
-      sourceMessageId: message.id, purpose: trigger, reason: reason.data });
+      sourceMessageId: message.id, purpose, reason: reason.data });
     return result.eligible;
   }
 
-  public createEligibilityCheck(message: Message, trigger: SocialTrigger = "direct"): () => Promise<boolean> {
-    const policy = (): boolean => !!this.eligibility && (this.eligibility.interactionPolicy ?
-      this.eligibility.interactionPolicy(message, trigger).eligible : this.eligibility.contextPolicyVersion(message) === version) && this.eligibility.botCanReadChannel(message, false);
+  public createEligibilityCheck(message: Message, purpose: ChatPurpose = "direct_mention"): () => Promise<boolean> {
+    const policy = (): boolean => !!this.eligibility && (this.eligibility.admission ?
+      this.eligibility.admission(message, purpose).eligible : this.eligibility.contextPolicyVersion(message) === version) && this.eligibility.botCanReadChannel(message, false);
     const current = message.client ? discordContextSnapshotCurrent(message.client, message.guildId!, message.channelId, () => [message.id],
       (change, changedMessageId) => emitChatDiagnostic(this.logger, { event: "chat.snapshot.invalidated", gate: "trigger", change, ...(changedMessageId ? { changedMessageId } : {}) }),
       { current: policy, ignoreMessageUpdates: true }) : null;
     const version = this.eligibility?.contextPolicyVersion(message);
     let admission: Promise<boolean> | null = null;
     return async (): Promise<boolean> => {
-      if (!current) return this.isEligible(message, trigger);
+      if (!current) return this.isEligible(message, purpose);
       const fresh = (): boolean => {
         const reason = !current() ? "discord_revision_changed" : !policy() ? "policy_changed" : null;
         if (reason) emitChatDiagnostic(this.logger, { event: "chat.guard.rejected", gate: "trigger", reason });
         return reason === null;
       };
       if (!fresh()) return false;
-      const allowed = await (admission ??= this.isEligible(message, trigger));
+      const allowed = await (admission ??= this.isEligible(message, purpose));
       return allowed && fresh();
     };
   }
 
-  public async assertEligible(message: Message, trigger: SocialTrigger = "direct"): Promise<void> {
-    if (!await this.isEligible(message, trigger)) throw new SocialOutputSuppressed();
+  public async assertEligible(message: Message, purpose: ChatPurpose = "direct_mention"): Promise<void> {
+    if (!await this.isEligible(message, purpose)) throw new SocialOutputSuppressed();
   }
 
   // Null unless the guild has music enabled and the message has a
@@ -528,7 +529,7 @@ export class ChatTurnSupport {
     partialDeliveryNotice?: string;
     maxImageAggregateBytes: number;
     sourceMessage?: Message;
-    trigger?: SocialTrigger;
+    purpose?: ChatPurpose;
     origin?: MessageOrigin;
     contextProvenance?: ContextProvenance | null;
     contextLease?: GuardedConversationContext;
@@ -594,7 +595,7 @@ export class ChatTurnSupport {
       if (params.contextLease && !await params.contextLease.validate("effect")) throw new SocialOutputSuppressed();
       if (params.characterIsCurrent && !params.characterIsCurrent()) throw new SocialOutputSuppressed();
       if (params.characterCanDeliver && !await params.characterCanDeliver()) throw new SocialOutputSuppressed();
-      if (params.sourceMessage) await this.assertEligible(params.sourceMessage, params.trigger ?? "direct");
+      if (params.sourceMessage) await this.assertEligible(params.sourceMessage, params.purpose ?? "direct_mention");
     };
     const sendAndRecord = async (send: () => Promise<Message>, expectedContent: string): Promise<Message> => {
       const sent = await sendWithRetry(async () => { await assertCurrent(); return withDiscordCaller("chat_text", send); });

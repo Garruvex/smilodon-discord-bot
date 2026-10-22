@@ -70,7 +70,7 @@ function input(message: string): ChatConversationInput {
     webSearchMode: "off",
     imageGenerationEnabled: false,
     includeSources: false,
-    triggerMode: "direct",
+    interaction: "direct_mention",
   };
 }
 
@@ -179,7 +179,7 @@ describe("ChatConversationService", () => {
     const service = new ChatConversationService({ reply }, baseStore(), testMemoryEngine().engine,
       undefined, undefined, undefined, null, null, null, logger);
     try {
-      const result = await service.run({ ...input("follow-up"), triggerMode: "continuation" }, (output) => Promise.resolve(output.text));
+      const result = await service.run({ ...input("follow-up"), interaction: "implicit_followup" }, (output) => Promise.resolve(output.text));
       expect(result.ambientAction).toBe("ignore");
       expect(reply).not.toHaveBeenCalled();
       expect(records.filter((record) => record.event === "chat.turn.skipped")).toEqual([
@@ -292,20 +292,20 @@ describe("ChatConversationService", () => {
     expect(purgeUser).toHaveBeenCalledWith("guild", "user");
     expect(reply.mock.calls[0]![0].channelHistory).toEqual([]);
   });
-  it.each(["continuation", "spontaneous"] as const)("pauses %s without a structured decision runtime", async (triggerMode) => {
+  it.each(["implicit_followup", "group_conversation"] as const)("pauses %s without a structured decision runtime", async (interaction) => {
     const reply = vi.fn(() => Promise.resolve(response("must not generate")));
     const service = new ChatConversationService({ reply }, baseStore(), testMemoryEngine().engine);
     const deliver = vi.fn(() => Promise.resolve("must not send"));
-    expect((await service.run({ ...input("What are we deciding?"), triggerMode }, deliver)).ambientAction).toBe("ignore");
+    expect((await service.run({ ...input("What are we deciding?"), interaction }, deliver)).ambientAction).toBe("ignore");
     expect(reply).not.toHaveBeenCalled(); expect(deliver).not.toHaveBeenCalled();
   });
-  it.each(["ambient", "direct"] as const)("preserves addressed turns during unrelated context changes (%s)", async (triggerMode) => {
+  it.each(["name_address", "direct_mention"] as const)("preserves addressed turns during unrelated context changes (%s)", async (interaction) => {
     let finish!: (value: ChatResponse) => void;
     const pending = new Promise<ChatResponse>((resolve) => { finish = resolve; });
     const reply = vi.fn(() => pending);
     const service = new ChatConversationService({ reply }, baseStore(), testMemoryEngine().engine);
     const deliver = vi.fn(() => Promise.resolve("answer"));
-    const turn = service.run({ ...input("What are we deciding?"), triggerMode, channelHistoryEnabled: true }, deliver);
+    const turn = service.run({ ...input("What are we deciding?"), interaction, channelHistoryEnabled: true }, deliver);
     const result = turn.then(() => "delivered", () => "suppressed");
     await vi.waitFor(() => expect(reply).toHaveBeenCalled());
     service.observe("guild", "channel", { messageId: "new-topic", timestampMs: Date.now(), authorId: "other",
@@ -383,7 +383,7 @@ describe("ChatConversationService", () => {
     const service = new ChatConversationService({ reply: (): Promise<ChatResponse> => Promise.resolve(response("would reply")), extractPersonalMemories: extract },
       baseStore({ commitSuccessfulExchange: commit }), testMemoryEngine().engine);
     const deliver = vi.fn(() => Promise.resolve("must not deliver"));
-    await service.run({ ...input("continuation"), triggerMode: "continuation", shadowMode: true }, deliver);
+    await service.run({ ...input("continuation"), interaction: "implicit_followup", shadowMode: true }, deliver);
     await service.drain();
     expect(deliver).not.toHaveBeenCalled(); expect(commit).not.toHaveBeenCalled(); expect(extract).not.toHaveBeenCalled();
   });
@@ -407,7 +407,7 @@ describe("ChatConversationService", () => {
       }])), extractPersonalMemories: extraction,
     };
     const service = new ChatConversationService(provider, store, engine);
-    await expect(service.run({ ...input('(reacted to your message "I like apples")'), triggerMode: "reaction" }, (result) => Promise.resolve(result.text))).rejects.toBeInstanceOf(SocialOutputSuppressed);
+    await expect(service.run({ ...input('(reacted to your message "I like apples")'), interaction: "reaction" }, (result) => Promise.resolve(result.text))).rejects.toBeInstanceOf(SocialOutputSuppressed);
     await service.drain();
     expect(extraction).not.toHaveBeenCalled();
     expect(commit).not.toHaveBeenCalled();
@@ -1061,7 +1061,7 @@ describe("ChatConversationService", () => {
     const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
     const deliver = vi.fn((reply: ChatResponse) => Promise.resolve(reply.text));
 
-    const result = await service.run({ ...input("yohta that's hilarious"), triggerMode: "ambient" }, deliver);
+    const result = await service.run({ ...input("yohta that's hilarious"), interaction: "name_address" }, deliver);
     expect(result.ambientAction).toBe("reply");
     expect(result.reactionEmoji).toBe("😂");
     expect(deliver).toHaveBeenCalledOnce();
@@ -1077,7 +1077,7 @@ describe("ChatConversationService", () => {
     const service = new ChatConversationService(provider, store, testMemoryEngine().engine);
     const deliver = vi.fn((reply: ChatResponse) => Promise.resolve(reply.text));
 
-    const result = await service.run({ ...input("hey yohta, what's up"), triggerMode: "ambient" }, deliver);
+    const result = await service.run({ ...input("hey yohta, what's up"), interaction: "name_address" }, deliver);
     expect(result.ambientAction).toBe("reply");
     expect(deliver).toHaveBeenCalledOnce();
     expect(commitSuccessfulExchange).toHaveBeenCalledOnce();

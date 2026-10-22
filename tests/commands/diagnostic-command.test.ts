@@ -37,7 +37,7 @@ describe("protected diagnostic timeline lookup", () => {
     lookup.mockReturnValue([{ traceId: "trace", processRunId: "run", truncated: false, records: [diagnosticRecord({ data: {
       event: "chat.decision.resolved", stage: "generation", interaction: "bare_ping", status: "ready", recovery: "none", decisionId: "d",
       action: "silent", intent: "abstain", reason: "no_contribution", contextVersion: "v1", policyVersion: "v1",
-    } }), diagnosticRecord({ data: { event: "chat.turn.completed", triggerMode: "direct", outcome: "no_text_delivery", durationMs: 10, textDeliveryConfirmed: false } })] }]);
+    } }), diagnosticRecord({ data: { event: "chat.turn.completed", interaction: "direct_mention", outcome: "no_text_delivery", durationMs: 10, textDeliveryConfirmed: false } })] }]);
     await command.execute(context);
     expect(edit).toHaveBeenCalledWith(expect.stringContaining(expected));
     expect(edit).toHaveBeenCalledWith(expect.stringContaining("chat.turn.completed"));
@@ -117,7 +117,7 @@ describe("protected diagnostic timeline lookup", () => {
     const { command, context, lookup, edit } = setup();
     lookup.mockReturnValue([{ traceId: "trace", processRunId: "run", truncated: true,
       records: [...Array.from({ length: 100 }, () => diagnosticRecord()), diagnosticRecord({ data: {
-        event: "chat.turn.completed", outcome: "text_delivered", triggerMode: "direct", durationMs: 10, textDeliveryConfirmed: true,
+        event: "chat.turn.completed", outcome: "text_delivered", interaction: "direct_mention", durationMs: 10, textDeliveryConfirmed: true,
       } })] }]);
     await command.execute(context);
     expect(edit).toHaveBeenCalledWith(expect.stringContaining("chat.turn.completed: text_delivered"));

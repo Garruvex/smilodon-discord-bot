@@ -5,6 +5,7 @@ import type { Logger } from "pino";
 import { z } from "zod";
 import type { ChatTraceStore } from "./chat-trace-store.js";
 import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
+import { chatInteractions } from "../chat/chat-policy.js";
 
 export const diagnosticProcessRunId = randomUUID();
 let traceSequence = 0;
@@ -24,9 +25,11 @@ export function diagnosticPipelineStatus(logger: DiagnosticLogger): Readonly<Dia
 const count = z.number().int().nonnegative();
 const duration = z.number().finite().nonnegative();
 const identifier = z.string().min(1).max(128).regex(/^[\w.:-]+$/u);
-const trigger = z.enum(["direct", "ambient", "continuation", "spontaneous", "reaction"]);
+const interaction = z.enum(chatInteractions);
+// Traces persisted before the single interaction vocabulary used these route names.
+const legacyInteraction: Readonly<Record<string, string>> = { direct: "direct_mention", ambient: "name_address", continuation: "implicit_followup", spontaneous: "group_conversation" };
 export const decisionValidationFields: readonly string[] = ["root", "item", "addressing", "motivation", "recipientEvidence", "recipientConfidence", "targetConfidence", "contribution", "opening", "boundary", "target", "confidence", "reaction", "thoughts", "text", "adds", "label", "sourceMessageId", "recipientId", "relationship", "intent", "action", "targetKey", "referent", "linkKey"];
-export const eligibilityReason = z.enum(["context_opt_out", "not_guild", "chat_disabled", "needs_conversation_context", "background_scope_denied", "passive_scope_denied", "passive_access_denied", "game_channel", "continuation_disabled", "spontaneous_disabled", "history_reactions_disabled", "ambient_disabled", "reaction_disabled", "utility_or_unknown_bot_output", "channel_denied", "access_denied", "utility_interaction", "cyclic_reply_chain", "unknown_bot_output", "utility_reply", "cross_channel_reply", "unresolved_reply_origin", "reply_depth_limit", "unverifiable_bot_context", "origin_lookup_failed", "source_forgotten", "forget_policy_unavailable"]);
+export const eligibilityReason = z.enum(["context_opt_out", "not_guild", "chat_disabled", "needs_conversation_context", "background_scope_denied", "passive_scope_denied", "passive_access_denied", "game_channel", "continuation_disabled", "spontaneous_disabled", "spontaneous_not_selected", "observation_not_selected", "history_disabled", "memory_disabled", "context_channel_disabled", "member_unavailable", "restricted_role", "missing_chat_role", "history_reactions_disabled", "ambient_disabled", "reaction_disabled", "utility_or_unknown_bot_output", "channel_denied", "access_denied", "utility_interaction", "cyclic_reply_chain", "unknown_bot_output", "utility_reply", "cross_channel_reply", "unresolved_reply_origin", "reply_depth_limit", "unverifiable_bot_context", "origin_lookup_failed", "source_forgotten", "forget_policy_unavailable"]);
 
 export const failureCategory = z.enum([
   "timeout", "http_error", "rate_limited", "invalid_json", "schema_mismatch",
@@ -80,7 +83,7 @@ const eventSchema = z.discriminatedUnion("event", [
   z.object({ event: z.literal("chat.route.matched"), behaviorId: identifier }),
   z.object({ event: z.literal("chat.route.skipped"), behaviorId: identifier, reason: z.enum(["not_guild", "chat_disabled", "duplicate", "game_channel", "access_denied", "access_unavailable", "provider_unconfigured", "unresolved_reply_origin"]), accessReason: z.enum(["member_unavailable", "restricted_role", "channel_denied", "missing_chat_role"]).optional(), memberRefresh: z.enum(["current", "unavailable"]).optional() }),
   z.object({ event: z.literal("chat.dispatch.completed"), result: z.enum(["continue", "handled", "stop_propagation", "failed"]), behaviorId: identifier.optional(), stage: z.enum(["matches", "execute"]).optional(), durationMs: duration, failure: failureCategory.optional() }),
-  z.object({ event: z.literal("context.eligibility.denied"), sourceMessageId: identifier, purpose: z.enum(["direct", "ambient", "continuation", "spontaneous", "reaction", "observation", "background_observation", "history_reaction", "history", "guarded_current"]), reason: eligibilityReason }),
+  z.object({ event: z.literal("context.eligibility.denied"), sourceMessageId: identifier, purpose: z.enum([...chatInteractions, "observation", "background_observation", "history_reaction", "history", "guarded_current"]), reason: eligibilityReason }),
   z.object({ event: z.literal("context.source.selected"), source: z.enum(["reply_chain", "channel_history"]), fetched: count, selected: count, omitted: count, status: z.enum(["complete", "ineligible", "fetch_failed", "bounded"]), chars: count }),
   z.object({ event: z.literal("context.selection.completed"), fetchedHistory: count, episodeCandidates: count, burstCandidates: count, merged: count, selected: count, replyChain: count, chars: count }),
   z.object({ event: z.literal("context.decision.coverage"), available: count, selected: count, required: count, omittedRequired: count }),
@@ -94,13 +97,13 @@ const eventSchema = z.discriminatedUnion("event", [
     validationIssues: z.array(z.object({ field: z.string().min(1).max(128).refine((field) => field.split(".").every((part) => decisionValidationFields.includes(part))),
       code: z.enum(["invalid_type", "invalid_enum_value", "too_small", "too_big", "unrecognized_keys", "invalid"]) })).max(8).optional() }),
   z.object({ event: z.literal("chat.model.completed"), purpose: z.enum(["reply", "participation", "repair"]), status: z.enum(["valid", "failed"]), durationMs: duration, failure: failureCategory.optional(), httpStatus: z.number().int().min(100).max(599).optional() }),
-  z.object({ event: z.literal("chat.turn.started"), triggerMode: trigger, candidateId: identifier.optional() }),
+  z.object({ event: z.literal("chat.turn.started"), interaction, candidateId: identifier.optional() }),
   z.object({ event: z.literal("chat.turn.plan"), flow: z.enum(["legacy", "contextual_v1"]), context: z.enum(["legacy", "guarded_text"]),
     state: z.enum(["ready", "blocked"]), reason: z.enum(["profile_unavailable", "context_disabled", "legacy_retrieval", "channel_context_disabled", "guard_unavailable", "guard_mismatch"]).optional() }),
   z.object({ event: z.literal("chat.candidate.source"), candidateId: identifier, sourceMessageId: identifier }),
   z.object({ event: z.literal("chat.turn.deadline"), budgetMs: duration }),
   z.object({ event: z.literal("chat.candidate.changed"), candidateId: identifier, action: z.enum(["buffered", "coalesced", "scheduled", "submitted", "cancelled", "expired"]), reason: z.enum(["accepted", "cooldown", "ready", "changed", "capacity", "ineligible", "deadline"]), messages: count, delayMs: duration }),
-  z.object({ event: z.literal("chat.admission.buffered"), triggerMode: trigger, reason: z.enum(["batch_threshold", "pause_or_cooldown", "continuation_candidate", "submitted", "invalidated"]), messages: count, delayMs: duration }),
+  z.object({ event: z.literal("chat.admission.buffered"), interaction, reason: z.enum(["batch_threshold", "pause_or_cooldown", "continuation_candidate", "submitted", "invalidated"]), messages: count, delayMs: duration }),
   z.object({ event: z.literal("chat.turn.skipped"), reason: z.enum(["decision_unavailable", "duplicate_ping"]) }),
   z.object({ event: z.literal("chat.output.suppressed"), reason: z.enum(["execution_ineligible", "privacy_changed", "shadow", "opportunity_expired", "context_changed", "delivery_cancelled", "output_capacity"]) }),
   z.object({ event: z.literal("chat.queue.changed"), jobId: identifier, action: z.enum(["enqueued", "admitted", "skipped", "cancelled", "completed", "failed"]),
@@ -112,12 +115,21 @@ const eventSchema = z.discriminatedUnion("event", [
   z.object({ event: z.literal("chat.output.reservation"), reservationId: identifier, kind: z.enum(["text", "reaction"]), optional: z.boolean(), continuation: z.boolean(),
     status: z.enum(["reserved", "denied", "committed", "released"]),
     reason: z.enum(["direct", "available", "in_flight", "exchange_limit", "channel_limit", "cooldown", "capacity", "delivered", "not_delivered"]) }),
-  z.object({ event: z.literal("chat.turn.completed"), triggerMode: trigger, outcome: z.enum(["text_delivered", "no_text_delivery", "suppressed", "failed", "delivered_state_unsaved"]), durationMs: duration, textDeliveryConfirmed: z.boolean(), failure: failureCategory.optional() }),
+  z.object({ event: z.literal("chat.turn.completed"), interaction, outcome: z.enum(["text_delivered", "no_text_delivery", "suppressed", "failed", "delivered_state_unsaved"]), durationMs: duration, textDeliveryConfirmed: z.boolean(), failure: failureCategory.optional() }),
   z.object({ event: z.literal("chat.delivery.completed"), plannedParts: count, deliveredParts: count, status: z.enum(["complete", "partial", "failed", "suppressed"]), failure: failureCategory.optional() }),
   z.object({ event: z.literal("chat.delivery.part"), deliveredMessageId: identifier, part: count }),
 ]);
 
 export type ChatDiagnosticEvent = z.infer<typeof eventSchema>;
+// Restored traces may predate the interaction vocabulary; upgrade them rather
+// than discarding a whole persisted snapshot.
+const persistedEventSchema = z.preprocess((value) => {
+  if (!value || typeof value !== "object") return value;
+  const { triggerMode, ...event } = value as Record<string, unknown>;
+  const upgrade = (name: unknown): unknown => typeof name === "string" ? legacyInteraction[name] ?? name : name;
+  return { ...event, ...(triggerMode !== undefined && !("interaction" in event) ? { interaction: upgrade(triggerMode) } : {}),
+    ...(event.event === "context.eligibility.denied" ? { purpose: upgrade(event.purpose) } : {}) };
+}, eventSchema);
 export type DiagnosticLogger = Pick<Logger, "info" | "warn">;
 
 export interface DiagnosticScopeInput {
@@ -137,7 +149,7 @@ const scopeInputSchema = z.object({ operation: z.enum(["gateway", "dispatch", "c
 export const chatDiagnosticRecordSchema = z.object({
   schemaVersion: z.literal(1), processRunId: identifier, timestampMs: count, eventSequence: count,
   scope: scopeInputSchema.extend({ traceId: identifier, spanId: identifier, parentSpanId: identifier.optional(), traceSequence: count }),
-  data: eventSchema,
+  data: persistedEventSchema,
 });
 export type ChatDiagnosticRecord = z.infer<typeof chatDiagnosticRecordSchema>;
 

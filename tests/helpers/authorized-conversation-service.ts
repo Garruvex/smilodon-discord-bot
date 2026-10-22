@@ -55,7 +55,7 @@ export class AuthorizedConversationService extends ChatConversationService {
       { kind: "persona", guildId: input.guildId, ownerUserId: null },
       { text: input.personality, examples: input.examplePool, loreChunks: input.loreChunks,
         ...(input.personalitySourceHash ? { personalitySourceHash: input.personalitySourceHash } : {}) }, () => true);
-    return super.run({ ...input, ...(input.triggerMode === "ambient" && !input.interactionMode ? { interactionMode: "name_address" as const } : {}),
+    return super.run({ ...input,
       sourceMessageId, guardedContextPort: fixture.port, configurationContext }, async (response) => {
       const text = await deliver(response);
       const proof = response.contextLease?.provenance(text) ?? null;

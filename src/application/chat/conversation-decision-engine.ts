@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { addressedElsewhere, decisionSourceFailure, exchangeBranch, generatedContributionAllowed, groundedContextContinuation, isRecipientCorrection, localAddressing, optionalParticipationRejection, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
 import { isGuardedContext } from "./guarded-conversation-context.js";
 import { resolveConversationTrigger, type TriggerResolution } from "./conversation-trigger.js";
+import { isOptionalInteraction } from "./chat-policy.js";
 import type { ChatRequest, ChatResponse } from "./chat-provider.js";
 import { emitChatDiagnostic, type DiagnosticLogger } from "../diagnostics/chat-diagnostics.js";
 import { contributionPolicy, resolveParticipation, type ParticipationSettings } from "./participation-policy.js";
@@ -90,7 +91,7 @@ export class ConversationDecisionEngine {
     }
     if (proposal?.contextual && isGuardedContext(request.contextLease)) {
       const failure = decisionSourceFailure(proposal, events.filter((event) => event.timestampMs <= now), botId,
-        request.turnPlan?.decision === "contextual" || request.triggerMode === "continuation" ? current?.messageId ?? null : null);
+        request.turnPlan?.decision === "contextual" || request.interaction === "implicit_followup" ? current?.messageId ?? null : null);
       if (failure) return denied(failure, "failed");
       const interpretation = proposal.contextual;
       if (current && isRecipientCorrection(current.content)) return denied("addressed_elsewhere");
@@ -124,7 +125,7 @@ export class ConversationDecisionEngine {
         targetMessageId: proposal.target, targetConfidence: proposal.targetConfidence, reaction };
     }
     if (proposal) {
-      const failure = decisionSourceFailure(proposal, events.filter((event) => event.timestampMs <= now), botId, request.triggerMode === "continuation" ? current?.messageId ?? null : null);
+      const failure = decisionSourceFailure(proposal, events.filter((event) => event.timestampMs <= now), botId, request.interaction === "implicit_followup" ? current?.messageId ?? null : null);
       if (failure) return denied(failure, "failed");
       // Only guarded evidence and a successful model decision can resolve an
       // older or cross-participant exchange. Failure fallback stays recent-only.
@@ -136,17 +137,17 @@ export class ConversationDecisionEngine {
     if (!proposal) {
       // Fallback is opt-in and skips ONLY a broken decision call. The
       // confirmed same-person branch must still exist when delivery occurs.
-      const fallback = outcome.status !== "skipped" && request.triggerMode === "continuation" &&
+      const fallback = outcome.status !== "skipped" && request.interaction === "implicit_followup" &&
         settings?.continuationFailureMode === "grounded_fallback" && this.canUseGroundedContinuation({ ...request, currentBurst: current ? [current] : [] }, now) && local === "continuing" && !elsewhere && request.optionalActionsAvailable?.text !== false;
       if (fallback) return { ...base, targetMessageId: current!.messageId, targetConfidence: 1,
         result: this.result(request, trigger, now, policyVersion, "decision_failure_grounded_continuation", "failed", "reply", "answer", [current!.messageId], "grounded_reply") };
       return denied(outcome.status === "unavailable" ? "decision_unavailable" : "decision_failed", "failed");
     }
-    const optional = request.triggerMode === "continuation" || request.triggerMode === "spontaneous";
-    const rejection = optional ? optionalParticipationRejection(request.triggerMode as "continuation" | "spontaneous", local, proposal, elsewhere, contributionPolicy(settings))
+    const optional = isOptionalInteraction(request.interaction);
+    const rejection = optional ? optionalParticipationRejection(request.interaction === "implicit_followup" ? "continuation" : "spontaneous", local, proposal, elsewhere, contributionPolicy(settings))
       : proposal.opening !== "clear" ? "opening_not_clear" : null;
     const textAllowed = !rejection && request.optionalActionsAvailable?.text !== false;
-    const reaction = !textAllowed && request.triggerMode !== "continuation" && request.optionalActionsAvailable?.reaction !== false && proposal.reaction &&
+    const reaction = !textAllowed && request.interaction !== "implicit_followup" && request.optionalActionsAvailable?.reaction !== false && proposal.reaction &&
       proposal.confidence >= 0.7 && proposal.targetConfidence >= 0.7 && proposal.opening !== "unclear" ? proposal.reaction : null;
     const result = this.result(request, trigger, now, policyVersion, textAllowed ? "accepted_contribution" : reaction ? "reaction_only" : rejection ?? "text_unavailable",
       "ready", textAllowed ? "reply" : reaction ? "react" : "silent", textAllowed ? "contribute" : "abstain", proposal.recipientEvidence);

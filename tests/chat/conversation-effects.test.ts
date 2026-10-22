@@ -6,7 +6,7 @@ import { decisionRequest, decisionResponse } from "../helpers/conversation-decis
 describe("approved conversation effects", () => {
   it.each(["silent", "react", "reply", "reply_and_react"] as const)("permits only the finalized %s effects", (action) => {
     const response = decisionResponse({ reactionEmoji: "👍", historyReactions: [{ messageId: "original", emoji: "🎉" }], characterMessages: ["draft"], characterDelayMs: 10 });
-    const decision = new ConversationDecisionEngine().finalize(decisionRequest({ triggerMode: "direct" }), response, 3000);
+    const decision = new ConversationDecisionEngine().finalize(decisionRequest({ interaction: "direct_mention" }), response, 3000);
     decision.decision.action = action; response.conversationDecision = decision;
     const effects = authorizeConversationEffects(response, "source");
     expect(response.text !== "").toBe(action === "reply" || action === "reply_and_react");
@@ -17,7 +17,7 @@ describe("approved conversation effects", () => {
   it.each(["missing", "denied", "failed"] as const)("fails closed for a %s decision even when response fields request effects", (status) => {
     const response = decisionResponse({ reactionEmoji: "👍" });
     if (status !== "missing") {
-      response.conversationDecision = new ConversationDecisionEngine().finalize(decisionRequest({ triggerMode: "direct" }), response, 3000);
+      response.conversationDecision = new ConversationDecisionEngine().finalize(decisionRequest({ interaction: "direct_mention" }), response, 3000);
       response.conversationDecision.status = status;
     }
     expect(conversationEffects(response)).toBeNull();
@@ -26,7 +26,7 @@ describe("approved conversation effects", () => {
   });
   it("does not let later raw-field or array mutation change the approved snapshot", () => {
     const response = decisionResponse({ reactionEmoji: "👍", historyReactions: [{ messageId: "original", emoji: "🎉" }] });
-    response.conversationDecision = new ConversationDecisionEngine().finalize(decisionRequest({ triggerMode: "direct" }), response, 3000);
+    response.conversationDecision = new ConversationDecisionEngine().finalize(decisionRequest({ interaction: "direct_mention" }), response, 3000);
     const effects = authorizeConversationEffects(response, "source");
     response.reactionEmoji = "👎"; response.historyReactions[0]!.emoji = "👎";
     expect(conversationEffects(response)).toBe(effects);

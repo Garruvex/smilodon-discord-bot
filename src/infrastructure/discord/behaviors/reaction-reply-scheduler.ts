@@ -5,7 +5,7 @@ import { withDiscordCaller } from "../../../application/diagnostics/discord-diag
 import { characterSettings } from "../../../application/chat/character-settings.js";
 import { conversationEffects } from "../../../application/chat/conversation-effects.js";
 
-import { ChatAccessService } from "../../../application/access/chat-access-service.js";
+import { ChatPolicy } from "../../../application/chat/chat-policy.js";
 import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
 import type { ChannelHistoryMessage } from "../../../application/chat/chat-provider.js";
 import { ChatStateCommitError, type ChatConversationService } from "../../../application/chat/chat-conversation-service.js";
@@ -88,7 +88,7 @@ export class ReactionReplyScheduler {
   private currentTick: Promise<void> | null = null;
   private readonly perMessageQueue = new KeyedSerialQueue();
   private readonly turnSupport: ChatTurnSupport;
-  private readonly chatAccess: ChatAccessService;
+  private readonly policy: ChatPolicy;
   // In-memory only — a process restart resets a watch's attempt count back
   // to zero, which just means a couple of extra retries in the worst case,
   // never fewer than intended. Not worth a schema migration/persisted
@@ -108,7 +108,7 @@ export class ReactionReplyScheduler {
     origins: MessageOriginStore | null = null,
   ) {
     this.turnSupport = new ChatTurnSupport(logger, eligibility, origins);
-    this.chatAccess = new ChatAccessService(configuration);
+    this.policy = new ChatPolicy(configuration);
   }
 
   // true: still has attempts left, caller should leave the watch pending
@@ -343,9 +343,9 @@ export class ReactionReplyScheduler {
     let canTrigger = false;
     for (const id of rawIds) {
       const member = await message.guild?.members.fetch(id).catch(() => null) ?? null;
-      if (this.chatAccess.canCollectContext(profile, id, member)) {
+      if (this.policy.canCollect(profile, { userId: id, member })) {
         eligibleIds.add(id);
-        if (this.chatAccess.canUseMentionChat(profile, member, id, channelId)) canTrigger = true;
+        if (!this.policy.actorReasons(profile, channelId, { userId: id, member }).length) canTrigger = true;
       }
     }
     const reactions = rawReactions
@@ -367,7 +367,7 @@ export class ReactionReplyScheduler {
       const current = this.profiles.find(guildId);
       return !!current && reactorList.some((id) => {
         const member = message.guild?.members.cache?.get(id) ?? null;
-        return this.chatAccess.canCollectContext(current, id, member) && this.chatAccess.canUseMentionChat(current, member, id, message.channelId);
+        return !this.policy.actorReasons(current, message.channelId, { userId: id, member }).length;
       });
     };
     const mentionedUsers = await Promise.all(reactorList.slice(0, 20).map(async (id) => {
@@ -442,7 +442,7 @@ export class ReactionReplyScheduler {
         images: [], webSearchMode: profile.chat.webSearchMode,
         imageInputEnabled: profile.chat.imageInputEnabled, maxImagesPerRequest: profile.chat.maxImagesPerRequest,
         imageGenerationEnabled: false, includeSources: profile.chat.includeSources,
-        triggerMode: "reaction",
+        interaction: "reaction",
         channelHistoryEnabled: profile.features.channelHistory,
         historyReactionsEnabled: profile.features.historyReactions && profile.features.channelHistory,
         toolsEnabled: false,
@@ -454,7 +454,7 @@ export class ReactionReplyScheduler {
         const { deliveredText } = await this.turnSupport.deliverChatResponse({
           contextProvenance: deliveredResponse.contextProvenance ?? null,
           ...(deliveredResponse.contextLease ? { contextLease: deliveredResponse.contextLease } : {}),
-          sourceMessage: selectedTarget, trigger: "reaction",
+          sourceMessage: selectedTarget, purpose: "reaction",
           sender: {
             first: async (payload) => { await ensureDelivery(); return selectedTarget.reply({
               nonce: payload.nonce, enforceNonce: payload.enforceNonce,

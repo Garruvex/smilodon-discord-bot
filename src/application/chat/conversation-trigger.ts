@@ -1,8 +1,8 @@
 import type { ChatRequest } from "./chat-provider.js";
+import { isExplicitInteraction, type ChatInteraction } from "./chat-policy.js";
 
-export type ConversationInteraction = "direct_mention" | "explicit_reply" | "bare_ping" | "name_address" | "implicit_followup" | "group_conversation" | "reaction";
 export interface TriggerResolution {
-  interaction: ConversationInteraction;
+  interaction: ChatInteraction;
   explicit: boolean;
   responseToEventId: string | null;
   discussedMessageId: string | null;
@@ -15,9 +15,8 @@ export function mentionInteraction(content: string, botId: string, hasImages: bo
   return !hasImages && /^(?:|hi|hey|yo|hello|嗨|嘿|哈囉|[?!？！]+)$/iu.test(withoutMention) ? "bare_ping" : "direct_mention";
 }
 
-export function resolveConversationTrigger(request: Pick<ChatRequest, "triggerMode" | "interactionMode" | "currentEvent"> & { sourceMessageId?: string | null | undefined }): TriggerResolution {
-  const interaction = request.interactionMode ?? ({ direct: "direct_mention", ambient: "group_conversation", continuation: "implicit_followup", spontaneous: "group_conversation", reaction: "reaction" } as const)[request.triggerMode];
-  return { interaction, explicit: request.triggerMode === "direct" || request.triggerMode === "ambient" && interaction === "name_address",
+export function resolveConversationTrigger(request: Pick<ChatRequest, "interaction" | "currentEvent"> & { sourceMessageId?: string | null | undefined }): TriggerResolution {
+  return { interaction: request.interaction, explicit: isExplicitInteraction(request.interaction),
     responseToEventId: request.sourceMessageId ?? (request.currentEvent?.type === "message" ? request.currentEvent.messageId : null),
     discussedMessageId: request.currentEvent?.type === "message" ? request.currentEvent.replyToMessageId : null };
 }

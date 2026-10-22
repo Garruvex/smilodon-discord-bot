@@ -34,7 +34,7 @@ import { approveMemoryIngest } from "../context/approved-memory-ingest.js";
 
 export async function runGuardedChatTurn(input: GuardedChatConversationInput, dependencies: Parameters<typeof runGuardedChatTurnAttempt>[1],
   deliver: (response: ChatResponse) => Promise<string>, observer?: ChatResponseObserver): Promise<ChatResponse> {
-  const configuration = await conversationConfiguration(input.guildId, input.triggerMode === "reaction" ? null : input.currentUser.id, input.configurationContext, dependencies.customization, true);
+  const configuration = await conversationConfiguration(input.guildId, input.interaction === "reaction" ? null : input.currentUser.id, input.configurationContext, dependencies.customization, true);
   const effects = { functionalToolExecuted: false, deliveryStarted: false };
   try { return await runGuardedChatTurnAttempt(input, dependencies, deliver, observer, configuration, effects); }
   catch (error) {
@@ -76,7 +76,7 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
     dependencies.runtime ? (id): Promise<string | null> => dependencies.runtime!.readCharacterConfiguration(input.guildId, input.channelId, id) : undefined, true);
   assertTurnActive(input.turnSignal);
   if (port.guildId !== input.guildId || port.channelId !== input.channelId || input.sourceMessageId !== port.sourceMessageId ||
-    (input.triggerMode === "reaction" ? port.actorId !== null || input.currentEvent?.type !== "reaction_snapshot" : port.actorId !== input.currentUser.id))
+    (input.interaction === "reaction" ? port.actorId !== null || input.currentEvent?.type !== "reaction_snapshot" : port.actorId !== input.currentUser.id))
     throw new SocialOutputSuppressed();
   const silent = (): ChatResponse => ({ text: "", ambientAction: "ignore", reactionEmoji: null, historyReactions: [],
     userMemoryActions: [], guildKnowledgeCandidates: [], sources: [], usage: null, webSearchUsed: false, generatedImages: [] });
@@ -86,7 +86,7 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
     ...(input.currentEvent ? { event: input.currentEvent } : {}) });
   emitChatDiagnostic(dependencies.logger, { event: "context.guard.coverage", ...lease.report });
   const mode = input.resolveMemoryMode?.() ?? input.channelMemoryModes?.[input.channelId] ?? "shared";
-  const state = input.triggerMode === "reaction" ? { exchanges: [] }
+  const state = input.interaction === "reaction" ? { exchanges: [] }
     : await dependencies.state.load(input.guildId, input.currentUser.id, input.channelId, dependencies.now());
   const known = new Set([...lease.history, ...lease.replyChain].map((event) => event.messageId));
   // Saved copies already represented by fresh guarded history never enter the
@@ -174,8 +174,7 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
     replyChain: lease.currentEvent?.type === "reaction_snapshot" ? [...lease.replyChain, lease.current] : lease.replyChain, replyChainSummary, channelHistory: lease.history, currentBurst: lease.burst,
     ...(lease.currentEvent ? { currentEvent: lease.currentEvent } : {}),
     birthday: null, images, imageInputEnabled: capabilities.imageInputEnabled, webSearchMode: capabilities.webSearchMode, imageGenerationEnabled: capabilities.imageGenerationEnabled, includeSources: input.includeSources,
-    triggerMode: input.triggerMode, botUserId: input.botUserId ?? null,
-    ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
+    interaction: input.interaction, botUserId: input.botUserId ?? null,
     allowSilentDirect: input.allowSilentDirect ?? false, characterShadow: input.shadowMode ?? false,
     ...(input.optionalActionsAvailable ? { optionalActionsAvailable: input.optionalActionsAvailable } : {}),
     ...(input.turnSignal ? { turnSignal: input.turnSignal } : {}), ...(input.turnDeadlineAt ? { turnDeadlineAt: input.turnDeadlineAt } : {}),
@@ -196,7 +195,7 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
       music: input.musicActor && input.musicResolveAccessSubjectFields ? { actor: input.musicActor, resolveAccessSubjectFields: input.musicResolveAccessSubjectFields,
         volumeMaximum: input.musicVolumeMaximum ?? 100, musicControllerRoleIds: input.musicControllerRoleIds ?? new Set(), botAdministratorRoleIds: input.musicBotAdministratorRoleIds ?? new Set() } : null,
     });
-  if (!dependencies.runtime && input.triggerMode !== "reaction" && !resolveConversationTrigger(input).explicit) throw new SocialOutputSuppressed();
+  if (!dependencies.runtime && input.interaction !== "reaction" && !resolveConversationTrigger(input).explicit) throw new SocialOutputSuppressed();
   if (dependencies.runtime) {
     assertTurnActive(input.turnSignal);
     request = approveConversationRequest(request, () => effects.functionalToolExecuted);
@@ -288,7 +287,7 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
   effects.deliveryStarted = true;
   const delivered = await deliver(response);
   if (!input.shadowMode) await check();
-  if (!input.shadowMode && input.triggerMode !== "reaction" && mode !== "disabled") { try { const committed = await dependencies.state.commitSuccessfulExchange({
+  if (!input.shadowMode && input.interaction !== "reaction" && mode !== "disabled") { try { const committed = await dependencies.state.commitSuccessfulExchange({
     guildId: input.guildId, channelId: input.channelId, userId: input.currentUser.id,
     userMessage: lease.current.content.slice(0, 1000), assistantMessage: delivered.slice(0, 2000),
     sourceMessageId: lease.current.messageId, sourceTimestampMs: lease.current.timestampMs, channelMemoryMode: mode,

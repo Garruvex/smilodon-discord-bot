@@ -74,7 +74,7 @@ if (args.includes("--help")) {
         channelHistoryEnabled: true, guardedContextPort: port, configurationContext: persona, personality, personaDrift: null, examplePool: [], loreChunks: [],
         currentUser: { id: turn.speakerId, displayName: event.authorDisplayName, roleNames: [] }, mentionedUsers: [],
         message: turn.message, replyChain: [], channelHistory: [], images: [], webSearchMode: "off", imageGenerationEnabled: false, includeSources: false,
-        triggerMode: "direct", botUserId: botId, currentEvent: { type: "message", messageId: event.messageId, timestampMs: now, channelId: turn.channelId,
+        interaction: "direct_mention", botUserId: botId, currentEvent: { type: "message", messageId: event.messageId, timestampMs: now, channelId: turn.channelId,
           authorId: turn.speakerId, mentionedUserIds: [], replyToMessageId: null }, channelMemoryModes: current().chat.channelMemoryModes }, (reply) => {
           reply.characterDeliveryProof = [{ messageId: `bot-${event.messageId}`, content: reply.text }];
           const delivered = { messageId: `bot-${event.messageId}`, channelId: turn.channelId, timestampMs: now + 0.5, authorId: botId, authorDisplayName: "Character",

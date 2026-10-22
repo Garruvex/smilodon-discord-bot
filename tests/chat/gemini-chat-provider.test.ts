@@ -42,7 +42,7 @@ const baseRequest = {
   webSearchMode: "off" as const,
   imageGenerationEnabled: false,
   includeSources: true,
-  triggerMode: "direct" as const,
+  interaction: "direct_mention" as const,
 };
 
 function jsonResponse(payload: Record<string, unknown>): { text: string; functionCalls: undefined; candidates: unknown[]; usageMetadata: undefined } {

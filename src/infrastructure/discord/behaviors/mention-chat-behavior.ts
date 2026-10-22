@@ -17,7 +17,7 @@ import type { SocialChatEligibility } from "./social-chat-eligibility.js";
 import { resolveParticipation, isLowSubstancePing } from "../../../application/chat/participation-policy.js";
 import { resolveChannelMemoryMode } from "../../../application/memory/memory-channel-policy.js";
 
-import { ChatAccessService } from "../../../application/access/chat-access-service.js";
+import { ChatPolicy } from "../../../application/chat/chat-policy.js";
 import { BehaviorEvent, BehaviorResult, type BotBehavior } from "../../../application/behaviors/behavior.js";
 import { ChatProviderError, type ChannelHistoryMessage, type ReplyChainMessage } from "../../../application/chat/chat-provider.js";
 import { ChatStateCommitError, type ChatConversationService, type ChatConversationInput } from "../../../application/chat/chat-conversation-service.js";
@@ -64,7 +64,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     private readonly origins: MessageOriginStore | null = null,
     private readonly edits: ChannelEditScheduler = new ChannelEditScheduler(),
   ) {
-    this.chatAccess = new MentionChatAccess(new ChatAccessService(configuration), profiles, logger);
+    this.chatAccess = new MentionChatAccess(new ChatPolicy(configuration), profiles, logger);
     this.turnSupport = new ChatTurnSupport(logger, eligibility, origins, (message) => {
       if (message.guildId) this.conversation?.excludeInteraction(message.guildId, message.channelId, message.id);
     });
@@ -75,7 +75,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     if (!botId || !message.inGuild() || message.author.bot) return false;
     if (message.mentions.users.has(botId)) return true;
     if (!message.reference?.messageId || message.reference.channelId && message.reference.channelId !== message.channelId) return false;
-    const allowFetch = async (): Promise<boolean> => !await isInGameChannel(message, this.isGameChannel) && (await this.chatAccess.resolve(message)).reason === "allowed";
+    const allowFetch = async (): Promise<boolean> => !await isInGameChannel(message, this.isGameChannel) && (await this.chatAccess.resolve(message, "explicit_reply")).admission.admitted;
     const resolved = await resolvesReplyToBot(message, botId, this.origins, 4000, allowFetch);
     if (!resolved) emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "unresolved_reply_origin" });
     return resolved;
@@ -101,7 +101,9 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       return BehaviorResult.Continue;
     }
 
-    const access = await this.chatAccess.resolve(message);
+    const botUserId = this.clientUserId();
+    const interaction = botUserId && message.mentions.users.has(botUserId) ? mentionInteraction(message.content, botUserId, message.attachments.size > 0) : "explicit_reply";
+    const access = await this.chatAccess.resolve(message, interaction);
     if (!access.profile || access.reason === "chat_disabled") return BehaviorResult.StopPropagation;
     profile = access.profile;
     if (access.reason !== "allowed") {
@@ -125,7 +127,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       await message.reply({ content: "The chat subscription has not been configured yet.", allowedMentions: { repliedUser: false } });
       return BehaviorResult.StopPropagation;
     }
-    if (!await this.turnSupport.isEligible(message)) return BehaviorResult.StopPropagation;
+    if (!await this.turnSupport.isEligible(message, interaction)) return BehaviorResult.StopPropagation;
     this.conversation.cancelOptionalOpportunity?.(message.guildId, message.channelId, "addressed_request");
 
     const botId = this.clientUserId();
@@ -157,7 +159,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
 
     const stopTyping = this.typing.start(
       message.channelId,
-      async () => { if (!lowSubstance && await this.turnSupport.isEligible(message)) await message.channel.sendTyping(); },
+      async () => { if (!lowSubstance && await this.turnSupport.isEligible(message, interaction)) await message.channel.sendTyping(); },
     );
     // A plain object (rather than bare `let` variables) so TypeScript doesn't
     // over-narrow these to `never` in the catch block below: they're only
@@ -210,7 +212,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         sourceMessageId: message.id,
         channelHistoryEnabled: profile.features.channelHistory,
         currentEvent: this.turnSupport.toMessageEvent(message), botUserId: this.clientUserId(),
-        canExecute: this.turnSupport.createEligibilityCheck(message),
+        canExecute: this.turnSupport.createEligibilityCheck(message, interaction),
         activityLimits: participation.limits,
         resolveActivityLimits: () => resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits,
         resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(message.guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
@@ -255,8 +257,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         webSearchMode: profile.chat.webSearchMode,
         imageGenerationEnabled: profile.chat.imageGenerationEnabled,
         includeSources: profile.chat.includeSources,
-        triggerMode: "direct",
-        interactionMode: botId && message.mentions.users.has(botId) ? mentionInteraction(message.content, botId, message.attachments.size > 0) : "explicit_reply",
+        interaction,
         historyReactionsEnabled: profile.features.historyReactions && profile.features.channelHistory,
         toolsEnabled: profile.chat.toolCallingEnabled,
         disabledToolNames: new Set(profile.chat.disabledTools),
@@ -275,7 +276,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         const { deliveredText, firstMessageId } = await this.turnSupport.deliverChatResponse({
           contextProvenance: deliveredResponse.contextProvenance ?? null,
           ...(deliveredResponse.contextLease ? { contextLease: deliveredResponse.contextLease } : {}),
-          sourceMessage: message, origin: deliveredResponse.outputOrigin ?? "chat",
+          sourceMessage: message, purpose: interaction, origin: deliveredResponse.outputOrigin ?? "chat",
           sender: {
             first: async (payload) => {
               sentMessages.delivered = previewState.current
@@ -315,7 +316,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           replyToMessageId: message.id, replyToAuthorId: message.author.id,
         });
         if (deliveredResponse.outputOrigin !== "tool" && this.profiles.find(message.guildId)?.features.reactionReplies &&
-            this.messageReactionWatchStore && await this.turnSupport.isEligible(message)) {
+            this.messageReactionWatchStore && await this.turnSupport.isEligible(message, interaction)) {
           await this.messageReactionWatchStore.register(
             { guildId: message.guildId, channelId: message.channelId, messageId: firstMessageId },
             Date.now(),
@@ -329,7 +330,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       }, {
         onImagePreview: async (image) => {
           if (previewState.closed) return;
-          previewState.current ??= new ScheduledChatPreview(message, this.edits, () => this.turnSupport.assertEligible(message), chatDeliveryText[profile.language].preview);
+          previewState.current ??= new ScheduledChatPreview(message, this.edits, () => this.turnSupport.assertEligible(message, interaction), chatDeliveryText[profile.language].preview);
           await previewState.current.preview(image);
           sentMessages.preview = previewState.current.message;
         },

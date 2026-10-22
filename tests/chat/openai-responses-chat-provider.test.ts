@@ -84,7 +84,7 @@ describe("OpenAiResponsesChatProvider", () => {
       webSearchMode: "auto",
       imageGenerationEnabled: true,
       includeSources: true,
-      triggerMode: "direct",
+      interaction: "direct_mention",
     });
 
     expect(response).toEqual({
@@ -168,7 +168,7 @@ describe("OpenAiResponsesChatProvider", () => {
       webSearchMode: "off",
       imageGenerationEnabled: true,
       includeSources: false,
-      triggerMode: "direct",
+      interaction: "direct_mention",
     }, { onImagePreview });
 
     expect(onImagePreview).toHaveBeenCalledWith({
@@ -224,7 +224,7 @@ describe("OpenAiResponsesChatProvider", () => {
       webSearchMode: "off",
       imageGenerationEnabled: true,
       includeSources: false,
-      triggerMode: "direct",
+      interaction: "direct_mention",
     });
 
     expect(response.generatedImages).toHaveLength(2);
@@ -302,7 +302,7 @@ describe("OpenAiResponsesChatProvider", () => {
       webSearchMode: "off",
       imageGenerationEnabled: false,
       includeSources: false,
-      triggerMode: "direct",
+      interaction: "direct_mention",
       enabledTools: [rollDiceTool],
     });
 
@@ -383,7 +383,7 @@ describe("OpenAiResponsesChatProvider", () => {
       webSearchMode: "off",
       imageGenerationEnabled: false,
       includeSources: false,
-      triggerMode: "direct",
+      interaction: "direct_mention",
       enabledTools: [stuckTool],
     });
 

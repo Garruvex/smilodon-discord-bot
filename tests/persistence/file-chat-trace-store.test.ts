@@ -50,12 +50,12 @@ describe("diagnostic snapshot persistence", () => {
     const { logger } = captureDiagnosticLogger();
     attachDiagnosticStore(logger, store);
     const child = logger.child({ component: "test" }); child.level = "silent";
-    withDiagnosticScope({ operation: "chat_turn", ...query }, () => emitChatDiagnostic(child, { event: "chat.turn.started", triggerMode: "direct" }));
+    withDiagnosticScope({ operation: "chat_turn", ...query }, () => emitChatDiagnostic(child, { event: "chat.turn.started", interaction: "direct_mention" }));
     expect(store.lookup(query)[0]?.records).toHaveLength(1);
     await store.flush();
     await store.close();
     const restored = new FileChatTraceStore(root); stores.push(restored); await restored.initialize();
-    expect(restored.lookup(query)[0]?.records[0]?.data).toEqual({ event: "chat.turn.started", triggerMode: "direct" });
+    expect(restored.lookup(query)[0]?.records[0]?.data).toEqual({ event: "chat.turn.started", interaction: "direct_mention" });
     await restored.flush();
     expect(await readFile(join(root, "chat-diagnostics", "traces.json"), "utf8")).not.toContain("prompt");
   });
@@ -73,9 +73,9 @@ describe("diagnostic snapshot persistence", () => {
     const root = await directory(); const store = new FileChatTraceStore(root); stores.push(store); await store.initialize();
     const { logger } = captureDiagnosticLogger(); attachDiagnosticStore(logger, store);
     await withDiagnosticScope({ operation: "chat_turn", ...query }, async () => {
-      emitChatDiagnostic(logger, { event: "chat.turn.started", triggerMode: "direct" });
+      emitChatDiagnostic(logger, { event: "chat.turn.started", interaction: "direct_mention" });
       await store.forgetGuild("guild", currentDiagnosticTraceSequence());
-      emitChatDiagnostic(logger, { event: "chat.turn.completed", triggerMode: "direct", outcome: "no_text_delivery", durationMs: 1, textDeliveryConfirmed: false });
+      emitChatDiagnostic(logger, { event: "chat.turn.completed", interaction: "direct_mention", outcome: "no_text_delivery", durationMs: 1, textDeliveryConfirmed: false });
     });
     expect(store.lookup(query)).toEqual([]); await store.flush();
     expect(await readFile(join(root, "chat-diagnostics", "traces.json"), "utf8")).not.toContain('"source"');

@@ -37,7 +37,7 @@ describe("effective chat policy", () => {
     expect(effectiveChatPolicy(p, channelId, readiness).historyReasons).toEqual([]);
     const thread = effectiveChatPolicy(p, "thread", readiness);
     expect(thread.historyReasons).toContain("observation_not_selected");
-    expect(thread.modes.find((mode) => mode.mode === "direct")?.reasons).toContain("channel_not_selected");
+    expect(thread.modes.find((mode) => mode.mode === "direct_mention")?.reasons).toContain("channel_denied");
     p.channels.chatbot = new Set();
     const empty = effectiveChatPolicy(p, channelId, readiness);
     expect(empty.modes[0]?.reasons).toEqual([]);
@@ -52,8 +52,8 @@ describe("effective chat policy", () => {
       spontaneousChannelIds: [], channelOverrides: { [channelId]: { activity: "quiet", continuationEnabled: false } } };
     p.character!.channelOverrides[channelId] = { modules: {}, contextEnabled: false };
     const policy = effectiveChatPolicy(p, channelId, { reply: true, decision: false, botRead: false });
-    expect(policy.modes.find((mode) => mode.mode === "spontaneous")?.reasons).toEqual(expect.arrayContaining(["spontaneous_not_selected", "decision_unavailable", "context_channel_disabled", "bot_cannot_read"]));
-    expect(policy.modes.find((mode) => mode.mode === "continuation")?.reasons).toContain("feature_disabled");
+    expect(policy.modes.find((mode) => mode.mode === "group_conversation")?.reasons).toEqual(expect.arrayContaining(["spontaneous_not_selected", "decision_unavailable", "context_channel_disabled", "bot_cannot_read"]));
+    expect(policy.modes.find((mode) => mode.mode === "implicit_followup")?.reasons).toContain("continuation_disabled");
     expect(policy.participation.activity).toBe("quiet"); expect(policy.participation.limits.textCooldownMs).toBe(120000);
     expect(policy.participationOverrides).toEqual(["activity", "continuationEnabled"]);
     expect(policy.contextOverride).toBe(true);
@@ -72,7 +72,7 @@ describe("effective chat policy", () => {
     const p = profile(); p.features.ambientReplies = true; p.features.reactionReplies = true;
     p.chat.participation = { ...defaultParticipation, continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId], shadowMode: true };
     const modes = effectiveChatPolicy(p, channelId, readiness).modes;
-    expect(modes.filter((mode) => mode.shadow).map((mode) => mode.mode)).toEqual(["name_address", "continuation", "spontaneous", "reaction"]);
+    expect(modes.filter((mode) => mode.shadow).map((mode) => mode.mode)).toEqual(["name_address", "implicit_followup", "group_conversation", "reaction"]);
     expect(modes[0]?.shadow).toBe(false);
   });
 

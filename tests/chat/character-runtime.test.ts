@@ -36,7 +36,7 @@ function response(text = "hey"): ChatResponse { return { text, userMemoryActions
 function request(): ChatRequest { return { guildId, channelId, personality: "A fictional character who likes cats", personaLore: [], personaDrift: null,
   exampleExchanges: [{ tags: "chat", user: "hi", character: "hey" }], userCustomization: null, currentUser: { id: actorUserId, displayName: "Alice", roleNames: [] },
   mentionedUsers: [], recentHistory: [], memories: [], guildKnowledge: [], causalChains: [], message: "hey", replyChain: [], replyChainSummary: null,
-  channelHistory: [], birthday: null, images: [], webSearchMode: "off", imageGenerationEnabled: false, includeSources: false, triggerMode: "direct", botUserId: "bot" }; }
+  channelHistory: [], birthday: null, images: [], webSearchMode: "off", imageGenerationEnabled: false, includeSources: false, interaction: "direct_mention", botUserId: "bot" }; }
 async function evaluation(question = "hey"): Promise<GuardedEvaluationContext> {
   return GuardedEvaluationContext.open({ guildId, channelId, reviewerId: actorUserId },
     await configurationFixture("A fictional character who likes cats", "persona", () => true, guildId), question, characterSettingsSchema.parse({}), () => true);
@@ -87,7 +87,7 @@ describe("character module integration", () => {
     const deliver = vi.fn((reply: ChatResponse) => Promise.resolve(reply.text));
     try {
       const result = await service.run({ ...request(), examplePool: [], loreChunks: [], toolsEnabled: true, webSearchMode: "auto", imageGenerationEnabled: true,
-        triggerMode: "continuation", sourceMessageId: "current", channelHistory: [human, bot], currentBurst: [current] }, deliver);
+        interaction: "implicit_followup", sourceMessageId: "current", channelHistory: [human, bot], currentBurst: [current] }, deliver);
       expect(result.conversationDecision).toMatchObject({ status: "failed", recovery: "grounded_reply", decision: { action: "reply" } });
       expect(deliver).toHaveBeenCalledOnce(); expect(execute).not.toHaveBeenCalled();
     } finally { service.stopScheduling(); await service.drain(); }
@@ -119,7 +119,7 @@ describe("character module integration", () => {
     await characterInternals(runtime).memory.write(profiles.current(), channelId, "relationships", record({ kind: "impression", slot: "relationship", now: 2000 }), [source]);
     expect(await runtime.validatePrepared(prepared)).toBe(true); expect(await runtime.validatePrepared(prepared)).toBe(true);
     expect(contribute).not.toHaveBeenCalled();
-    expect(await runtime.validatePrepared({ ...prepared, request: { ...prepared.request, triggerMode: "spontaneous" } })).toBe(false);
+    expect(await runtime.validatePrepared({ ...prepared, request: { ...prepared.request, interaction: "group_conversation" } })).toBe(false);
   });
   it("trims mild voice violations even when regeneration is selected, and only regenerates severe casual formatting", async () => {
     const { runtime, profiles, provider } = setup(); const reply = vi.spyOn(provider, "reply");
@@ -240,7 +240,7 @@ describe("character module integration", () => {
     await profiles.update(guildId, { chatbotSharedMemoryEnabled: true, chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] }, character: { enabled: true, modules: { relationships: { enabled: true } } } });
     const source = await repository.ingest(record());
     await characterInternals(runtime).memory.write(profiles.current(), channelId, "relationships", record({ kind: "impression", slot: "relationship", now: 2000 }), [source]);
-    const prepared = (await characterInternals(runtime).prepare({ ...request(), triggerMode: "spontaneous" }))!;
+    const prepared = (await characterInternals(runtime).prepare({ ...request(), interaction: "group_conversation" }))!;
     expect(prepared.request.characterContext?.some((section) => section.moduleId === "relationships")).toBe(true);
     expect(await runtime.validatePrepared(prepared)).toBe(true);
     await repository.forget({ guildId, memoryId: source.id });
@@ -254,8 +254,8 @@ describe("character module integration", () => {
     expect(prepared.request.characterContext?.some((section) => section.moduleId === "mood")).toBe(true);
     now += 5000; expect(await runtime.validatePrepared(prepared)).toBe(true);
     now += 60_000; expect(await runtime.validatePrepared(prepared)).toBe(true);
-    expect(await runtime.validatePrepared({ ...prepared, request: { ...prepared.request, triggerMode: "ambient" } })).toBe(true);
-    expect(await runtime.validatePrepared({ ...prepared, request: { ...prepared.request, triggerMode: "spontaneous" } })).toBe(false);
+    expect(await runtime.validatePrepared({ ...prepared, request: { ...prepared.request, interaction: "name_address" } })).toBe(true);
+    expect(await runtime.validatePrepared({ ...prepared, request: { ...prepared.request, interaction: "group_conversation" } })).toBe(false);
   });
   it("keeps interview probes free of character writes and tools", async () => {
     const { runtime, repository, profiles, provider } = setup(); const replySpy = vi.spyOn(provider, "reply");
@@ -431,13 +431,13 @@ describe("decision windows and continuation timing", () => {
     try {
       await service.run({ ...request(), currentUser: { id: "new-speaker", displayName: "Bystander", roleNames: [] }, message: "你也要當跑山猴嗎",
         currentEvent: { type: "message", messageId: "current", authorId: "new-speaker", channelId, timestampMs: now, replyToMessageId: "advice", mentionedUserIds: [] },
-        examplePool: [], loreChunks: [], triggerMode: "direct", sourceMessageId: "current", replyChain: [rider, bot] }, deliver);
+        examplePool: [], loreChunks: [], interaction: "direct_mention", sourceMessageId: "current", replyChain: [rider, bot] }, deliver);
       expect(generation).toHaveBeenCalledOnce(); expect(deliver).toHaveBeenCalledOnce(); expect(decisions).not.toHaveBeenCalled();
     } finally { service.stopScheduling(); await service.drain(); }
   });
   it.each((["bot", "continuing", "others"] as const).flatMap((addressing) =>
-    (["continuation", "spontaneous"] as const).flatMap((triggerMode) =>
-      [5000, 6 * 60 * 60 * 1000].map((now) => ({ addressing, triggerMode, now })))))("does not inherit another human's motorcycle exchange ($addressing / $triggerMode / $now)", async ({ addressing, triggerMode, now }) => {
+    (["implicit_followup", "group_conversation"] as const).flatMap((interaction) =>
+      [5000, 6 * 60 * 60 * 1000].map((now) => ({ addressing, interaction, now })))))("does not inherit another human's motorcycle exchange ($addressing / $interaction / $now)", async ({ addressing, interaction, now }) => {
     const { runtime, provider, profiles, repository, connection } = setup(() => now);
     const generation = vi.spyOn(provider, "reply");
     await profiles.update(guildId, { chatParticipation: { continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
@@ -451,11 +451,11 @@ describe("decision windows and continuation timing", () => {
     const deliver = vi.fn(() => Promise.resolve("must not send"));
     try {
       const result = await service.run({ ...request(), message: current.content, currentUser: { id: "bystander", displayName: "Bystander", roleNames: [] },
-        examplePool: [], loreChunks: [], triggerMode, sourceMessageId: "current", currentBurst: [current], channelHistory: [rider, bot], channelHistoryEnabled: true }, deliver);
+        examplePool: [], loreChunks: [], interaction, sourceMessageId: "current", currentBurst: [current], channelHistory: [rider, bot], channelHistoryEnabled: true }, deliver);
       expect(result.ambientAction).toBe("ignore"); expect(deliver).not.toHaveBeenCalled(); expect(generation).not.toHaveBeenCalled();
     } finally { service.stopScheduling(); await service.drain(); }
   });
-  it.each(["continuation", "spontaneous"] as const)("keeps an authorized generated %s when another human speaks", async (triggerMode) => {
+  it.each(["implicit_followup", "group_conversation"] as const)("keeps an authorized generated %s when another human speaks", async (interaction) => {
     let now = 4000; const { runtime, provider, profiles, repository, connection } = setup(() => now);
     await profiles.update(guildId, { chatParticipation: { continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
     const human = { messageId: "human", timestampMs: 1000, authorId: actorUserId, authorDisplayName: "Alice", content: "Compare these two ideas", imageCount: 0 };
@@ -469,7 +469,7 @@ describe("decision windows and continuation timing", () => {
     const deliver = vi.fn(() => Promise.resolve("sent"));
     try {
       service.observe(guildId, channelId, human); service.observe(guildId, channelId, bot);
-      const turn = service.run({ ...request(), examplePool: [], loreChunks: [], triggerMode, sourceMessageId: "current", currentBurst: [current], channelHistory: [human, bot], channelHistoryEnabled: true }, deliver);
+      const turn = service.run({ ...request(), examplePool: [], loreChunks: [], interaction, sourceMessageId: "current", currentBurst: [current], channelHistory: [human, bot], channelHistoryEnabled: true }, deliver);
       const outcome = turn.then(() => "delivered", () => "suppressed");
       await vi.waitFor(() => expect(generation).toHaveBeenCalled());
       now = 5000; service.observe(guildId, channelId, { ...current, messageId: "new-recipient", authorId: "bob", timestampMs: now, content: "Carol, my question is for you" });
@@ -483,7 +483,7 @@ describe("decision windows and continuation timing", () => {
     const candidate = { text: "A specific relevant joke", adds: "A joke on the current topic", label: "relevant-joke", motivation: 0.9, sourceMessageId: "current", recipientId: "group" };
     const decision = { addressing: "others", motivation: 0.9, confidence: 0.9, recipientConfidence: 0.9, targetConfidence: 0.9, recipientEvidence: ["current"], target: "current", boundary: "earlier", opening: "clear", contribution: candidate, thoughts: [candidate], reaction: null };
     vi.mocked(provider.generateCharacterData!).mockResolvedValue(decision);
-    const input = { ...request(), triggerMode: "spontaneous" as const, currentBurst: [{ messageId: "current", timestampMs: 4000, authorId: actorUserId, authorDisplayName: "Alice", content: "A group joke about the current game", imageCount: 0 }] };
+    const input = { ...request(), interaction: "group_conversation" as const, currentBurst: [{ messageId: "current", timestampMs: 4000, authorId: actorUserId, authorDisplayName: "Alice", content: "A group joke about the current game", imageCount: 0 }] };
     expect((await characterInternals(runtime).prepare(input))?.allowed).toBe(true);
     await profiles.update(guildId, { character: { modules: { thoughts: { shadow: false, threshold: 0 } } } });
     vi.mocked(provider.generateCharacterData!).mockResolvedValue({ ...decision, motivation: 1, contribution: { ...candidate, label: "acknowledgment-only", motivation: 1 } });
@@ -498,7 +498,7 @@ describe("decision windows and continuation timing", () => {
     const current = { messageId: "current", timestampMs: 4000, authorId: actorUserId, authorDisplayName: "Alice", content: "A group joke about the current game", imageCount: 0 };
     const deliver = vi.fn(() => Promise.resolve("must not send"));
     try {
-      const result = await service.run({ ...request(), examplePool: [], loreChunks: [], triggerMode: "spontaneous", sourceMessageId: "current", currentBurst: [current] }, deliver);
+      const result = await service.run({ ...request(), examplePool: [], loreChunks: [], interaction: "group_conversation", sourceMessageId: "current", currentBurst: [current] }, deliver);
       expect(result.ambientAction).toBe("ignore"); expect(result.text).toBe(""); expect(deliver).not.toHaveBeenCalled();
     } finally { service.stopScheduling(); await service.drain(); }
   });
@@ -516,7 +516,7 @@ describe("decision windows and continuation timing", () => {
     const deliver = vi.fn(() => Promise.resolve("unexpected"));
     const replySpy = vi.spyOn(provider, "reply");
     try {
-      const result = await service.run({ ...request(), examplePool: [], loreChunks: [], triggerMode: "spontaneous",
+      const result = await service.run({ ...request(), examplePool: [], loreChunks: [], interaction: "group_conversation",
         sourceMessageId: "current", currentBurst: [current], historyReactionsEnabled: true }, deliver);
       expect(result).toMatchObject({ ambientAction: "ignore", reactionEmoji: "🎉", replyTargetMessageId: "current" });
       expect(deliver).not.toHaveBeenCalled(); expect(replySpy).not.toHaveBeenCalled();
@@ -530,11 +530,11 @@ describe("decision windows and continuation timing", () => {
       recipientConfidence: 0.9, targetConfidence: 0.9, recipientEvidence: ["current"], target: "current", boundary: "earlier",
       opening: "clear", contribution: { text: "A relevant joke", adds: "A new angle", label: "relevant-joke", motivation: 0.9,
         sourceMessageId: "current", recipientId: "group" }, thoughts: [], reaction: null });
-    const prepared = await characterInternals(runtime).prepare({ ...request(), triggerMode: "spontaneous",
+    const prepared = await characterInternals(runtime).prepare({ ...request(), interaction: "group_conversation",
       currentBurst: [{ messageId: "current", timestampMs: 4000, authorId: actorUserId, authorDisplayName: "Alice",
         content: "A conversation about the game", imageCount: 0 }] });
     expect(prepared?.allowed).toBe(false);
-    expect(info).toHaveBeenCalledWith(expect.objectContaining({ triggerMode: "spontaneous", action: "ignore",
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({ interaction: "group_conversation", action: "ignore",
       rejectionReason: "decision_confidence_low", decisionConfidence: 0.6, recipientConfidence: 0.9,
       targetConfidence: 0.9, contributionMotivation: 0.9 }), "Optional participation decision");
   });
@@ -545,7 +545,7 @@ describe("decision windows and continuation timing", () => {
     const human = { messageId: "human", timestampMs: 1000, authorId: actorUserId, authorDisplayName: "Alice", content: "tell me about cats", imageCount: 0 };
     const bot = { replyToMessageId: "human", messageId: "bot-message", timestampMs: 2000, authorId: "bot", authorDisplayName: "Bot", content: "hello", imageCount: 0, replyToAuthorId: actorUserId };
     const current = { messageId: "current", timestampMs: 4000, authorId: actorUserId, authorDisplayName: "Alice", content: "你覺得呢？", imageCount: 0 };
-    const input = { ...request(), triggerMode: "continuation" as const, currentBurst: [current], channelHistory: [human, bot] };
+    const input = { ...request(), interaction: "implicit_followup" as const, currentBurst: [current], channelHistory: [human, bot] };
     expect((await characterInternals(runtime).prepare(input))?.allowed).toBe(true);
     expect((await characterInternals(runtime).prepare({ ...input, channelHistory: [human, bot, { ...current, messageId: "other", timestampMs: 3000, authorId: "other" }] }))?.allowed).toBe(false);
     expect((await characterInternals(runtime).prepare({ ...input, currentBurst: [{ ...current, replyToAuthorId: "other", replyToMessageId: "other" }] }))?.allowed).toBe(false);
@@ -554,7 +554,7 @@ describe("decision windows and continuation timing", () => {
     const { runtime, provider, profiles } = setup(() => 4000);
     await profiles.update(guildId, { chatParticipation: { continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
     vi.mocked(provider.generateCharacterData!).mockResolvedValue({ addressing: "others", motivation: 0.5, boundary: "earlier", target: "current", confidence: 0.9, reaction: null, thoughts: [], recipientEvidence: ["current"], recipientConfidence: 0.9, targetConfidence: 0.9, opening: "clear", contribution: { text: "A specific observation", adds: "A new detail", label: "acknowledgment-only", sourceMessageId: "current", recipientId: actorUserId, motivation: 0.8 } });
-    const input = { ...request(), triggerMode: "spontaneous" as const, currentBurst: [{ messageId: "current", timestampMs: 4000, authorId: actorUserId, authorDisplayName: "Alice", content: "just finished dinner", imageCount: 0 }] };
+    const input = { ...request(), interaction: "group_conversation" as const, currentBurst: [{ messageId: "current", timestampMs: 4000, authorId: actorUserId, authorDisplayName: "Alice", content: "just finished dinner", imageCount: 0 }] };
     expect((await characterInternals(runtime).prepare(input))?.allowed).toBe(false);
   });
   it("rejects fabricated targets rather than silently repairing recipient evidence", async () => {

@@ -10,7 +10,7 @@ export function decisionRequest(extra: Partial<ChatRequest> = {}): ChatRequest {
   return { guildId: "guild", channelId: "channel", personality: "A fictional character", personaLore: [], personaDrift: null, exampleExchanges: [], userCustomization: null,
     currentUser: { id: "alice", displayName: "Alice", roleNames: [] }, mentionedUsers: [], recentHistory: [], memories: [], guildKnowledge: [], causalChains: [],
     message: branchCurrent.content, replyChain: [], replyChainSummary: null, channelHistory: [branchHuman, branchBot], currentBurst: [branchCurrent], birthday: null,
-    images: [], webSearchMode: "off", imageGenerationEnabled: false, includeSources: false, triggerMode: "continuation", botUserId: "bot", ...extra };
+    images: [], webSearchMode: "off", imageGenerationEnabled: false, includeSources: false, interaction: "implicit_followup", botUserId: "bot", ...extra };
 }
 export function decisionResponse(extra: Partial<ChatResponse> = {}): ChatResponse {
   return { text: "A specific answer", userMemoryActions: [], guildKnowledgeCandidates: [], sources: [], usage: null, webSearchUsed: false, generatedImages: [],

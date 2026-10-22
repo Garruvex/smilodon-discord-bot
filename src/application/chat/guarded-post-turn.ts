@@ -27,7 +27,7 @@ export async function runGuardedPostTurn(input: GuardedChatConversationInput, dr
   characterConfiguration?: (id: string) => Promise<string | null>;
 }): Promise<void> {
   const mode = input.resolveMemoryMode?.() ?? input.channelMemoryModes?.[input.channelId] ?? "shared";
-  if (!allowsDurableWrites(mode) || input.shadowMode || input.triggerMode === "reaction") return;
+  if (!allowsDurableWrites(mode) || input.shadowMode || input.interaction === "reaction") return;
   const gateway = new ConversationModelGateway(dependencies.utility ?? dependencies.provider, dependencies.provider);
   if (!dependencies.extraction && !gateway.canExtract && (!dropped.length || !gateway.canConsolidate && !(input.personaDriftEnabled && dependencies.drift && gateway.canEvolveDrift))) return;
   const configuration = await conversationConfiguration(input.guildId, input.currentUser.id, input.configurationContext, dependencies.customization);

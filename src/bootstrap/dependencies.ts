@@ -793,7 +793,7 @@ export function createDependencies(
       const channel = await discordClient.channels.fetch(channelId).catch(() => null);
       if (!channel?.isTextBased() || channel.isDMBased() || channel.guildId !== guildId) return null;
       const message = await channel.messages.fetch(sourceMessageId).catch(() => null);
-      return message && (await socialEligibility.check(message, "continuation")).eligible ? message : null;
+      return message && (await socialEligibility.check(message, "implicit_followup")).eligible ? message : null;
     };
     const callbackSources = new ChatTurnSupport(logger.child({ component: "callback-context" }), socialEligibility, messageOriginStore);
     characterRuntime.bindCallbackDelivery({

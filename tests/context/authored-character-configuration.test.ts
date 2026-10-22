@@ -50,7 +50,7 @@ async function fixture(verified = false): Promise<{
     undefined, undefined, undefined, null, null, null, null, null, null, null, null, runtime, () => 3000);
   close.push(() => service.stopScheduling());
   const run = async (): Promise<ChatRequest> => {
-    await service.run({ ...decisionRequest({ guildId, channelId, channelHistory: [], triggerMode: "direct" }), sourceMessageId: "current", guardedContextPort: source.port,
+    await service.run({ ...decisionRequest({ guildId, channelId, channelHistory: [], interaction: "direct_mention" }), sourceMessageId: "current", guardedContextPort: source.port,
       configurationContext: persona, examplePool: [], loreChunks: [], channelHistoryEnabled: true }, (reply) => Promise.resolve(reply.text));
     await service.drain(); return captured;
   };

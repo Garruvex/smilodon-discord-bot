@@ -2,7 +2,7 @@ import type { GuardedConversationContext } from "./guarded-conversation-context.
 import type { ActiveConversationTurnPlan } from "./conversation-turn-plan.js";
 import type { ContextProvenance } from "./context-provenance.js";
 import type { ChatTool } from "./tools/chat-tool.js";
-import type { ConversationInteraction } from "./conversation-trigger.js";
+import type { ChatInteraction } from "./chat-policy.js";
 import type { ConversationDecisionResult, ConversationIntent } from "./conversation-decision-engine.js";
 import type { ExampleExchange } from "./example-exchange.js";
 import type { PlaybackActor } from "../music/playback-service.js";
@@ -16,7 +16,6 @@ export interface ChatRequest {
   configurationContext?: GuardedConfigurationContext;
   turnPlan?: ActiveConversationTurnPlan;
   contextLease?: GuardedConversationContext;
-  interactionMode?: ConversationInteraction;
   characterGuardEnabled?: boolean;
   characterShadow?: boolean;
   characterStyleExamples?: readonly ExampleExchange[];
@@ -137,16 +136,10 @@ export interface ChatRequest {
   webSearchMode: "off" | "auto";
   imageGenerationEnabled: boolean;
   includeSources: boolean;
-  // "direct": an explicit @mention or reply-chain continuation — always
-  // produces a reply. "ambient": the bot's name was merely mentioned in a
-  // message, not @mentioned — the model judges whether to ignore, react
-  // with an emoji, or reply (see ChatResponse.ambientAction). "reaction":
-  // several people reacted to one of the bot's own prior replies (see
-  // ReactionReplyScheduler) — same reply/ignore/react judgment as "ambient",
-  // but the situation being judged is entirely different (a reaction burst
-  // on a past message, not the bot's name coming up in a live message), so
-  // it gets its own prompt section rather than reusing ambient's.
-  triggerMode: "direct" | "ambient" | "reaction" | "continuation" | "spontaneous";
+  // Transport label for this turn (see chat-policy). Explicit interactions
+  // carry an answer obligation; implicit_followup, group_conversation and
+  // reaction are optional participation judged by the decision stage.
+  interaction: ChatInteraction;
   // Per-guild opt-in (profile.features.historyReactions) — piggybacks on
   // whatever turn is already happening (a mention/ambient reply, or a
   // reaction-threshold turn) to let the model also drop a tasteful reaction
@@ -412,8 +405,8 @@ export interface ChatResponse {
   usage: ChatUsage | null;
   webSearchUsed: boolean;
   generatedImages: readonly GeneratedChatImage[];
-  // Only meaningful when the request's triggerMode was "ambient" or
-  // "reaction"; null for direct-mode responses (treated as "reply" by
+  // Only meaningful for name_address, optional and reaction interactions;
+  // null for addressed responses (treated as "reply" by
   // callers). Independent of reactionEmoji — a non-direct turn can reply,
   // react, both, or neither.
   ambientAction: "reply" | "ignore" | null;

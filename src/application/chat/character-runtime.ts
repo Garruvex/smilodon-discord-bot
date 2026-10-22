@@ -33,6 +33,7 @@ import { startOfLocalDay } from "./character-calendar.js";
 import type { CharacterEvaluationStore } from "./character-evaluation.js";
 import { ConversationDecisionEngine, reportConversationDecision, type ConversationDecisionResult } from "./conversation-decision-engine.js";
 import { resolveConversationTrigger } from "./conversation-trigger.js";
+import { isExplicitInteraction, isOptionalInteraction } from "./chat-policy.js";
 import { interviewProbes } from "./character-evaluation.js";
 import type { PersonalMemoryExtractionQueueStore } from "../context/personal-memory-extraction-queue.js";
 
@@ -141,7 +142,7 @@ export class CharacterRuntime {
     // Solicited replies use a stable snapshot. Ordinary background learning
     // and mood expiry must not silence a mention. Explicit forgetting/access
     // changes still use conversation privacy versions and eligibility.
-    if (isGuardedContext(prepared.request.contextLease) || prepared.request.triggerMode === "direct" || prepared.request.triggerMode === "ambient") return this.stillEligible(prepared);
+    if (isGuardedContext(prepared.request.contextLease) || isExplicitInteraction(prepared.request.interaction)) return this.stillEligible(prepared);
     const current = await this.registry.contribute({ ...prepared.turn, validationNow: this.now() });
     return this.stillEligible(prepared) && JSON.stringify(current) === prepared.memoryContextSignature || reject("character_memory_changed");
   }
@@ -266,10 +267,10 @@ export class CharacterRuntime {
     let participation: CharacterPreparedTurn["participation"] = null;
     let conversationDecision: ConversationDecisionResult | undefined;
     let styleUserId: string | null = null; let styleSignature: string | null = null;
-    const optional = request.triggerMode === "continuation" || request.triggerMode === "spontaneous";
+    const optional = isOptionalInteraction(request.interaction);
     const participationSettings = resolveParticipation(profile.chat.participation, request.channelId);
     if (optional && (!capabilities.context || !passiveChannelAllowed(profile, request.channelId) ||
-        !(request.triggerMode === "continuation" ? participationSettings.continuationEnabled : participationSettings.spontaneousEnabled))) {
+        !(request.interaction === "implicit_followup" ? participationSettings.continuationEnabled : participationSettings.spontaneousEnabled))) {
       const denied = this.decisionEngine.assess(request, { status: "skipped", decision: null }, profile.chat.participation, false, turn.now, fingerprint).result;
       reportConversationDecision(this.logger, denied, "preflight", resolveConversationTrigger(request).interaction);
       await this.evaluationStore?.record(request.guildId, "decision", { sourceMessageId: burst.at(-1)?.messageId ?? null, decisionStatus,
@@ -278,14 +279,14 @@ export class CharacterRuntime {
       return { turn, request, fingerprint, allowed: false, decisionStatus, conversationDecision: denied, acceptedContribution: null, exchangeId: null,
         targetMessageId, memoryContextSignature: "[]", participation: { action: "ignore", reaction: null }, styleUserId, styleSignature, targetConfidence };
     }
-    if (!request.characterEvaluation && (capabilities.context && (optional || settings.context.enabled || enabled("thoughts")) || request.triggerMode === "reaction")) {
+    if (!request.characterEvaluation && (capabilities.context && (optional || settings.context.enabled || enabled("thoughts")) || request.interaction === "reaction")) {
       const contextualProjection = contextual ? selectDecisionContext(request, settings.context.decisionMessages) : null;
       const decisionEvents = contextualProjection?.events ?? (guarded ? projectDecisionContext(request, settings.context.decisionMessages) : events.slice(-settings.context.decisionMessages));
       if (contextualProjection) emitChatDiagnostic(this.logger, { event: "context.decision.coverage", ...contextualProjection.coverage });
-      const fixedTarget = contextual && request.currentEvent?.type === "reaction_snapshot" ? request.currentEvent.targetMessageId : contextual && optional || request.triggerMode === "continuation" ? burst.at(-1)?.messageId ?? null : optional || request.triggerMode === "reaction" ? null : request.currentEvent?.type === "message" ? request.currentEvent.messageId : null;
+      const fixedTarget = contextual && request.currentEvent?.type === "reaction_snapshot" ? request.currentEvent.targetMessageId : contextual && optional || request.interaction === "implicit_followup" ? burst.at(-1)?.messageId ?? null : optional || request.interaction === "reaction" ? null : request.currentEvent?.type === "message" ? request.currentEvent.messageId : null;
       // Legacy reaction generation already selects its action in the reply
       // contract. Its bot target cannot enter the legacy human-target schema.
-      const shouldDecide = optional || request.triggerMode === "reaction" && guarded;
+      const shouldDecide = optional || request.interaction === "reaction" && guarded;
       const decisionStarted = Date.now();
       const decisionInput = { personality: request.personality, events: decisionEvents, burst, botId: request.botUserId ?? "bot",
         ...(guarded ? { sourceContext: request.contextLease! } : {}),
@@ -318,9 +319,9 @@ export class CharacterRuntime {
         action: decision.contextual.action, evidenceCount: decision.recipientEvidence.length, linkKind: decision.contextual.link?.kind ?? null,
         recipientConfidence: decision.recipientConfidence, confidence: decision.confidence });
       const assessment = this.decisionEngine.assess({ ...request, currentBurst: burst }, outcome, profile.chat.participation, true, turn.now, fingerprint);
-      if (optional || request.triggerMode === "reaction") reportConversationDecision(this.logger, assessment.result, "preflight", resolveConversationTrigger(request).interaction);
+      if (optional || request.interaction === "reaction") reportConversationDecision(this.logger, assessment.result, "preflight", resolveConversationTrigger(request).interaction);
       const local = assessment.local;
-      if (optional || request.triggerMode === "reaction") {
+      if (optional || request.interaction === "reaction") {
         conversationDecision = assessment.result;
         const action = conversationDecision.decision.action;
         allowed = action !== "silent";
@@ -347,7 +348,7 @@ export class CharacterRuntime {
           latencyMs: Date.now() - decisionStarted, shadow: request.characterShadow ?? false,
         });
         this.logger?.info({ guildId: request.guildId, channelId: request.channelId, sourceMessageId: burst.at(-1)?.messageId ?? null,
-          triggerMode: request.triggerMode, decisionStatus, action, rejectionReason, textRejectionReason,
+          interaction: request.interaction, decisionStatus, action, rejectionReason, textRejectionReason,
           textAvailable: request.optionalActionsAvailable?.text ?? null, reactionAvailable: request.optionalActionsAvailable?.reaction ?? null,
           recipientConfidence: decision?.recipientConfidence ?? null, targetConfidence: decision?.targetConfidence ?? null,
           decisionConfidence: decision?.confidence ?? null, contributionMotivation: decision?.contribution.motivation ?? null,
@@ -418,7 +419,7 @@ export class CharacterRuntime {
       const request: ChatRequest = { guildId, channelId, personality: "", personaLore: [], personaDrift: null, exampleExchanges: [], userCustomization: null,
         currentUser: { id: userId, displayName: "", roleNames: [] }, mentionedUsers: [], recentHistory: [], memories: [], guildKnowledge: [], causalChains: [],
         message: "", replyChain: [], replyChainSummary: null, channelHistory: [], birthday: null, images: [], webSearchMode: "off",
-        imageGenerationEnabled: false, includeSources: false, triggerMode: "direct" };
+        imageGenerationEnabled: false, includeSources: false, interaction: "direct_mention" };
       await this.registry.consolidateModule("relationships", { text: "", userMemoryActions: [], guildKnowledgeCandidates: [], sources: [], usage: null, webSearchUsed: false, generatedImages: [], ambientAction: "ignore", reactionEmoji: null, historyReactions: [] },
         { request, backgroundContext: context, settings: characterSettings(this.profiles.require(guildId)), capabilities: this.capabilities(profile, channelId), now: this.now() });
     }
@@ -581,7 +582,7 @@ export class CharacterRuntime {
               personaLore: (persona.material.loreChunks ?? []).map(({ heading, text }) => ({ heading, text })), exampleExchanges: [], personaDrift: null,
               userCustomization: null, currentUser: { id: userId, displayName: "", roleNames: [] }, mentionedUsers: [], recentHistory: [], memories: [],
               guildKnowledge: [], causalChains: [], message: "", replyChain: [], replyChainSummary: null, channelHistory: [], birthday: null, images: [],
-              webSearchMode: "off", imageGenerationEnabled: false, includeSources: false, triggerMode: "direct" }, settings,
+              webSearchMode: "off", imageGenerationEnabled: false, includeSources: false, interaction: "direct_mention" }, settings,
               capabilities: this.capabilities(profile, activity.channelId), now };
             const text = await this.text(`Write one short welcome follow-up after this member's dated event. Ask how it went, don't assert it happened. Match persona, no invented shared past or real-world action. Data: ${JSON.stringify({ event: memory.statement, memberId: userId, character: profile.displayName,
               personality: persona.material.text, lore: (persona.material.loreChunks ?? []).map(({ heading, text }) => ({ heading, text })) }).replaceAll("<", "\\u003c")}`, turn);

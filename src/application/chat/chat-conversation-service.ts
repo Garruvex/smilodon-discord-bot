@@ -20,6 +20,7 @@ import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { ChatScheduler, balancedChatLimits, type ChatActivityLimits, type OpportunityCancellationReason } from "./chat-scheduler.js";
 import { ConversationEpisodes } from "./conversation-episodes.js";
 import { resolveConversationTrigger } from "./conversation-trigger.js";
+import { isExplicitInteraction, isOptionalInteraction } from "./chat-policy.js";
 import type { ConversationEpisodeStore } from "./conversation-episode-store.js";
 import { participationDecision } from "./participation-decision.js";
 import { RecentPromptHistorySelector, type PromptHistorySelector } from "./prompt-history-selector.js";
@@ -262,7 +263,7 @@ export class ChatConversationService {
       const started = performance.now();
       let textDeliveryConfirmed = false;
       let timer: ReturnType<typeof setTimeout> | null = null;
-      emitChatDiagnostic(this.logger, { event: "chat.turn.started", triggerMode: input.triggerMode, ...(input.candidateId ? { candidateId: input.candidateId } : {}) });
+      emitChatDiagnostic(this.logger, { event: "chat.turn.started", interaction: input.interaction, ...(input.candidateId ? { candidateId: input.candidateId } : {}) });
       try {
         const plan: ConversationTurnPlan | null = this.characterRuntime ? this.characterRuntime.resolveTurnPlan(input.guildId, input.channelId) : {
           state: "ready", flow: "legacy", context: "guarded_text", decision: "legacy", deadlineMs: 30000, contextPolicy: { count: 40, budget: 12000 } };
@@ -287,11 +288,11 @@ export class ChatConversationService {
           textDeliveryConfirmed = true;
           return text;
         }, observer));
-        emitChatDiagnostic(this.logger, { event: "chat.turn.completed", triggerMode: input.triggerMode,
+        emitChatDiagnostic(this.logger, { event: "chat.turn.completed", interaction: input.interaction,
           outcome: textDeliveryConfirmed ? "text_delivered" : "no_text_delivery", textDeliveryConfirmed, durationMs: diagnosticElapsed(started) });
         return response;
       } catch (error) {
-        emitChatDiagnostic(this.logger, { event: "chat.turn.completed", triggerMode: input.triggerMode,
+        emitChatDiagnostic(this.logger, { event: "chat.turn.completed", interaction: input.interaction,
           outcome: error instanceof ChatStateCommitError ? "delivered_state_unsaved" : error instanceof SocialOutputSuppressed ? "suppressed" : "failed",
           textDeliveryConfirmed, durationMs: diagnosticElapsed(started), ...(error instanceof SocialOutputSuppressed ? {} : safeFailure(error)) });
         throw error;
@@ -316,15 +317,15 @@ export class ChatConversationService {
     observer?: ChatResponseObserver,
   ): Promise<ChatResponse> {
     const key = `${input.guildId}:${input.channelId}`;
-    if (input.triggerMode === "direct" || input.triggerMode === "ambient") this.cancelOptionalOpportunity(input.guildId, input.channelId, "addressed_request");
+    if (isExplicitInteraction(input.interaction)) this.cancelOptionalOpportunity(input.guildId, input.channelId, "addressed_request");
     const optional = !resolveConversationTrigger(input).explicit;
     const expiresAt = optional ? this.now() + 30_000 : null;
-    const limits = { ...(input.resolveActivityLimits?.() ?? input.activityLimits ?? balancedChatLimits), continuation: input.triggerMode === "continuation" };
+    const limits = { ...(input.resolveActivityLimits?.() ?? input.activityLimits ?? balancedChatLimits), continuation: input.interaction === "implicit_followup" };
     const silent: ChatResponse = {
       text: "", ambientAction: "ignore", reactionEmoji: null, historyReactions: [], userMemoryActions: [],
       guildKnowledgeCandidates: [], sources: [], usage: null, webSearchUsed: false, generatedImages: [],
     };
-    if ((input.triggerMode === "continuation" || input.triggerMode === "spontaneous") && !this.characterRuntime) {
+    if (isOptionalInteraction(input.interaction) && !this.characterRuntime) {
       emitChatDiagnostic(this.logger, { event: "chat.turn.skipped", reason: "decision_unavailable" });
       return Promise.resolve(silent);
     }
@@ -370,13 +371,13 @@ export class ChatConversationService {
           this.trackBackground(work);
         });
       };
-      const contextualAvailability = input.turnPlan.decision === "contextual" && (input.triggerMode === "continuation" || input.triggerMode === "spontaneous") ? {
+      const contextualAvailability = input.turnPlan.decision === "contextual" && isOptionalInteraction(input.interaction) ? {
         continuation: { text: this.scheduler.outputAvailable(key, "text", { ...limits, continuation: true }), reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits) },
         spontaneous: { text: this.scheduler.outputAvailable(key, "text", { ...limits, continuation: false }), reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits) },
       } : null;
       const response = await runTurn({ ...input,
         ...(contextualAvailability ? { contextualActionAvailability: contextualAvailability } : {}),
-        ...((input.triggerMode === "spontaneous" || input.triggerMode === "continuation" || input.triggerMode === "reaction") ? { optionalActionsAvailable: {
+        ...(!isExplicitInteraction(input.interaction) ? { optionalActionsAvailable: {
           text: contextualAvailability ? contextualAvailability.continuation.text || contextualAvailability.spontaneous.text : this.scheduler.outputAvailable(key, "text", limits),
           reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits),
         } } : {}),
@@ -397,7 +398,7 @@ export class ChatConversationService {
           throw new SocialOutputSuppressed();
         }
         const release = this.scheduler.reserveOutput(key, "text", { ...(input.resolveActivityLimits?.() ?? limits),
-          continuation: result.conversationDecision?.decision.participationKind ? result.conversationDecision.decision.participationKind === "continuation" : input.triggerMode === "continuation",
+          continuation: result.conversationDecision?.decision.participationKind ? result.conversationDecision.decision.participationKind === "continuation" : input.interaction === "implicit_followup",
           exchangeId: result.participationExchangeId }, optional);
         if (!release) {
           emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "output_capacity" });

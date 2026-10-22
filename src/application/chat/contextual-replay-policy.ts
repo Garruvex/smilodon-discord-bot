@@ -20,7 +20,7 @@ export async function replayPolicyAssessment(fixture: ContextualReplayCase, outc
     currentUser: { id: fixture.current.authorId, displayName: fixture.current.authorDisplayName, roleNames: [] }, mentionedUsers: [], recentHistory: [],
     memories: [], guildKnowledge: [], causalChains: [], message: lease.current.content, replyChain: lease.replyChain, replyChainSummary: null,
     channelHistory: lease.history, currentBurst: lease.burst, ...(lease.currentEvent ? { currentEvent: lease.currentEvent } : {}), contextLease: lease, birthday: null, images: [],
-    webSearchMode: "off", imageGenerationEnabled: false, includeSources: false, triggerMode: "spontaneous", botUserId: botId,
+    webSearchMode: "off", imageGenerationEnabled: false, includeSources: false, interaction: "group_conversation", botUserId: botId,
     turnPlan: { state: "ready", flow: "contextual_v1", context: "guarded_text", decision: "contextual", deadlineMs: 30000, contextPolicy: { count: 40, budget: 12000 } },
     optionalActionsAvailable: { text: true, reaction: true } };
   const result = new ConversationDecisionEngine().assess(request, outcome, { ...defaultParticipation, continuationEnabled: true,

@@ -7,7 +7,7 @@ import { RecentPromptHistorySelector } from "../../src/application/chat/prompt-h
 import { decisionRequest } from "../helpers/conversation-decision-fixtures.js";
 
 function request(): ReturnType<typeof decisionRequest> {
-  return decisionRequest({ triggerMode: "direct", message: "SECRET_CURRENT_TEXT", currentBurst: [],
+  return decisionRequest({ interaction: "direct_mention", message: "SECRET_CURRENT_TEXT", currentBurst: [],
     currentEvent: { type: "message", messageId: "current", channelId: "channel", timestampMs: 3000, authorId: "alice", replyToMessageId: null, mentionedUserIds: [] },
     channelHistory: [{ messageId: "prior", channelId: "channel", authorId: "bob", authorDisplayName: "SECRET_NAME", content: "SECRET_HISTORY_TEXT", timestampMs: 1000, imageCount: 0 }] });
 }

@@ -51,7 +51,7 @@ describe("social eligibility boundary", () => {
     profile.channels.chatbot = new Set(["somewhere-else"]);
     expect(await policy.canReadHistory(source)).toBe(true);
     expect(await policy.checkGuardedSource(source, source.member, false)).toMatchObject({ eligible: true });
-    expect(await policy.check(source, "direct")).toMatchObject({ eligible: false, reason: "access_denied" });
+    expect(await policy.check(source, "direct_mention")).toMatchObject({ eligible: false, reason: "channel_denied" });
     profile.chat.contextOptOutUserIds = ["bystander"];
     expect(await policy.checkGuardedSource(source, source.member, false)).toMatchObject({ eligible: false, reason: "context_opt_out" });
     profile.chat.contextOptOutUserIds = []; profile.chat.contextOptOutRoleIds = ["private-role"];
@@ -79,7 +79,7 @@ describe("social eligibility boundary", () => {
   it("keeps owner explicit access while denying passive reading and history fetches outside scope", async () => {
     const { profile, policy, message } = fixture(); profile.channels.chatbot = new Set(["selected"]);
     const current = message("owner");
-    expect((await policy.check(current, "direct")).eligible).toBe(true);
+    expect((await policy.check(current, "direct_mention")).eligible).toBe(true);
     expect((await policy.check(current, "observation")).eligible).toBe(false);
     const fetch = vi.spyOn(current.channel.messages, "fetch");
     const support = new ChatTurnSupport({ warn: vi.fn() } as unknown as Logger, policy);

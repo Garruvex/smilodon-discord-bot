@@ -78,8 +78,9 @@ export function explainChatTrace(traces: readonly RetainedChatTrace[]): ChatExpl
   else if (coverage && ["deadline", "source_ineligible", "ineligible_reaction"].includes(coverage.status)) { result.outcome = "suppressed"; result.reason = coverage.status; }
   else if (suppressed) { result.outcome = ["privacy_changed", "context_changed"].includes(suppressed.reason) ? "source_invalidated" : "suppressed"; result.reason = suppressed.reason; }
   else if (eligibility?.event === "context.eligibility.denied") {
-    result.outcome = ["chat_disabled", "continuation_disabled", "spontaneous_disabled", "ambient_disabled", "reaction_disabled", "history_reactions_disabled"].includes(eligibility.reason) ? "feature_disabled" :
-      ["access_denied", "passive_access_denied", "passive_scope_denied", "channel_denied", "background_scope_denied"].includes(eligibility.reason) ? "access_denied" : "suppressed";
+    result.outcome = ["chat_disabled", "continuation_disabled", "spontaneous_disabled", "spontaneous_not_selected", "ambient_disabled", "reaction_disabled", "history_reactions_disabled"].includes(eligibility.reason) ? "feature_disabled" :
+      ["access_denied", "passive_access_denied", "passive_scope_denied", "channel_denied", "background_scope_denied", "member_unavailable", "restricted_role", "missing_chat_role",
+        "observation_not_selected", "history_disabled", "memory_disabled", "context_channel_disabled"].includes(eligibility.reason) ? "access_denied" : "suppressed";
     result.reason = eligibility.reason;
   }
   else if (decision?.status === "failed" || decision?.recovery === "error_reply") { result.outcome = "provider_failed"; result.reason = decision.reason; }
