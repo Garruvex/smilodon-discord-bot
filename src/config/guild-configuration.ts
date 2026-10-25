@@ -104,9 +104,8 @@ export interface GuildChatConfiguration {
   // judgment calls per channel, so a chatty channel that says the bot's
   // name often doesn't turn into a full-pipeline call on every message.
   ambientCooldownSeconds: number;
-  // How many recent channel messages to fetch as ambient context when
-  // features.channelHistory is on. A hard cap independent of the char
-  // budget in chatMemoryLimits.maxChannelHistoryChars.
+  // Retired: reading history is sized by character.context (messages, budget).
+  // Kept so existing configuration files still parse; nothing reads it.
   channelHistoryLimit: number;
   // How long after the first reaction on a watched reply the bot waits
   // before judging the reactions, so others have time to join in: a random

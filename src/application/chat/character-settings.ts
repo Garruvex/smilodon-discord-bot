@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
+import { CHARACTER_CONTEXT_LIMITS as contextLimits } from "../../config/guild-configuration-limits.js";
 
 export const characterModuleIds = ["canon", "relationships", "thoughts", "recall-style", "callbacks", "fading", "voice", "message-shape", "mood", "addressing", "group", "daily-sketch", "evaluation"] as const;
 export type CharacterModuleId = typeof characterModuleIds[number];
@@ -34,8 +35,9 @@ export const characterSettingsSchema = z.object({
   // Channel history is on/off through features.channelHistory. Retired
   // time-window fields in stored configuration are ignored on read.
   context: z.object({
-    maxMessages: z.number().int().min(8).max(48).default(40), budget: z.number().int().min(2000).max(24000).default(12000),
-    decisionMessages: z.number().int().min(5).max(20).default(10),
+    maxMessages: z.number().int().min(contextLimits.messages.min).max(contextLimits.messages.max).default(contextLimits.messages.default),
+    budget: z.number().int().min(contextLimits.budget.min).max(contextLimits.budget.max).default(contextLimits.budget.default),
+    decisionMessages: z.number().int().min(contextLimits.decisionMessages.min).max(contextLimits.decisionMessages.max).default(contextLimits.decisionMessages.default),
   }).default({}),
 }).default({});
 export type CharacterSettings = z.infer<typeof characterSettingsSchema>;

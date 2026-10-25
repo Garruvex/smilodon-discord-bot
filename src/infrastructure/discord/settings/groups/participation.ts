@@ -1,104 +1,165 @@
+import type { GuildConfiguration } from "../../../../config/guild-configuration.js";
+import { PARTICIPATION_LIMITS } from "../../../../config/guild-configuration-limits.js";
 import { action, channelList, choice, group, integer, toggle, report } from "../registry/builders.js";
+import type { Patch, SettingOption } from "../registry/types.js";
 import { chatSetting } from "./chat.js";
-import { defaultParticipation, resolveParticipation, contributionPolicy } from "../../../../application/chat/participation-policy.js";
+import { defaultParticipation, resolveParticipation, contributionPolicy, type DecisionContract, type ParticipationOverride, type ParticipationSettings } from "../../../../application/chat/participation-policy.js";
 import { chatPolicyReport } from "./chat-policy-report.js";
 
+// When the bot speaks without being asked: follow-ups in an exchange it's
+// already part of, joining conversations, and the pacing both share.
+// Direct mentions and name requests aren't governed here.
+
+type Advanced = keyof ParticipationSettings["advanced"];
+const activities = ["quiet", "balanced", "lively"] as const;
+
+const contracts = ["inherit", "legacy", "simple"] as const;
+const contractOf = (value: string): DecisionContract | undefined => value === "legacy" || value === "simple" ? value : undefined;
+const percent = (value: number | undefined): number => Math.round((value ?? 0) * 100);
+
+const configured = (p: GuildConfiguration): ParticipationSettings => p.chat.participation ?? defaultParticipation;
+const limits = (p: GuildConfiguration): ReturnType<typeof resolveParticipation>["limits"] => resolveParticipation(p.chat.participation, "").limits;
+const observed = (p: GuildConfiguration): readonly string[] => configured(p).observationChannelIds ?? [...p.channels.chatbot];
+
+// A number whose default comes from a preset or policy. Saving the value
+// already in effect stores nothing, so the preset keeps applying until an
+// admin really overrides it.
+function tuned(bounds: { min: number; max: number }, current: (p: GuildConfiguration) => number, patch: (value: number) => Patch): SettingOption {
+  return integer({ min: bounds.min, max: bounds.max, read: current, write: (value, p) => value === current(p) ? {} : patch(value) });
+}
+const advanced = (field: Advanced) => (value: number): Patch => ({ chatParticipation: { advanced: { [field]: value } } });
+const seconds = (ms: number | undefined): number => (ms ?? 0) / 1000;
+
 export const participation = group("participation", [
-    chatPolicyReport,
-    report("status", ({ deps, profile, text, path }) => Promise.resolve(text.message(path, deps.characterRuntime?.decisionAvailable ? "available" : "paused") + "\n" + text.message(path, "scope", { count: (profile.chat.participation?.observationChannelIds ?? [...profile.channels.chatbot]).length }))),
-    chatSetting("observation-channels", {
-      channels: channelList({ textOnly: true, read: (p) => [...(p.chat.participation?.observationChannelIds ?? p.channels.chatbot)],
-        write: (v, p) => JSON.stringify(v) === JSON.stringify(p.chat.participation?.observationChannelIds ?? [...p.channels.chatbot]) ? {} : ({ chatParticipation: { observationChannelIds: [...v] } }) }),
-    }),
-    action("thread-scope", {
-      params: { "thread-id": { kind: "text", maxLength: 20, required: true }, observe: { kind: "toggle" }, spontaneous: { kind: "toggle" }, shadow: { kind: "toggle" } },
-      run: async ({ profile, request, values, text, path }) => {
-        const id = values.getString("thread-id") ?? "";
-        const observe = values.getBoolean("observe"); const spontaneous = values.getBoolean("spontaneous");
-        const shadow = values.getBoolean("shadow");
-        if (!/^\d{17,20}$/u.test(id) || !request.guild || observe === null && spontaneous === null && shadow === null) return { ok: false, message: text.message(path, "invalid") };
-        const thread = await request.guild.channels.fetch(id).catch(() => null);
-        if (!thread?.isThread() || thread.guildId !== profile.guildId) return { ok: false, message: text.message(path, "invalid") };
-        const observations = new Set(profile.chat.participation?.observationChannelIds ?? profile.channels.chatbot);
-        const spontaneousChannels = new Set(profile.chat.participation?.spontaneousChannelIds ?? []);
-        if (observe === true) observations.add(id); else if (observe === false) observations.delete(id);
-        if (spontaneous === true && !observations.has(id)) return { ok: false, message: text.message(path, "needs-observation") };
-        if (spontaneous === true) spontaneousChannels.add(id); else if (spontaneous === false || observe === false) spontaneousChannels.delete(id);
-        const override = { ...profile.chat.participation?.channelOverrides[id], ...(shadow === null ? {} : { shadowMode: shadow }) };
-        return { ok: true, message: text.message(path, "done"), patch: { chatParticipation: { observationChannelIds: [...observations], spontaneousChannelIds: [...spontaneousChannels],
-          ...(shadow !== null ? { channelOverrides: { [id]: override } } : {}) } } };
-      },
-    }),
-    chatSetting("continuation-limits", {
-      interval: integer({ min: 15, max: 600, read: (p) => resolveParticipation(p.chat.participation, "").limits.continuationIntervalMs! / 1000,
-        write: (v, p) => v === resolveParticipation(p.chat.participation, "").limits.continuationIntervalMs! / 1000 ? {} : ({ chatParticipation: { advanced: { continuationIntervalSeconds: v } } }) }),
-      exchange: integer({ min: 0, max: 30, read: (p) => p.chat.participation?.advanced.continuationPerExchange ?? resolveParticipation(p.chat.participation, "").limits.continuationPerExchange!,
-        write: (v, p) => v === resolveParticipation(p.chat.participation, "").limits.continuationPerExchange! ? {} : ({ chatParticipation: { advanced: { continuationPerExchange: v } } }) }),
-      window: integer({ min: 0, max: 100, read: (p) => p.chat.participation?.advanced.continuationPer10Minutes ?? resolveParticipation(p.chat.participation, "").limits.continuationPerWindow!,
-        write: (v, p) => v === resolveParticipation(p.chat.participation, "").limits.continuationPerWindow! ? {} : ({ chatParticipation: { advanced: { continuationPer10Minutes: v } } }) }),
-    }),
-    chatSetting("controls", {
-      "messages-per-decision": integer({ min: 1, max: 20, read: (p) => resolveParticipation(p.chat.participation, "").messagesPerDecision,
-        write: (v, p) => v === resolveParticipation(p.chat.participation, "").messagesPerDecision ? {} : ({ chatParticipation: { messagesPerDecision: v } }) }),
-      "spontaneous-threshold": integer({ min: 0, max: 100, read: (p) => contributionPolicy(p.chat.participation).spontaneousThreshold * 100,
-        write: (v, p) => v / 100 === contributionPolicy(p.chat.participation).spontaneousThreshold ? {} : ({ chatParticipation: { spontaneousThreshold: v / 100 } }) }),
-      "continuation-threshold": integer({ min: 0, max: 100, read: (p) => contributionPolicy(p.chat.participation).continuationThreshold * 100,
-        write: (v, p) => v / 100 === contributionPolicy(p.chat.participation).continuationThreshold ? {} : ({ chatParticipation: { continuationThreshold: v / 100 } }) }),
-      continuation: toggle({ read: (p) => p.chat.participation?.continuationEnabled ?? false, write: (v) => ({ chatParticipation: { continuationEnabled: v } }) }),
-      spontaneous: toggle({ read: (p) => p.chat.participation?.spontaneousEnabled ?? false, write: (v) => ({ chatParticipation: { spontaneousEnabled: v } }) }),
-      activity: choice({ choices: ["quiet", "balanced", "lively"] as const, read: (p) => p.chat.participation?.activity ?? "balanced", write: (v) => ({ chatParticipation: { activity: v } }) }),
-      "bare-pings": choice({ choices: ["acknowledge", "personality"] as const, read: (p) => p.chat.participation?.barePingMode ?? "acknowledge", write: (v) => ({ chatParticipation: { barePingMode: v } }) }),
-      shadow: toggle({ read: (p) => p.chat.participation?.shadowMode ?? false, write: (v) => ({ chatParticipation: { shadowMode: v } }) }),
-    }),
-    chatSetting("spontaneous-channels", {
-      channels: channelList({ textOnly: true, read: (p) => [...(p.chat.participation?.spontaneousChannelIds ?? [])],
-        write: (v) => ({ chatParticipation: { spontaneousChannelIds: [...v] } }) }),
-    }),
-    chatSetting("resources", {
-      concurrency: integer({ min: 1, max: 16, read: (p) => p.chat.participation?.advanced.concurrency ?? 4,
-        write: (v, p) => v === (p.chat.participation?.advanced.concurrency ?? 4) ? {} : ({ chatParticipation: { advanced: { concurrency: v } } }) }),
-      "optional-turns": integer({ min: 0, max: 1000, read: (p) => p.chat.participation?.advanced.optionalTurnsPer10Minutes ?? 100,
-        write: (v, p) => v === (p.chat.participation?.advanced.optionalTurnsPer10Minutes ?? 100) ? {} : ({ chatParticipation: { advanced: { optionalTurnsPer10Minutes: v } } }) }),
-    }),
-    chatSetting("activity-limits", {
-      evaluation: integer({ min: 20, max: 600, read: (p) => resolveParticipation(p.chat.participation, "").limits.evaluationCooldownMs / 1000,
-        write: (v, p) => v === resolveParticipation(p.chat.participation, "").limits.evaluationCooldownMs / 1000 ? {} : ({ chatParticipation: { advanced: { evaluationCooldownSeconds: v } } }) }),
-      text: integer({ min: 60, max: 3600, read: (p) => resolveParticipation(p.chat.participation, "").limits.textCooldownMs / 1000,
-        write: (v, p) => v === resolveParticipation(p.chat.participation, "").limits.textCooldownMs / 1000 ? {} : ({ chatParticipation: { advanced: { textCooldownSeconds: v } } }) }),
-      reaction: integer({ min: 20, max: 600, read: (p) => resolveParticipation(p.chat.participation, "").limits.reactionCooldownMs / 1000,
-        write: (v, p) => v === resolveParticipation(p.chat.participation, "").limits.reactionCooldownMs / 1000 ? {} : ({ chatParticipation: { advanced: { reactionCooldownSeconds: v } } }) }),
-      "text-budget": integer({ min: 0, max: 3, read: (p) => resolveParticipation(p.chat.participation, "").limits.textPerWindow,
-        write: (v, p) => v === resolveParticipation(p.chat.participation, "").limits.textPerWindow ? {} : ({ chatParticipation: { advanced: { textPer10Minutes: v } } }) }),
-      "reaction-budget": integer({ min: 0, max: 5, read: (p) => resolveParticipation(p.chat.participation, "").limits.reactionsPerWindow,
-        write: (v, p) => v === resolveParticipation(p.chat.participation, "").limits.reactionsPerWindow ? {} : ({ chatParticipation: { advanced: { reactionsPer10Minutes: v } } }) }),
-    }),
-    action("participation-channel", {
-      params: { channel: { kind: "channel", textOnly: true, required: true },
-        shadow: { kind: "toggle" },
-        continuation: { kind: "toggle" }, spontaneous: { kind: "toggle" }, reactions: { kind: "toggle" },
-        activity: { kind: "choice", choices: ["quiet", "balanced", "lively"] }, reset: { kind: "toggle" } },
-      run: ({ profile, values, text, path }) => {
-        const channelId = values.getChannel("channel")?.id;
-        if (!channelId) return Promise.resolve({ ok: false, message: text.message(path, "missing") });
-        const configured = profile.chat.participation ?? defaultParticipation;
-        const override = { ...configured.channelOverrides[channelId] };
-        const shadow = values.getBoolean("shadow");
-        if (shadow !== null) override.shadowMode = shadow;
-        const continuation = values.getBoolean("continuation");
-        const spontaneous = values.getBoolean("spontaneous");
-        const reactions = values.getBoolean("reactions");
-        const activity = values.getString("activity") as "quiet" | "balanced" | "lively" | null;
-        if (continuation !== null) override.continuationEnabled = continuation;
-        if (spontaneous !== null) override.spontaneousEnabled = spontaneous;
-        if (reactions !== null) override.reactionsEnabled = reactions;
-        if (activity) override.activity = activity;
-        return Promise.resolve({ ok: true, message: text.message(path, "done", { channel: `<#${channelId}>` }),
-          patch: { chatParticipation: { channelOverrides: { [channelId]: values.getBoolean("reset") ? {} : override } } } });
-      },
-    }),
-    action("activity-reset", {
-      params: {},
-      run: ({ text, path }) => Promise.resolve({ ok: true, message: text.message(path, "done"),
-        patch: { chatParticipationResetAdvanced: true } }),
-    }),
+  chatPolicyReport,
+  report("status", ({ deps, profile, text, path }) => Promise.resolve(text.message(path, deps.characterRuntime?.decisionAvailable ? "available" : "paused") + "\n" +
+    text.message(path, "scope", { count: observed(profile).length }) + "\n" + text.message(path, configured(profile).shadowMode ? "preview-on" : "preview-off"))),
+
+  // Server-wide preview. A channel or thread can differ through `channel`;
+  // the character's thoughts module has its own, separate preview.
+  chatSetting("preview", {
+    enabled: toggle({ read: (p) => configured(p).shadowMode, write: (v) => ({ chatParticipation: { shadowMode: v } }) }),
+  }),
+
+  chatSetting("observation-channels", {
+    channels: channelList({ textOnly: true, read: (p) => [...observed(p)],
+      write: (v, p) => JSON.stringify(v) === JSON.stringify(observed(p)) ? {} : ({ chatParticipation: { observationChannelIds: [...v] } }) }),
+  }),
+
+  chatSetting("follow-ups", {
+    enabled: toggle({ read: (p) => configured(p).continuationEnabled, write: (v) => ({ chatParticipation: { continuationEnabled: v } }) }),
+    threshold: tuned(PARTICIPATION_LIMITS.thresholdPercent, (p) => contributionPolicy(p.chat.participation).continuationThreshold * 100,
+      (v) => ({ chatParticipation: { continuationThreshold: v / 100 } })),
+    interval: tuned(PARTICIPATION_LIMITS.followUpIntervalSeconds, (p) => seconds(limits(p).continuationIntervalMs), advanced("continuationIntervalSeconds")),
+    "per-exchange": tuned(PARTICIPATION_LIMITS.followUpsPerExchange, (p) => limits(p).continuationPerExchange ?? 0, advanced("continuationPerExchange")),
+    "per-10-minutes": tuned(PARTICIPATION_LIMITS.followUpsPer10Minutes, (p) => limits(p).continuationPerWindow ?? 0, advanced("continuationPer10Minutes")),
+  }),
+
+  // Joining needs both the switch and the channel on the list; threads are
+  // added through `channel`.
+  chatSetting("joining", {
+    enabled: toggle({ read: (p) => configured(p).spontaneousEnabled, write: (v) => ({ chatParticipation: { spontaneousEnabled: v } }) }),
+    channels: channelList({ textOnly: true, read: (p) => [...configured(p).spontaneousChannelIds],
+      write: (v) => ({ chatParticipation: { spontaneousChannelIds: [...v] } }) }),
+    threshold: tuned(PARTICIPATION_LIMITS.thresholdPercent, (p) => contributionPolicy(p.chat.participation).spontaneousThreshold * 100,
+      (v) => ({ chatParticipation: { spontaneousThreshold: v / 100 } })),
+    "check-every": tuned(PARTICIPATION_LIMITS.joinEveryMessages, (p) => resolveParticipation(p.chat.participation, "").messagesPerDecision,
+      (v) => ({ chatParticipation: { messagesPerDecision: v } })),
+  }),
+
+  // Which decision contract answers optional turns. Unset inherits the instance default.
+  chatSetting("decision-contract", {
+    contract: choice({ choices: contracts, read: (p) => configured(p).decisionContract ?? "inherit",
+      write: (v, p) => v === (configured(p).decisionContract ?? "inherit") ? {} : { chatParticipation: { decisionContract: contractOf(v) } } }),
+  }),
+
+  // Probability gates on the native selected-action score for the simple contract. Zero disables.
+  chatSetting("simple-threshold", {
+    followup: integer({ min: 0, max: 100, read: (p) => percent(configured(p).simpleActionThresholds?.followup),
+      write: (v, p) => v === percent(configured(p).simpleActionThresholds?.followup) ? {} : { chatParticipation: { simpleActionThresholds: { followup: v / 100 } } } }),
+    joining: integer({ min: 0, max: 100, read: (p) => percent(configured(p).simpleActionThresholds?.joining),
+      write: (v, p) => v === percent(configured(p).simpleActionThresholds?.joining) ? {} : { chatParticipation: { simpleActionThresholds: { joining: v / 100 } } } }),
+  }),
+
+  // The activity preset sets every pause and budget below; a number saved
+  // here overrides the preset until `reset-limits`.
+  chatSetting("pacing", {
+    activity: choice({ choices: activities, read: (p) => configured(p).activity, write: (v) => ({ chatParticipation: { activity: v } }) }),
+    evaluation: tuned(PARTICIPATION_LIMITS.evaluationCooldownSeconds, (p) => seconds(limits(p).evaluationCooldownMs), advanced("evaluationCooldownSeconds")),
+    text: tuned(PARTICIPATION_LIMITS.textCooldownSeconds, (p) => seconds(limits(p).textCooldownMs), advanced("textCooldownSeconds")),
+    reaction: tuned(PARTICIPATION_LIMITS.reactionCooldownSeconds, (p) => seconds(limits(p).reactionCooldownMs), advanced("reactionCooldownSeconds")),
+    "text-budget": tuned(PARTICIPATION_LIMITS.textPer10Minutes, (p) => limits(p).textPerWindow, advanced("textPer10Minutes")),
+    "reaction-budget": tuned(PARTICIPATION_LIMITS.reactionsPer10Minutes, (p) => limits(p).reactionsPerWindow, advanced("reactionsPer10Minutes")),
+  }),
+
+  chatSetting("bare-pings", {
+    mode: choice({ choices: ["acknowledge", "personality"] as const, read: (p) => configured(p).barePingMode, write: (v) => ({ chatParticipation: { barePingMode: v } }) }),
+  }),
+
+  chatSetting("resources", {
+    concurrency: tuned(PARTICIPATION_LIMITS.concurrency, (p) => limits(p).concurrency ?? PARTICIPATION_LIMITS.concurrency.default, advanced("concurrency")),
+    "optional-turns": tuned(PARTICIPATION_LIMITS.optionalTurnsPer10Minutes,
+      (p) => limits(p).optionalTurnsPerWindow ?? PARTICIPATION_LIMITS.optionalTurnsPer10Minutes.default, advanced("optionalTurnsPer10Minutes")),
+  }),
+
+  action("reset-limits", {
+    params: {},
+    run: ({ text, path }) => Promise.resolve({ ok: true, message: text.message(path, "done"), patch: { chatParticipationResetAdvanced: true } }),
+  }),
+
+  // One channel or thread. Parent channels never grant their threads, so a
+  // thread is chosen here directly. Unset options are left as they are.
+  action("channel", {
+    params: {
+      channel: { kind: "channel", textOnly: true, threads: true, required: true },
+      observe: { kind: "toggle" }, joining: { kind: "toggle" }, preview: { kind: "toggle" },
+      "follow-ups": { kind: "toggle" }, reactions: { kind: "toggle" },
+      activity: { kind: "choice", choices: activities }, reset: { kind: "toggle" },
+      "decision-contract": { kind: "choice", choices: contracts },
+      "followup-threshold": { kind: "integer", min: 0, max: 100 }, "joining-threshold": { kind: "integer", min: 0, max: 100 },
+    },
+    run: ({ profile, values, text, path }) => {
+      const channelId = values.getChannel("channel")?.id;
+      if (!channelId) return Promise.resolve({ ok: false, message: text.message(path, "missing") });
+      const settings = configured(profile);
+      const observe = values.getBoolean("observe"); const joining = values.getBoolean("joining");
+      const preview = values.getBoolean("preview"); const followUps = values.getBoolean("follow-ups");
+      const reactions = values.getBoolean("reactions"); const reset = values.getBoolean("reset") === true;
+      const activity = values.getString("activity") as ParticipationOverride["activity"] | null;
+      const contract = values.getString("decision-contract");
+      const followupThreshold = values.getInteger("followup-threshold"); const joiningThreshold = values.getInteger("joining-threshold");
+      if (!reset && [observe, joining, preview, followUps, reactions, activity, contract, followupThreshold, joiningThreshold].every((value) => value === null)) {
+        return Promise.resolve({ ok: false, message: text.message(path, "nothing") });
+      }
+
+      const observations = new Set(observed(profile));
+      const joinable = new Set(settings.spontaneousChannelIds);
+      if (observe === true) observations.add(channelId);
+      if (observe === false) { observations.delete(channelId); joinable.delete(channelId); }
+      if (joining === true && !observations.has(channelId)) return Promise.resolve({ ok: false, message: text.message(path, "needs-observation") });
+      if (joining === true) joinable.add(channelId);
+      if (joining === false) joinable.delete(channelId);
+
+      // Joining is the server switch plus the list, so a stored per-channel
+      // spontaneous flag from older builds is dropped once the list changes.
+      const { spontaneousEnabled: _retired, ...kept } = settings.channelOverrides[channelId] ?? {};
+      const override: ParticipationOverride = reset ? {} : {
+        ...(joining === null ? settings.channelOverrides[channelId] : kept),
+        ...(preview === null ? {} : { shadowMode: preview }),
+        ...(followUps === null ? {} : { continuationEnabled: followUps }),
+        ...(reactions === null ? {} : { reactionsEnabled: reactions }),
+        ...(activity ? { activity } : {}),
+      };
+      if (!reset) {
+        if (contract === "inherit") delete override.decisionContract; else if (contract) override.decisionContract = contractOf(contract)!;
+        if (followupThreshold !== null || joiningThreshold !== null) override.simpleActionThresholds = { ...override.simpleActionThresholds,
+          ...(followupThreshold === null ? {} : { followup: followupThreshold / 100 }), ...(joiningThreshold === null ? {} : { joining: joiningThreshold / 100 }) };
+      }
+      return Promise.resolve({ ok: true, message: text.message(path, "done", { channel: `<#${channelId}>` }), patch: { chatParticipation: {
+        ...(observe === null ? {} : { observationChannelIds: [...observations] }),
+        spontaneousChannelIds: [...joinable],
+        channelOverrides: { [channelId]: override },
+      } } });
+    },
+  }),
 ]);

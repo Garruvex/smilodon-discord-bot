@@ -9,6 +9,7 @@ import type { GuildConfigurationProvider } from "../../../../config/guild-config
 import { publicAccessPolicy } from "../../../../domain/access/access-policy.js";
 import { resolveConversationTurnPlan } from "../../../../application/chat/conversation-turn-plan.js";
 import { effectiveChatCapabilities } from "../../../../application/chat/chat-capabilities.js";
+import { characterSettings } from "../../../../application/chat/character-settings.js";
 
 // Instance-wide model wiring (env config, not per-guild) — secrets stripped
 // at the wiring site so this command never sees an API key.
@@ -142,6 +143,7 @@ export class StatusCommand implements BotCommand {
       const chat = status.chat;
       const webSearch = chat.webSearchMode === "auto" ? text.auto : text.off;
       const tools = onOff(text, chat.toolCallingEnabled);
+      const profile = this.profiles.find(guildId);
       embed.addFields({
         name: text.chat.title,
         value: [
@@ -151,11 +153,12 @@ export class StatusCommand implements BotCommand {
             : text.chat.tools({ webSearch, tools }),
           text.chat.images({ read: onOff(text, chat.imageInputEnabled), make: onOff(text, chat.imageGenerationEnabled) }),
           text.chat.sources({ sources: onOff(text, chat.includeSources), drift: onOff(text, chat.personaDriftEnabled) }),
-          text.chat.history({ count: chat.channelHistoryLimit }),
+          profile?.features.channelHistory
+            ? text.chat.history({ count: characterSettings(profile).context.maxMessages })
+            : text.chat.historyOff,
           text.chat.summaries({ once: chat.contextScanChannelIds.length, daily: chat.contextDailyChannelIds.length }),
         ].join("\n"),
       });
-      const profile = this.profiles.find(guildId);
       const channelId = context.interaction.channelId;
       if (profile && channelId) {
         const plan = resolveConversationTurnPlan(profile, channelId);

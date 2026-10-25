@@ -89,17 +89,15 @@ describe("effective chat policy", () => {
 describe("protected policy settings report", () => {
   it("persists a shadow override without changing other channels", async () => {
     const fixture = engineFixture();
-    await fixture.run("participation.participation-channel", slashValues({ channel: { id: channelId }, shadow: true }));
+    await fixture.run("participation.channel", slashValues({ channel: { id: channelId }, preview: true }));
     expect(fixture.profiles.current().chat.participation?.channelOverrides[channelId]).toMatchObject({ shadowMode: true });
     expect(fixture.profiles.current().chat.participation?.channelOverrides["500000000000000099"]).toBeUndefined();
   });
   it("requires explicit thread observation before enabling spontaneous participation", async () => {
     const fixture = engineFixture(); const id = "500000000000000099";
-    const guild = { id: guildId, channels: { fetch: () => Promise.resolve({ guildId, isThread: () => true }) } } as unknown as Guild;
-    const setting = fixture.engine.find("participation.thread-scope")!;
-    await fixture.engine.run(setting, { guildId, guild, actorUserId, language: "en", values: slashValues({ "thread-id": id, spontaneous: true, shadow: true }) }, { kind: "panel" });
+    await fixture.run("participation.channel", slashValues({ channel: { id }, joining: true, preview: true }));
     expect(fixture.profiles.current().chat.participation?.channelOverrides[id]).toBeUndefined();
-    await fixture.engine.run(setting, { guildId, guild, actorUserId, language: "en", values: slashValues({ "thread-id": id, observe: true, spontaneous: true, shadow: true }) }, { kind: "panel" });
+    await fixture.run("participation.channel", slashValues({ channel: { id }, observe: true, joining: true, preview: true }));
     expect(fixture.profiles.current().chat.participation?.observationChannelIds).toContain(id);
     expect(fixture.profiles.current().chat.participation?.spontaneousChannelIds).toContain(id);
     expect(fixture.profiles.current().chat.participation?.spontaneousChannelIds).toContain(id);

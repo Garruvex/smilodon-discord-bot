@@ -19,7 +19,10 @@ const copy = {
     activity: "Activity {activity}: text/reaction cooldown {text}/{reaction}s, {texts}/{reactions} per 10m; follow-ups every {interval}s, {exchange}/exchange, {window}/10m.",
     ping: "Bare ping: {ping}.", acknowledge: "brief acknowledgment", personality: "personality decides",
     access: "Roles: {chat} chat / {admin} admin / {restricted} restricted.",
+    contract: "Decision contract: {contract} (from {source}). Simple-method thresholds: follow-up {followup}, joining {joining}. Route: {route}.",
     caveat: "On doesn't guarantee a reply: roles, cooldowns and the model's judgment still apply.",
+    note_trial: "Trial run: the simple method logs decisions but sends no follow-ups, joins or reactions yet.",
+    note_threshold_ignored: "Thresholds have no effect: this route returns no score. Only native Decisions does.",
   },
   "zh-TW": {
     unverified: "未確認", views: "更多：view:context 或 view:activity。", view: "檢視", viewDescription: "觸發、上下文或活躍度。", overview: "觸發模式", contextView: "上下文", activityView: "活躍度",
@@ -38,7 +41,10 @@ const copy = {
     activity: "活躍度 {activity}：文字／表情冷卻 {text}/{reaction} 秒，每 10 分鐘 {texts}/{reactions} 次；接話間隔 {interval} 秒，每段 {exchange}、每 10 分鐘 {window}。",
     ping: "單獨標記：{ping}。", acknowledge: "簡短回應", personality: "依個性決定",
     access: "角色：聊天 {chat}／管理 {admin}／限制 {restricted}。",
+    contract: "判斷方式：{contract}（來自{source}）。簡易方式門檻：接續 {followup}、加入 {joining}。路徑：{route}。",
     caveat: "開啟不保證回覆：角色、冷卻與模型判斷仍會影響。",
+    note_trial: "試跑中：簡易方式只記錄判斷，尚不會送出接話、加入或表情。",
+    note_threshold_ignored: "門檻無效：此路徑不提供分數，只有原生 Decisions 有。",
   },
   ja: {
     unverified: "未確認", views: "詳細：view:context または view:activity。", view: "表示", viewDescription: "トリガー、履歴、活動。", overview: "トリガー", contextView: "履歴", activityView: "活動",
@@ -57,7 +63,10 @@ const copy = {
     activity: "活動 {activity}：文字・反応の間隔 {text}/{reaction} 秒、10分で {texts}/{reactions} 回；継続は {interval} 秒ごと、{exchange}/会話、{window}/10分。",
     ping: "単独メンション：{ping}。", acknowledge: "短く応答", personality: "性格に任せる",
     access: "ロール：会話 {chat}／管理 {admin}／制限 {restricted}。",
+    contract: "判断方式：{contract}（{source}より）。シンプル方式のしきい値：継続 {followup}、参加 {joining}。経路：{route}。",
     caveat: "オンでも返信は保証されません。ロール、間隔、モデルの判断が影響します。",
+    note_trial: "試験運用中：シンプル方式は判定を記録するだけで、継続・参加・リアクションはまだ送信しません。",
+    note_threshold_ignored: "しきい値は無効です。この経路はスコアを返しません。ネイティブ Decisions のみ返します。",
   },
 } satisfies Record<Language, Record<string, string>>;
 

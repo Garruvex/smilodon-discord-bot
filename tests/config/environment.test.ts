@@ -18,6 +18,21 @@ const validEnvironment: NodeJS.ProcessEnv = {
 };
 
 describe("loadConfiguration", () => {
+  it("defaults the participation contract to legacy and the decision effort to the summary effort", () => {
+    const chat = { ...validEnvironment, OPENAI_API_KEY: "secret", CHATBOT_MODEL: "gpt-5-nano", CHATBOT_MODE: "responses" };
+    expect(loadConfiguration(chat)).toMatchObject({ participationDecisionContract: "legacy", chat: { decisionReasoningEffort: "low" }, decision: null });
+    expect(loadConfiguration({ ...chat, CHATBOT_SUMMARY_REASONING_EFFORT: "minimal" }).chat).toMatchObject({ decisionReasoningEffort: "minimal" });
+    const set = loadConfiguration({ ...chat, PARTICIPATION_DECISION_CONTRACT: "simple", CHATBOT_DECISION_REASONING_EFFORT: "medium", DECISION_MODEL: "fast", DECISION_REASONING_EFFORT: "low" });
+    expect(set).toMatchObject({ participationDecisionContract: "simple", chat: { decisionReasoningEffort: "medium" }, decision: { model: "fast", reasoningEffort: "low" } });
+    expect(() => loadConfiguration({ ...chat, PARTICIPATION_DECISION_CONTRACT: "other" })).toThrow();
+  });
+
+  it("selects native Decisions explicitly with its own model and credentials", () => {
+    const configuration = loadConfiguration({ ...validEnvironment, OPENAI_API_KEY: "synthetic", DECISION_MODE: "decisions" });
+    expect(configuration.decision).toMatchObject({ mode: "decisions", model: "gpt-6-luna", apiKey: "synthetic" });
+    expect(() => loadConfiguration({ ...validEnvironment, OPENAI_API_KEY: "synthetic", DECISION_MODE: "decisions", DECISION_MODEL: "gpt-5-nano" })).toThrow("gpt-6-luna");
+    expect(() => loadConfiguration({ ...validEnvironment, DECISION_MODE: "decisions" })).toThrow("API_KEY");
+  });
   it("allows Gemini chat with independent OpenAI embeddings", () => {
     const configuration = loadConfiguration({
       ...validEnvironment,

@@ -29,6 +29,7 @@ const descriptionLimit = 100;
 const selectTextLimit = 100;
 const longTextThreshold = 200;
 const textChannelTypes = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
+const threadChannelTypes = [ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.AnnouncementThread];
 
 type FormField = SettingOption | ActionParam;
 
@@ -78,7 +79,7 @@ export function renderNodeForm(
         break;
       case "channel": {
         const select = new ChannelSelectMenuBuilder().setCustomId(name).setRequired(required);
-        if (field.textOnly) select.setChannelTypes(...textChannelTypes);
+        if (field.textOnly) select.setChannelTypes(...textChannelTypes, ...(field.threads ? threadChannelTypes : []));
         label.setChannelSelectMenuComponent(select);
         break;
       }

@@ -1,4 +1,3 @@
-import { CHAT_LIMITS } from "../../../../config/guild-configuration-limits.js";
 import { action, channelList, group, integer, report, roleList, text, toggle } from "../registry/builders.js";
 import type { NodeContext } from "../registry/types.js";
 import { chatSetting, pausedSuffix } from "./chat.js";
@@ -29,16 +28,6 @@ export const memory = group("memory", [
       validate: (value, context) => value.trim() && !value.trim().split(/[\s,]+/u).every((id) => /^\d{17,20}$/u.test(id)) ? context.error("invalid") : null,
       write: (value) => ({ contextOptOutUserIds: value.trim() ? [...new Set(value.trim().split(/[\s,]+/u))] : [] }) }),
   }),
-  chatSetting("channel-history", {
-    enabled: toggle({ read: (p) => p.features.channelHistory, write: (v) => ({ channelHistory: v }) }),
-    limit: integer({
-      min: CHAT_LIMITS.channelHistoryLimit.min,
-      max: CHAT_LIMITS.channelHistoryLimit.max,
-      read: (p) => p.chat.channelHistoryLimit,
-      write: (v) => ({ channelHistoryLimit: v }),
-    }),
-  }),
-
   // Whether a channel's memory can ever become guild-wide: the model's own
   // scoping is only advisory (see memory-channel-policy.ts).
   action("memory-mode", {

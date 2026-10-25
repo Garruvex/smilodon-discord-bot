@@ -1,3 +1,4 @@
+import { exchangeIdleMs } from "./exchange-window.js";
 import type { ChannelHistoryMessage } from "./chat-provider.js";
 import { forgetEpisodeUser } from "./conversation-episode-store.js";
 
@@ -44,7 +45,7 @@ export class ConversationEpisodes {
     }).slice(0, 16).reverse();
   }
   public hasRecentConversation(key: string, authorId: string, botId: string, now = Date.now()): boolean {
-    return (this.channels.get(key) ?? []).some((event) => event.authorId === botId && event.replyToAuthorId === authorId && now - event.timestampMs <= 120_000);
+    return (this.channels.get(key) ?? []).some((event) => event.authorId === botId && event.replyToAuthorId === authorId && now - event.timestampMs <= exchangeIdleMs);
   }
   public forget(guildId: string, userId: string): void {
     for (const [key, events] of this.channels) {

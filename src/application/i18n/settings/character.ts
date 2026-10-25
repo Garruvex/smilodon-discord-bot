@@ -13,13 +13,13 @@ const fields: Record<string, readonly [string, string, string]> = {
   shadow: ["Preview decisions", "試算模式", "判定のみ"], interval: ["Refresh / decay minutes", "更新／衰減分鐘", "更新・減衰の分数"], threshold: ["Motivation threshold (%)", "發言意願門檻（％）", "発言意欲の基準（％）"],
   hold: ["Hold seconds", "暫存秒數", "保留する秒数"], "max-per-day": ["Maximum per day", "每日上限", "一日の上限"], "min-delay": ["Delay after event (minutes)", "事件後等待分鐘", "イベント後の待機分数"],
   "half-life": ["Half-life days", "半衰期天數", "半減期の日数"], strictness: ["Repair mode", "修正方式", "修正方法"], "max-messages": ["Maximum messages", "訊息數上限", "メッセージ数の上限"], "max-delay": ["Total delay (milliseconds)", "總延遲毫秒", "遅延の合計（ミリ秒）"],
-  "include-others": ["Include other participants", "包含其他參與者", "他の参加者を含む"], messages: ["Messages to read", "讀取訊息數", "読むメッセージ数"], "decision-messages": ["Messages for decisions", "判斷用訊息數", "判断用のメッセージ数"],
+  "include-others": ["Include other participants", "包含其他參與者", "他の参加者を含む"], messages: ["Messages to read", "讀取訊息數", "読むメッセージ数"], "decision-context": ["Messages for join decisions", "接話判斷參考訊息數", "参加判断に使うメッセージ数"],
   channel: ["Channel", "頻道", "チャンネル"], module: ["Module", "模組", "モジュール"], reset: ["Reset override", "重設覆寫", "上書きをリセット"], operation: ["Action", "操作", "操作"], id: ["Record ID", "紀錄 ID", "記録 ID"], statement: ["Updated statement", "修改內容", "更新した内容"],
 };
 type LocalizedText = readonly [string, string, string];
 const nodeDescriptions: Record<string, LocalizedText> = {
   character: ["Character continuity, memory and timing.", "角色的一致性、回憶方式及接話時機。", "キャラクターの一貫性、記憶、発言のタイミング。"],
-  controls: ["Switch selected character features together.", "一併開關已選用的角色功能。", "選択済みの機能をまとめて切り替えます。"],
+  master: ["Switch selected character features together.", "一併開關已選用的角色功能。", "選択済みの機能をまとめて切り替えます。"],
   context: ["How much recent chat the bot reads.", "機器人讀取多少最近的對話。", "ボットが読む最近の会話の量。"],
   canon: ["Keep self-descriptions consistent.", "讓角色對自身的描述前後一致。", "自己紹介や好みを一貫させます。"],
   relationships: ["Recall past topics and events from member memories.", "依成員的記憶回顧過往話題與事件。", "参加者の記憶から過去の話題や出来事を振り返ります。"],
@@ -53,8 +53,8 @@ const fieldDescriptions: Record<string, LocalizedText> = {
   "max-messages": ["Reply parts; 1 keeps a single message.", "回覆最多拆成幾則；1 表示不分段。", "返信の最大分割数。1なら分割しません。"],
   "max-delay": ["Total added delay between parts, in ms.", "分段訊息增加的總等待時間，單位毫秒。", "返信の間に加える待機時間の合計（ミリ秒）。"],
   "include-others": ["Include other recent participants.", "也判斷其他近期參與者的訊息是否在對機器人說話。", "他の最近の参加者の呼びかけも判断します。"],
-  messages: ["Recent messages to read (8-48).", "讀取最近幾則訊息（8-48）。", "読む最近のメッセージ数（8-48）。"],
-  "decision-messages": ["Messages used to decide whether to join.", "判斷是否接話時參考的訊息數。", "参加するか判断するときのメッセージ数。"],
+  messages: ["Recent messages a reply reads (8-48).", "回覆時讀取的最近訊息數（8-48）。", "返信時に読む最近のメッセージ数（8-48）。"],
+  "decision-context": ["Recent messages read when deciding whether to speak (5-20).", "判斷是否開口時讀取的最近訊息數（5-20）。", "発言するか判断するときに読む最近のメッセージ数（5-20）。"],
   probes: ["Schedule private interview questions.", "定期生成私下的角色訪談回答，供管理員檢查。", "非公開の質問に定期的に回答します。"],
   channel: ["Channel to inspect or configure.", "要查看或設定的頻道。", "確認・設定するチャンネル。"],
   module: ["Feature or record category.", "要設定的功能或紀錄類別。", "設定する機能または記録の種類。"],
@@ -64,10 +64,10 @@ const fieldDescriptions: Record<string, LocalizedText> = {
   statement: ["New text for the selected record.", "用來取代所選紀錄的新內容。", "選択した記録を置き換える内容。"],
 };
 const optionDescriptions: Record<string, LocalizedText> = {
-  "controls.enabled": ["Behavior switch; review tools are separate.", "控制角色行為總開關；評估工具可獨立使用。", "全体スイッチ。評価ツールは独立です。"],
-  "context.enabled": ["Read recent channel chat.", "讀取頻道最近的對話。", "チャンネルの最近の会話を読みます。"],
+  "master.enabled": ["Behavior switch; review tools are separate.", "控制角色行為總開關；評估工具可獨立使用。", "全体スイッチ。評価ツールは独立です。"],
+  "context.enabled": ["Read recent channel chat. The only channel-history switch.", "讀取頻道最近的對話；頻道歷史只在此開關。", "チャンネルの最近の会話を読みます。履歴の切り替えはここだけです。"],
   "context.budget": ["Maximum characters of chat to read.", "最多讀取的對話字數。", "読む会話の最大文字数。"],
-  "thoughts.shadow": ["Evaluate thoughts without saying them.", "評估候選想法，暫時不主動說出它們。", "候補を評価し、自発的には発言しません。"],
+  "thoughts.shadow": ["Evaluate thoughts without saying them; separate from participation preview.", "評估候選想法但不說出；與參與預覽分開設定。", "候補を評価し発言しません。参加のプレビューとは別です。"],
   "addressing.shadow": ["Log addressing; keep current replies.", "記錄對話對象的判斷，先不套用於實際接話。", "判定を記録し、従来の返信方法を使います。"],
   "relationships.enabled": ["Requires memory sharing.", "須先開啟記憶共享。", "記憶の共有が必要です。"],
   "thoughts.enabled": ["Needs addressing and participation.", "須啟用對話對象判斷及聊天參與。", "呼びかけの判定と会話参加が必要です。"],
@@ -86,15 +86,15 @@ export function characterSettingsText(language: Language): SettingsTextCatalog {
     done: ["Character setting updated.", "角色設定已更新。", "キャラクター設定を更新しました。"][column]!,
     unavailable: ["Character runtime is unavailable.", "角色功能尚未可用。", "キャラクター機能を利用できません。"][column]!,
   };
-  const nodes = ["controls", "context", ...activeCharacterModuleIds, "channel", "ledger", "status"];
+  const nodes = ["master", "context", ...activeCharacterModuleIds, "channel", "ledger", "status"];
   for (const node of nodes) {
     const index = characterModuleIds.indexOf(node as typeof characterModuleIds[number]);
-    const label = index >= 0 ? moduleLabels[language][index]! : ({ controls: ["Master switch", "總開關", "全体の設定"], context: ["Conversation context", "對話上下文", "会話の文脈"],
+    const label = index >= 0 ? moduleLabels[language][index]! : ({ master: ["Master switch", "總開關", "全体の設定"], context: ["Conversation context", "對話上下文", "会話の文脈"],
       channel: ["Channel overrides", "頻道覆寫", "チャンネル上書き"], ledger: ["Character records", "角色紀錄管理", "キャラクターの記録"], status: ["Feature status", "功能狀態", "機能の状態"] } as Record<string, string[]>)[node]![column]!;
     catalog[`character.${node}`] = { label, description: nodeDescriptions[node]![column], messages };
     const extras: Record<string, readonly string[]> = { canon: ["freeze"], relationships: ["interval"], thoughts: ["shadow", "hold"],
       callbacks: ["max-per-day", "min-delay"], voice: ["strictness"], "message-shape": ["max-messages", "max-delay"], mood: ["interval"], evaluation: ["probes", "interval"] };
-    const options = index >= 0 ? ["enabled", ...(["canon", "relationships", "recall-style", "mood", "group", "daily-sketch"].includes(node) ? ["budget"] : []), ...(extras[node] ?? [])] : ({ controls: ["enabled"], context: ["enabled", "messages", "budget", "decision-messages"],
+    const options = index >= 0 ? ["enabled", ...(["canon", "relationships", "recall-style", "mood", "group", "daily-sketch"].includes(node) ? ["budget"] : []), ...(extras[node] ?? [])] : ({ master: ["enabled"], context: ["enabled", "messages", "budget", "decision-context"],
       channel: ["channel", "module", "enabled", "reset"], ledger: ["operation", "module", "channel", "id", "statement"], status: ["channel"] } as Record<string, string[]>)[node]!;
     for (const field of options) { const labels = fields[field]!; catalog[`character.${node}.${field}`] = { label: labels[column], description: (optionDescriptions[`${node}.${field}`] ?? fieldDescriptions[field])![column],
       ...(field === "strictness" ? { choices: { trim: ["Trim safe phrases", "移除安全套語", "定型表現を除去"][column]!, regenerate: ["Regenerate once", "重新生成一次", "一度だけ再生成"][column]! } } : {}),

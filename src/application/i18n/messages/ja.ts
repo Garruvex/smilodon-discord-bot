@@ -278,6 +278,7 @@ export const ja = {
   "setup.status.chat.images": "画像の読み取り：{read} · 画像の生成：{make}",
   "setup.status.chat.sources": "出典の表示：{sources} · ペルソナの変化：{drift}",
   "setup.status.chat.history": "直近 {count} 件のメッセージを文脈として読む",
+  "setup.status.chat.historyOff": "チャンネル履歴はオフ",
   "setup.status.chat.summaries": "要約するチャンネル：一回のみ {once} 件、毎日 {daily} 件",
   "setup.status.music.title": "音楽の設定",
   "setup.status.music.volume": "音量：既定 {volume}%（最大 {max}%、ボタンで ±{step}）",

@@ -280,6 +280,7 @@ export const zhTW = {
   "setup.status.chat.images": "讀取圖片：{read} · 產生圖片：{make}",
   "setup.status.chat.sources": "附上來源：{sources} · 人設漂移：{drift}",
   "setup.status.chat.history": "讀取最近 {count} 則訊息作為上下文",
+  "setup.status.chat.historyOff": "頻道歷史已關閉",
   "setup.status.chat.summaries": "摘要頻道：一次性 {once} 個，每日 {daily} 個",
   "setup.status.music.title": "音樂設定",
   "setup.status.music.volume": "音量：預設 {volume}%（最高 {max}%，按鈕 ±{step}）",

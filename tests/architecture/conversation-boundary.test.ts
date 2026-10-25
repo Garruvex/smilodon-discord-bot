@@ -54,7 +54,7 @@ describe("conversation execution ownership", () => {
           const bindings = node.importClause?.namedBindings;
           const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
           const issuers = ["application/context/conversation-model-gateway.ts", "application/context/background-model-gateway.ts", "application/context/configuration-model-gateway.ts",
-            "application/memory/memory-context-guard.ts", "application/chat/character-runtime.ts", "application/chat/character-decision.ts", "application/chat/tools/generate-self-image-tool.ts"];
+            "application/memory/memory-context-guard.ts", "application/chat/character-runtime.ts", "application/chat/character-decision.ts", "application/chat/simple-decision.ts", "application/chat/tools/generate-self-image-tool.ts"];
           const permitted = relative === "application/context/guarded-embedding-transport.ts" ? ["consumeEmbeddingOperation"] :
             relative === "application/context/guarded-model-transport.ts" ? ["consumeModelOperation", "snapshotModelArguments"] :
             ["application/memory/memory-context-guard.ts", "application/context/configuration-model-gateway.ts"].includes(relative) ? ["approveModelOperation", "approveEmbeddingOperation"] :

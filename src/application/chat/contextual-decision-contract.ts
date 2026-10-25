@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { contributionLabels, type CharacterDecision } from "./character-decision.js";
+import type { CharacterDecision } from "./character-decision.js";
+import { contributionLabels } from "./contribution-labels.js";
 import type { ChannelHistoryMessage, ConversationEvent } from "./chat-provider.js";
 
 export const contextualDecisionWireRevision = 4;

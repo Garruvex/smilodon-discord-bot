@@ -10,6 +10,6 @@ export interface ContextualDecisionProviders {
 export function contextualDecisionProviders(dedicated: StructuredCharacterProvider | null, reply: StructuredCharacterProvider | null,
   utility: StructuredCharacterProvider | null): ContextualDecisionProviders {
   const primary = dedicated ?? reply ?? utility;
-  return { primary, fallback: dedicated && reply !== dedicated ? reply : null,
+  return { primary, fallback: dedicated && dedicated.decisionProtocol !== "openai-decisions" && reply !== dedicated ? reply : null,
     source: dedicated ? "dedicated" : reply ? "reply" : utility ? "utility" : "unavailable" };
 }

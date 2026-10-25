@@ -27,7 +27,10 @@ import { CharacterMemory, type CharacterCandidateQuery, type CharacterMemoryWrit
 import { CharacterDecisionService, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
 import { createCharacterModules } from "./character-modules/index.js";
 import { hash, personaFingerprint, serious } from "./character-modules/shared.js";
-import { resolveParticipation, contributionPolicy, passiveChannelAllowed } from "./participation-policy.js";
+import { resolveParticipation, contributionPolicy, passiveChannelAllowed, resolveDecisionContract, resolveSimpleThreshold, type DecisionContract } from "./participation-policy.js";
+import type { SimpleParticipationService } from "./simple-decision.js";
+import { classifySimpleTurn } from "./simple-exchange.js";
+import type { ThoughtsModule } from "./character-modules/thoughts.js";
 import { CharacterCallbacks, callbackState, callbackProofPayload } from "./character-callbacks.js";
 import { startOfLocalDay } from "./character-calendar.js";
 import type { CharacterEvaluationStore } from "./character-evaluation.js";
@@ -76,10 +79,13 @@ export class CharacterRuntime {
   private targetPreferences: ((guildId: string, userId: string) => Promise<{ customization: string | null }>) | null = null;
   private personaVersion: ((guildId: string) => Promise<string>) | null = null;
   private evaluationAdmission: CharacterEvaluationAdmission | null = null;
+  private simple: SimpleParticipationService | null = null;
+  private instanceContract: DecisionContract = "legacy";
+  private readonly startedAt: number;
   public constructor(private readonly profiles: GuildConfigurationProvider, private readonly repository: MemoryRepository,
     private readonly utility: StructuredCharacterProvider | null, private readonly replyProvider: ChatProvider,
     decisionProvider: StructuredCharacterProvider | null = utility, private readonly coordinator: Pick<PersonalMemoryExtractionQueueStore, "runForSubject"> | null = null,
-    private readonly now: () => number = () => Date.now(), private readonly logger: Pick<Logger, "info" | "warn"> | null = null,
+    private readonly now: () => number = () => Date.now(), private readonly logger: (Pick<Logger, "info" | "warn"> & { debug?: Logger["debug"] }) | null = null,
     contextualProviders: ContextualDecisionProviders | null = null) {
     this.registry = new CharacterModuleRegistry((moduleId, error) => this.logger?.warn({ moduleId, ...safeFailure(error) }, "Character module hook failed"));
     this.memory = new CharacterMemory(repository, coordinator, (guildId) => this.profiles.find(guildId), (guildId, channelId, id) => {
@@ -88,16 +94,31 @@ export class CharacterRuntime {
         !characterInactiveReason(characterSettings(profile), id, channelId, this.capabilities(profile, channelId));
     }); this.callbacks = new CharacterCallbacks(repository); this.decisions = new CharacterDecisionService(decisionProvider, utility,
       (attempt) => emitChatDiagnostic(this.logger, { event: "model.decision.attempt", ...attempt }), contextualProviders);
-    this.registerModules();
+    this.registerModules(); this.startedAt = this.now();
   }
+  // The simple participation route is optional; guilds and channels select it through the contract setting.
+  public bindSimpleDecision(service: SimpleParticipationService, instanceContract: DecisionContract): void { this.simple = service; this.instanceContract = instanceContract; }
   public capabilities(profile: GuildConfiguration, channelId: string): CharacterCapabilities {
     const participation = resolveParticipation(profile.chat.participation, channelId);
-    return { decision: this.decisions.available, context: profile.features.channelHistory && characterSettings(profile).channelOverrides[channelId]?.contextEnabled !== false && resolveChannelMemoryMode(profile.chat.channelMemoryModes, channelId) !== "disabled",
+    return { decision: this.decisions.available || (this.simple?.available ?? false), context: profile.features.channelHistory && characterSettings(profile).channelOverrides[channelId]?.contextEnabled !== false && resolveChannelMemoryMode(profile.chat.channelMemoryModes, channelId) !== "disabled",
       memorySharing: profile.chat.sharedMemoryEnabled === true, continuation: participation.continuationEnabled, spontaneous: participation.spontaneousEnabled,
       excluded: !profile.features.chatbot || resolveChannelMemoryMode(profile.chat.channelMemoryModes, channelId) === "disabled" };
   }
   public contextAllowed(guildId: string, channelId: string): boolean {
     const profile = this.profiles.find(guildId); return !!profile && passiveChannelAllowed(profile, channelId) && this.capabilities(profile, channelId).context;
+  }
+  // The effective contract, simple-action thresholds and route for a channel, shown by /settings-participation policy.
+  public describeContract(profile: GuildConfiguration, channelId: string): { contract: DecisionContract; source: string; followup: string; joining: string; route: string; notes: readonly ("trial" | "threshold_ignored")[] } {
+    const resolved = resolveDecisionContract(profile.chat.participation, channelId, this.instanceContract);
+    const threshold = (kind: "followup" | "joining"): string => { const found = resolveSimpleThreshold(profile.chat.participation, channelId, kind);
+      return found.value > 0 ? `${Math.round(found.value * 100)}% (${found.source})` : "off"; };
+    const route = this.simple?.description;
+    const thresholds = [threshold("followup"), threshold("joining")];
+    // Phase 1 never sends simple-contract optional output, and only the native route returns a score to gate on.
+    const notes: ("trial" | "threshold_ignored")[] = [...(resolved.contract === "simple" ? ["trial" as const] : []),
+      ...(resolved.contract === "simple" && route && route.source !== "native" && thresholds.some((value) => value !== "off") ? ["threshold_ignored" as const] : [])];
+    return { contract: resolved.contract, source: resolved.source, followup: thresholds[0]!, joining: thresholds[1]!,
+      route: route ? `${route.source} ${route.model ?? ""} ${route.reasoningEffort ?? ""}`.trim() : "unavailable", notes };
   }
   public get decisionAvailable(): boolean { return this.decisions.available; }
   public resolveTurnPlan(guildId: string, channelId: string): ConversationTurnPlan | null {
@@ -232,6 +253,10 @@ export class CharacterRuntime {
     const turn: CharacterTurn = { request, settings, capabilities, now: this.now() };
     const enabled = (id: CharacterModuleId): boolean => this.registry.has(id) && !characterInactiveReason(settings, id, request.channelId, capabilities);
     const guarded = isGuardedContext(request.contextLease);
+    if (guarded && isOptionalInteraction(request.interaction) && request.currentEvent?.type === "message") {
+      const contract = resolveDecisionContract(profile.chat.participation, request.channelId, this.instanceContract);
+      if (contract.contract === "simple") return this.prepareSimple(turn, contract, fingerprint, privacyVersion);
+    }
     const guardedCharacterContext = guarded ? await this.registry.contribute(turn) : [];
     if (guardedCharacterContext.length) {
       request = { ...request, characterContext: [...(request.characterContext ?? []), ...guardedCharacterContext] }; turn.request = request;
@@ -357,11 +382,92 @@ export class CharacterRuntime {
       (conversationDecision.decision.intent === "answer" || conversationDecision.decision.intent === "clarify");
     if (requestedAnswer) request = { ...request, characterContext: [...(request.characterContext ?? []), { moduleId: "participation",
       text: "Answer or clarify the current speaker's grounded follow-up using the supplied authorized conversation. A brief requested confirmation can be a complete answer; it does not need to add an unsolicited contribution. Use ambientAction reply and responseIntent answer or clarify. Do not claim a repair or operational status you cannot verify." }] };
+    else if (acceptedContribution && !acceptedContribution.text.trim()) request = { ...request, characterContext: [...(request.characterContext ?? []), { moduleId: "participation",
+      text: `A typed decision admitted a ${acceptedContribution.label} contribution to the selected target. Generate only a specific grounded contribution using the authorized conversation. Do not merely acknowledge, repeat, invent facts, or introduce generic advice. If no useful contribution can be produced, use ambientAction ignore.` }] };
     else if (acceptedContribution) request = { ...request, characterContext: [...(request.characterContext ?? []), { moduleId: "participation",
       text: `Serve only this accepted contribution; do not merely acknowledge, repeat or introduce unrelated help. Do not strengthen its factual claims. Untrusted candidate: ${JSON.stringify(acceptedContribution)}` }] };
     else if (!optional) request = { ...request, characterContext: [...(request.characterContext ?? []), { moduleId: "participation", text: "Answer explicit questions and tool requests normally. Keep acknowledgments brief; do not prolong a closing with another question or generic help." }] };
     turn.request = request;
     return { turn, request, fingerprint, allowed, decisionStatus, acceptedContribution, exchangeId, targetMessageId, memoryContextSignature: JSON.stringify(context), participation, styleUserId, styleSignature, targetConfidence, ...(conversationDecision ? { conversationDecision } : {}) };
+  }
+  // Phase 1 of the simple participation contract: one cheap decision per eligible optional
+  // turn, logged and never sent. Explicit requests never reach this method.
+  private async prepareSimple(turn: CharacterTurn, contract: { contract: DecisionContract; source: string }, fingerprint: string, privacyVersion: number): Promise<CharacterPreparedTurn> {
+    let request = turn.request; const guildId = request.guildId; const channelId = request.channelId;
+    const profile = this.profiles.find(guildId)!; const settings = turn.settings; const botId = request.botUserId ?? "bot";
+    const event = request.currentEvent as Extract<NonNullable<ChatRequest["currentEvent"]>, { type: "message" }>;
+    const current: ChannelHistoryMessage = request.currentBurst?.at(-1) ?? { messageId: event.messageId, timestampMs: event.timestampMs, authorId: request.currentUser.id,
+      authorDisplayName: request.currentUser.displayName, content: request.message, imageCount: request.images.length, replyToMessageId: event.replyToMessageId };
+    const burst = request.currentBurst?.length ? request.currentBurst : [current];
+    request = { ...request, currentBurst: burst }; turn.request = request;
+    const participation = resolveParticipation(profile.chat.participation, channelId);
+    const log = { event: "chat.simple_decision", guildId, channelId, contract: contract.contract, contractSource: contract.source, interaction: request.interaction };
+    const finish = (status: DecisionOutcome["status"] | "skipped"): CharacterPreparedTurn => {
+      const denied = this.decisionEngine.assess(request, { status: "skipped", decision: null }, profile.chat.participation, false, turn.now, fingerprint).result;
+      const conversationDecision = { ...denied, decision: { ...denied.decision, reasonCode: "simple_trial" } };
+      reportConversationDecision(this.logger, conversationDecision, "preflight", resolveConversationTrigger(request).interaction);
+      return { turn, request, fingerprint, allowed: false, decisionStatus: status, conversationDecision, acceptedContribution: null, exchangeId: null, targetMessageId: null,
+        memoryContextSignature: "[]", participation: { action: "ignore", reaction: null }, styleUserId: null, styleSignature: null, targetConfidence: 0 };
+    };
+    const exclude = (reason: string, fields: Record<string, unknown> = {}, scopeDenial = false): CharacterPreparedTurn => {
+      this.logger?.debug?.({ event: "chat.simple_exclusion", guildId, channelId, contract: contract.contract, interaction: request.interaction, reason,
+        ...(scopeDenial ? {} : { sourceMessageId: current.messageId }), ...fields }, "Simple participation exclusion");
+      return finish("skipped");
+    };
+    if (!turn.capabilities.context) return exclude("context_unavailable", {}, true);
+    if (!passiveChannelAllowed(profile, channelId)) return exclude("observation_not_selected", {}, true);
+    const simple = this.simple;
+    if (!simple?.available) {
+      this.logger?.info({ ...log, sourceMessageId: current.messageId, status: "unavailable", admission: "decision_unavailable", trial: true }, "Simple participation decision");
+      return finish("unavailable");
+    }
+    const events = [...request.replyChain, ...request.channelHistory, ...burst];
+    const classification = classifySimpleTurn({ events, current, botId, aliases: request.aliasCandidates, startedAt: this.startedAt });
+    if (classification.excluded) return exclude(classification.excluded);
+    const { kind, basis } = classification;
+    if (!(kind === "followup" ? participation.continuationEnabled : participation.spontaneousEnabled)) return exclude(kind === "followup" ? "followups_disabled" : "joining_disabled", { kind, basis });
+    const availability = request.contextualActionAvailability?.[kind === "followup" ? "continuation" : "spontaneous"] ?? request.optionalActionsAvailable ?? { text: true, reaction: true };
+    const actions = { reply: availability.text, react: availability.reaction && participation.reactionsEnabled !== false };
+    if (!actions.reply && !actions.react) return exclude("no_action_available", { kind, basis });
+
+    const thoughtsModule = this.registry.get<ThoughtsModule>("thoughts");
+    const thoughtsOn = !!thoughtsModule && this.registry.has("thoughts") && !characterInactiveReason(settings, "thoughts", channelId, turn.capabilities);
+    const shadow = settings.modules.thoughts.shadow; const heldKey = `${guildId}:${channelId}`;
+    // A held thought belongs to this author and, for a follow-up, the exchange it continues.
+    const scope = JSON.stringify([kind === "followup" ? classification.anchorMessageId : "channel", current.authorId]);
+    const window = selectDecisionContext(request, settings.context.decisionMessages).events;
+    const held = thoughtsModule && thoughtsOn && !shadow ? thoughtsModule.simpleHint(heldKey, scope, turn.now, new Set(window.map((item) => item.messageId))) : null;
+    const botName = events.find((item) => item.authorId === botId)?.authorDisplayName ?? "the bot";
+    const outcome = await simple.decide({ sourceContext: request.contextLease!, personality: request.personality, botId, botName, events: window, current, kind, basis,
+      actions, thoughts: thoughtsOn, held, ...(request.turnSignal ? { signal: request.turnSignal } : {}), ...(request.turnDeadlineAt ? { deadlineAt: request.turnDeadlineAt } : {}) });
+    const liveProfile = this.profiles.find(guildId);
+    if (!liveProfile || !liveProfile.features.chatbot || (this.privacyVersions.get(guildId) ?? 0) !== privacyVersion) {
+      this.registry.reset(guildId); emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "privacy_changed" }); throw new SocialOutputSuppressed();
+    }
+    const threshold = resolveSimpleThreshold(profile.chat.participation, channelId, kind);
+    const proposed = outcome.action;
+    const admission = outcome.status !== "valid" ? outcome.failure ?? "decision_failed" : proposed === "ignore" ? "model_ignore" :
+      proposed === "reply" && !actions.reply || proposed === "react" && !actions.react ? "action_unavailable" :
+      proposed === "react" && outcome.reactionSelectionFailed ? "reaction_selection_failed" :
+      threshold.value > 0 && outcome.score !== null && outcome.score < threshold.value ? "below_threshold" : "trial_not_sent";
+    const thought = outcome.thought;
+    let thoughtOutcome: string | null = null;
+    if (thought) {
+      thoughtOutcome = thought.status === "failed" ? "failed" : shadow ? "shadow" : null;
+      if (thoughtOutcome === null) {
+        if (proposed === "ignore" && thought.stance !== "none" && thoughtsModule) {
+          thoughtsModule.simpleHold(heldKey, scope, turn.now, settings.modules.thoughts.holdSeconds, { sourceMessageId: current.messageId, stance: thought.stance!, length: thought.length! });
+          thoughtOutcome = "held";
+        } else if (proposed === "reply" && thought.stance !== "none") { thoughtsModule?.simpleClear(heldKey); thoughtOutcome = "would_use"; }
+        else thoughtOutcome = "discarded";
+      }
+    }
+    this.logger?.info({ ...log, sourceMessageId: current.messageId, kind, basis, status: outcome.status, proposedAction: proposed, emoji: outcome.emoji, admission,
+      score: outcome.score, scoreKind: outcome.scoreKind, threshold: threshold.value, thresholdSource: threshold.source, availableReply: actions.reply, availableReact: actions.react,
+      route: outcome.route, latencyMs: outcome.latencyMs, usage: outcome.usage, preview: participation.shadowMode, trial: true,
+      thought: thought ? { outcome: thoughtOutcome, stance: thought.stance, length: thought.length, want: thought.want, heldOffered: held !== null, failure: thought.failure ?? null,
+        latencyMs: thought.latencyMs, usage: thought.usage } : null }, "Simple participation decision");
+    return finish(outcome.status);
   }
   public async process(reply: ChatResponse, prepared: CharacterPreparedTurn): Promise<ChatResponse> {
     requireApprovedConversationRequest(prepared.request);

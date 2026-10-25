@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { defaultMemoryEngineLimits } from "../application/memory/memory-engine.js";
 import { generatedImageLimits } from "../application/chat/generated-image-limits.js";
+import { nativeDecisionModel } from "../application/chat/typed-decision.js";
 import type { ApplicationConfiguration } from "./configuration.js";
 import {
   resolveDefaultInstanceEnvironment,
@@ -91,6 +92,11 @@ const environmentSchema = z.object({
   // from interactive replies. This matters for the Responses API because
   // max_output_tokens includes both hidden reasoning and visible JSON.
   CHATBOT_SUMMARY_REASONING_EFFORT: z.enum(["minimal", "low", "medium", "high"]).default("low"),
+  // Reasoning effort for simple-contract participation decisions on the reply
+  // route. Defaults to the summary effort so a decision is not as slow as a reply.
+  CHATBOT_DECISION_REASONING_EFFORT: z.enum(["minimal", "low", "medium", "high"]).optional(),
+  // Which participation decision contract runs by default; guilds and channels may override it.
+  PARTICIPATION_DECISION_CONTRACT: z.enum(["legacy", "simple"]).default("legacy"),
   CHATBOT_SUMMARY_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1).max(128_000).default(4_096),
   // Which vendor/protocol family to talk to. CHATBOT_MODE only applies (and
   // is only meaningful) when PROVIDER=openai — it picks the OpenAI wire
@@ -123,6 +129,8 @@ const environmentSchema = z.object({
   // change for anyone not using this.
   UTILITY_MODEL: optionalNonEmptyString,
   DECISION_MODEL: optionalNonEmptyString,
+  DECISION_MODE: z.enum(["decisions", "chat_completions"]).default("chat_completions"),
+  DECISION_REASONING_EFFORT: z.enum(["minimal", "low", "medium", "high"]).optional(),
   DECISION_API_KEY: optionalNonEmptyString,
   DECISION_BASE_URL: z.string().url().optional(),
   UTILITY_FALLBACK_MODELS: fallbackModelsList,
@@ -207,6 +215,11 @@ export function loadConfiguration(
     throw new Error(`Invalid application configuration: ${details}`);
   }
 
+  if (parsed.data.DECISION_MODE === "decisions") {
+    if (parsed.data.DECISION_MODEL && parsed.data.DECISION_MODEL !== nativeDecisionModel) throw new Error(`DECISION_MODE=decisions requires DECISION_MODEL=${nativeDecisionModel}`);
+    if (!parsed.data.DECISION_API_KEY && !parsed.data.OPENAI_API_KEY) throw new Error("Native Decisions requires DECISION_API_KEY or OPENAI_API_KEY");
+  }
+
   if (parsed.data.PERSISTENCE_DRIVER === "postgres" && !parsed.data.DATABASE_URL) {
     throw new Error(
       "Invalid application configuration: DATABASE_URL is required when PERSISTENCE_DRIVER=postgres",
@@ -288,9 +301,11 @@ export function loadConfiguration(
       password: parsed.data.LAVALINK_PASSWORD,
       secure: parsed.data.LAVALINK_SECURE,
     },
+    participationDecisionContract: parsed.data.PARTICIPATION_DECISION_CONTRACT,
     chat: buildChatConfiguration(parsed.data),
     utilityChat: buildUtilityChatConfiguration(parsed.data),
-    decision: parsed.data.DECISION_MODEL ? { model: parsed.data.DECISION_MODEL,
+    decision: parsed.data.DECISION_MODEL || parsed.data.DECISION_MODE === "decisions" ? { model: parsed.data.DECISION_MODEL ?? nativeDecisionModel, mode: parsed.data.DECISION_MODE,
+      ...(parsed.data.DECISION_REASONING_EFFORT ? { reasoningEffort: parsed.data.DECISION_REASONING_EFFORT } : {}),
       apiKey: parsed.data.DECISION_API_KEY ?? parsed.data.OPENAI_API_KEY ?? "",
       baseUrl: parsed.data.DECISION_BASE_URL ?? parsed.data.OPENAI_BASE_URL } : null,
     campaign: buildCampaignConfiguration(parsed.data),
@@ -401,6 +416,7 @@ function buildChatConfiguration(
       summaryModels,
       summaryMaxOutputTokens,
       summaryReasoningEffort: data.CHATBOT_SUMMARY_REASONING_EFFORT,
+      decisionReasoningEffort: data.CHATBOT_DECISION_REASONING_EFFORT ?? data.CHATBOT_SUMMARY_REASONING_EFFORT,
       reasoningEffort: data.CHATBOT_REASONING_EFFORT,
       verbosity: data.CHATBOT_VERBOSITY,
       maxOutputTokens,

@@ -22,9 +22,6 @@ export const zhTWMemory: SettingsTextCatalog = {
   "memory.sharing": { label: "共享個人記憶", description: "依各頻道的記憶模式，分享新的個人事實。" },
   "memory.sharing.enabled": { label: "共享個人記憶", description: "既有私人記憶不會因此公開。" },
   "memory": { title: "記憶", description: "機器人會回顧和記住的內容" },
-  "memory.channel-history": { label: "頻道歷史", description: "把最近的頻道訊息交給模型，作為接話背景。" },
-  "memory.channel-history.enabled": { label: "頻道歷史", description: "開啟或關閉頻道歷史" },
-  "memory.channel-history.limit": { label: "訊息數", description: "讀取最近幾則訊息；角色的擴充視窗可另行設定。" },
 
   "memory.memory-mode": {
     label: "頻道記憶模式",

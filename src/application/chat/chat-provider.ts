@@ -149,11 +149,12 @@ export interface ChatRequest {
   historyReactionsEnabled?: boolean;
 }
 
-export interface StructuredCallOptions { signal?: AbortSignal; maxAttempts?: number; onUsage?: (usage: ChatUsage) => void; beforeAttempt?: () => Promise<void> }
+export interface StructuredCallOptions { reasoningEffort?: "minimal" | "low" | "medium" | "high"; signal?: AbortSignal; maxAttempts?: number; onUsage?: (usage: ChatUsage) => void; beforeAttempt?: () => Promise<void> }
 export function reportStructuredUsage(options: Pick<StructuredCallOptions, "onUsage"> | undefined, usage: ChatUsage): void {
   try { options?.onUsage?.(usage); } catch { /* Usage observers cannot affect admission or retries. */ }
 }
 export interface StructuredCharacterProvider {
+  readonly decisionProtocol?: "openai-decisions";
   generateCharacterData(prompt: string, schema: Record<string, unknown>, options?: StructuredCallOptions): Promise<unknown>;
 }
 

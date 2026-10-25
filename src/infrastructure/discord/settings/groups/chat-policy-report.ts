@@ -34,7 +34,11 @@ export const chatPolicyReport = report("policy", async (context) => {
       request.guild.members.fetch({ user: request.actorUserId, force: true }), request.guild.members.fetchMe({ force: true })]);
     const permissions = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory];
     if (!channel?.isTextBased() || channel.guildId !== profile.guildId || !channel.permissionsFor(viewer)?.has(permissions)) throw new Error("access");
-    return renderChatPolicy(context, channelId, { reply: deps.chatProviderAvailable ?? null,
+    const rendered = renderChatPolicy(context, channelId, { reply: deps.chatProviderAvailable ?? null,
       decision: deps.characterRuntime?.decisionAvailable ?? null, botRead: channel.permissionsFor(bot)?.has(permissions) ?? false }, values.getString("view") ?? "overview");
+    const contract = deps.characterRuntime?.describeContract(profile, channelId);
+    if (!contract) return rendered;
+    const { notes, ...fields } = contract;
+    return [rendered, text.message("participation.policy", "contract", fields), ...notes.map((note) => text.message("participation.policy", `note_${note}`))].join("\n");
   } catch { return text.message("participation.policy", "denied"); }
 }, { channel: { kind: "channel", textOnly: false }, view: { kind: "choice", choices: ["overview", "context", "activity"] } });

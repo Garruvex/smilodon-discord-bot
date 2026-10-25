@@ -1,4 +1,3 @@
-import type { Guild } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ChatToolRegistry } from "../../src/application/chat/tools/chat-tool-registry.js";
@@ -35,30 +34,63 @@ describe("settings registry", () => {
   });
   it("exposes only the history switch and sizes for conversation context", async () => {
     const fixture = engineFixture(); const setting = fixture.engine.find("character.context")!;
-    expect(Object.keys((setting.node as { options: object }).options).sort()).toEqual(["budget", "decision-messages", "enabled", "messages"]);
+    expect(Object.keys((setting.node as { options: object }).options).sort()).toEqual(["budget", "decision-context", "enabled", "messages"]);
     const result = await fixture.engine.run(setting, { guildId, guild: null, actorUserId, language: "en", values: slashValues({ messages: 24 }) }, { kind: "panel" });
     expect(result.kind).toBe("updated");
     expect(fixture.profiles.current().character?.context).toMatchObject({ maxMessages: 24, budget: 12000 });
   });
-  it("requires an accessible explicit thread and keeps scope selection separate from global enablement", async () => {
+  it("requires an observed thread before joining and keeps scope selection separate from global enablement", async () => {
     const fixture = engineFixture(); const threadId = "600000000000000001";
-    const fetch = vi.fn(() => Promise.resolve({ isThread: () => true, guildId }));
-    const guild = { channels: { fetch } } as unknown as Guild;
-    const registered = fixture.engine.find("participation.thread-scope")!;
-    const run = (options: Record<string, string | boolean>): ReturnType<typeof fixture.engine.run> => fixture.engine.run(registered,
-      { guildId, guild, actorUserId, language: "en", values: slashValues({ "thread-id": threadId, ...options }) }, { kind: "panel" });
-    expect((await run({ spontaneous: true })).kind).toBe("rejected");
-    expect((await run({ observe: true, spontaneous: true })).kind).toBe("done");
+    const run = (options: Record<string, boolean>): ReturnType<typeof fixture.run> =>
+      fixture.run("participation.channel", slashValues({ channel: { id: threadId }, ...options }));
+    expect((await run({})).kind).toBe("rejected");
+    expect((await run({ joining: true })).kind).toBe("rejected");
+    expect((await run({ observe: true, joining: true })).kind).toBe("done");
     expect(fixture.profiles.current().chat.participation).toMatchObject({ observationChannelIds: [threadId], spontaneousChannelIds: [threadId], spontaneousEnabled: false });
     await run({ observe: false });
     expect(fixture.profiles.current().chat.participation?.spontaneousChannelIds).toEqual([]);
   });
+  it("drops a retired per-channel joining flag once the joining list changes", async () => {
+    const document = freshDocument(); const channelId = "600000000000000002";
+    document.chat.participation.observationChannelIds = [channelId];
+    document.chat.participation.channelOverrides = { [channelId]: { spontaneousEnabled: true, activity: "quiet" } };
+    const fixture = engineFixture({ document });
+    await fixture.run("participation.channel", slashValues({ channel: { id: channelId }, joining: true }));
+    expect(fixture.profiles.current().chat.participation?.channelOverrides[channelId]).toEqual({ activity: "quiet" });
+  });
+  it("selects the decision contract for the server and one channel, with inheritance", async () => {
+    const fixture = engineFixture(); const channelId = "600000000000000003";
+    expect(fixture.profiles.current().chat.participation?.decisionContract).toBeUndefined();
+    expect((await fixture.run("participation.decision-contract", slashValues({ contract: "simple" }))).kind).toBe("updated");
+    expect(fixture.profiles.current().chat.participation?.decisionContract).toBe("simple");
+    expect(await fixture.run("participation.decision-contract", slashValues({ contract: "simple" }))).toMatchObject({ description: "No changes — those settings already match." });
+    await fixture.run("participation.channel", slashValues({ channel: { id: channelId }, "decision-contract": "legacy" }));
+    expect(fixture.profiles.current().chat.participation?.channelOverrides[channelId]).toEqual({ decisionContract: "legacy" });
+    await fixture.run("participation.channel", slashValues({ channel: { id: channelId }, "decision-contract": "inherit" }));
+    expect(fixture.profiles.current().chat.participation?.channelOverrides[channelId]).toEqual({});
+    await fixture.run("participation.decision-contract", slashValues({ contract: "inherit" }));
+    expect(fixture.profiles.current().chat.participation?.decisionContract).toBeUndefined();
+  });
+  it("stores the simple-method thresholds as probabilities apart from the legacy thresholds", async () => {
+    const document = freshDocument(); document.chat.participation.spontaneousThreshold = 0.9; const channelId = "600000000000000004";
+    const fixture = engineFixture({ document });
+    await fixture.run("participation.simple-threshold", slashValues({ followup: 60 }));
+    await fixture.run("participation.simple-threshold", slashValues({ joining: 75 }));
+    expect(fixture.profiles.current().chat.participation).toMatchObject({ simpleActionThresholds: { followup: 0.6, joining: 0.75 }, spontaneousThreshold: 0.9 });
+    await fixture.run("participation.channel", slashValues({ channel: { id: channelId }, "followup-threshold": 0 }));
+    expect(fixture.profiles.current().chat.participation?.channelOverrides[channelId]).toEqual({ simpleActionThresholds: { followup: 0 } });
+    await fixture.run("participation.channel", slashValues({ channel: { id: channelId }, "joining-threshold": 40 }));
+    expect(fixture.profiles.current().chat.participation?.channelOverrides[channelId]).toEqual({ simpleActionThresholds: { followup: 0, joining: 0.4 } });
+  });
+  it("leaves preview off by default", () => {
+    expect(engineFixture().profiles.current().chat.participation?.shadowMode).toBe(false);
+  });
   it("keeps quiet continuation defaults unchanged on save and permits explicit larger overrides", async () => {
     const document = freshDocument(); document.chat.participation.activity = "quiet";
     const fixture = engineFixture({ document });
-    const unchanged = await fixture.run("participation.continuation-limits", slashValues({ exchange: 6, window: 15, interval: 30 }));
+    const unchanged = await fixture.run("participation.follow-ups", slashValues({ "per-exchange": 6, "per-10-minutes": 15, interval: 30 }));
     expect(unchanged).toMatchObject({ description: "No changes — those settings already match." });
-    await fixture.run("participation.continuation-limits", slashValues({ exchange: 10, window: 30 }));
+    await fixture.run("participation.follow-ups", slashValues({ "per-exchange": 10, "per-10-minutes": 30 }));
     expect(fixture.profiles.current().chat.participation?.advanced).toMatchObject({ continuationPerExchange: 10, continuationPer10Minutes: 30 });
   });
   it("is valid, with complete English text and in-range translations", () => {

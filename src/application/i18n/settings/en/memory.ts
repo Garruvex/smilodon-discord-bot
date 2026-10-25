@@ -22,12 +22,6 @@ export const enMemory: SettingsTextCatalog = {
   "memory.sharing": { label: "Shared personal memory", description: "Share new personal facts according to each channel memory mode." },
   "memory.sharing.enabled": { label: "Shared personal memory", description: "Existing private memories stay private." },
   "memory": { title: "Memory", description: "What the bot reads back and remembers." },
-  "memory.channel-history": {
-    label: "Channel history",
-    description: "Use recent channel messages as context for replies.",
-  },
-  "memory.channel-history.enabled": { label: "Channel history", description: "Turn channel history on or off." },
-  "memory.channel-history.limit": { label: "Messages", description: "Recent messages fetched as context; character context can extend this." },
 
   "memory.memory-mode": {
     label: "Channel memory mode",

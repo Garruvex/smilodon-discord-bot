@@ -1,3 +1,4 @@
+import { CHARACTER_CONTEXT_LIMITS as contextLimits } from "../../../../config/guild-configuration-limits.js";
 import { action, choice, group, integer, report, setting, toggle } from "../registry/builders.js";
 import { activeCharacterModuleIds, characterSettings, type CharacterModuleId } from "../../../../application/chat/character-settings.js";
 import type { SettingNode, SettingOption } from "../registry/types.js";
@@ -34,12 +35,14 @@ function moduleSetting(id: CharacterModuleId): SettingNode {
   return setting(id, options);
 }
 export const character = group("character", [
-  setting("controls", { enabled: toggle({ read: (p) => characterSettings(p).enabled, write: (v) => ({ character: { enabled: v } }) }) }),
+  setting("master", { enabled: toggle({ read: (p) => characterSettings(p).enabled, write: (v) => ({ character: { enabled: v } }) }) }),
+  // The only switch for reading recent channel chat (features.channelHistory),
+  // and how much of it a reply and a join decision read.
   setting("context", {
     enabled: toggle({ read: (p) => p.features.channelHistory, write: (v) => ({ channelHistory: v }) }),
-    messages: integer({ min: 8, max: 48, read: (p) => characterSettings(p).context.maxMessages, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, maxMessages: v } } }) }),
-    budget: integer({ min: 2000, max: 24000, read: (p) => characterSettings(p).context.budget, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, budget: v } } }) }),
-    "decision-messages": integer({ min: 5, max: 20, read: (p) => characterSettings(p).context.decisionMessages, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, decisionMessages: v } } }) }),
+    messages: integer({ min: contextLimits.messages.min, max: contextLimits.messages.max, read: (p) => characterSettings(p).context.maxMessages, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, maxMessages: v } } }) }),
+    budget: integer({ min: contextLimits.budget.min, max: contextLimits.budget.max, read: (p) => characterSettings(p).context.budget, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, budget: v } } }) }),
+    "decision-context": integer({ min: contextLimits.decisionMessages.min, max: contextLimits.decisionMessages.max, read: (p) => characterSettings(p).context.decisionMessages, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, decisionMessages: v } } }) }),
   }),
   ...activeCharacterModuleIds.map(moduleSetting),
   action("channel", { params: { channel: { kind: "channel", textOnly: true, required: true }, module: { kind: "choice", choices: ["master", "context", ...activeCharacterModuleIds], required: true }, enabled: { kind: "toggle", required: true }, reset: { kind: "toggle" } },
@@ -65,8 +68,8 @@ export const character = group("character", [
       const result = await deps.characterRuntime.manageCanon(request.guildId, request.actorUserId, values.getChannel("channel")?.id ?? "", values.getString("operation") ?? "list", values.getString("id"), values.getString("statement"), moduleId);
       return { ok: true, message: result };
     } }),
-  report("status", ({ profile, deps, values }) => {
+  report("status", ({ profile, deps, values, text: labels, path }) => {
     const channelId = values.getChannel("channel")?.id ?? "";
-    return Promise.resolve(deps.characterRuntime?.describeStatus(profile, channelId) ?? "Character runtime is unavailable.");
+    return Promise.resolve(deps.characterRuntime?.describeStatus(profile, channelId) ?? labels.message(path, "unavailable"));
   }, { channel: { kind: "channel", textOnly: true } }),
 ]);

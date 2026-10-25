@@ -12,6 +12,31 @@ export const CHAT_LIMITS = {
   reactionReplyMinReactors: { min: 1, max: 20, default: 1 },
 } as const;
 
+// Optional participation (follow-ups, joining conversations, pacing). Pacing
+// defaults come from the activity preset (participation-policy.ts), so only
+// the bounds live here; the maxima cover the liveliest preset.
+export const PARTICIPATION_LIMITS = {
+  joinEveryMessages: { min: 1, max: 20, default: 5 },
+  thresholdPercent: { min: 0, max: 100 },
+  concurrency: { min: 1, max: 16, default: 4 },
+  optionalTurnsPer10Minutes: { min: 0, max: 1_000, default: 100 },
+  evaluationCooldownSeconds: { min: 20, max: 600 },
+  textCooldownSeconds: { min: 60, max: 3_600 },
+  reactionCooldownSeconds: { min: 20, max: 600 },
+  textPer10Minutes: { min: 0, max: 4 },
+  reactionsPer10Minutes: { min: 0, max: 6 },
+  followUpIntervalSeconds: { min: 15, max: 600 },
+  followUpsPerExchange: { min: 0, max: 30 },
+  followUpsPer10Minutes: { min: 0, max: 100 },
+} as const;
+
+// Conversation context the character reads (character-settings.ts).
+export const CHARACTER_CONTEXT_LIMITS = {
+  messages: { min: 8, max: 48, default: 40 },
+  budget: { min: 2_000, max: 24_000, default: 12_000 },
+  decisionMessages: { min: 5, max: 20, default: 10 },
+} as const;
+
 export const MUSIC_LIMITS = {
   volumeDefault: { min: 0, max: 1_000, default: 75 },
   volumeMaximum: { min: 1, max: 1_000, default: 150 },

@@ -13,6 +13,7 @@ const arity: Readonly<Record<UtilityOperation, number>> = Object.freeze({ genera
 // the raw receiver inside the closure, including provider-internal retries.
 export function guardModelTransport<T extends object>(provider: T, logger: DiagnosticLogger | null = null): T {
   const facade: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  if (Reflect.get(provider, "decisionProtocol") === "openai-decisions") facade.decisionProtocol = "openai-decisions";
   for (const key of ["nativeWebSearchSupported", "applicationToolsSupported", "imageGenerationSupported"]) {
     const value: unknown = Reflect.get(provider, key); if (typeof value === "boolean") facade[key] = value;
   }

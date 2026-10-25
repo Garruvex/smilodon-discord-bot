@@ -312,6 +312,7 @@ export const en = {
   "setup.status.chat.images": "Reads images: {read} · Makes images: {make}",
   "setup.status.chat.sources": "Cites sources: {sources} · Persona drift: {drift}",
   "setup.status.chat.history": "Reads last {count} messages for context",
+  "setup.status.chat.historyOff": "Channel history off",
   "setup.status.chat.summaries": "Summarized channels: {once} one-time, {daily} daily",
   "setup.status.music.title": "Music settings",
   "setup.status.music.volume": "Volume: {volume}% by default (max {max}%, buttons ±{step})",

@@ -127,7 +127,9 @@ import { CharacterEvalCommand, FeltLikeBotCommand } from "../infrastructure/disc
 import { resolveParticipation } from "../application/chat/participation-policy.js";
 import { SocialOutputSuppressed } from "../application/chat/message-origin-store.js";
 import { HttpDecisionProvider } from "../infrastructure/chat/http-decision-provider.js";
+import { OpenAiNativeDecisionProvider } from "../infrastructure/chat/openai-native-decision-provider.js";
 import { contextualDecisionProviders } from "../application/chat/contextual-decision-providers.js";
+import { SimpleParticipationService, selectSimpleRoute } from "../application/chat/simple-decision.js";
 import { characterSettings, characterInactiveReason } from "../application/chat/character-settings.js";
 import { ChatToolRegistry } from "../application/chat/tools/chat-tool-registry.js";
 import { DiscordServerLookupTool } from "../infrastructure/discord/discord-server-lookup-tool.js";
@@ -705,15 +707,24 @@ export function createDependencies(
   settingsEngine.bindChatToolRegistry(chatToolRegistry);
   const structuredUtility = utilityProvider?.generateCharacterData ? { generateCharacterData: utilityProvider.generateCharacterData.bind(utilityProvider) } : null;
   const structuredReply = chatProvider?.generateCharacterData ? { generateCharacterData: chatProvider.generateCharacterData.bind(chatProvider) } : null;
-  const dedicatedDecision = configuration.decision ? guardModelTransport(instrumentModel(new HttpDecisionProvider(configuration.decision), logger), logger) : null;
-  const contextualProviders = contextualDecisionProviders(dedicatedDecision, structuredReply, structuredUtility);
+  const dedicatedDecision = configuration.decision && configuration.decision.mode !== "decisions" ? guardModelTransport(instrumentModel(new HttpDecisionProvider(configuration.decision), logger), logger) : null;
+  const nativeDecision = configuration.decision?.mode === "decisions" ? guardModelTransport(instrumentModel(new OpenAiNativeDecisionProvider(configuration.decision), logger), logger) : null;
+  const contextualProviders = contextualDecisionProviders(nativeDecision ?? dedicatedDecision, structuredReply, structuredUtility);
   logger.info({ contextualDecisionSource: contextualProviders.source, contextualDecisionModel: configuration.decision?.model ??
     (contextualProviders.source === "reply" || !configuration.utilityChat ? configuration.chat?.summaryModels[0] : configuration.utilityChat.models[0]) ?? null,
+    contextualDecisionEndpoint: nativeDecision ? "decisions" : dedicatedDecision ? "chat/completions" : "reply-provider",
     contextualFallbackSource: contextualProviders.fallback ? "reply" : null }, "Contextual decision provider selection");
   const characterRuntime = chatProvider ? new CharacterRuntime(guildConfigurationProvider, memoryRepository,
     structuredUtility,
     chatProvider, dedicatedDecision ?? structuredUtility, personalMemoryExtractionQueueStore, undefined, logger.child({ component: "character" }), contextualProviders) : null;
   if (characterRuntime) settingsEngine.bindCharacterRuntime(characterRuntime);
+  const simpleRoute = selectSimpleRoute({ native: nativeDecision, dedicated: dedicatedDecision, reply: structuredReply },
+    { decisionModel: configuration.decision?.model ?? null, replyModel: configuration.chat?.summaryModels[0] ?? null,
+      dedicatedEffort: configuration.decision?.reasoningEffort ?? null,
+      replyEffort: configuration.chat?.provider === "openai-responses" ? configuration.chat.decisionReasoningEffort ?? configuration.chat.summaryReasoningEffort ?? "low" : null });
+  characterRuntime?.bindSimpleDecision(new SimpleParticipationService(simpleRoute), configuration.participationDecisionContract ?? "legacy");
+  logger.info({ participationDecisionContract: configuration.participationDecisionContract ?? "legacy", simpleDecisionSource: simpleRoute?.source ?? "unavailable",
+    simpleDecisionEndpoint: simpleRoute?.endpoint ?? null, simpleDecisionModel: simpleRoute?.model ?? null, simpleDecisionReasoningEffort: simpleRoute?.reasoningEffort ?? null }, "Simple participation decision route");
   const diagnosticCommand = commandRegistry.getAll().find((command): command is DiagnosticCommand => command instanceof DiagnosticCommand);
   diagnosticCommand?.bindProviderHealth({ decision: () => characterRuntime?.decisionHealth ?? null, generation: () => modelGenerationHealth(logger),
     checkDecision: () => characterRuntime?.checkDecisionHealth() ?? Promise.resolve(null) });

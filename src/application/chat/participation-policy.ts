@@ -1,7 +1,12 @@
+import { PARTICIPATION_LIMITS } from "../../config/guild-configuration-limits.js";
 import type { ChatActivityLimits } from "./chat-scheduler.js";
 
+export type DecisionContract = "legacy" | "simple";
+export interface SimpleActionThresholds { followup?: number | undefined; joining?: number | undefined }
 export interface ParticipationOverride {
   shadowMode?: boolean | undefined;
+  decisionContract?: DecisionContract | undefined;
+  simpleActionThresholds?: SimpleActionThresholds | undefined;
   continuationEnabled?: boolean | undefined;
   spontaneousEnabled?: boolean | undefined;
   reactionsEnabled?: boolean | undefined;
@@ -18,6 +23,8 @@ export interface ParticipationSettings {
   barePingMode: "acknowledge" | "personality";
   activity: "quiet" | "balanced" | "lively";
   shadowMode: boolean;
+  decisionContract?: DecisionContract | undefined;
+  simpleActionThresholds?: SimpleActionThresholds | undefined;
   channelOverrides: Readonly<Record<string, ParticipationOverride>>;
   advanced: {
     concurrency?: number | undefined;
@@ -34,14 +41,14 @@ export interface ParticipationSettings {
 }
 
 export const defaultParticipation: ParticipationSettings = {
-  messagesPerDecision: 5, continuationEnabled: false, spontaneousEnabled: false, spontaneousChannelIds: [], barePingMode: "acknowledge",
+  messagesPerDecision: PARTICIPATION_LIMITS.joinEveryMessages.default, continuationEnabled: false, spontaneousEnabled: false, spontaneousChannelIds: [], barePingMode: "acknowledge",
   activity: "balanced", shadowMode: false, channelOverrides: {}, advanced: {},
 };
 
 const presets: Record<ParticipationSettings["activity"], ChatActivityLimits> = {
   quiet: { continuationIntervalMs: 30_000, continuationPerExchange: 6, continuationPerWindow: 15, evaluationCooldownMs: 30_000, textCooldownMs: 120_000, reactionCooldownMs: 40_000, textPerWindow: 1, reactionsPerWindow: 3 },
   balanced: { continuationIntervalMs: 15_000, continuationPerExchange: 10, continuationPerWindow: 30, evaluationCooldownMs: 25_000, textCooldownMs: 90_000, reactionCooldownMs: 30_000, textPerWindow: 3, reactionsPerWindow: 5 },
-  lively: { continuationIntervalMs: 15_000, continuationPerExchange: 10, continuationPerWindow: 30, evaluationCooldownMs: 20_000, textCooldownMs: 60_000, reactionCooldownMs: 20_000, textPerWindow: 3, reactionsPerWindow: 5 },
+  lively: { continuationIntervalMs: 15_000, continuationPerExchange: 12, continuationPerWindow: 40, evaluationCooldownMs: 20_000, textCooldownMs: 60_000, reactionCooldownMs: 20_000, textPerWindow: 4, reactionsPerWindow: 6 },
 };
 
 export interface ResolvedParticipation extends ParticipationSettings {
@@ -58,14 +65,14 @@ export function resolveParticipation(settings: ParticipationSettings | undefined
   return {
     ...configured, ...override,
     shadowMode: override.shadowMode ?? configured.shadowMode,
-    messagesPerDecision: configured.messagesPerDecision ?? 5,
+    messagesPerDecision: configured.messagesPerDecision ?? PARTICIPATION_LIMITS.joinEveryMessages.default,
     continuationEnabled: override.continuationEnabled ?? configured.continuationEnabled,
     activity: override.activity ?? configured.activity,
     // Explicit allow-list is required even when a channel override opts in.
     spontaneousEnabled: (override.spontaneousEnabled ?? configured.spontaneousEnabled) && configured.spontaneousChannelIds.includes(channelId),
     limits: {
-      concurrency: advanced.concurrency ?? 4,
-      optionalTurnsPerWindow: advanced.optionalTurnsPer10Minutes ?? 100,
+      concurrency: advanced.concurrency ?? PARTICIPATION_LIMITS.concurrency.default,
+      optionalTurnsPerWindow: advanced.optionalTurnsPer10Minutes ?? PARTICIPATION_LIMITS.optionalTurnsPer10Minutes.default,
       evaluationCooldownMs: advanced.evaluationCooldownSeconds === undefined ? base.evaluationCooldownMs : advanced.evaluationCooldownSeconds * 1_000,
       textCooldownMs: advanced.textCooldownSeconds === undefined ? base.textCooldownMs : advanced.textCooldownSeconds * 1_000,
       reactionCooldownMs: advanced.reactionCooldownSeconds === undefined ? base.reactionCooldownMs : advanced.reactionCooldownSeconds * 1_000,
@@ -93,4 +100,19 @@ export function passiveChannelAllowed(profile: { channels: { chatbot: ReadonlySe
   // Exact channel/thread selection; parent selection does not authorize threads.
   const channels = profile.chat.participation?.observationChannelIds;
   return channels ? channels.includes(channelId) : profile.channels.chatbot.has(channelId);
+}
+
+// Channel, then guild, then instance. A simple-contract turn never falls back to legacy.
+export function resolveDecisionContract(settings: ParticipationSettings | undefined, channelId: string, instance: DecisionContract): { contract: DecisionContract; source: "channel" | "guild" | "instance" } {
+  const channel = settings?.channelOverrides[channelId]?.decisionContract;
+  if (channel) return { contract: channel, source: "channel" };
+  if (settings?.decisionContract) return { contract: settings.decisionContract, source: "guild" };
+  return { contract: instance, source: "instance" };
+}
+// Probability gate on the native selected-action score. Zero (or unset) disables it.
+export function resolveSimpleThreshold(settings: ParticipationSettings | undefined, channelId: string, kind: "followup" | "joining"): { value: number; source: "channel" | "guild" | "default" } {
+  const channel = settings?.channelOverrides[channelId]?.simpleActionThresholds?.[kind];
+  if (channel !== undefined) return { value: channel, source: "channel" };
+  const guild = settings?.simpleActionThresholds?.[kind];
+  return guild !== undefined ? { value: guild, source: "guild" } : { value: 0, source: "default" };
 }

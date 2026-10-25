@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultParticipation, isLowSubstancePing, resolveParticipation } from "../../src/application/chat/participation-policy.js";
+import { contributionPolicy, defaultParticipation, isLowSubstancePing, resolveDecisionContract, resolveParticipation, resolveSimpleThreshold, type ParticipationSettings } from "../../src/application/chat/participation-policy.js";
 import { guildConfigurationFileSchema } from "../../src/config/guild-configuration-schema.js";
 import { freshDocument } from "../helpers/settings-fixtures.js";
 
@@ -31,5 +31,24 @@ describe("participation policy", () => {
     expect(isLowSubstancePing("what about tomorrow?", false, false)).toBe(false);
     expect(isLowSubstancePing("?", true, false)).toBe(false);
     expect(isLowSubstancePing("", false, true)).toBe(false);
+  });
+});
+
+describe("simple contract resolution", () => {
+  const settings = (extra: Partial<ParticipationSettings> = {}): ParticipationSettings => ({ ...defaultParticipation, ...extra });
+  it("resolves channel, then guild, then instance", () => {
+    expect(resolveDecisionContract(undefined, "c1", "legacy")).toEqual({ contract: "legacy", source: "instance" });
+    expect(resolveDecisionContract(settings({ decisionContract: "simple" }), "c1", "legacy")).toEqual({ contract: "simple", source: "guild" });
+    expect(resolveDecisionContract(settings({ decisionContract: "simple", channelOverrides: { c1: { decisionContract: "legacy" } } }), "c1", "simple")).toEqual({ contract: "legacy", source: "channel" });
+    expect(resolveDecisionContract(settings({ decisionContract: "simple", channelOverrides: { c1: { decisionContract: "legacy" } } }), "c2", "legacy")).toEqual({ contract: "simple", source: "guild" });
+  });
+  it("resolves each kind's simple threshold independently and keeps legacy thresholds out of it", () => {
+    const value = settings({ spontaneousThreshold: 0.9, continuationThreshold: 0.8, simpleActionThresholds: { followup: 0.6 }, channelOverrides: { c1: { simpleActionThresholds: { joining: 0.4, followup: 0 } } } });
+    expect(resolveSimpleThreshold(value, "c1", "followup")).toEqual({ value: 0, source: "channel" });
+    expect(resolveSimpleThreshold(value, "c1", "joining")).toEqual({ value: 0.4, source: "channel" });
+    expect(resolveSimpleThreshold(value, "c2", "followup")).toEqual({ value: 0.6, source: "guild" });
+    expect(resolveSimpleThreshold(value, "c2", "joining")).toEqual({ value: 0, source: "default" });
+    expect(resolveSimpleThreshold(undefined, "c1", "joining")).toEqual({ value: 0, source: "default" });
+    expect(contributionPolicy(value)).toMatchObject({ spontaneousThreshold: 0.9, continuationThreshold: 0.8 });
   });
 });

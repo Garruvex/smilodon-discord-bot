@@ -51,6 +51,8 @@ type ChatConfigVariant = ChatProviderVariant & {
   summaryModels: readonly string[];
   summaryMaxOutputTokens: number;
   summaryReasoningEffort?: "minimal" | "low" | "medium" | "high";
+  // Reasoning effort for simple-contract decisions on the reply route.
+  decisionReasoningEffort?: "minimal" | "low" | "medium" | "high";
 };
 
 export type CampaignModelConfiguration =
@@ -98,7 +100,8 @@ export interface MemoryConfiguration {
 }
 
 export interface ApplicationConfiguration {
-  decision?: { model: string; apiKey: string; baseUrl: string } | null;
+  decision?: { model: string; apiKey: string; baseUrl: string; mode?: "decisions" | "chat_completions"; reasoningEffort?: "minimal" | "low" | "medium" | "high" } | null;
+  participationDecisionContract?: "legacy" | "simple";
   instanceName?: string | null;
   environment: "development" | "test" | "production";
   logLevel: "trace" | "debug" | "info" | "warn" | "error" | "fatal";

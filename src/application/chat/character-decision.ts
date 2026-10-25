@@ -1,3 +1,4 @@
+import { exchangeIdleMs } from "./exchange-window.js";
 import { z } from "zod";
 import { performance } from "node:perf_hooks";
 import { decisionValidationFields, diagnosticElapsed, safeFailure, type FailureCategory, type ChatDiagnosticEvent } from "../diagnostics/chat-diagnostics.js";
@@ -12,10 +13,12 @@ import type { StructuredCallOptions } from "./chat-provider.js";
 import { immutableSnapshot } from "../context/immutable-snapshot.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { isApprovedDecisionInput } from "../context/approved-decision-input.js";
+import { nativeContextualDecisionContract } from "./native-contextual-decision.js";
+import { contributionLabels } from "./contribution-labels.js";
+export { contributionLabels } from "./contribution-labels.js";
 
 const diagnosticInputs = new WeakSet<object>();
 
-export const contributionLabels = ["answer", "relevant-joke", "specific-opinion", "personal-reaction", "useful-observation", "none", "acknowledgment-only", "repetition", "generic-advice", "speculative-help", "topic-hijack", "stale-information"] as const;
 const eligibleLabels = new Set<string>(contributionLabels.slice(0, 5));
 export const contextualDecisionPromptRevision = 2;
 // JSON Schema maxLength counts Unicode code points, not UTF-16 code units.
@@ -31,7 +34,8 @@ export const decisionSchema = z.object({
   contribution: candidateSchema, opening: z.enum(["clear", "closed", "unclear"]),
   boundary: z.string(), target: z.string(), confidence: z.number().min(0).max(1), reaction: z.string().nullable(), thoughts: z.array(candidateSchema).max(3),
 }).strict();
-export type CharacterDecision = z.infer<typeof decisionSchema> & { contextual?: ContextualInterpretation };
+export type NativeDecisionConfidence = Record<"relationship" | "link" | "evidenceSelection" | "target" | "action" | "referent", number>;
+export type CharacterDecision = z.infer<typeof decisionSchema> & { contextual?: ContextualInterpretation; nativeContributionPlan?: { addsValue: boolean }; nativeConfidence?: NativeDecisionConfidence };
 const candidateJson = { type: "object", additionalProperties: false, required: ["text", "adds", "label", "motivation", "sourceMessageId", "recipientId"], properties: {
   text: { type: "string", maxLength: 200 }, adds: { type: "string", maxLength: 200 }, label: { type: "string", enum: contributionLabels }, motivation: { type: "number", minimum: 0, maximum: 1 }, sourceMessageId: { type: "string" }, recipientId: { type: "string" },
 } };
@@ -134,7 +138,7 @@ export function namedRecipient(text: string, events: readonly ChannelHistoryMess
 }
 // Reconstruct from confirmed delivered replies only. A source human message
 // authorizes its first reply window; duplicate/extra bot output cannot renew it.
-export function localAddressing(events: readonly ChannelHistoryMessage[], current: ChannelHistoryMessage, botId: string, followupMs = 120_000, aliases: readonly RecipientAliases[] = []): CharacterDecision["addressing"] {
+export function localAddressing(events: readonly ChannelHistoryMessage[], current: ChannelHistoryMessage, botId: string, followupMs = exchangeIdleMs, aliases: readonly RecipientAliases[] = []): CharacterDecision["addressing"] {
   const history = events.filter((event) => event.messageId !== current.messageId && event.timestampMs < current.timestampMs).sort((a, b) => a.timestampMs - b.timestampMs);
   const reply = history.find((event) => event.messageId === current.replyToMessageId);
   const replyAuthor = current.replyToAuthorId ?? reply?.authorId;
@@ -202,7 +206,7 @@ export function optionalParticipationRejection(trigger: "continuation" | "sponta
   // novel unsolicited contribution. Recipient/confidence/opening checks stay.
   if (!requireContribution) return null;
   if (!eligibleLabels.has(decision.contribution.label)) return "contribution_label_rejected";
-  if (!decision.contribution.adds.trim() || !decision.contribution.text.trim()) return "contribution_empty";
+  if (decision.nativeContributionPlan ? !decision.nativeContributionPlan.addsValue : !decision.contribution.adds.trim() || !decision.contribution.text.trim()) return "contribution_empty";
   if (decision.contribution.motivation < policy[trigger === "spontaneous" ? "spontaneousThreshold" : "continuationThreshold"]) return "motivation_below_threshold";
   return null;
 }
@@ -232,6 +236,7 @@ export class CharacterDecisionService {
     const current: ChannelHistoryMessage = { messageId: "diagnostic-source", timestampMs: Date.now(), authorId: "diagnostic-human", authorDisplayName: "Synthetic tester",
       content: "Diagnostic fixture: please answer whether two plus two equals four.", imageCount: 0 };
     const input = immutableSnapshot({ personality: "Synthetic health check; no real conversation.", events: [], burst: [current], botId: "diagnostic-bot",
+      contextual: this.contextualProviders?.primary?.decisionProtocol === "openai-decisions",
       fixedTarget: current.messageId, gapMs: 60_000, speakingShare: 0, thoughts: false });
     diagnosticInputs.add(input);
     const task = this.evaluate(input).then(() => this.healthStatus());
@@ -302,6 +307,10 @@ Data: ${JSON.stringify({ personality: input.personality, botId: input.botId, cur
       currentEventKey: contract.evidenceSources.find((source) => source.eventId === (input.fixedTarget ?? input.burst.at(-1)?.messageId))?.key,
       targetCandidates: contract.targets, availableActions: input.availableActions ?? { text: true, reaction: true } }).replaceAll("<", "\\u003c")}` : legacyPrompt;
     for (const provider of [...new Set([primary, fallback].filter((item): item is StructuredCharacterProvider => item !== null))]) {
+      const nativeContract = contract && provider.decisionProtocol === "openai-decisions" ? nativeContextualDecisionContract(contract, input.fixedTarget) : null;
+      const dispatchSchema = nativeContract?.schema ?? schema;
+      const dispatchPrompt = nativeContract ? prompt.replace("For reply include concise contribution text and what it adds; its label must match the intent.",
+        "For reply select the contribution kind and whether it adds value. Do not draft text; generation happens only after application admission.") : prompt;
       const providerRole = provider === primary ? "primary" : "fallback";
       const attempt = attempts.length + 1;
       const minimumAttemptMs = input.contextual ? decisionCallLimits.contextualMinimumMs : contextualTurnLimits.minimumAttemptMs;
@@ -343,12 +352,12 @@ Data: ${JSON.stringify({ personality: input.personality, botId: input.botId, cur
             if (usage.cachedInputTokens !== null) timing.cachedInputTokens = usage.cachedInputTokens;
             if (usage.reasoningTokens !== null) timing.reasoningTokens = usage.reasoningTokens; } };
         if (input.sourceContext && !isApprovedDecisionInput(input)) throw new SocialOutputSuppressed();
-        const approved = input.sourceContext ? approveModelOperation(input.sourceContext, "generateCharacterData", [prompt, schema], options) :
-          diagnosticInputs.has(input) ? approveDiagnosticModelOperation(prompt, schema, options) : options;
-        const raw = await withTurnAbort(input.signal, () => Promise.race([provider.generateCharacterData(prompt, schema, approved), new Promise<never>((_resolve, reject) => {
+        const approved = input.sourceContext ? approveModelOperation(input.sourceContext, "generateCharacterData", [dispatchPrompt, dispatchSchema], options) :
+          diagnosticInputs.has(input) ? approveDiagnosticModelOperation(dispatchPrompt, dispatchSchema, options) : options;
+        const raw = await withTurnAbort(input.signal, () => Promise.race([provider.generateCharacterData(dispatchPrompt, dispatchSchema, approved), new Promise<never>((_resolve, reject) => {
           timeout = setTimeout(() => { controller.abort(); reject(new DOMException("Decision deadline exceeded", "TimeoutError")); }, timeoutMs);
         })]));
-        const result: CharacterDecision = contract ? contract.parse(raw) : decisionSchema.parse(raw);
+        const result: CharacterDecision = nativeContract ? nativeContract.parse(raw) : contract ? contract.parse(raw) : decisionSchema.parse(raw);
         // Count-based retrieval never consumes this legacy trimming hint. A
         // provider ignoring its constant enum must not veto an otherwise valid
         // decision; canonicalizing it does not authorize any additional source.

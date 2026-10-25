@@ -160,6 +160,8 @@ npm run eval:contextual -- --live --instance pinecone --limit 216 --concurrency 
 
 ## Scoped rollout after acceptance
 
+The commands below are as recorded on 2026-10-21. Settings were later regrouped: `participation-channel` and `thread-scope` became `/settings-participation channel` (threads use the picker, and `shadow` became `preview`), and `controls`, `continuation-limits`, `spontaneous-channels`, `activity-limits` and `activity-reset` became `preview`, `follow-ups`, `joining`, `pacing`, `bare-pings` and `reset-limits`. The [operations guide](chat-believability-operations.md) has the current names.
+
 1. Review the real-provider report and unresolved cases. Do not activate broadly while semantic quality or reliability remains inadequate.
 2. Build/deploy a verified commit using `npm run stack:up` in the server checkout. Verify `buildVersion` in startup logs; deployment has not been performed here.
 3. Verify the existing channel history, exact observation scope, author permissions and memory mode. Enable eligible-count context using `/settings-character context` with `enabled:true` and `retrieval-mode:eligible_count`. This can change available capabilities in already-configured channels; review the policy report before activation.

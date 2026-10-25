@@ -38,3 +38,24 @@ describe("content-free structured usage", () => {
     expect(onUsage).not.toHaveBeenCalled();
   });
 });
+
+describe("decision reasoning effort", () => {
+  const body = (call: unknown): Record<string, unknown> => JSON.parse(String((call as [string, { body: string }])[1].body)) as Record<string, unknown>;
+  it("sends the per-call effort on the reply route's structured call and keeps the chat effort otherwise", async () => {
+    const fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ output: [{ type: "message", content: [{ type: "output_text", text: "{}" }] }] }))));
+    vi.stubGlobal("fetch", fetch);
+    const provider = new OpenAiResponsesChatProvider("https://example.test/v1", "test", ["m"], { reasoningEffort: "medium", verbosity: "low", maxOutputTokens: 2048 });
+    await provider.generateCharacterData("p", { type: "object" }, { reasoningEffort: "low", maxAttempts: 1 });
+    await provider.generateCharacterData("p", { type: "object" }, { maxAttempts: 1 });
+    expect(body(fetch.mock.calls[0]).reasoning).toEqual({ effort: "low" });
+    expect(body(fetch.mock.calls[1]).reasoning).toEqual({ effort: "medium" });
+  });
+  it("sends reasoning_effort to a dedicated model only when one is given", async () => {
+    const fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }] }))));
+    vi.stubGlobal("fetch", fetch);
+    const provider = new HttpDecisionProvider({ baseUrl: "https://example.test/v1", apiKey: "test", model: "m" });
+    await provider.generateCharacterData("p", {}, { reasoningEffort: "minimal" }); await provider.generateCharacterData("p", {}, {});
+    expect(body(fetch.mock.calls[0]).reasoning_effort).toBe("minimal");
+    expect(body(fetch.mock.calls[1])).not.toHaveProperty("reasoning_effort");
+  });
+});

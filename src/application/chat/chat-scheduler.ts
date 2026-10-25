@@ -1,3 +1,4 @@
+import { exchangeIdleMs } from "./exchange-window.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { randomUUID } from "node:crypto";
 import { bindDiagnosticTask, emitChatDiagnostic, safeFailure, type ChatDiagnosticEvent, type DiagnosticLogger } from "../diagnostics/chat-diagnostics.js";
@@ -163,7 +164,7 @@ export class ChatScheduler {
         this.exchanges.delete(idle[0]);
       }
       const exchange = this.exchanges.get(branchKey) ?? { lastRelevantAt: -Infinity, replies: 0, reserved: false, window: [] };
-      if (this.now() - exchange.lastRelevantAt > 120_000) exchange.replies = 0;
+      if (this.now() - exchange.lastRelevantAt > exchangeIdleMs) exchange.replies = 0;
       this.exchanges.set(branchKey, exchange);
       if (exchange.reserved || state.reservedContinuation || state.reservedText > 0) return deny("in_flight");
       if (exchange.replies >= (limits.continuationPerExchange ?? 10)) return deny("exchange_limit");
@@ -196,7 +197,7 @@ export class ChatScheduler {
     if (kind === "text" && limits.continuation) {
       this.prune(state.continuation);
       const exchange = this.exchanges.get(`${key}:${limits.exchangeId ?? "channel"}`);
-      const replies = exchange && this.now() - exchange.lastRelevantAt <= 120000 ? exchange.replies : 0;
+      const replies = exchange && this.now() - exchange.lastRelevantAt <= exchangeIdleMs ? exchange.replies : 0;
       return !state.reservedContinuation && state.reservedText === 0 && !exchange?.reserved &&
         replies < (limits.continuationPerExchange ?? 10) && state.continuation.length < (limits.continuationPerWindow ?? 30) &&
         this.now() - Math.max(state.continuation.at(-1) ?? -Infinity, state.text.at(-1) ?? -Infinity) >= (limits.continuationIntervalMs ?? 15000);

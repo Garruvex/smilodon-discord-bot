@@ -27,6 +27,9 @@
   "src/application/chat/persona-lore-selector.ts": [
     "embed"
   ],
+  "src/application/chat/simple-decision.ts": [
+    "generateCharacterData"
+  ],
   "src/application/chat/tools/generate-self-image-tool.ts": [
     "generateReferenceImage"
   ],

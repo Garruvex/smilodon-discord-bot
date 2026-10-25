@@ -371,6 +371,7 @@ export function applyGuildConfigurationUpdate(
     ...(observationChannelIds === undefined ? {} : { observationChannelIds: [...observationChannelIds] }),
     spontaneousChannelIds: [...(input.chatParticipation.spontaneousChannelIds ?? next.chat.participation.spontaneousChannelIds)],
     advanced: { ...next.chat.participation.advanced, ...input.chatParticipation.advanced },
+    ...(input.chatParticipation.simpleActionThresholds === undefined ? {} : { simpleActionThresholds: { ...next.chat.participation.simpleActionThresholds, ...input.chatParticipation.simpleActionThresholds } }),
     channelOverrides: { ...next.chat.participation.channelOverrides, ...input.chatParticipation.channelOverrides },
   };
   }

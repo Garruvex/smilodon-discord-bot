@@ -37,6 +37,7 @@ export class CharacterModuleRegistry {
     module.memoryPolicy ??= { moduleId: module.id, conversationalReads: "module-only" };
     this.modules.set(module.id, module);
   }
+  public get<T extends CharacterModule>(id: CharacterModuleId): T | undefined { return this.modules.get(id) as T | undefined; }
   public has(id: CharacterModuleId, visited = new Set<string>()): boolean {
     const module = this.modules.get(id); if (!module || visited.has(id)) return false;
     visited.add(id);

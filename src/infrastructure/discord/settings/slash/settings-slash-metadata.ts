@@ -120,7 +120,7 @@ function slashOption(
     case "text":
       return { type: "string", ...base, maxLength: option.maxLength };
     case "channel":
-      return { type: "channel", ...base, ...(option.textOnly ? { guildTextOnly: true } : {}) };
+      return { type: "channel", ...base, ...(option.textOnly ? { guildTextOnly: true, ...(option.threads ? { includeThreads: true } : {}) } : {}) };
     case "role":
       return { type: "role", ...base };
     case "upload":

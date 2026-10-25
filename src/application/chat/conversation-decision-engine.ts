@@ -1,3 +1,4 @@
+import { exchangeIdleMs } from "./exchange-window.js";
 import { createHash, randomUUID } from "node:crypto";
 import { addressedElsewhere, decisionSourceFailure, exchangeBranch, generatedContributionAllowed, groundedContextContinuation, isRecipientCorrection, localAddressing, optionalParticipationRejection, type CharacterDecision, type DecisionOutcome } from "./character-decision.js";
 import { isGuardedContext } from "./guarded-conversation-context.js";
@@ -53,7 +54,7 @@ export class ConversationDecisionEngine {
       messageId: request.currentEvent.messageId, timestampMs: request.currentEvent.timestampMs, authorId: request.currentUser.id,
       authorDisplayName: request.currentUser.displayName, content: request.message, imageCount: request.images.length,
       replyToMessageId: request.currentEvent.replyToMessageId } : undefined);
-    let local = current ? localAddressing(events, current, botId, 120_000, request.aliasCandidates) : "unclear";
+    let local = current ? localAddressing(events, current, botId, exchangeIdleMs, request.aliasCandidates) : "unclear";
     const elsewhere = !!current && addressedElsewhere(current, events, botId, request.aliasCandidates, !!outcome.decision?.contextual);
     const proposal = outcome.decision;
     const base = { contribution: null, targetMessageId: null, targetConfidence: 0, reaction: null, exchangeId: current ? exchangeBranch(events, current, botId) : null, local };

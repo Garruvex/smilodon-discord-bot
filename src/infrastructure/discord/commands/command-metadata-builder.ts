@@ -82,6 +82,7 @@ function addOption(
         // real channels (e.g. an announcements channel) from every command
         // using this option.
         if (option.guildTextOnly) o.addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement);
+        if (option.guildTextOnly && option.includeThreads) o.addChannelTypes(ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.AnnouncementThread);
         if (option.voiceOnly) o.addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice);
         return o;
       });

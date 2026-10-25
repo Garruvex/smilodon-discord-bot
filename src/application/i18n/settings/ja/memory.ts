@@ -22,9 +22,6 @@ export const jaMemory: SettingsTextCatalog = {
   "memory.sharing": { label: "個人情報の共有メモリ", description: "各チャンネルの記憶モードに従い、新しい個人情報を共有します。" },
   "memory.sharing.enabled": { label: "個人情報の共有メモリ", description: "既存の非公開の記憶は非公開のままです。" },
   "memory": { title: "記憶", description: "ボットが読み返し、覚えておくこと" },
-  "memory.channel-history": { label: "チャンネル履歴", description: "最近のチャンネルメッセージをモデルに渡し、返信に使います。" },
-  "memory.channel-history.enabled": { label: "チャンネル履歴", description: "チャンネル履歴をオンまたはオフにする" },
-  "memory.channel-history.limit": { label: "メッセージ数", description: "取得する直近の件数。キャラクター設定で参照範囲を拡張できます。" },
 
   "memory.memory-mode": {
     label: "チャンネルの記憶モード",

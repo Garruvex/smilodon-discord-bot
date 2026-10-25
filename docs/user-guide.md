@@ -343,27 +343,38 @@ bystanders' messages may be retained for up to 15 minutes as bounded channel
 episodes and sent to the AI provider as context. With it off, passive messages
 are neither observed nor loaded into chat prompts. Explicit reply targets and
 your own addressed exchanges can still supply context. Background scans and
-daily learning retain their own separately configured channel lists.
+daily learning retain their own separately configured channel lists. Turn it
+on, and size it, with `/settings-character context [enabled] [messages] [budget]`.
 
 | Command | What it does |
 | --- | --- |
 | `/settings-memory sharing [enabled]` | Activates shared personal facts after channel-policy review. Off by default; old private facts are unchanged. |
-| `/settings-memory channel-history [enabled] [limit]` | Includes recent messages from anyone as extra context. |
 | `/settings-memory memory-mode <channel> <mode>` | Sets a channel's memory isolation: shared, isolated, session only, or disabled. |
 | `/settings-memory context-daily [add] [remove]` | Channels summarized into memory once a day, checked hourly. |
 | `/settings-memory context-scan <channel> [seed-days] [restart]` | Queues a one-time history scan (default 7-day lookback) folded into memory. `restart:true` re-reads a completed scan. |
 | `/settings-memory context-remove <channel>` | Takes a channel off both the scan and daily lists (existing memories are kept; re-adding resumes rather than re-reading history). |
 | `/settings-memory context-status [channel]` | Shows provider availability, whether the chatbot is paused, and per-channel scan/daily progress and errors. |
 
-Participation controls are under `/settings-participation`: `controls` enables
-continuation or spontaneous participation (both default off), chooses activity
-and bare-ping behavior, and enables shadow evaluation. `spontaneous-channels`
-sets the required allow-list. `resources` configures concurrent turns (1–16,
-default 4) and optional-turn admission per ten minutes (0–1,000, default 100)
-**per guild**. Accepted tool workflows finish without a mid-turn application
-call-budget exception. `activity-limits` separately controls optional output
-spacing/counts; `activity-reset` restores defaults. Provider rate limits still
-apply. Other guilds have separate execution capacity.
+Participation controls are under `/settings-participation`:
+
+| Command | What it does |
+| --- | --- |
+| `preview [enabled]` | Trial run: logs optional replies (follow-ups, joining, name replies, reaction-triggered replies) in the bot logs instead of sending them. Off by default. @mentions and replies to the bot always send. |
+| `observation-channels [add] [remove]` | Channels read passively for follow-ups and joining. |
+| `follow-ups [enabled] [threshold] [interval] [per-exchange] [per-10-minutes]` | Replies in an ongoing exchange without another ping. Off by default. |
+| `joining [enabled] [add] [remove] [threshold] [check-every]` | Joins topics unasked, only in listed channels. Off by default. |
+| `pacing [activity] [evaluation] [text] [reaction] [text-budget] [reaction-budget]` | Activity preset (quiet, balanced, lively) and any overrides of it. |
+| `reset-limits` | Clears every custom pacing, follow-up and resource number. |
+| `bare-pings [mode]` | Brief acknowledgment, or the personality decides. |
+| `resources [concurrency] [optional-turns]` | Concurrent turns (1–16, default 4) and optional turns per ten minutes (0–1,000, default 100) **per guild**. |
+| `decision-contract [contract]` | Which decision method answers optional turns: `inherit` (the instance default), `legacy`, or `simple`. `simple` is a trial run in this version: the bot makes the decision and logs it, but sends no optional reply or reaction. @mentions and replies to the bot still send. |
+| `simple-threshold [followup] [joining]` | Minimum action score (%) for the simple method; 0 turns it off. Only native Decisions gives a score. Separate from the older thresholds. |
+| `channel <channel> [observe] [joining] [preview] [follow-ups] [reactions] [activity] [decision-contract] [followup-threshold] [joining-threshold] [reset]` | One channel or thread. A parent channel never includes its threads, so pick the thread itself. |
+| `policy <channel> [view]` / `status` | Explains what is active in a channel and why. |
+
+Accepted tool workflows finish without a mid-turn application call-budget
+exception. Provider rate limits still apply. Other guilds have separate
+execution capacity.
 
 Spontaneous participation listens through output cooldowns. By default, it
 considers a conversation after three alternating speaker turns and a five-second

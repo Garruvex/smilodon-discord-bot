@@ -10,6 +10,7 @@ export class HttpDecisionProvider implements StructuredCharacterProvider {
     const response = await fetch(`${this.configuration.baseUrl.replace(/\/$/u, "")}/chat/completions`, {
       method: "POST", headers: { Authorization: `Bearer ${this.configuration.apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ model: this.configuration.model, messages: [{ role: "system", content: prompt }],
+        ...(options?.reasoningEffort ? { reasoning_effort: options.reasoningEffort } : {}),
         response_format: { type: "json_schema", json_schema: { name: "social_decision", strict: true, schema } } }),
       signal: options?.signal ?? AbortSignal.timeout(10_000),
     });

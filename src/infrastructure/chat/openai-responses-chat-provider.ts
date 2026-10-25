@@ -411,7 +411,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
           model,
           instructions,
           input: [{ role: "user", content: [{ type: "input_text", text: "Follow the instructions." }] }],
-          reasoning: { effort: this.generation.reasoningEffort },
+          reasoning: { effort: options?.reasoningEffort ?? this.generation.reasoningEffort },
           text: {
             verbosity: this.generation.verbosity,
             format: { type: "json_schema", name: schemaName, strict: true, schema: jsonSchema },
