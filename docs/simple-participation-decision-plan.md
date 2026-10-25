@@ -82,6 +82,10 @@ Do not introduce automatic utility-model fallback in simple mode. Log effective 
 9. On accepted `reply`, ignore the emoji answer and generate through the normal chat provider with authorized context. Permit short answers and acknowledgments; do not require novelty, a contribution label, or a prewritten candidate. Generation may still abstain. When the inner thought was formed and is in use (see Inner thoughts on the simple route), add its app-written stance line to the reply's character context. Preserve output safety, source, tool, and delivery validation.
 10. Revalidate access, context freshness, target existence, action availability, and delivery budgets immediately before execution. Never let inference override an expired lease or a consumed budget.
 
+### Emoji choices
+
+The emoji answer is chosen from a fixed Unicode set (👍 ❤️ 😂 😮 😢 🎉 🤔 👀) plus a random sample of at most 20 of the guild's own custom emoji, drawn from the cache each decision. The sample is seeded by the message ID: it differs between decisions, but the strict second check, delivery and replay of one decision all see the same list. The model sees `:name:` and never an ID; the app maps the name back to the emoji and re-checks that it still exists before reacting. Managed, unavailable, duplicate-name and oddly named emoji are skipped, and a server with none simply offers the Unicode set. The target of a reaction is always the message being judged.
+
 ### Follow-up or joining
 
 Use a new app-owned structural binding helper, not `exchangeBranch` as an eligibility test. The existing helper falls back to the last bot response to this author even without a reply link, so its root is not proof of an active exchange.

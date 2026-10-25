@@ -115,6 +115,25 @@ describe("simple participation trial run", () => {
       expect(decisions(ignored.logger)[0]).toMatchObject({ admission: "model_ignore", confirmation: null });
     } finally { ignored.service.stopScheduling(); await ignored.service.drain(); }
   });
+  it("offers the Unicode set plus a capped sample of the server's own emoji, and only when a reaction is possible", async () => {
+    const { profiles, runtime, run, logger, simpleCall, service } = setup();
+    runtime.bindEmojiSource(() => Array.from({ length: 50 }, (_, index) => ({ id: String(5000 + index), name: `blob_${index}`, animated: false })));
+    await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    try {
+      await run({ current: message("current", 99_000, actorUserId, "anyone know a good cat toy"), historyReactionsEnabled: true });
+      expect(decisions(logger)[0]).toMatchObject({ emojiOptions: 8 + 20, availableReact: true });
+      expect(simpleCall.mock.calls[0]![0]).toMatch(/:blob_\d+:/u);
+      expect(simpleCall.mock.calls[0]![0]).not.toContain("5000");
+    } finally { service.stopScheduling(); await service.drain(); }
+    const quiet = setup();
+    quiet.runtime.bindEmojiSource(() => [{ id: "1", name: "blob_1", animated: false }]);
+    await quiet.profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    try {
+      await quiet.run({ current: message("current", 99_000, actorUserId, "anyone know a good dog toy"), historyReactionsEnabled: false });
+      expect(decisions(quiet.logger)[0]).toMatchObject({ emojiOptions: 0, availableReact: false });
+      expect(quiet.simpleCall.mock.calls[0]![0]).not.toContain("blob_1");
+    } finally { quiet.service.stopScheduling(); await quiet.service.drain(); }
+  });
   it("skips the model for a disabled kind and a reply to another human, and reports exclusions at debug level only", async () => {
     const { profiles, run, logger, simpleCall, service } = setup();
     await profiles.update(guildId, { chatParticipation: { continuationEnabled: true } });

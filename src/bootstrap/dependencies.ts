@@ -723,6 +723,10 @@ export function createDependencies(
       dedicatedEffort: configuration.decision?.reasoningEffort ?? null,
       replyEffort: configuration.chat?.provider === "openai-responses" ? configuration.chat.decisionReasoningEffort ?? configuration.chat.summaryReasoningEffort ?? "low" : null });
   characterRuntime?.bindSimpleDecision(new SimpleParticipationService(simpleRoute), configuration.participationDecisionContract ?? "legacy");
+  // Cached guild emoji only (no REST); managed or unavailable emoji cannot be used by the bot.
+  characterRuntime?.bindEmojiSource((guildId) => [...(discordClient.guilds.cache.get(guildId)?.emojis.cache.values() ?? [])]
+    .filter((emoji) => emoji.available !== false && !emoji.managed && !!emoji.name)
+    .map((emoji) => ({ id: emoji.id, name: emoji.name, animated: emoji.animated === true })));
   logger.info({ participationDecisionContract: configuration.participationDecisionContract ?? "legacy", simpleDecisionSource: simpleRoute?.source ?? "unavailable",
     simpleDecisionEndpoint: simpleRoute?.endpoint ?? null, simpleDecisionModel: simpleRoute?.model ?? null, simpleDecisionReasoningEffort: simpleRoute?.reasoningEffort ?? null }, "Simple participation decision route");
   const diagnosticCommand = commandRegistry.getAll().find((command): command is DiagnosticCommand => command instanceof DiagnosticCommand);

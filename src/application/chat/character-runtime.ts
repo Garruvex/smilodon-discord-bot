@@ -30,6 +30,7 @@ import { hash, personaFingerprint, serious } from "./character-modules/shared.js
 import { resolveParticipation, contributionPolicy, passiveChannelAllowed, resolveDecisionContract, resolveSimpleThreshold, type DecisionContract } from "./participation-policy.js";
 import type { SimpleParticipationService } from "./simple-decision.js";
 import { classifySimpleTurn } from "./simple-exchange.js";
+import { buildEmojiChoices, unicodeEmojiChoices, type ServerEmoji } from "./simple-emoji.js";
 import type { ThoughtsModule } from "./character-modules/thoughts.js";
 import { CharacterCallbacks, callbackState, callbackProofPayload } from "./character-callbacks.js";
 import { startOfLocalDay } from "./character-calendar.js";
@@ -80,6 +81,7 @@ export class CharacterRuntime {
   private personaVersion: ((guildId: string) => Promise<string>) | null = null;
   private evaluationAdmission: CharacterEvaluationAdmission | null = null;
   private simple: SimpleParticipationService | null = null;
+  private serverEmoji: ((guildId: string) => readonly ServerEmoji[]) | null = null;
   private instanceContract: DecisionContract = "legacy";
   private readonly startedAt: number;
   public constructor(private readonly profiles: GuildConfigurationProvider, private readonly repository: MemoryRepository,
@@ -97,6 +99,8 @@ export class CharacterRuntime {
     this.registerModules(); this.startedAt = this.now();
   }
   // The simple participation route is optional; guilds and channels select it through the contract setting.
+  // The guild's own custom emoji, read from cache; a bounded random sample joins the Unicode set per decision.
+  public bindEmojiSource(source: (guildId: string) => readonly ServerEmoji[]): void { this.serverEmoji = source; }
   public bindSimpleDecision(service: SimpleParticipationService, instanceContract: DecisionContract): void { this.simple = service; this.instanceContract = instanceContract; }
   public capabilities(profile: GuildConfiguration, channelId: string): CharacterCapabilities {
     const participation = resolveParticipation(profile.chat.participation, channelId);
@@ -438,8 +442,9 @@ export class CharacterRuntime {
     const window = selectDecisionContext(request, settings.context.decisionMessages).events;
     const held = thoughtsModule && thoughtsOn && !shadow ? thoughtsModule.simpleHint(heldKey, scope, turn.now, new Set(window.map((item) => item.messageId))) : null;
     const botName = events.find((item) => item.authorId === botId)?.authorDisplayName ?? "the bot";
+    const emoji = actions.react && this.serverEmoji ? buildEmojiChoices(this.serverEmoji(guildId), current.messageId) : unicodeEmojiChoices;
     const decisionInput = { sourceContext: request.contextLease!, personality: request.personality, botId, botName, events: window, current, kind, basis,
-      actions, thoughts: thoughtsOn, held, ...(request.turnSignal ? { signal: request.turnSignal } : {}), ...(request.turnDeadlineAt ? { deadlineAt: request.turnDeadlineAt } : {}) };
+      actions, emoji, thoughts: thoughtsOn, held, ...(request.turnSignal ? { signal: request.turnSignal } : {}), ...(request.turnDeadlineAt ? { deadlineAt: request.turnDeadlineAt } : {}) };
     const outcome = await simple.decide(decisionInput);
     const liveProfile = this.profiles.find(guildId);
     if (!liveProfile || !liveProfile.features.chatbot || (this.privacyVersions.get(guildId) ?? 0) !== privacyVersion) {
@@ -471,7 +476,7 @@ export class CharacterRuntime {
       }
     }
     this.logger?.info({ ...log, sourceMessageId: current.messageId, kind, basis, status: outcome.status, proposedAction: proposed, emoji: outcome.emoji, admission,
-      score: outcome.score, scoreKind: outcome.scoreKind, threshold: threshold.value, thresholdSource: threshold.source, availableReply: actions.reply, availableReact: actions.react,
+      emojiOptions: actions.react ? emoji.length : 0, score: outcome.score, scoreKind: outcome.scoreKind, threshold: threshold.value, thresholdSource: threshold.source, availableReply: actions.reply, availableReact: actions.react,
       route: outcome.route, latencyMs: outcome.latencyMs, usage: outcome.usage, confirmation, preview: participation.shadowMode, trial: true,
       thought: thought ? { outcome: thoughtOutcome, stance: thought.stance, length: thought.length, want: thought.want, heldOffered: held !== null, failure: thought.failure ?? null,
         latencyMs: thought.latencyMs, usage: thought.usage } : null }, "Simple participation decision");

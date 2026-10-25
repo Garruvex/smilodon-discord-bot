@@ -4,6 +4,7 @@ import { SocialOutputSuppressed } from "../../src/application/chat/message-origi
 import { decodeSimpleDecision, selectSimpleRoute, SimpleParticipationService, simplePrompt, type SimpleDecisionInput, type SimpleRoute } from "../../src/application/chat/simple-decision.js";
 import type { ChannelHistoryMessage, StructuredCharacterProvider } from "../../src/application/chat/chat-provider.js";
 import { guardedEvent, guardedFixture } from "../helpers/guarded-context-fixture.js";
+import { buildEmojiChoices, serverEmojiCap, unicodeEmojiChoices } from "../../src/application/chat/simple-emoji.js";
 
 const all = ["reply", "react", "ignore"] as const;
 const event = (messageId: string, timestampMs: number, authorId: string, content: string): ChannelHistoryMessage => guardedEvent(messageId, timestampMs, content, authorId);
@@ -13,7 +14,7 @@ async function input(overrides: Partial<SimpleDecisionInput> = {}): Promise<Simp
   const source = guardedFixture(current, { guildId: "guild", channelId: "channel" });
   const sourceContext = await GuardedConversationContext.open(source.port, { count: 0, budget: 0, burstIds: [] });
   return { sourceContext, personality: "A friendly cat\nsecond line", botId: "bot", botName: "Bot", events: [event("earlier", 1000, "bob", "hi all")], current,
-    kind: "joining", basis: null, actions: { reply: true, react: true }, thoughts: false, held: null, ...overrides };
+    kind: "joining", basis: null, actions: { reply: true, react: true }, emoji: unicodeEmojiChoices, thoughts: false, held: null, ...overrides };
 }
 const route = (provider: StructuredCharacterProvider, source: SimpleRoute["source"] = "reply", reasoningEffort: SimpleRoute["reasoningEffort"] = "low"): SimpleRoute =>
   ({ provider, source, endpoint: source === "native" ? "decisions" : "reply-provider", model: "m", reasoningEffort });
@@ -138,5 +139,39 @@ describe("join confirmation", () => {
     const failing = new SimpleParticipationService(route({ generateCharacterData: vi.fn(() => Promise.reject(new Error("down"))) }));
     expect(await failing.confirmJoin(await input(), "reply")).toMatchObject({ confirmed: null });
     expect(await new SimpleParticipationService(null).confirmJoin(await input(), "reply")).toMatchObject({ confirmed: null, failure: "unavailable" });
+  });
+});
+
+describe("emoji choices", () => {
+  const server = Array.from({ length: 60 }, (_, index) => ({ id: String(1000 + index), name: `emoji_${index}`, animated: index % 2 === 0 }));
+  it("adds a capped random sample of server emoji to the Unicode set, by name and never by ID", () => {
+    const choices = buildEmojiChoices(server, "message-1");
+    expect(choices.filter((choice) => choice.kind === "unicode")).toHaveLength(unicodeEmojiChoices.length);
+    expect(choices.filter((choice) => choice.kind === "custom")).toHaveLength(serverEmojiCap);
+    expect(choices.every((choice) => choice.kind === "unicode" || choice.token === `:${choice.name}:`)).toBe(true);
+    expect(choices.map((choice) => choice.token).join()).not.toMatch(/d{4}/u);
+    expect(new Set(choices.map((choice) => choice.token)).size).toBe(choices.length);
+  });
+  it("draws a new sample for each decision but keeps one decision stable", () => {
+    const tokens = (seed: string): string => buildEmojiChoices(server, seed).map((choice) => choice.token).join();
+    expect(tokens("message-1")).toBe(tokens("message-1"));
+    expect(new Set(["a", "b", "c", "d", "e"].map(tokens)).size).toBeGreaterThan(1);
+  });
+  it("skips duplicate or unusable names and handles a server with few or no custom emoji", () => {
+    const odd = [{ id: "1", name: "ok", animated: false }, { id: "2", name: "ok", animated: false }, { id: "3", name: "bad name", animated: false }, { id: "4", name: "a", animated: false }];
+    expect(buildEmojiChoices(odd, "x").filter((choice) => choice.kind === "custom")).toHaveLength(1);
+    expect(buildEmojiChoices([], "x")).toEqual(unicodeEmojiChoices);
+  });
+  it("offers the sample in the schema and prompt and accepts only an offered name", async () => {
+    const choices = buildEmojiChoices(server, "message-1"); const custom = choices.find((choice) => choice.kind === "custom")!;
+    const calls: { prompt: string; schema: Record<string, unknown> }[] = [];
+    const provider: StructuredCharacterProvider = { generateCharacterData: vi.fn((prompt: string, schema: Record<string, unknown>) => { calls.push({ prompt, schema }); return Promise.resolve({ action: "react", emoji: custom.token }); }) };
+    const outcome = await new SimpleParticipationService(route(provider)).decide(await input({ emoji: choices }));
+    expect(outcome).toMatchObject({ status: "valid", action: "react", emoji: custom.token, reactionSelectionFailed: false });
+    expect(outcome.emojiChoice).toEqual(custom);
+    const properties = calls[0]!.schema.properties as { emoji: { enum: string[] } };
+    expect(properties.emoji.enum).toEqual([...choices.map((choice) => choice.token), "none"]);
+    expect(calls[0]!.prompt).toContain(custom.token); expect(calls[0]!.prompt).not.toContain(custom.kind === "custom" ? custom.id : "");
+    expect(decodeSimpleDecision({ action: "react", emoji: ":not_offered:" }, false, all, choices.map((choice) => choice.token))).toMatchObject({ emoji: null, reactionSelectionFailed: true });
   });
 });

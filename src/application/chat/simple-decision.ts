@@ -6,13 +6,14 @@ import type { ChannelHistoryMessage, ChatUsage, StructuredCallOptions, Structure
 import type { GuardedConversationContext } from "./guarded-conversation-context.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
 import type { FollowupBasis, SimpleKind } from "./simple-exchange.js";
+import { simpleEmoji, type SimpleEmojiOption } from "./simple-emoji.js";
 
 // The simple participation contract: one question (reply / react / ignore) plus an
 // emoji, answered by a small fast model. The app owns eligibility, destination,
 // context and delivery; nothing here authors a Discord ID or a reply.
 export const simpleActions = ["reply", "react", "ignore"] as const;
 export type SimpleAction = typeof simpleActions[number];
-export const simpleEmoji = ["👍", "❤️", "😂", "😮", "😢"] as const;
+export { simpleEmoji } from "./simple-emoji.js";
 export const thoughtStances = ["answer", "agree", "add", "joke", "comfort", "ask_back", "acknowledge", "none"] as const;
 export const thoughtLengths = ["one_line", "short", "normal"] as const;
 export type ThoughtStance = typeof thoughtStances[number];
@@ -27,7 +28,7 @@ export interface HeldThoughtHint { sourceMessageId: string; stance: ThoughtStanc
 export interface SimpleDecisionInput {
   sourceContext: GuardedConversationContext; personality: string; botId: string; botName: string;
   events: readonly ChannelHistoryMessage[]; current: ChannelHistoryMessage; kind: SimpleKind; basis: FollowupBasis | null;
-  actions: { reply: boolean; react: boolean }; thoughts: boolean; held: HeldThoughtHint | null;
+  actions: { reply: boolean; react: boolean }; emoji: readonly SimpleEmojiOption[]; thoughts: boolean; held: HeldThoughtHint | null;
   signal?: AbortSignal | undefined; deadlineAt?: number | undefined;
 }
 export interface CallUsage { inputTokens: number; outputTokens: number; reasoningTokens: number | null }
@@ -38,7 +39,7 @@ export interface SimpleThoughtOutcome {
 export interface SimpleConfirmation { confirmed: boolean | null; latencyMs: number; usage: CallUsage | null; failure?: FailureCategory | "invalid_output" | "unavailable" }
 export interface SimpleDecisionOutcome {
   status: "valid" | "failed" | "unavailable"; failure?: FailureCategory | "invalid_output" | "timeout_budget";
-  action: SimpleAction | null; emoji: string | null; reactionSelectionFailed: boolean;
+  action: SimpleAction | null; emoji: string | null; emojiChoice: SimpleEmojiOption | null; reactionSelectionFailed: boolean;
   score: number | null; scoreKind: "native_probability" | "unavailable";
   route: Omit<SimpleRoute, "provider"> | null; latencyMs: number; usage: CallUsage | null; thought: SimpleThoughtOutcome | null;
 }
@@ -46,9 +47,9 @@ export interface SimpleDecisionOutcome {
 const attemptTimeoutMs = 12_000; const minimumAttemptMs = 1_000;
 const probability = z.number().finite().min(0).max(1);
 
-function actionSchema(route: SimpleRoute, actions: SimpleDecisionInput["actions"]): { schema: Record<string, unknown>; allowed: readonly SimpleAction[] } {
+function actionSchema(route: SimpleRoute, actions: SimpleDecisionInput["actions"], choices: readonly string[]): { schema: Record<string, unknown>; allowed: readonly SimpleAction[] } {
   const allowed = simpleActions.filter((action) => action === "ignore" || actions[action]);
-  const emoji = actions.react ? [...simpleEmoji, "none"] : ["none"];
+  const emoji = actions.react ? [...choices, "none"] : ["none"];
   if (route.source === "native") {
     // Native questions need two or more choices, so an unavailable reaction drops the emoji question.
     const properties: Record<string, unknown> = {
@@ -84,7 +85,7 @@ export function simplePrompt(input: SimpleDecisionInput, purpose: "decision" | "
   const basis = input.kind === "followup" ? input.basis === "linked" ? "this person is replying inside a conversation the bot already had with them" :
     "the bot spoke to this person a moment ago and they may be answering it, but they might also have turned to something else" : "the bot is not in a conversation with this person; it would be joining in";
   const data = { bot: { id: input.botId, name: input.botName }, kind: input.kind, basis: input.basis, currentRef: refs.get(input.current.messageId),
-    availableActions: available, emoji: input.actions.react ? simpleEmoji : [],
+    availableActions: available, emoji: input.actions.react ? input.emoji.map((option) => option.token) : [],
     messages: messages.map((event) => ({ ref: refs.get(event.messageId), speakerId: event.authorId, name: event.authorDisplayName, bot: event.authorId === input.botId,
       secondsBeforeCurrent: Math.max(0, Math.round((now - event.timestampMs) / 1000)), replyToRef: event.replyToMessageId ? refs.get(event.replyToMessageId) ?? null : null,
       text: event.content, ...(event.imageCount ? { images: event.imageCount } : {}) })) };
@@ -101,7 +102,7 @@ Decide what the bot should do about the message marked currentRef.
 - reply: the message is meant for the bot, or the bot has something natural and welcome to add. A brief reply or acknowledgment is fine.
 - react: the bot should only add one emoji, for thanks, a closing, or a light social signal.
 - ignore: the message is for someone else, it is unclear who it is for, essential context is missing, the bot would be interrupting, or nothing needs a response.
-Choose only from availableActions. Also choose an emoji from the list, or none; it is used only when the action is react.
+Choose only from availableActions. Also choose an emoji from the list, or none; it is used only when the action is react. Names in :colons: are this server's own custom emoji; prefer one that fits how this community talks.
 Data: ${escape(data)}`;
 }
 
@@ -110,7 +111,7 @@ const llmEnvelope = z.object({ action: z.unknown(), emoji: z.unknown().optional(
 const llmConfirm = z.object({ confirm: z.unknown() }).strict();
 interface DecodedDecision { action: SimpleAction; emoji: string | null; reactionSelectionFailed: boolean; score: number | null }
 // The action is validated first and alone. Emoji problems never void a valid reply or ignore.
-export function decodeSimpleDecision(raw: unknown, native: boolean, allowed: readonly SimpleAction[]): DecodedDecision | null {
+export function decodeSimpleDecision(raw: unknown, native: boolean, allowed: readonly SimpleAction[], choices: readonly string[] = simpleEmoji): DecodedDecision | null {
   let action: unknown; let emoji: unknown; let score: number | null = null;
   if (native) {
     const envelope = nativeEnvelope.safeParse(raw); if (!envelope.success) return null;
@@ -122,7 +123,7 @@ export function decodeSimpleDecision(raw: unknown, native: boolean, allowed: rea
   }
   if (typeof action !== "string" || !allowed.includes(action as SimpleAction)) return null;
   if (native && score === null) return null;
-  const picked = typeof emoji === "string" && (simpleEmoji as readonly string[]).includes(emoji) ? emoji : null;
+  const picked = typeof emoji === "string" && choices.includes(emoji) ? emoji : null;
   if (action === "react") return { action, emoji: picked, reactionSelectionFailed: picked === null, score };
   return { action: action as SimpleAction, emoji: null, reactionSelectionFailed: false, score };
 }
@@ -185,9 +186,10 @@ export class SimpleParticipationService {
   // One decision request, plus an independent inner-thought request run at the same time.
   public async decide(input: SimpleDecisionInput): Promise<SimpleDecisionOutcome> {
     const route = this.route; const started = performance.now();
-    const base = { action: null, emoji: null, reactionSelectionFailed: false, score: null, scoreKind: "unavailable" as const, thought: null };
+    const base = { action: null, emoji: null, emojiChoice: null, reactionSelectionFailed: false, score: null, scoreKind: "unavailable" as const, thought: null };
     if (!route) return { ...base, status: "unavailable", route: null, latencyMs: 0, usage: null };
-    const { schema, allowed } = actionSchema(route, input.actions); const description = { source: route.source, endpoint: route.endpoint, model: route.model, reasoningEffort: route.reasoningEffort };
+    const tokens = input.emoji.map((option) => option.token);
+    const { schema, allowed } = actionSchema(route, input.actions, tokens); const description = { source: route.source, endpoint: route.endpoint, model: route.model, reasoningEffort: route.reasoningEffort };
     const thought = input.thoughts && input.actions.reply;
     const [decided, thinking] = await Promise.allSettled([
       this.call(input, route, simplePrompt(input, "decision", this.now()), schema),
@@ -202,9 +204,9 @@ export class SimpleParticipationService {
           { status: "failed" as const, stance: null, length: null, want: null, latencyMs: call.latencyMs, usage: call.usage, failure: "invalid_output" as const }; })();
     const latencyMs = Math.round(performance.now() - started);
     if (decided.status === "rejected") return { ...base, status: "failed", route: description, latencyMs, thought: thoughtOutcome, ...failureDetail(decided.reason, "usage") };
-    const decoded = decodeSimpleDecision(decided.value.raw, native, allowed);
+    const decoded = decodeSimpleDecision(decided.value.raw, native, allowed, tokens);
     if (!decoded) return { ...base, status: "failed", failure: "invalid_output", route: description, latencyMs, usage: decided.value.usage, thought: thoughtOutcome };
-    return { status: "valid", action: decoded.action, emoji: decoded.emoji, reactionSelectionFailed: decoded.reactionSelectionFailed, score: decoded.score,
+    return { status: "valid", action: decoded.action, emoji: decoded.emoji, emojiChoice: input.emoji.find((option) => option.token === decoded.emoji) ?? null, reactionSelectionFailed: decoded.reactionSelectionFailed, score: decoded.score,
       scoreKind: native ? "native_probability" : "unavailable", route: description, latencyMs, usage: decided.value.usage, thought: thoughtOutcome };
   }
 }
