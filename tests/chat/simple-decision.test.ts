@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { GuardedConversationContext } from "../../src/application/chat/guarded-conversation-context.js";
 import { SocialOutputSuppressed } from "../../src/application/chat/message-origin-store.js";
-import { decodeSimpleDecision, selectSimpleRoute, SimpleParticipationService, simplePrompt, type SimpleDecisionInput, type SimpleRoute } from "../../src/application/chat/simple-decision.js";
+import { decodeSimpleDecision, personaDigest, personaDigestChars, selectSimpleRoute, SimpleParticipationService, simplePrompt, type SimpleDecisionInput, type SimpleRoute } from "../../src/application/chat/simple-decision.js";
 import type { ChannelHistoryMessage, StructuredCharacterProvider } from "../../src/application/chat/chat-provider.js";
 import { guardedEvent, guardedFixture } from "../helpers/guarded-context-fixture.js";
 import { buildEmojiChoices, serverEmojiCap, unicodeEmojiChoices } from "../../src/application/chat/simple-emoji.js";
@@ -51,7 +51,7 @@ describe("simple decision decoding", () => {
 describe("simple decision prompt", () => {
   it("carries the bounded package and nothing from memories, lore or modules", async () => {
     const prompt = simplePrompt(await input({ actions: { reply: true, react: false } }), "decision");
-    expect(prompt).toContain("A friendly cat"); expect(prompt).not.toContain("second line");
+    expect(prompt).toContain("A friendly cat second line"); expect(prompt).toContain('"shareOfRecentMessagesPercent":0');
     expect(prompt).toContain("chance to join in"); expect(prompt).toContain('"availableActions":["reply","ignore"]');
     expect(prompt).toContain("\\u003cb>can you help"); expect(prompt).not.toContain("<b>");
     expect(prompt).not.toMatch(/memor|lore|drift|alias|character:/iu);
@@ -62,6 +62,18 @@ describe("simple decision prompt", () => {
     expect(prompt).toContain("follow-up"); expect(prompt).toContain("might also have turned to something else");
     expect(prompt).toContain("held back from replying to m1"); expect(prompt).toContain("one-line agree reply");
     expect(simplePrompt({ ...base, held: { sourceMessageId: "gone", stance: "agree", length: "short" } }, "decision")).not.toContain("held back");
+  });
+});
+
+describe("persona digest", () => {
+  it("collapses whitespace, drops heading marks and caps the length", () => {
+    expect(personaDigest("# Mochi\n\nA  calm cat.")).toBe("Mochi A calm cat.");
+    const long = personaDigest("word ".repeat(400));
+    expect(long.length).toBe(personaDigestChars); expect(long.endsWith("…")).toBe(true);
+  });
+  it("reports how much of the recent conversation the bot wrote", async () => {
+    const base = await input({ events: [event("a", 1000, "bot", "hi"), event("b", 2000, "bob", "yo"), event("c", 3000, "bob", "ok"), event("d", 3500, "bob", "sure")] });
+    expect(simplePrompt(base, "decision")).toContain('"shareOfRecentMessagesPercent":25');
   });
 });
 
