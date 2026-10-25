@@ -1,5 +1,7 @@
 # Common chat context and model boundary: closing audit
 
+> Current settings and flow: see [one chat flow and one admission gate](chat-single-flow-2026-10-25.md). The rollout settings named below were removed.
+
 Updated after the channel-context policy and snapshot redesign (`e8e1e238`, `9238b912`), against the original trigger/context, privacy gateway and contextual participation plans. The original checkpoint-37 audit has been reconciled with the later user-approved [channel visibility and explicit opt-out policy](channel-context-snapshot-plan-2026-10-22.md). This document describes the current local implementation. Earlier dated checkpoints and provider reports are historical evidence, not deployments or new live measurements.
 
 ## Completion and scope
