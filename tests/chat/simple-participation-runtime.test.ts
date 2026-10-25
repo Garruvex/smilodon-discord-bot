@@ -10,6 +10,8 @@ import { DefaultMemoryEngine } from "../../src/application/memory/memory-engine.
 import { createSqliteDatabaseConnection, type SqliteDatabaseConnection } from "../../src/infrastructure/database/sqlite-database.js";
 import { SqliteMemoryRepository } from "../../src/infrastructure/persistence/sqlite-memory-repository.js";
 import { SimpleParticipationService } from "../../src/application/chat/simple-decision.js";
+import { balancedChatLimits } from "../../src/application/chat/chat-scheduler.js";
+import type { ChatConversationInput } from "../../src/application/chat/chat-conversation-service.js";
 import type { ChatProvider, ChatRequest, ChatResponse, ChannelHistoryMessage } from "../../src/application/chat/chat-provider.js";
 import type { DecisionContract } from "../../src/application/chat/participation-policy.js";
 
@@ -30,7 +32,7 @@ const fieldsOf = (mock: ReturnType<typeof vi.fn>, event: string): Fields[] => (m
 interface Harness {
   profiles: ReturnType<typeof memoryProvider>; runtime: CharacterRuntime; logger: Logs; service: ChatConversationService;
   reply: ReturnType<typeof vi.fn>; generate: ReturnType<typeof vi.fn>; simpleCall: ReturnType<typeof vi.fn<(prompt: string) => Promise<unknown>>>;
-  run: (overrides: Partial<ChatRequest> & { current: ChannelHistoryMessage; history?: ChannelHistoryMessage[] }) => Promise<{ result: ChatResponse; deliver: ReturnType<typeof vi.fn> }>;
+  run: (overrides: Partial<ChatRequest> & Pick<Partial<ChatConversationInput>, "activityLimits"> & { current: ChannelHistoryMessage; history?: ChannelHistoryMessage[] }) => Promise<{ result: ChatResponse; deliver: ReturnType<typeof vi.fn> }>;
   setNow: (value: number) => void;
 }
 function setup(instance: DecisionContract = "simple", decide: (prompt: string) => unknown = (prompt) => prompt.includes("so be strict") ? { confirm: "yes" } : { action: "reply", emoji: "none" }): Harness {
@@ -59,22 +61,77 @@ function setup(instance: DecisionContract = "simple", decide: (prompt: string) =
 const decisions = (logger: Logs): Fields[] => fieldsOf(logger.info, "chat.simple_decision");
 const exclusions = (logger: Logs): Fields[] => fieldsOf(logger.debug, "chat.simple_exclusion");
 
-describe("simple participation trial run", () => {
-  it("asks the simple question, logs the decision and sends nothing, whatever the model says and whether preview is on or off", async () => {
-    for (const shadowMode of [false, true]) {
+describe("simple participation", () => {
+  it("shows what it would do in preview and sends nothing, then delivers an admitted reply with preview off", async () => {
+    for (const shadowMode of [true, false]) {
       const { profiles, reply, generate, run, logger, simpleCall, service } = setup();
       await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId], shadowMode } });
       try {
         const { result, deliver } = await run({ current: message("current", 99_000, actorUserId, "anyone know a good cat toy") });
-        expect(result.ambientAction).toBe("ignore"); expect(deliver).not.toHaveBeenCalled();
-        expect(reply).not.toHaveBeenCalled(); expect(generate).not.toHaveBeenCalled();
+        expect(generate).not.toHaveBeenCalled();
         expect(simpleCall).toHaveBeenCalledTimes(2); // the decision, then the joining double check
         expect(decisions(logger)).toHaveLength(1);
-        expect(decisions(logger)[0]).toMatchObject({ contract: "simple", contractSource: "instance", kind: "joining", basis: null, proposedAction: "reply", admission: "trial_not_sent", confirmation: { result: "yes" },
-          trial: true, preview: shadowMode, status: "valid", scoreKind: "unavailable", route: { source: "reply", model: "decision-model", reasoningEffort: "low" } });
+        expect(decisions(logger)[0]).toMatchObject({ contract: "simple", contractSource: "instance", kind: "joining", basis: null, proposedAction: "reply", confirmation: { result: "yes" },
+          preview: shadowMode, status: "valid", scoreKind: "unavailable", route: { source: "reply", model: "decision-model", reasoningEffort: "low" },
+          admission: shadowMode ? "preview_not_sent" : "admitted", trial: shadowMode });
         expect(JSON.stringify(decisions(logger)[0])).not.toContain("cat toy");
+        if (shadowMode) { expect(result.ambientAction).toBe("ignore"); expect(deliver).not.toHaveBeenCalled(); expect(reply).not.toHaveBeenCalled(); }
+        else { expect(reply).toHaveBeenCalledOnce(); expect(deliver).toHaveBeenCalledOnce(); expect(result.ambientAction).toBe("reply"); }
       } finally { service.stopScheduling(); await service.drain(); }
     }
+  });
+  it("reacts with the chosen emoji and writes no reply text", async () => {
+    const { profiles, reply, run, logger, service } = setup("simple", (prompt) => prompt.includes("so be strict") ? { confirm: "yes" } : { action: "react", emoji: "😂" });
+    await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    try {
+      const { result, deliver } = await run({ current: message("current", 99_000, actorUserId, "my cat just fell off the shelf"), historyReactionsEnabled: true });
+      expect(decisions(logger)[0]).toMatchObject({ proposedAction: "react", emoji: "😂", admission: "admitted" });
+      expect(reply).not.toHaveBeenCalled(); expect(deliver).not.toHaveBeenCalled();
+      expect(result.reactionEmoji).toBe("😂"); expect(result.replyTargetMessageId).toBe("current");
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+  it("hands a server emoji to Discord in its mention form", async () => {
+    const { profiles, runtime, run, service } = setup("simple", (prompt) => prompt.includes("so be strict") ? { confirm: "yes" } : { action: "react", emoji: ":party_blob:" });
+    runtime.bindEmojiSource(() => [{ id: "123456789012345678", name: "party_blob", animated: true }]);
+    await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    try {
+      const { result } = await run({ current: message("current", 99_000, actorUserId, "we shipped it"), historyReactionsEnabled: true });
+      expect(result.reactionEmoji).toBe("<a:party_blob:123456789012345678>");
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+  it("lets an admitted brief acknowledgment through instead of rejecting it as a weak contribution", async () => {
+    const { profiles, reply, run, service } = setup();
+    await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    reply.mockResolvedValue(response("thanks!"));
+    try {
+      const { result, deliver } = await run({ current: message("current", 99_000, actorUserId, "anyone know a good cat toy") });
+      expect(deliver).toHaveBeenCalledOnce(); expect(result.text).toBe("thanks!");
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+  it("keeps the decision as the only gate: an ignored message generates nothing", async () => {
+    const { profiles, reply, run, service } = setup("simple", () => ({ action: "ignore", emoji: "none" }));
+    await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    try {
+      const { deliver } = await run({ current: message("current", 99_000, actorUserId, "anyone know a good cat toy") });
+      expect(reply).not.toHaveBeenCalled(); expect(deliver).not.toHaveBeenCalled();
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+  it("counts a delivered follow-up against that author's exchange limit", async () => {
+    const { profiles, reply, run, logger, simpleCall, service, setNow } = setup();
+    await profiles.update(guildId, { chatParticipation: { continuationEnabled: true } });
+    const activityLimits = { ...balancedChatLimits, continuationPerExchange: 1, continuationIntervalMs: 15_000, exchangeId: `simple:${actorUserId}` };
+    try {
+      setNow(100_000);
+      const human = message("ask", 90_000, actorUserId, "can you check the build"); const bot = message("answer", 95_000, "bot", "it passed", { replyToMessageId: "ask", replyToAuthorId: actorUserId });
+      const first = await run({ interaction: "implicit_followup", activityLimits, current: message("one", 98_000, actorUserId, "and the lint?"), history: [human, bot] });
+      expect(first.deliver).toHaveBeenCalledOnce();
+      setNow(130_000);
+      const second = await run({ interaction: "implicit_followup", activityLimits, current: message("two", 129_000, actorUserId, "and the tests?"), history: [human, bot, message("one", 98_000, actorUserId, "and the lint?")] });
+      // The limit is known before any model call, so nothing is decided or generated.
+      expect(second.deliver).not.toHaveBeenCalled();
+      expect(reply).toHaveBeenCalledTimes(1); expect(simpleCall).toHaveBeenCalledTimes(1);
+      expect(exclusions(logger).map((entry) => entry.reason)).toEqual(["no_action_available"]);
+    } finally { service.stopScheduling(); await service.drain(); }
   });
   it("classifies an unlinked message inside the idle window as an open-exchange follow-up and logs the basis", async () => {
     const { profiles, run, logger, service, setNow } = setup();
@@ -160,10 +217,10 @@ describe("simple participation trial run", () => {
       expect(legacy.simpleCall).not.toHaveBeenCalled(); expect(decisions(legacy.logger)).toHaveLength(0);
     } finally { legacy.service.stopScheduling(); await legacy.service.drain(); }
   });
-  it("tells the operator that the simple method is a trial and that thresholds need a native score", async () => {
+  it("tells the operator when preview is on and that thresholds need a native score", async () => {
     const { runtime, profiles } = setup("simple");
-    expect(runtime.describeContract(profiles.current(), channelId).notes).toEqual(["trial"]);
-    await profiles.update(guildId, { chatParticipation: { simpleActionThresholds: { followup: 0.7 } } });
+    expect(runtime.describeContract(profiles.current(), channelId).notes).toEqual([]);
+    await profiles.update(guildId, { chatParticipation: { shadowMode: true, simpleActionThresholds: { followup: 0.7 } } });
     expect(runtime.describeContract(profiles.current(), channelId).notes).toEqual(["trial", "threshold_ignored"]);
     const legacy = setup("legacy");
     expect(legacy.runtime.describeContract(legacy.profiles.current(), channelId).notes).toEqual([]);
@@ -188,6 +245,32 @@ describe("simple participation trial run", () => {
       expect(deliver).not.toHaveBeenCalled();
       expect(decisions(logger)[0]).toMatchObject({ status: "failed", proposedAction: null });
       expect(decisions(logger)[0]).not.toMatchObject({ admission: "model_ignore" });
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+  it("steers an admitted reply with the held thought's stance and length, never with model-written text", async () => {
+    const answer = (prompt: string): unknown => prompt.includes("Imagine the bot replies") ? { stance: "joke", length: "one_line" } :
+      prompt.includes("so be strict") ? { confirm: "yes" } : { action: "reply", emoji: "none" };
+    const { profiles, reply, run, service } = setup("simple", answer);
+    await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] }, character: { enabled: true, modules: { thoughts: { enabled: true, shadow: false } } } });
+    try {
+      await run({ current: message("current", 99_000, actorUserId, "my cat knocked over the plant again") });
+      const context = JSON.stringify((reply.mock.calls[0] as unknown as [ChatRequest])[0].characterContext);
+      expect(context).toContain("Planned approach: a one-line reply, with a light joke.");
+      expect(context).toContain("You decided to join this conversation");
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+  it("waits out one idle window before a linked follow-up into an exchange from before the restart", async () => {
+    const { profiles, run, logger, simpleCall, service, setNow } = setup();
+    await profiles.update(guildId, { chatParticipation: { continuationEnabled: true } });
+    try {
+      const ask = message("ask", 0, actorUserId, "can you check the build"); const answer = message("answer", 0, "bot", "it passed", { replyToMessageId: "ask", replyToAuthorId: actorUserId });
+      setNow(100_000);
+      await run({ interaction: "implicit_followup", current: message("early", 98_000, actorUserId, "and the lint?", { replyToMessageId: "answer", replyToAuthorId: "bot" }), history: [ask, answer] });
+      expect(simpleCall).not.toHaveBeenCalled();
+      expect(exclusions(logger).map((entry) => entry.reason)).toEqual(["exchange_restart_wait"]);
+      setNow(200_000);
+      await run({ interaction: "implicit_followup", current: message("late", 198_000, actorUserId, "and the tests?", { replyToMessageId: "answer", replyToAuthorId: "bot" }), history: [ask, answer] });
+      expect(decisions(logger)[0]).toMatchObject({ kind: "followup", basis: "linked" });
     } finally { service.stopScheduling(); await service.drain(); }
   });
   it("holds an ignored thought, offers it to the next decision in the same scope and not when shadow is on", async () => {

@@ -359,7 +359,7 @@ Participation controls are under `/settings-participation`:
 
 | Command | What it does |
 | --- | --- |
-| `preview [enabled]` | Trial run: logs optional replies (follow-ups, joining, name replies, reaction-triggered replies) in the bot logs instead of sending them. Off by default. @mentions and replies to the bot always send. |
+| `preview [enabled]` | Logs what optional replies and reactions (follow-ups, joining, name replies, reaction-triggered replies) would be in the bot logs instead of sending them. Off by default. @mentions and replies to the bot always send. |
 | `observation-channels [add] [remove]` | Channels read passively for follow-ups and joining. |
 | `follow-ups [enabled] [threshold] [interval] [per-exchange] [per-10-minutes]` | Replies in an ongoing exchange without another ping. Off by default. |
 | `joining [enabled] [add] [remove] [threshold] [check-every]` | Joins topics unasked, only in listed channels. Off by default. A join waits briefly and must pass a second, stricter check; follow-ups don't wait. |
@@ -367,7 +367,7 @@ Participation controls are under `/settings-participation`:
 | `reset-limits` | Clears every custom pacing, follow-up and resource number. |
 | `bare-pings [mode]` | Brief acknowledgment, or the personality decides. |
 | `resources [concurrency] [optional-turns]` | Concurrent turns (1–16, default 4) and optional turns per ten minutes (0–1,000, default 100) **per guild**. |
-| `decision-contract [contract]` | Which decision method answers optional turns: `inherit` (the instance default), `legacy`, or `simple`. `simple` is a trial run in this version: the bot makes the decision and logs it, but sends no optional reply or reaction. @mentions and replies to the bot still send. |
+| `decision-contract [contract]` | Which decision method answers optional turns: `inherit` (the instance default), `legacy`, or `simple`. `simple` asks one cheap question (reply, react or ignore); a reply is then written by the normal chat model and a reaction uses one of the server's emoji. With `preview` on it only logs. @mentions and replies to the bot always send. |
 | `simple-threshold [followup] [joining]` | Minimum action score (%) for the simple method; 0 turns it off. Only native Decisions gives a score. Separate from the older thresholds. |
 | `channel <channel> [observe] [joining] [preview] [follow-ups] [reactions] [activity] [decision-contract] [followup-threshold] [joining-threshold] [reset]` | One channel or thread. A parent channel never includes its threads, so pick the thread itself. |
 | `policy <channel> [view]` / `status` | Explains what is active in a channel and why. |

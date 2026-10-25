@@ -1,6 +1,6 @@
 # Simple participation decision plan
 
-Status: Phase 1 implemented on `codex/chat-believability-memory-isolation` (uncommitted, awaiting review); Phase 2 not started. Differences found while implementing are marked "As built".
+Status: Phase 1 and the delivery half of Phase 2 are implemented on `codex/chat-believability-memory-isolation`. The persistent exchange identity (database columns, confirmed-timestamp clock, epoch tokens) is not built; see "As built (Phase 2)". Differences found while implementing are marked "As built".
 
 ## Objective and scope
 
@@ -25,6 +25,16 @@ The work ships in two phases. Phase 1 is everything a non-sending trial run can 
 Phase 1 must not depend on Phase 2. **In Phase 1 the simple contract always runs as a trial run**, whatever the preview switch says: for optional turns it calls the model, logs the decision and stops there: no reply text is generated, and no optional reply or reaction is sent. Setting `decision-contract simple` on one channel is therefore the whole trial; there is no state where the contract is set but nothing is evaluated. Explicit requests are unaffected. Phase 2 removes the always-trial rule, and from then on the preview switch applies to simple-contract channels as it does to legacy ones.
 
 **As built (Phase 1).** The simple branch is `CharacterRuntime.prepareSimple`, entered for guarded optional message turns whose effective contract is `simple`; explicit requests, reaction snapshots and legacy channels never reach it. It runs after the existing admission stage, so a message that stage does not route (for example a joining message in a channel not on the joining list, when the old rules would treat it as joining) never reaches the simple decision; widening admission belongs with Phase 2. The log's `admission` values are `trial_not_sent` (model chose to act), `model_ignore`, `action_unavailable`, `reaction_selection_failed`, `below_threshold`, or the failure category when the call failed.
+
+## As built (Phase 2)
+
+**Delivery.** The always-trial rule is gone. An admitted `reply` goes to the normal chat model with the character modules' context, the app-written planned-approach line from a used thought (stance and length only) and a short "you decided to join" line; generation may still decline, and a brief acknowledgment is not rejected as a weak contribution. An admitted `react` delivers the chosen emoji on the judged message with no reply text: a Unicode character, or a server emoji in its mention form. With `preview` on, a decision is logged as `preview_not_sent` and nothing is generated or sent. The decision log now reports `admitted`, `preview_not_sent` and `trial` (true only when nothing is sent).
+
+**Exchange accounting, in memory.** A follow-up counts against `simple:<author>` in its channel from the first availability check, so the per-exchange, interval and per-10-minute limits stop a turn before any model call. The scheduler's idle reset and the open-exchange rule share one `exchangeIdleMs`. A linked follow-up into an exchange that started before this process waits out one idle window (`exchange_restart_wait`), because the counters did not survive the restart.
+
+**Not built.** The nullable `exchange_id`, `exchange_root_message_id` and `exchange_recipient_id` columns and their migrations; the clock taken from the anchoring message's confirmed timestamp; epoch-bound reservation tokens; expiry-only eviction at 512 entries. Without the columns an exchange is identified by author and channel rather than by its root event, and a restart conservatively suppresses linked follow-ups for one window. Build these before relying on long, multi-person back-and-forth.
+
+**Still to do before wider use.** The gated live step: preview off in one pilot channel with a tight `per-exchange` limit (for example 3), checked in the logs before raising it.
 
 ## Corrections to the proposed rationale
 

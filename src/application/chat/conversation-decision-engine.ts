@@ -46,6 +46,15 @@ export class ConversationDecisionEngine {
       referentSourceIds: references, recipientIds: [request.currentUser.id], reasonCode, contextVersion: contextVersion(request), policyVersion, expiresAt: now + 30_000 } };
   }
 
+  // The simple contract has already judged the message; this records the admitted action. Generation
+  // may still decline, but a brief answer or acknowledgment is not rejected as a weak contribution.
+  public admitSimple(request: Request, input: { action: "reply" | "react"; kind: "followup" | "joining"; now: number; policyVersion: string }): ConversationDecisionResult {
+    const result = this.result(request, resolveConversationTrigger(request), input.now, input.policyVersion, input.action === "react" ? "simple_reaction" : "simple_reply",
+      "ready", input.action, input.action === "react" ? "social" : "contribute");
+    result.decision.participationKind = input.kind === "followup" ? "continuation" : "spontaneous";
+    return result;
+  }
+
   public assess(request: Request, outcome: DecisionOutcome | { status: "skipped"; decision: null }, settings: ParticipationSettings | undefined,
     admissible: boolean, now: number, policyVersion: string): ParticipationAssessment {
     const trigger = resolveConversationTrigger(request); const botId = request.botUserId ?? "bot";
@@ -158,9 +167,10 @@ export class ConversationDecisionEngine {
     const intent = response.responseIntent ?? prior?.decision.intent ?? (trigger.explicit ? "answer" : "contribute");
     if (trigger.explicit && response.ambientAction === "ignore" && request.allowSilentDirect && (intent === "social" || intent === "closing")) reply = false;
     if (reply && !response.text.trim() && !response.generatedImages.length) return this.result(request, trigger, now, policyVersion, "empty_generated_reply", "failed", "silent", "abstain", [], trigger.explicit ? "error_reply" : "none");
-    const groundedAnswer = prior?.decision.participationKind === "continuation" && (prior.decision.intent === "answer" || prior.decision.intent === "clarify");
+    const simpleReply = prior?.decision.reasonCode === "simple_reply";
+    const groundedAnswer = !simpleReply && prior?.decision.participationKind === "continuation" && (prior.decision.intent === "answer" || prior.decision.intent === "clarify");
     if (reply && groundedAnswer && intent !== "answer" && intent !== "clarify") return this.result(request, trigger, now, policyVersion, "substantive_requires_answer", "failed", "silent", "abstain");
-    const rejectedContribution = prior?.decision.action === "reply" && !trigger.explicit && !groundedAnswer &&
+    const rejectedContribution = prior?.decision.action === "reply" && !trigger.explicit && !simpleReply && !groundedAnswer &&
       !generatedContributionAllowed(response.text, [...request.channelHistory, ...request.replyChain], request.botUserId);
     if (rejectedContribution) reply = false;
     const react = response.reactionEmoji !== null || response.historyReactions.length > 0;

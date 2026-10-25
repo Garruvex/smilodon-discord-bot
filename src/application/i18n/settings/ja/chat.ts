@@ -3,7 +3,7 @@ import type { SettingsTextCatalog } from "../catalog.js";
 export const jaChat: SettingsTextCatalog = {
   "participation": {"title": "会話への参加", "description": "ボットが自分から話すタイミングと頻度。"},
   "participation.status": {"label": "参加の状態", "description": "自動参加が動作できるか表示します。", "messages": {"available": "準備完了。会話の継続か参加を有効にし、チャンネルを選んでください。", "paused": "一時停止中：会話モデルが未設定です。メンションは使えます。", "scope": "{count} 件のチャンネルを観察中。スレッドは個別に選択します。", "preview-on": "プレビュー中：任意の返信は記録のみで送信しません。", "preview-off": "プレビューはオフ：任意の返信を送信します。"}},
-  "participation.preview": {"label": "プレビュー", "description": "試運転：任意の返信を送らず記録します。メンションとボットへの返信は送信されます。"},
+  "participation.preview": {"label": "プレビュー", "description": "任意の返信を送らず、実行内容を記録します。メンションとボットへの返信は送信されます。"},
   "participation.preview.enabled": {"label": "任意の返信をプレビュー", "description": "サーバーの既定値。チャンネルやスレッドで上書きできます。"},
   "participation.observation-channels": {"label": "観察チャンネル", "description": "会話の継続や参加のために読むチャンネル。空ならどこも読みません。"},
   "participation.observation-channels.channels": {"label": "チャンネル", "description": "指定のチャンネルのみ。スレッドは channel で追加します。"},
@@ -19,7 +19,7 @@ export const jaChat: SettingsTextCatalog = {
   "participation.joining.threshold": {"label": "参加の基準（％）", "description": "宛先・種類・タイミングの確認後に適用する最低点。"},
   "participation.joining.check-every": {"label": "判定の間隔（件）", "description": "参加を判定するまでの発言数（1-20）。会話の継続は待ちません。"},
   "participation.decision-contract": {"label": "判断方式", "description": "任意の発言の判断方式。従来方式か、質問ひとつのシンプル方式。継承は既定に従います。"},
-  "participation.decision-contract.contract": {"label": "方式", "description": "サーバーの既定。チャンネルで上書きできます。", "choices": {"inherit":"継承","legacy":"従来","simple":"シンプル（試験）"}},
+  "participation.decision-contract.contract": {"label": "方式", "description": "サーバーの既定。チャンネルで上書きできます。", "choices": {"inherit":"継承","legacy":"従来","simple":"シンプル"}},
   "participation.simple-threshold": {"label": "シンプル方式のしきい値", "description": "シンプル方式が動く最小スコア（%）。0 で無効。スコアはネイティブ判断のみ。"},
   "participation.simple-threshold.followup": {"label": "会話継続のしきい値（%）", "description": "会話継続に必要な最小スコア。"},
   "participation.simple-threshold.joining": {"label": "参加のしきい値（%）", "description": "参加に必要な最小スコア。"},
@@ -45,7 +45,7 @@ export const jaChat: SettingsTextCatalog = {
   "participation.channel.reactions": {"label": "リアクション", "description": "ここでリアクションを付けるか。"},
   "participation.channel.activity": {"label": "活動プリセット", "description": "ここで使う活動プリセット。", "choices": {"quiet": "静か", "balanced": "バランス", "lively": "活発"}},
   "participation.channel.reset": {"label": "継承に戻す", "description": "このチャンネルの上書きを消します。リストは変わりません。"},
-  "participation.channel.decision-contract": {"label": "判断方式", "description": "このチャンネルで使う方式。継承はサーバーに従います。", "choices": {"inherit":"継承","legacy":"従来","simple":"シンプル（試験）"}},
+  "participation.channel.decision-contract": {"label": "判断方式", "description": "このチャンネルで使う方式。継承はサーバーに従います。", "choices": {"inherit":"継承","legacy":"従来","simple":"シンプル"}},
   "participation.channel.followup-threshold": {"label": "会話継続のしきい値（%）", "description": "このチャンネルのシンプル方式の継続スコア条件。0 で無効。"},
   "participation.channel.joining-threshold": {"label": "参加のしきい値（%）", "description": "このチャンネルのシンプル方式の参加スコア条件。0 で無効。"},
   "chat": {

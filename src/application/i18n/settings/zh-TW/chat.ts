@@ -3,7 +3,7 @@ import type { SettingsTextCatalog } from "../catalog.js";
 export const zhTWChat: SettingsTextCatalog = {
   "participation": {"title": "聊天參與", "description": "機器人何時主動發言、多常發言。"},
   "participation.status": {"label": "參與狀態", "description": "顯示主動回覆是否可運作。", "messages": {"available": "已就緒。請開啟接續回覆或加入對話並選擇頻道。", "paused": "已暫停：尚未設定聊天模型。提及仍可使用。", "scope": "正在觀察 {count} 個頻道。討論串需個別選擇。", "preview-on": "預覽已開啟：主動回覆只記錄、不送出。", "preview-off": "預覽已關閉：主動回覆會送出。"}},
-  "participation.preview": {"label": "預覽", "description": "試運行：主動回覆只記錄不送出；提及與回覆機器人仍會送出。"},
+  "participation.preview": {"label": "預覽", "description": "主動回覆只記錄不送出；提及與回覆機器人仍會送出。"},
   "participation.preview.enabled": {"label": "預覽主動回覆", "description": "伺服器預設；頻道或討論串可個別覆寫。"},
   "participation.observation-channels": {"label": "觀察頻道", "description": "被動讀取以便接續或加入對話的頻道。空白表示無。"},
   "participation.observation-channels.channels": {"label": "頻道", "description": "指定頻道；討論串請用 channel 指令加入。"},
@@ -19,7 +19,7 @@ export const zhTWChat: SettingsTextCatalog = {
   "participation.joining.threshold": {"label": "加入門檻（％）", "description": "通過對象、類型與時機檢查後的最低分數。"},
   "participation.joining.check-every": {"label": "每幾則訊息判斷", "description": "每隔幾則成員訊息判斷是否加入（1-20）。接續回覆不受影響。"},
   "participation.decision-contract": {"label": "判斷方式", "description": "可選發言的判斷方式：原本的或只問一題的簡易方式。繼承採用預設。"},
-  "participation.decision-contract.contract": {"label": "方式", "description": "伺服器預設；頻道可覆寫。", "choices": {"inherit":"繼承","legacy":"原本","simple":"簡易（試跑）"}},
+  "participation.decision-contract.contract": {"label": "方式", "description": "伺服器預設；頻道可覆寫。", "choices": {"inherit":"繼承","legacy":"原本","simple":"簡易"}},
   "participation.simple-threshold": {"label": "簡易方式門檻", "description": "簡易方式行動所需的最低分數（%）。0 為關閉；僅原生 Decisions 有分數。"},
   "participation.simple-threshold.followup": {"label": "接續回覆門檻（%）", "description": "接續回覆所需的最低分數。"},
   "participation.simple-threshold.joining": {"label": "加入門檻（%）", "description": "加入對話所需的最低分數。"},
@@ -45,7 +45,7 @@ export const zhTWChat: SettingsTextCatalog = {
   "participation.channel.reactions": {"label": "加反應", "description": "允許機器人在此對訊息加反應。"},
   "participation.channel.activity": {"label": "活動預設", "description": "此處使用的活動預設。", "choices": {"quiet": "安靜", "balanced": "平衡", "lively": "活躍"}},
   "participation.channel.reset": {"label": "恢復繼承", "description": "清除此頻道的覆寫；清單不變。"},
-  "participation.channel.decision-contract": {"label": "判斷方式", "description": "此頻道使用的方式；繼承則跟隨伺服器。", "choices": {"inherit":"繼承","legacy":"原本","simple":"簡易（試跑）"}},
+  "participation.channel.decision-contract": {"label": "判斷方式", "description": "此頻道使用的方式；繼承則跟隨伺服器。", "choices": {"inherit":"繼承","legacy":"原本","simple":"簡易"}},
   "participation.channel.followup-threshold": {"label": "接續回覆門檻（%）", "description": "此頻道簡易方式的接續分數門檻；0 代表關閉。"},
   "participation.channel.joining-threshold": {"label": "加入門檻（%）", "description": "此頻道簡易方式的加入分數門檻；0 代表關閉。"},
   "chat": {

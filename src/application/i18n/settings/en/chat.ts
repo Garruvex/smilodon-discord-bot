@@ -3,7 +3,7 @@ import type { SettingsTextCatalog } from "../catalog.js";
 export const enChat: SettingsTextCatalog = {
   "participation": {"title": "Participation", "description": "When the bot speaks unasked and how often."},
   "participation.status": {"label": "Participation status", "description": "Show whether optional replies can run.", "messages": {"available": "Ready. Turn on follow-ups or joining and pick channels.", "paused": "Paused: no chat model is configured. Mentions still work.", "scope": "Observing {count} channels. Threads need their own selection.", "preview-on": "Preview is on: optional replies are logged, not sent.", "preview-off": "Preview is off: optional replies are sent."}},
-  "participation.preview": {"label": "Preview", "description": "Trial run: log optional replies instead of sending. @mentions and replies to the bot still send."},
+  "participation.preview": {"label": "Preview", "description": "Log optional replies instead of sending them. @mentions and replies to the bot still send."},
   "participation.preview.enabled": {"label": "Preview optional replies", "description": "Server default; a channel or thread can override it."},
   "participation.observation-channels": {"label": "Observed channels", "description": "Channels read passively for follow-ups and joining. Empty means none."},
   "participation.observation-channels.channels": {"label": "Channels", "description": "Exact channels; add threads with the channel command."},
@@ -19,7 +19,7 @@ export const enChat: SettingsTextCatalog = {
   "participation.joining.threshold": {"label": "Joining threshold (%)", "description": "Minimum score after recipient, label and timing checks pass."},
   "participation.joining.check-every": {"label": "Check every N messages", "description": "Human messages between join checks (1-20). Follow-ups skip this."},
   "participation.decision-contract": {"label": "Decision contract", "description": "Method for optional turns: legacy or the simple one-question method. Inherit uses the default."},
-  "participation.decision-contract.contract": {"label": "Contract", "description": "Server default; a channel can override it.", "choices": {"inherit":"Inherit","legacy":"Legacy","simple":"Simple (trial)"}},
+  "participation.decision-contract.contract": {"label": "Contract", "description": "Server default; a channel can override it.", "choices": {"inherit":"Inherit","legacy":"Legacy","simple":"Simple"}},
   "participation.simple-threshold": {"label": "Simple-method thresholds", "description": "Minimum score (%) before the simple method acts. 0 is off; only native Decisions scores."},
   "participation.simple-threshold.followup": {"label": "Follow-up threshold (%)", "description": "Minimum action score for follow-ups."},
   "participation.simple-threshold.joining": {"label": "Joining threshold (%)", "description": "Minimum action score for joining."},
@@ -45,7 +45,7 @@ export const enChat: SettingsTextCatalog = {
   "participation.channel.reactions": {"label": "Outgoing reactions", "description": "Allow the bot to react to messages here."},
   "participation.channel.activity": {"label": "Activity preset", "description": "Activity preset to use here.", "choices": {"quiet": "Quiet", "balanced": "Balanced", "lively": "Lively"}},
   "participation.channel.reset": {"label": "Restore inheritance", "description": "Clear this channel's overrides; lists are unchanged."},
-  "participation.channel.decision-contract": {"label": "Decision contract", "description": "Decision contract used here; inherit follows the server.", "choices": {"inherit":"Inherit","legacy":"Legacy","simple":"Simple (trial)"}},
+  "participation.channel.decision-contract": {"label": "Decision contract", "description": "Decision contract used here; inherit follows the server.", "choices": {"inherit":"Inherit","legacy":"Legacy","simple":"Simple"}},
   "participation.channel.followup-threshold": {"label": "Follow-up threshold (%)", "description": "Simple-method follow-up score gate here; 0 turns it off."},
   "participation.channel.joining-threshold": {"label": "Joining threshold (%)", "description": "Simple-method joining score gate here; 0 turns it off."},
   "chat": {

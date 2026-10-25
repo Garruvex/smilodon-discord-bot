@@ -33,3 +33,9 @@ export function buildEmojiChoices(custom: readonly ServerEmoji[], seed: string, 
   }
   return [...unicodeEmojiChoices, ...pool.slice(0, Math.max(0, cap)).map((emoji) => ({ token: `:${emoji.name}:`, kind: "custom" as const, id: emoji.id, name: emoji.name, animated: emoji.animated }))];
 }
+
+// What Discord's react call accepts: the Unicode character, or the custom emoji's mention form.
+export function emojiReactionIdentifier(option: SimpleEmojiOption | null): string | null {
+  if (!option) return null;
+  return option.kind === "unicode" ? option.token : `<${option.animated ? "a" : ""}:${option.name}:${option.id}>`;
+}

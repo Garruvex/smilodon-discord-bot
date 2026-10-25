@@ -6,6 +6,7 @@ import { characterSettings } from "../../../application/chat/character-settings.
 import { resolveParticipation } from "../../../application/chat/participation-policy.js";
 import type { ResolvedPersona } from "../../../application/chat/persona-source.js";
 import { resolveChannelMemoryMode } from "../../../application/memory/memory-channel-policy.js";
+import type { ChatActivityLimits } from "../../../application/chat/chat-scheduler.js";
 import type { GuildConfiguration } from "../../../config/guild-configuration.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
 import type { ChatTurnSupport } from "./chat-turn-support.js";
@@ -41,6 +42,8 @@ export function buildChatTurnInput(environment: ChatTurnEnvironment, profile: Gu
   const human = interaction !== "reaction";
   const musicActor = human ? support.resolveMusicActor(source, profile) : null;
   const context = characterSettings(profile).context;
+  // A follow-up counts against this author's exchange from the first availability check, not only at delivery.
+  const withExchange = (limits: ChatActivityLimits): ChatActivityLimits => interaction === "implicit_followup" ? { ...limits, exchangeId: `simple:${source.author.id}` } : limits;
   return {
     guildId, channelId, sourceMessageId: source.id, interaction,
     ...(parts.candidateId ? { candidateId: parts.candidateId } : {}),
@@ -49,8 +52,8 @@ export function buildChatTurnInput(environment: ChatTurnEnvironment, profile: Gu
     ...(parts.currentBurst ? { currentBurst: parts.currentBurst } : {}),
     canExecute: parts.canExecute,
     afterDecision: parts.afterDecision,
-    activityLimits: participation.limits,
-    resolveActivityLimits: () => resolveParticipation(live()?.chat.participation, channelId).limits,
+    activityLimits: withExchange(participation.limits),
+    resolveActivityLimits: () => withExchange(resolveParticipation(live()?.chat.participation, channelId).limits),
     resolveMemoryMode: () => resolveChannelMemoryMode(live()?.chat.channelMemoryModes ?? {}, channelId),
     guardedContextPort: support.createContextPort(source, !human),
     guardedContextPolicy: { count: context.maxMessages, budget: context.budget, ...(human ? {} : { minReactors: profile.chat.reactionReplyMinReactors }) },

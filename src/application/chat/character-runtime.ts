@@ -30,7 +30,9 @@ import { hash, personaFingerprint, serious } from "./character-modules/shared.js
 import { resolveParticipation, contributionPolicy, passiveChannelAllowed, resolveDecisionContract, resolveSimpleThreshold, type DecisionContract } from "./participation-policy.js";
 import type { SimpleParticipationService } from "./simple-decision.js";
 import { classifySimpleTurn } from "./simple-exchange.js";
-import { buildEmojiChoices, unicodeEmojiChoices, type ServerEmoji } from "./simple-emoji.js";
+import { buildEmojiChoices, emojiReactionIdentifier, unicodeEmojiChoices, type ServerEmoji } from "./simple-emoji.js";
+import { exchangeIdleMs } from "./exchange-window.js";
+import type { ThoughtLength, ThoughtStance } from "./simple-decision.js";
 import type { ThoughtsModule } from "./character-modules/thoughts.js";
 import { CharacterCallbacks, callbackState, callbackProofPayload } from "./character-callbacks.js";
 import { startOfLocalDay } from "./character-calendar.js";
@@ -55,6 +57,9 @@ export interface CharacterEvaluationAdmission {
   run<T>(guildId: string, channelId: string, operation: () => Promise<T>, cost: number): Promise<T | null>;
 }
 
+const stanceText: Record<ThoughtStance, string> = { answer: "answering directly", agree: "agreeing", add: "adding one useful point", joke: "with a light joke",
+  comfort: "comforting", ask_back: "asking a short question back", acknowledge: "acknowledging", none: "" };
+const lengthText: Record<ThoughtLength, string> = { one_line: "a one-line reply,", short: "a short reply,", normal: "a normal-length reply," };
 export class CharacterRuntime {
   private readonly registry: CharacterModuleRegistry;
   private readonly memory: CharacterMemory;
@@ -118,8 +123,8 @@ export class CharacterRuntime {
       return found.value > 0 ? `${Math.round(found.value * 100)}% (${found.source})` : "off"; };
     const route = this.simple?.description;
     const thresholds = [threshold("followup"), threshold("joining")];
-    // Phase 1 never sends simple-contract optional output, and only the native route returns a score to gate on.
-    const notes: ("trial" | "threshold_ignored")[] = [...(resolved.contract === "simple" ? ["trial" as const] : []),
+    // Preview logs simple-contract decisions without sending, and only the native route returns a score to gate on.
+    const notes: ("trial" | "threshold_ignored")[] = [...(resolved.contract === "simple" && resolveParticipation(profile.chat.participation, channelId).shadowMode ? ["trial" as const] : []),
       ...(resolved.contract === "simple" && route && route.source !== "native" && thresholds.some((value) => value !== "off") ? ["threshold_ignored" as const] : [])];
     return { contract: resolved.contract, source: resolved.source, followup: thresholds[0]!, joining: thresholds[1]!,
       route: route ? `${route.source} ${route.model ?? ""} ${route.reasoningEffort ?? ""}`.trim() : "unavailable", notes };
@@ -430,6 +435,10 @@ export class CharacterRuntime {
     if (classification.excluded) return exclude(classification.excluded);
     const { kind, basis } = classification;
     if (!(kind === "followup" ? participation.continuationEnabled : participation.spontaneousEnabled)) return exclude(kind === "followup" ? "followups_disabled" : "joining_disabled", { kind, basis });
+    // A linked follow-up into an exchange from before this process started waits out one idle window,
+    // because the in-memory exchange counters did not survive the restart.
+    if (kind === "followup" && basis === "linked" && turn.now - this.startedAt <= exchangeIdleMs &&
+        (events.find((item) => item.messageId === classification.anchorMessageId)?.timestampMs ?? Infinity) < this.startedAt) return exclude("exchange_restart_wait", { kind, basis });
     const availability = request.contextualActionAvailability?.[kind === "followup" ? "continuation" : "spontaneous"] ?? request.optionalActionsAvailable ?? { text: true, reaction: true };
     const actions = { reply: availability.text, react: availability.reaction && participation.reactionsEnabled !== false };
     if (!actions.reply && !actions.react) return exclude("no_action_available", { kind, basis });
@@ -455,14 +464,16 @@ export class CharacterRuntime {
     let admission = outcome.status !== "valid" ? outcome.failure ?? "decision_failed" : proposed === "ignore" ? "model_ignore" :
       proposed === "reply" && !actions.reply || proposed === "react" && !actions.react ? "action_unavailable" :
       proposed === "react" && outcome.reactionSelectionFailed ? "reaction_selection_failed" :
-      threshold.value > 0 && outcome.score !== null && outcome.score < threshold.value ? "below_threshold" : "trial_not_sent";
+      threshold.value > 0 && outcome.score !== null && outcome.score < threshold.value ? "below_threshold" : "would_act";
     // Joining unasked is the riskiest move: a second, stricter question must agree before it counts. Follow-ups skip it.
     let confirmation: { result: "yes" | "no" | "failed"; latencyMs: number; usage: unknown; failure: string | null } | null = null;
-    if (kind === "joining" && admission === "trial_not_sent" && proposed !== null && proposed !== "ignore") {
+    if (kind === "joining" && admission === "would_act" && proposed !== null && proposed !== "ignore") {
       const second = await simple.confirmJoin(decisionInput, proposed);
       confirmation = { result: second.confirmed === null ? "failed" : second.confirmed ? "yes" : "no", latencyMs: second.latencyMs, usage: second.usage, failure: second.failure ?? null };
       if (second.confirmed === null) admission = "join_confirmation_failed"; else if (!second.confirmed) admission = "join_not_confirmed";
     }
+    // Preview logs what would have happened and stops; otherwise the action is admitted.
+    if (admission === "would_act") admission = participation.shadowMode ? "preview_not_sent" : "admitted";
     const thought = outcome.thought;
     let thoughtOutcome: string | null = null;
     if (thought) {
@@ -471,16 +482,31 @@ export class CharacterRuntime {
         if ((proposed === "ignore" || admission === "join_not_confirmed") && thought.stance !== "none" && thoughtsModule) {
           thoughtsModule.simpleHold(heldKey, scope, turn.now, settings.modules.thoughts.holdSeconds, { sourceMessageId: current.messageId, stance: thought.stance!, length: thought.length! });
           thoughtOutcome = "held";
-        } else if (proposed === "reply" && thought.stance !== "none") { thoughtsModule?.simpleClear(heldKey); thoughtOutcome = "would_use"; }
+        } else if (proposed === "reply" && thought.stance !== "none") { thoughtsModule?.simpleClear(heldKey); thoughtOutcome = admission === "admitted" ? "used" : "would_use"; }
         else thoughtOutcome = "discarded";
       }
     }
     this.logger?.info({ ...log, sourceMessageId: current.messageId, kind, basis, status: outcome.status, proposedAction: proposed, emoji: outcome.emoji, admission,
       emojiOptions: actions.react ? emoji.length : 0, score: outcome.score, scoreKind: outcome.scoreKind, threshold: threshold.value, thresholdSource: threshold.source, availableReply: actions.reply, availableReact: actions.react,
-      route: outcome.route, latencyMs: outcome.latencyMs, usage: outcome.usage, confirmation, preview: participation.shadowMode, trial: true,
+      route: outcome.route, latencyMs: outcome.latencyMs, usage: outcome.usage, confirmation, preview: participation.shadowMode, trial: admission !== "admitted",
       thought: thought ? { outcome: thoughtOutcome, stance: thought.stance, length: thought.length, want: thought.want, heldOffered: held !== null, failure: thought.failure ?? null,
         latencyMs: thought.latencyMs, usage: thought.usage } : null }, "Simple participation decision");
-    return finish(outcome.status);
+    if (admission !== "admitted" || proposed === null || proposed === "ignore") return finish(outcome.status);
+    const reaction = proposed === "react" ? emojiReactionIdentifier(outcome.emojiChoice) : null;
+    if (proposed === "react" && !reaction) return finish(outcome.status);
+    const decision = this.decisionEngine.admitSimple(request, { action: proposed, kind, now: turn.now, policyVersion: fingerprint });
+    reportConversationDecision(this.logger, decision, "preflight", resolveConversationTrigger(request).interaction);
+    // Character modules shape how the admitted reply sounds; they never took part in the decision.
+    if (!request.characterEvaluation && !request.characterShadow) await this.registry.observe(current, turn);
+    const context = await this.registry.contribute(turn);
+    const steering = proposed === "reply" && thought?.status === "valid" && !shadow && thought.stance && thought.stance !== "none" && thought.length ?
+      [{ moduleId: "participation", text: `Planned approach: ${lengthText[thought.length]} ${stanceText[thought.stance]}. Stay natural; say nothing if there is nothing real to add.` }] : [];
+    request = { ...request, characterContext: [...(request.characterContext ?? []), ...context, ...steering,
+      ...(proposed === "reply" ? [{ moduleId: "participation", text: "You decided to join this conversation. Reply briefly and naturally to the current message; a short answer or acknowledgment is fine. Do not invent facts or promise actions." }] : [])] };
+    turn.request = request;
+    return { turn, request, fingerprint, allowed: true, decisionStatus: outcome.status, acceptedContribution: null, exchangeId: `simple:${current.authorId}`, targetMessageId: null,
+      memoryContextSignature: JSON.stringify(context), participation: { action: proposed === "reply" ? "reply" : "ignore", reaction }, styleUserId: null, styleSignature: null,
+      targetConfidence: 0, conversationDecision: decision };
   }
   public async process(reply: ChatResponse, prepared: CharacterPreparedTurn): Promise<ChatResponse> {
     requireApprovedConversationRequest(prepared.request);

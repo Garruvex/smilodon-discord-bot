@@ -21,7 +21,7 @@ const copy = {
     access: "Roles: {chat} chat / {admin} admin / {restricted} restricted.",
     contract: "Decision contract: {contract} (from {source}). Simple-method thresholds: follow-up {followup}, joining {joining}. Route: {route}.",
     caveat: "On doesn't guarantee a reply: roles, cooldowns and the model's judgment still apply.",
-    note_trial: "Trial run: the simple method logs decisions but sends no follow-ups, joins or reactions yet.",
+    note_trial: "Preview is on: the simple method logs what it would do but sends nothing.",
     note_threshold_ignored: "Thresholds have no effect: this route returns no score. Only native Decisions does.",
   },
   "zh-TW": {
@@ -43,7 +43,7 @@ const copy = {
     access: "角色：聊天 {chat}／管理 {admin}／限制 {restricted}。",
     contract: "判斷方式：{contract}（來自{source}）。簡易方式門檻：接續 {followup}、加入 {joining}。路徑：{route}。",
     caveat: "開啟不保證回覆：角色、冷卻與模型判斷仍會影響。",
-    note_trial: "試跑中：簡易方式只記錄判斷，尚不會送出接話、加入或表情。",
+    note_trial: "預覽已開啟：簡易方式只記錄會做什麼，不會送出任何內容。",
     note_threshold_ignored: "門檻無效：此路徑不提供分數，只有原生 Decisions 有。",
   },
   ja: {
@@ -65,7 +65,7 @@ const copy = {
     access: "ロール：会話 {chat}／管理 {admin}／制限 {restricted}。",
     contract: "判断方式：{contract}（{source}より）。シンプル方式のしきい値：継続 {followup}、参加 {joining}。経路：{route}。",
     caveat: "オンでも返信は保証されません。ロール、間隔、モデルの判断が影響します。",
-    note_trial: "試験運用中：シンプル方式は判定を記録するだけで、継続・参加・リアクションはまだ送信しません。",
+    note_trial: "プレビューがオンです。シンプル方式は実行内容を記録するだけで、何も送信しません。",
     note_threshold_ignored: "しきい値は無効です。この経路はスコアを返しません。ネイティブ Decisions のみ返します。",
   },
 } satisfies Record<Language, Record<string, string>>;
