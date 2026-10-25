@@ -33,7 +33,7 @@ interface Harness {
   run: (overrides: Partial<ChatRequest> & { current: ChannelHistoryMessage; history?: ChannelHistoryMessage[] }) => Promise<{ result: ChatResponse; deliver: ReturnType<typeof vi.fn> }>;
   setNow: (value: number) => void;
 }
-function setup(instance: DecisionContract = "simple", decide: (prompt: string) => unknown = () => ({ action: "reply", emoji: "none" })): Harness {
+function setup(instance: DecisionContract = "simple", decide: (prompt: string) => unknown = (prompt) => prompt.includes("so be strict") ? { confirm: "yes" } : { action: "reply", emoji: "none" }): Harness {
   const connection = createSqliteDatabaseConnection(mkdtempSync(join(tmpdir(), "simple-runtime-"))); connections.push(connection);
   const repository = new SqliteMemoryRepository(connection.database); const doc = freshDocument(); doc.features.chatbot = true; doc.features.channelHistory = true; doc.channels.chatbot = [channelId];
   const profiles = memoryProvider(doc);
@@ -68,9 +68,9 @@ describe("simple participation trial run", () => {
         const { result, deliver } = await run({ current: message("current", 99_000, actorUserId, "anyone know a good cat toy") });
         expect(result.ambientAction).toBe("ignore"); expect(deliver).not.toHaveBeenCalled();
         expect(reply).not.toHaveBeenCalled(); expect(generate).not.toHaveBeenCalled();
-        expect(simpleCall).toHaveBeenCalledOnce();
+        expect(simpleCall).toHaveBeenCalledTimes(2); // the decision, then the joining double check
         expect(decisions(logger)).toHaveLength(1);
-        expect(decisions(logger)[0]).toMatchObject({ contract: "simple", contractSource: "instance", kind: "joining", basis: null, proposedAction: "reply", admission: "trial_not_sent",
+        expect(decisions(logger)[0]).toMatchObject({ contract: "simple", contractSource: "instance", kind: "joining", basis: null, proposedAction: "reply", admission: "trial_not_sent", confirmation: { result: "yes" },
           trial: true, preview: shadowMode, status: "valid", scoreKind: "unavailable", route: { source: "reply", model: "decision-model", reasoningEffort: "low" } });
         expect(JSON.stringify(decisions(logger)[0])).not.toContain("cat toy");
       } finally { service.stopScheduling(); await service.drain(); }
@@ -85,6 +85,35 @@ describe("simple participation trial run", () => {
       await run({ interaction: "implicit_followup", current: message("current", 98_000, actorUserId, "and the lint?"), history: [human, bot] });
       expect(decisions(logger)[0]).toMatchObject({ kind: "followup", basis: "open_exchange", proposedAction: "reply" });
     } finally { service.stopScheduling(); await service.drain(); }
+  });
+  it("double checks an unsolicited join, and a refusal or failed check means no action", async () => {
+    for (const [confirm, admission, result] of [["no", "join_not_confirmed", "no"], ["maybe", "join_confirmation_failed", "failed"]] as const) {
+      const { profiles, run, logger, simpleCall, service } = setup("simple", (prompt) => prompt.includes("so be strict") ? { confirm } : { action: "reply", emoji: "none" });
+      await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+      try {
+        await run({ current: message("current", 99_000, actorUserId, "anyone know a good cat toy") });
+        expect(simpleCall).toHaveBeenCalledTimes(2);
+        expect(decisions(logger)[0]).toMatchObject({ kind: "joining", proposedAction: "reply", admission, confirmation: { result } });
+      } finally { service.stopScheduling(); await service.drain(); }
+    }
+  });
+  it("does not double check a follow-up and never asks about an ignored join", async () => {
+    const { profiles, run, logger, simpleCall, service, setNow } = setup();
+    await profiles.update(guildId, { chatParticipation: { continuationEnabled: true, spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    try {
+      setNow(100_000);
+      const human = message("ask", 90_000, actorUserId, "can you check the build"); const bot = message("answer", 95_000, "bot", "it passed", { replyToMessageId: "ask", replyToAuthorId: actorUserId });
+      await run({ interaction: "implicit_followup", current: message("current", 98_000, actorUserId, "and the lint?"), history: [human, bot] });
+      expect(simpleCall).toHaveBeenCalledOnce();
+      expect(decisions(logger)[0]).toMatchObject({ kind: "followup", confirmation: null });
+    } finally { service.stopScheduling(); await service.drain(); }
+    const ignored = setup("simple", () => ({ action: "ignore", emoji: "none" }));
+    await ignored.profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    try {
+      await ignored.run({ current: message("current", 99_000, actorUserId, "anyone know a good cat toy") });
+      expect(ignored.simpleCall).toHaveBeenCalledOnce();
+      expect(decisions(ignored.logger)[0]).toMatchObject({ admission: "model_ignore", confirmation: null });
+    } finally { ignored.service.stopScheduling(); await ignored.service.drain(); }
   });
   it("skips the model for a disabled kind and a reply to another human, and reports exclusions at debug level only", async () => {
     const { profiles, run, logger, simpleCall, service } = setup();

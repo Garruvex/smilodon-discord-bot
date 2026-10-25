@@ -18,7 +18,7 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
   public readonly event = BehaviorEvent.MessageCreated;
   public readonly priority = 80;
   public constructor(private readonly botId: () => string | null,
-    private readonly profiles: GuildConfigurationProvider, conversation: ChatConversationService,
+    private readonly profiles: GuildConfigurationProvider, private readonly conversation: ChatConversationService,
     private readonly eligibility: SocialChatEligibility, ambient: AmbientChatBehavior, logger: Logger) {
     this.candidates = new ContextualCandidateBuffer(logger, {
       fingerprint: (message): string | null => { const profile = message.guildId ? profiles.find(message.guildId) : null; return profile
@@ -36,8 +36,9 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
       profile.chat.channelMemoryModes[channelId], [...profile.channels.chatbot], [...profile.roles.chatbot], [...profile.roles.botAdministrator], [...profile.roles.restricted]]);
   }
   // Routing only: explicit addresses belong to the mention and name behaviors,
-  // and every other message becomes one neutral candidate. Whether a decision
-  // model is configured, and what the message means, is the decision stage's job.
+  // and every other message becomes one neutral candidate. A message that continues
+  // an exchange the bot is already in is a follow-up and skips the buffer; anything
+  // else is a first move and waits in it. What the message means is the decision stage's job.
   private trigger(message: Message): OptionalTrigger | null {
     const botId = this.botId();
     const profile = message.guildId ? this.profiles.find(message.guildId) : null;
@@ -47,7 +48,13 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
         message.reference?.messageId && message.channel?.messages?.cache?.get(message.reference.messageId)?.author.id === botId) return null;
     if (!message.content.trim() && !(message.attachments?.size ?? 0)) return null;
     const policy = resolveParticipation(profile.chat.participation, message.channelId);
+    if (policy.continuationEnabled && this.inOpenExchange(message, botId)) return "implicit_followup";
     return policy.spontaneousEnabled ? "group_conversation" : policy.continuationEnabled ? "implicit_followup" : null;
+  }
+  // The bot spoke to this author a moment ago, so this is the natural next turn of a
+  // conversation already underway. The decision stage still re-checks the structure.
+  private inOpenExchange(message: Message, botId: string): boolean {
+    return !!message.guildId && this.conversation.hasRecentConversation(message.guildId, message.channelId, message.author.id, botId);
   }
   public async matches(message: Message): Promise<boolean> {
     const trigger = this.trigger(message);
@@ -57,7 +64,9 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
   }
   public async execute(message: Message): Promise<BehaviorResult> {
     const trigger = this.trigger(message);
-    if (trigger && (await this.eligibility.check(message, trigger)).eligible) this.candidates.add(message);
+    if (!trigger || !(await this.eligibility.check(message, trigger)).eligible) return BehaviorResult.Continue;
+    // Follow-ups flow straight to the decision; only an unsolicited first move is buffered and double-checked.
+    if (trigger === "implicit_followup" && this.inOpenExchange(message, this.botId()!)) this.candidates.addImmediate(message); else this.candidates.add(message);
     return BehaviorResult.Continue;
   }
 }

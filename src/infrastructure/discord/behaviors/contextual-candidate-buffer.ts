@@ -20,6 +20,33 @@ export class ContextualCandidateBuffer {
     const key = `${message.guildId}:${message.channelId}`; const batch = this.batches.get(key);
     if (batch) { if (batch.timer) clearTimeout(batch.timer); batch.report("cancelled", reason); this.batches.delete(key); }
   }
+  // A natural follow-up inside an exchange the bot is already part of: no pause, no
+  // coalescing with other speakers and no joining cooldown. It still passes the same
+  // eligibility re-check and the scheduler's own limits before the decision runs.
+  public addImmediate(message: Message): void {
+    const key = `${message.guildId}:${message.channelId}`; const fingerprint = this.dependencies.fingerprint(message);
+    if (fingerprint === null) return;
+    const sourceKey = `${key}:${message.id}`;
+    if (this.seen.has(sourceKey)) return;
+    if (this.seen.size >= 10000) this.seen.delete(this.seen.keys().next().value!);
+    this.seen.set(sourceKey, Date.now());
+    const id = randomUUID(); let terminal = false;
+    const report = bindDiagnosticTask((action: "buffered" | "scheduled" | "submitted" | "cancelled", reason: "accepted" | "ready" | "ineligible", delayMs?: number) => {
+      if (terminal) return;
+      emitChatDiagnostic(this.logger, { event: "chat.candidate.changed", candidateId: id, action, reason, delayMs: delayMs ?? 0, messages: 1 });
+      terminal = action === "submitted" || action === "cancelled";
+    });
+    report("buffered", "accepted");
+    emitChatDiagnostic(this.logger, { event: "chat.candidate.source", candidateId: id, sourceMessageId: message.id });
+    report("scheduled", "accepted", 0);
+    this.dependencies.schedule(message, () => {
+      void (async (): Promise<void> => {
+        if (this.dependencies.fingerprint(message) !== fingerprint || !await this.dependencies.eligible(message)) { report("cancelled", "ineligible"); return; }
+        report("submitted", "ready");
+        await this.dependencies.evaluate(message, [message], id);
+      })().catch(() => report("cancelled", "ineligible"));
+    });
+  }
   public add(message: Message): void {
     const key = `${message.guildId}:${message.channelId}`; const fingerprint = this.dependencies.fingerprint(message);
     if (fingerprint === null) { this.cancel(message); return; }

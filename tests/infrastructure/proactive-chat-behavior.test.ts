@@ -18,7 +18,7 @@ function setup(messagesPerDecision = 5): { behavior: ProactiveChatBehavior; prof
   document.chat.participation.continuationEnabled = true; document.chat.participation.spontaneousChannelIds = [channelId];
   const profiles = memoryProvider(document); const opportunities: (() => void)[] = [];
   let continuation = false; let evaluationDelay = 0;
-  const conversation = { optionalDecisionAvailable: true, optionalOpportunityVersion: (): number => 1, isImplicitlyAddressed: (): boolean => continuation,
+  const conversation = { optionalDecisionAvailable: true, optionalOpportunityVersion: (): number => 1, hasRecentConversation: (): boolean => continuation,
     optionalEvaluationDelayMs: (): number => evaluationDelay,
     bufferOpportunity: (_guild: string, _channel: string, work: () => void) => { opportunities.push(work); } } as unknown as ChatConversationService;
   const execute = vi.fn(() => Promise.resolve());
@@ -105,6 +105,18 @@ describe("spontaneous opportunities", () => {
     await vi.advanceTimersByTimeAsync(1); await evaluate(opportunities);
     expect(execute).toHaveBeenCalledExactlyOnceWith(correction, "implicit_followup", [correction], expect.any(String));
     expect(info).toHaveBeenCalledWith(expect.objectContaining({ action: "submitted" }), "chat.candidate.changed");
+  });
+  it("sends a natural follow-up straight to the decision with no pause or cooldown, while a first move still waits", async () => {
+    const { behavior, opportunities, execute, setContinuation, setEvaluationDelay } = await contextual();
+    setEvaluationDelay(25_000);
+    setContinuation(true);
+    const followup = message("followup", "and for a week?");
+    await behavior.execute(followup);
+    await vi.advanceTimersByTimeAsync(0); expect(opportunities).toHaveLength(1); await evaluate(opportunities);
+    expect(execute).toHaveBeenCalledExactlyOnceWith(followup, "implicit_followup", [followup], expect.any(String));
+    setContinuation(false);
+    await behavior.execute(message("first", "anyone tried the new game?"));
+    await vi.advanceTimersByTimeAsync(4_999); expect(opportunities).toHaveLength(1);
   });
   it("does not repeat an unchanged opportunity", async () => {
     const { behavior, opportunities, execute } = setup(1);

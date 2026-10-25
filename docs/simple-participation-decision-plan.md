@@ -100,6 +100,15 @@ Apply these rules in order:
 
 Linked and open-exchange follow-ups are one kind for settings and budgets. The decision and exclusion log events carry the basis (`linked` or `open_exchange`) so the logs can tell them apart.
 
+### Guard the first move, not the conversation
+
+A natural conversation should flow, so the two kinds are treated differently before the model's answer is trusted:
+
+- **Follow-up.** When the bot spoke to this author inside the exchange idle window, the message skips the candidate buffer: no pause, no wait for other speakers, no joining cooldown. It still passes the eligibility re-check and the scheduler's own follow-up limits, and the decision still re-classifies it from structure. One model call.
+- **Joining (the unsolicited first move).** It waits in the buffer (pause, "check every N messages", evaluation cooldown) and, if the model chooses `reply` or `react`, a second, stricter yes/no question must agree before the turn counts. A refusal is `join_not_confirmed`; a failed or malformed second answer is `join_confirmation_failed`. Neither acts. A held thought is still kept when the second look says no. An ignored join never triggers the second call.
+
+The history snapshot holds only messages before the one being judged, so the app cannot check "has the room moved on" from the snapshot; the buffer's pause is the guard for that.
+
 ### Exchange idle window
 
 Today the scheduler keys reservations by `exchangeId` and resets the reply count after 120 seconds measured from its success callback; eligibility instead examines bot message timestamps. Phase 1 shares the duration; Phase 2 shares the identity and clock.

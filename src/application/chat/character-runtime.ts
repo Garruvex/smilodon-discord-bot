@@ -438,24 +438,32 @@ export class CharacterRuntime {
     const window = selectDecisionContext(request, settings.context.decisionMessages).events;
     const held = thoughtsModule && thoughtsOn && !shadow ? thoughtsModule.simpleHint(heldKey, scope, turn.now, new Set(window.map((item) => item.messageId))) : null;
     const botName = events.find((item) => item.authorId === botId)?.authorDisplayName ?? "the bot";
-    const outcome = await simple.decide({ sourceContext: request.contextLease!, personality: request.personality, botId, botName, events: window, current, kind, basis,
-      actions, thoughts: thoughtsOn, held, ...(request.turnSignal ? { signal: request.turnSignal } : {}), ...(request.turnDeadlineAt ? { deadlineAt: request.turnDeadlineAt } : {}) });
+    const decisionInput = { sourceContext: request.contextLease!, personality: request.personality, botId, botName, events: window, current, kind, basis,
+      actions, thoughts: thoughtsOn, held, ...(request.turnSignal ? { signal: request.turnSignal } : {}), ...(request.turnDeadlineAt ? { deadlineAt: request.turnDeadlineAt } : {}) };
+    const outcome = await simple.decide(decisionInput);
     const liveProfile = this.profiles.find(guildId);
     if (!liveProfile || !liveProfile.features.chatbot || (this.privacyVersions.get(guildId) ?? 0) !== privacyVersion) {
       this.registry.reset(guildId); emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "privacy_changed" }); throw new SocialOutputSuppressed();
     }
     const threshold = resolveSimpleThreshold(profile.chat.participation, channelId, kind);
     const proposed = outcome.action;
-    const admission = outcome.status !== "valid" ? outcome.failure ?? "decision_failed" : proposed === "ignore" ? "model_ignore" :
+    let admission = outcome.status !== "valid" ? outcome.failure ?? "decision_failed" : proposed === "ignore" ? "model_ignore" :
       proposed === "reply" && !actions.reply || proposed === "react" && !actions.react ? "action_unavailable" :
       proposed === "react" && outcome.reactionSelectionFailed ? "reaction_selection_failed" :
       threshold.value > 0 && outcome.score !== null && outcome.score < threshold.value ? "below_threshold" : "trial_not_sent";
+    // Joining unasked is the riskiest move: a second, stricter question must agree before it counts. Follow-ups skip it.
+    let confirmation: { result: "yes" | "no" | "failed"; latencyMs: number; usage: unknown; failure: string | null } | null = null;
+    if (kind === "joining" && admission === "trial_not_sent" && proposed !== null && proposed !== "ignore") {
+      const second = await simple.confirmJoin(decisionInput, proposed);
+      confirmation = { result: second.confirmed === null ? "failed" : second.confirmed ? "yes" : "no", latencyMs: second.latencyMs, usage: second.usage, failure: second.failure ?? null };
+      if (second.confirmed === null) admission = "join_confirmation_failed"; else if (!second.confirmed) admission = "join_not_confirmed";
+    }
     const thought = outcome.thought;
     let thoughtOutcome: string | null = null;
     if (thought) {
       thoughtOutcome = thought.status === "failed" ? "failed" : shadow ? "shadow" : null;
       if (thoughtOutcome === null) {
-        if (proposed === "ignore" && thought.stance !== "none" && thoughtsModule) {
+        if ((proposed === "ignore" || admission === "join_not_confirmed") && thought.stance !== "none" && thoughtsModule) {
           thoughtsModule.simpleHold(heldKey, scope, turn.now, settings.modules.thoughts.holdSeconds, { sourceMessageId: current.messageId, stance: thought.stance!, length: thought.length! });
           thoughtOutcome = "held";
         } else if (proposed === "reply" && thought.stance !== "none") { thoughtsModule?.simpleClear(heldKey); thoughtOutcome = "would_use"; }
@@ -464,7 +472,7 @@ export class CharacterRuntime {
     }
     this.logger?.info({ ...log, sourceMessageId: current.messageId, kind, basis, status: outcome.status, proposedAction: proposed, emoji: outcome.emoji, admission,
       score: outcome.score, scoreKind: outcome.scoreKind, threshold: threshold.value, thresholdSource: threshold.source, availableReply: actions.reply, availableReact: actions.react,
-      route: outcome.route, latencyMs: outcome.latencyMs, usage: outcome.usage, preview: participation.shadowMode, trial: true,
+      route: outcome.route, latencyMs: outcome.latencyMs, usage: outcome.usage, confirmation, preview: participation.shadowMode, trial: true,
       thought: thought ? { outcome: thoughtOutcome, stance: thought.stance, length: thought.length, want: thought.want, heldOffered: held !== null, failure: thought.failure ?? null,
         latencyMs: thought.latencyMs, usage: thought.usage } : null }, "Simple participation decision");
     return finish(outcome.status);

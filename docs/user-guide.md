@@ -362,7 +362,7 @@ Participation controls are under `/settings-participation`:
 | `preview [enabled]` | Trial run: logs optional replies (follow-ups, joining, name replies, reaction-triggered replies) in the bot logs instead of sending them. Off by default. @mentions and replies to the bot always send. |
 | `observation-channels [add] [remove]` | Channels read passively for follow-ups and joining. |
 | `follow-ups [enabled] [threshold] [interval] [per-exchange] [per-10-minutes]` | Replies in an ongoing exchange without another ping. Off by default. |
-| `joining [enabled] [add] [remove] [threshold] [check-every]` | Joins topics unasked, only in listed channels. Off by default. |
+| `joining [enabled] [add] [remove] [threshold] [check-every]` | Joins topics unasked, only in listed channels. Off by default. A join waits briefly and must pass a second, stricter check; follow-ups don't wait. |
 | `pacing [activity] [evaluation] [text] [reaction] [text-budget] [reaction-budget]` | Activity preset (quiet, balanced, lively) and any overrides of it. |
 | `reset-limits` | Clears every custom pacing, follow-up and resource number. |
 | `bare-pings [mode]` | Brief acknowledgment, or the personality decides. |

@@ -120,3 +120,23 @@ describe("simple route selection", () => {
     expect(selectSimpleRoute({ native: null, dedicated: null, reply: null }, details)).toBeNull();
   });
 });
+
+describe("join confirmation", () => {
+  it("asks a strict yes/no question on the same route and reads only a clear answer", async () => {
+    const seen: string[] = [];
+    const ask = (answer: unknown): SimpleParticipationService => new SimpleParticipationService(route({ generateCharacterData: vi.fn((prompt: string) => { seen.push(prompt); return Promise.resolve(answer); }) }));
+    expect(await ask({ confirm: "yes" }).confirmJoin(await input(), "reply")).toMatchObject({ confirmed: true });
+    expect(await ask({ confirm: "no" }).confirmJoin(await input(), "react")).toMatchObject({ confirmed: false });
+    expect(await ask({ confirm: "maybe" }).confirmJoin(await input(), "reply")).toMatchObject({ confirmed: null, failure: "invalid_output" });
+    expect(await ask({ confirm: "yes", extra: 1 }).confirmJoin(await input(), "reply")).toMatchObject({ confirmed: null });
+    expect(seen[0]).toContain("so be strict"); expect(seen[1]).toContain("add an emoji reaction");
+    expect(seen[0]).not.toContain("<b>");
+  });
+  it("reads the native answer and treats a provider failure as no confirmation", async () => {
+    const nativeAsk = new SimpleParticipationService(route({ generateCharacterData: vi.fn(() => Promise.resolve(native({ confirm: "yes" }, { confirm: 0.8 }))) }, "native", null));
+    expect(await nativeAsk.confirmJoin(await input(), "reply")).toMatchObject({ confirmed: true });
+    const failing = new SimpleParticipationService(route({ generateCharacterData: vi.fn(() => Promise.reject(new Error("down"))) }));
+    expect(await failing.confirmJoin(await input(), "reply")).toMatchObject({ confirmed: null });
+    expect(await new SimpleParticipationService(null).confirmJoin(await input(), "reply")).toMatchObject({ confirmed: null, failure: "unavailable" });
+  });
+});

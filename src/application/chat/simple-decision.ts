@@ -35,6 +35,7 @@ export interface SimpleThoughtOutcome {
   status: "valid" | "failed"; stance: ThoughtStance | null; length: ThoughtLength | null; want: number | null;
   latencyMs: number; usage: CallUsage | null; failure?: FailureCategory | "invalid_output";
 }
+export interface SimpleConfirmation { confirmed: boolean | null; latencyMs: number; usage: CallUsage | null; failure?: FailureCategory | "invalid_output" | "unavailable" }
 export interface SimpleDecisionOutcome {
   status: "valid" | "failed" | "unavailable"; failure?: FailureCategory | "invalid_output" | "timeout_budget";
   action: SimpleAction | null; emoji: string | null; reactionSelectionFailed: boolean;
@@ -68,6 +69,13 @@ function thoughtSchema(route: SimpleRoute): Record<string, unknown> {
     stance: { type: "string", enum: thoughtStances }, length: { type: "string", enum: thoughtLengths } } };
 }
 
+function confirmSchema(route: SimpleRoute): Record<string, unknown> {
+  if (route.source === "native") return { type: "object", "x-native-simple": true, properties: {
+    confirm: { type: "string", enum: ["yes", "no"], description: "Would a thoughtful member of this group clearly welcome the bot jumping in here, right now?" } } };
+  return { type: "object", additionalProperties: false, required: ["confirm"], properties: { confirm: { type: "string", enum: ["yes", "no"] } } };
+}
+
+
 const escape = (value: unknown): string => JSON.stringify(value).replaceAll("<", "\\u003c");
 export function simplePrompt(input: SimpleDecisionInput, purpose: "decision" | "thought", now = input.current.timestampMs): string {
   const messages = [...new Map([...input.events, input.current].map((event) => [event.messageId, event])).values()].sort((a, b) => a.timestampMs - b.timestampMs);
@@ -99,6 +107,7 @@ Data: ${escape(data)}`;
 
 const nativeEnvelope = z.object({ values: z.record(z.unknown()), confidence: z.record(z.unknown()) }).strict();
 const llmEnvelope = z.object({ action: z.unknown(), emoji: z.unknown().optional() }).strict();
+const llmConfirm = z.object({ confirm: z.unknown() }).strict();
 interface DecodedDecision { action: SimpleAction; emoji: string | null; reactionSelectionFailed: boolean; score: number | null }
 // The action is validated first and alone. Emoji problems never void a valid reply or ignore.
 export function decodeSimpleDecision(raw: unknown, native: boolean, allowed: readonly SimpleAction[]): DecodedDecision | null {
@@ -128,6 +137,14 @@ function decodeThought(raw: unknown, native: boolean): { stance: ThoughtStance; 
   return { stance: stance.data, length: length.success ? length.data : "short", want };
 }
 
+// The unsolicited first move is the riskiest action, so it gets a second, stricter look.
+export function confirmationPrompt(input: SimpleDecisionInput, proposed: SimpleAction, now = input.current.timestampMs): string {
+  return `${simplePrompt(input, "decision", now)}
+
+A first check already suggested the bot should ${proposed === "react" ? "add an emoji reaction" : "reply"} to the message marked currentRef. Nobody asked the bot to take part, so be strict.
+Answer yes only if a thoughtful member of this group would clearly welcome it right now. Answer no if it is unclear who the message is for, if it would interrupt people, if it adds little, or if the room has moved on.`;
+}
+
 export class SimpleParticipationService {
   public constructor(private readonly route: SimpleRoute | null, private readonly now: () => number = () => Date.now()) {}
   public get available(): boolean { return this.route !== null; }
@@ -149,6 +166,20 @@ export class SimpleParticipationService {
       throw Object.assign(error instanceof Error ? error : new Error("Decision call failed"), { latencyMs: Math.round(performance.now() - started),
         usage: usage ? { inputTokens: (usage as ChatUsage).inputTokens, outputTokens: (usage as ChatUsage).outputTokens, reasoningTokens: (usage as ChatUsage).reasoningTokens } : null });
     } finally { clearTimeout(timer); }
+  }
+
+  public async confirmJoin(input: SimpleDecisionInput, proposed: SimpleAction): Promise<SimpleConfirmation> {
+    const route = this.route; if (!route) return { confirmed: null, latencyMs: 0, usage: null, failure: "unavailable" };
+    try {
+      const call = await this.call(input, route, confirmationPrompt(input, proposed, this.now()), confirmSchema(route));
+      const raw = route.source === "native" ? nativeEnvelope.safeParse(call.raw) : llmConfirm.safeParse(call.raw);
+      const answer = !raw.success ? null : "values" in raw.data ? raw.data.values.confirm : raw.data.confirm;
+      if (answer !== "yes" && answer !== "no") return { confirmed: null, latencyMs: call.latencyMs, usage: call.usage, failure: "invalid_output" };
+      return { confirmed: answer === "yes", latencyMs: call.latencyMs, usage: call.usage };
+    } catch (error) {
+      if (error instanceof SocialOutputSuppressed) throw error;
+      return { confirmed: null, ...failureDetail(error) };
+    }
   }
 
   // One decision request, plus an independent inner-thought request run at the same time.
