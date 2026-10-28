@@ -1,6 +1,7 @@
 import { PermissionFlagsBits } from "discord.js";
 import { effectiveChatPolicy } from "../../../../application/chat/effective-chat-policy.js";
 import { guardedContextLimits } from "../../../../application/chat/guarded-conversation-context.js";
+import { contextualTurnLimits } from "../../../../application/chat/turn-work-budget.js";
 import { report } from "../registry/builders.js";
 import type { NodeContext } from "../registry/types.js";
 
@@ -15,7 +16,7 @@ export function renderChatPolicy(context: Pick<NodeContext, "profile" | "text">,
     t("ping", { ping: t(policy.participation.barePingMode) }), t("views")];
   const contextLines = [t("common", { reasons: reasons(policy.commonReasons) }),
     t("context", { reasons: reasons(policy.historyReasons.filter((reason) => !policy.commonReasons.includes(reason))), count: policy.context.maxMessages, budget: policy.context.budget }),
-    t("bounds", { pages: guardedContextLimits.pages, pageSize: guardedContextLimits.pageSize, targeted: guardedContextLimits.targetedPages, depth: guardedContextLimits.replyDepth, seconds: guardedContextLimits.workMs / 1000 }),
+    t("bounds", { pages: guardedContextLimits.pages, pageSize: guardedContextLimits.pageSize, targeted: guardedContextLimits.targetedPages, depth: guardedContextLimits.replyDepth, seconds: contextualTurnLimits.totalMs / 1000 }),
     t("storage", { memory: policy.memoryMode, scan: t(policy.scan ? "yes" : "no"), daily: t(policy.daily ? "yes" : "no") }),
     t("access", { chat: policy.roleCounts.chat, admin: policy.roleCounts.administrator, restricted: policy.roleCounts.restricted })];
   const activity = [

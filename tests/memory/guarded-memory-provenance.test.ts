@@ -67,6 +67,16 @@ describe("durable guarded memory claims", () => {
     expect(await privateLease.memories([row])).toHaveLength(1);
   });
 
+  it("prefetches claim dependencies in one batch before verifying them", async () => {
+    const { engine, context, fixture } = await setup(false);
+    const row = (await engine.ingest(fixtureMemoryIngest({ ...base, context }))).ingested[0]!;
+    fixture.port.audienceUserId = "alice";
+    const prepare = vi.fn((_ids: readonly string[]) => Promise.resolve()); fixture.port.prepareValidation = prepare;
+    const lease = await GuardedConversationContext.open(fixture.port, { count: 0, budget: 12000, burstIds: [] }); prepare.mockClear();
+    expect(await lease.memories([row, { ...row, id: "copy" }])).toHaveLength(2);
+    expect(prepare).toHaveBeenCalledWith(["original"], expect.anything());
+  });
+
   it("never writes a claim from a revoked background snapshot", async () => {
     const { engine, context, deny } = await setup(); deny();
     await expect(engine.ingest(fixtureMemoryIngest({ ...base, context }))).rejects.toThrow();

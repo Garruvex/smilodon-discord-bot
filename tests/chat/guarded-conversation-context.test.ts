@@ -187,26 +187,40 @@ describe("guarded conversation context", () => {
     fixture.actors.delete("alice"); expect(await context.validate()).toBe(false);
   });
 
-  it("bounds stalled historical work and emits coverage without waiting for Discord", async () => {
-    vi.useFakeTimers(); const fixture = guardedFixture();
+  it("cancels stalled historical work only when the turn ends and emits coverage", async () => {
+    vi.useFakeTimers(); const fixture = guardedFixture(); const turn = new AbortController(); fixture.port.turnSignal = turn.signal;
     fixture.port.read = (): Promise<GuardedContextSource | null> => new Promise(() => {}); const report = vi.fn(); fixture.port.coverage = report;
-    const pending = GuardedConversationContext.open(fixture.port, policy);
+    let settled = false;
+    const pending = GuardedConversationContext.open(fixture.port, policy).finally(() => { settled = true; });
     const assertion = expect(pending).rejects.toBeInstanceOf(SocialOutputSuppressed);
-    await vi.advanceTimersByTimeAsync(8000); await assertion;
+    await vi.advanceTimersByTimeAsync(60_000); expect(settled).toBe(false);
+    turn.abort(); await assertion;
     expect(report).toHaveBeenCalledWith(expect.objectContaining({ status: "deadline" }));
     expect(fixture.port.page).not.toHaveBeenCalled();
   });
 
-  it("identifies a stalled session phase and cancels within its existing deadline", async () => {
+  it("lets a slow session phase finish without a phase deadline", async () => {
     vi.useFakeTimers(); const fixture = guardedFixture();
+    const work = vi.fn(); fixture.port.work = work;
+    fixture.port.prepareValidation = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 15_000));
+    const context = await GuardedConversationContext.open(fixture.port, policy); work.mockClear();
+    const pending = context.sessions([{ user: { content: context.current.content, createdAt: 4000, sourceMessageId: "current" },
+      assistant: { content: "answer", createdAt: 4500, messageIds: ["delivered"] }, contextProvenance: context.provenance("answer") }]);
+    await vi.advanceTimersByTimeAsync(15_000);
+    await expect(pending).resolves.toBeDefined();
+    expect(work).toHaveBeenCalledWith("sessions", "completed", 15_000);
+  });
+
+  it("identifies a stalled session phase and cancels it when the turn deadline fires", async () => {
+    vi.useFakeTimers(); const fixture = guardedFixture(); const turn = new AbortController(); fixture.port.turnSignal = turn.signal;
     const work = vi.fn(); fixture.port.work = work;
     fixture.port.prepareValidation = (): Promise<void> => new Promise(() => {});
     const context = await GuardedConversationContext.open(fixture.port, policy); work.mockClear();
     const pending = context.sessions([{ user: { content: context.current.content, createdAt: 4000, sourceMessageId: "current" },
       assistant: { content: "answer", createdAt: 4500, messageIds: ["delivered"] }, contextProvenance: context.provenance("answer") }]);
     const assertion = expect(pending).rejects.toBeInstanceOf(SocialOutputSuppressed);
-    await vi.advanceTimersByTimeAsync(8000); await assertion;
-    expect(work).toHaveBeenCalledExactlyOnceWith("sessions", "deadline", 8000);
+    await vi.advanceTimersByTimeAsync(30_000); turn.abort(); await assertion;
+    expect(work).toHaveBeenCalledExactlyOnceWith("sessions", "deadline", 30_000);
     expect(context.provenance("reply")).toBeNull();
   });
 

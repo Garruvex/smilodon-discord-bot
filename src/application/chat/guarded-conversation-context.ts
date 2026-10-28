@@ -14,7 +14,7 @@ import { immutableSnapshot } from "../context/immutable-snapshot.js";
 import { isConversationSource } from "../context/conversation-source-registry.js";
 
 export const guardedContextLimits = { pageSize: 100, pages: 3, targetedPages: 5, replyDepth: 20, overflowDepth: 40, overflowChars: 12000, messageChars: 4000, replyChars: 6000, burstMessages: 16, burstChars: 6000, targetedMessages: 8,
-  dependencies: 128, sourceReads: 4096, workMs: 20_000, phaseMs: 8_000, maxValidationPasses: 64 } as const;
+  dependencies: 128, sourceReads: 4096, maxValidationPasses: 64 } as const;
 export interface GuardedContextSource {
   sourceMessageId?: string | null;
   assets?: readonly GuardedAssetDescriptor[];
@@ -86,7 +86,6 @@ export class GuardedConversationContext {
   public get scope(): Readonly<{ guildId: string; channelId: string; actorId: string | null }> { return Object.freeze({ guildId: this.port.guildId, channelId: this.port.channelId, actorId: this.port.actorId }); }
   public get cancellationSignal(): AbortSignal | undefined { return this.port.turnSignal; }
   public get admittedActorIds(): readonly string[] { return Object.freeze([...new Set([...this.reactionActors.keys(), ...this.identityActors])]); }
-  private remainingMs: number = guardedContextLimits.workMs;
   private reads = 0;
   private passes = 0;
   private closed = false;
@@ -132,22 +131,25 @@ export class GuardedConversationContext {
     const work = this.phaseQueue.then(() => this.runPhase(operation, phase));
     this.phaseQueue = work.then(() => undefined, () => undefined); return work;
   }
+  // Phases have no budget of their own. Only the turn deadline (turnSignal)
+  // cancels in-flight work, so slow rate-limited reads delay a turn rather
+  // than suppressing it.
   private async runPhase<T>(operation: () => Promise<T>, phase: GuardedContextPhase): Promise<T> {
-    if (this.closed || !this.port.policyCurrent() || this.remainingMs <= 0) throw new SocialOutputSuppressed();
+    const turn = this.port.turnSignal;
+    if (this.closed || !this.port.policyCurrent() || turn?.aborted) throw new SocialOutputSuppressed();
     const controller = new AbortController(); this.signal = controller.signal;
     if (!this.port.snapshotCurrent) this.cache = new Map();
-    const started = Date.now(); let timer: ReturnType<typeof setTimeout> | undefined;
+    const started = Date.now(); let cancel: (() => void) | undefined;
     let status: "completed" | "deadline" | "failed" = "failed";
     try {
       const result = await Promise.race([operation(), new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => { status = "deadline"; this.closed = true; controller.abort(); this.coverageReport.status = "deadline"; reject(new SocialOutputSuppressed()); },
-          Math.min(this.remainingMs, guardedContextLimits.phaseMs));
+        cancel = () => { status = "deadline"; this.closed = true; controller.abort(); this.coverageReport.status = "deadline"; reject(new SocialOutputSuppressed()); };
+        turn?.addEventListener("abort", cancel, { once: true });
       })]);
       status = "completed"; return result;
     } finally {
-      if (timer) clearTimeout(timer);
-      const durationMs = Date.now() - started; this.remainingMs -= durationMs;
-      this.port.work?.(phase, status, durationMs);
+      if (cancel) turn?.removeEventListener("abort", cancel);
+      this.port.work?.(phase, status, Date.now() - started);
     }
   }
 
@@ -383,6 +385,12 @@ export class GuardedConversationContext {
   private async claims(records: readonly Memory[], retain: boolean, now: number, character: boolean, classification = false): Promise<Memory[]> {
     return this.phase(async () => {
       const allowed: Memory[] = []; let chars = 0;
+      // Claim proofs usually depend on messages older than the history window.
+      // Page them in together instead of one rate-limited fetch per message.
+      const dependencyIds = records.slice(0, 128).flatMap((record) => memoryClaimProof(record.contextProvenance, record)?.dependencies
+        .filter((dependency) => dependency.guildId === this.port.guildId && dependency.channelId === this.port.channelId)
+        .map((dependency) => dependency.messageId) ?? []);
+      if (dependencyIds.length) await this.port.prepareValidation?.([...new Set(dependencyIds)], this.signal).catch(() => undefined);
       for (const record of records.slice(0, 128)) {
         if (allowed.length === 20) break;
         if (record.statement.length > 1000 || chars + record.statement.length > 3000) continue;
