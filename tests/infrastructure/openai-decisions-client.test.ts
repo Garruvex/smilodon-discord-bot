@@ -64,6 +64,13 @@ describe("optional native questions", () => {
       expect(Object.keys(result.answers)).toEqual(["action"]);
     }
   });
+  it("keeps the app-side optional marker out of the request body", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(nativeDecisionBody(simple))); vi.stubGlobal("fetch", fetcher);
+    await client().decide("Synthetic", simple);
+    const sent = JSON.parse(fetcher.mock.calls[0]![1]!.body as string) as { questions: Record<string, unknown>[] };
+    expect(sent.questions.every((question) => !("optional" in question))).toBe(true);
+    expect(sent.questions[1]).toEqual({ type: "choice", name: "emoji", instructions: "Emoji?", choices: [{ value: "👍" }, { value: "none" }] });
+  });
   it("still rejects a refused required answer, a duplicate or a missing answer", async () => {
     await expect(run((body) => { body.answers[0] = { type: "refusal", name: "action" }; })).rejects.toThrow();
     await expect(run((body) => { body.answers[1] = body.answers[0]; })).rejects.toThrow();

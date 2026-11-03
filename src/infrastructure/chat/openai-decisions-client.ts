@@ -34,7 +34,9 @@ export class OpenAiDecisionsClient {
     const response = await fetch(this.url, { method: "POST", redirect: "error",
       headers: { Authorization: `Bearer ${this.config.apiKey}`, "Content-Type": "application/json" },
       // Native typed inference: no reasoning, verbosity, response_format or generated-text budget.
-      body: JSON.stringify({ model: this.config.model, input, questions }), signal: options?.signal ?? AbortSignal.timeout(12_000) });
+      // "optional" is an app-side validation policy; the endpoint rejects unknown question fields.
+      body: JSON.stringify({ model: this.config.model, input, questions: questions.map(({ optional: _optional, ...wire }) => wire) }),
+      signal: options?.signal ?? AbortSignal.timeout(12_000) });
     if (!response.ok) throw new ChatProviderError(`Decisions endpoint returned HTTP ${response.status}`, response.status, null);
     const body: unknown = await response.json();
     const parsed = responseSchema.parse(body);
