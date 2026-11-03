@@ -18,7 +18,6 @@ export class GuardedBackgroundContext {
   public readonly messages: readonly Readonly<ChannelHistoryMessage>[];
   private closed = false;
   private passes = 0;
-  private remainingValidationMs = 60_000;
   private publicWebUsed = false;
   private readonly publicCitations = new Set<string>();
   private readonly publicTools = new Map<string, { name: string; outputHash: string }>();
@@ -45,19 +44,22 @@ export class GuardedBackgroundContext {
     await context.check(); return context;
   }
 
+  // No cumulative budget: a summary runs many passes around slow model calls,
+  // and rate-limited reads should delay it rather than drop its memories. The
+  // per-pass timer only catches a read that never settles.
   public async check(): Promise<void> {
-    if (!registered.has(this) || this.closed || ++this.passes > 256 || this.remainingValidationMs <= 0) throw new SocialOutputSuppressed();
+    if (!registered.has(this) || this.closed || ++this.passes > 256) throw new SocialOutputSuppressed();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const controller = new AbortController(); let status: BackgroundValidationStatus = "changed"; const started = Date.now();
+    const controller = new AbortController(); let status: BackgroundValidationStatus = "changed";
     try {
       const valid = await Promise.race([
         (async (): Promise<boolean> => await this.policyCurrent() && !!this.reader.validateBatch && await this.reader.validateBatch(this.messages, controller.signal) && await this.policyCurrent())(),
-        new Promise<boolean>((resolve) => { timer = setTimeout(() => { status = "deadline"; controller.abort(); resolve(false); }, Math.min(8000, this.remainingValidationMs)); }),
+        new Promise<boolean>((resolve) => { timer = setTimeout(() => { status = "deadline"; controller.abort(); resolve(false); }, 30_000); }),
       ]);
       if (!valid) throw new SocialOutputSuppressed();
       status = "current";
     } catch (error) { this.closed = true; throw error; }
-    finally { if (timer) clearTimeout(timer); this.remainingValidationMs -= Date.now() - started; this.report?.(status); }
+    finally { if (timer) clearTimeout(timer); this.report?.(status); }
   }
 
   public provenance(output: string, purpose: "memory_claim" | "character_state" | "relation" | "identity_alias" = "memory_claim", userId: string | null = null): ContextProvenance | null {

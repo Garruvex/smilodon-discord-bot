@@ -80,6 +80,15 @@ describe("registered background model boundary", () => {
     const reader = { readBatch: vi.fn(), validateBatch: vi.fn(() => new Promise<boolean>(() => undefined)) };
     const pending = GuardedBackgroundContext.open("summary", [source], reader, () => true);
     const rejected = expect(pending).rejects.toBeInstanceOf(SocialOutputSuppressed);
-    await vi.advanceTimersByTimeAsync(8000); await rejected;
+    await vi.advanceTimersByTimeAsync(30_000); await rejected;
+  });
+
+  it("keeps validating across passes whose total time exceeds a minute", async () => {
+    vi.useFakeTimers();
+    const reader = { readBatch: vi.fn(), validateBatch: vi.fn(() => new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 5000))) };
+    const opening = GuardedBackgroundContext.open("summary", [source], reader, () => true);
+    await vi.advanceTimersByTimeAsync(5000); const context = await opening;
+    for (let pass = 0; pass < 15; pass++) { const check = context.check(); await vi.advanceTimersByTimeAsync(5000); await check; }
+    expect(context.provenance("fact")).not.toBeNull();
   });
 });
