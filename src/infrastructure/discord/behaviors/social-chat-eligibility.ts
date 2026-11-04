@@ -71,8 +71,9 @@ export class SocialChatEligibility {
     if (origin === undefined) return reject("origin_lookup_failed");
     if (origin && origin.origin !== "chat") return reject("utility_interaction");
     if (message.author.bot && !origin) return reject("utility_or_unknown_bot_output");
-    // Reply ancestry is collected and filtered independently by the context
-    // owner. An excluded ancestor must not hide this human's own wording.
+    const utilityReply = await this.repliesToUtilityOutput(message, true);
+    if (utilityReply === undefined) return reject("origin_lookup_failed");
+    if (utilityReply) return reject("utility_interaction");
     return { eligible: true, reason: "eligible" };
   }
   public constructor(
@@ -155,8 +156,24 @@ export class SocialChatEligibility {
     if (origin === undefined) return reject("origin_lookup_failed");
     if (origin && origin.origin !== "chat") return reject("utility_interaction");
     if (message.author.bot && !origin) return reject("utility_or_unknown_bot_output");
-    // Admission checks only this event. The common collector owns reply
-    // ancestry, filters excluded ancestors and never fetches another channel.
+    const utilityReply = await this.repliesToUtilityOutput(message);
+    if (utilityReply === undefined) return reject("origin_lookup_failed");
+    if (utilityReply) return reject("utility_interaction");
     return { eligible: true, reason: "eligible" };
+  }
+
+  // A reply to the bot's own non-chat output (link fixes, game narration,
+  // panels) belongs to that utility, not to chat: no reaction, no context.
+  // Only the recorded origin decides; untagged legacy messages keep today's
+  // behavior, and a typed @mention still asks chat directly.
+  private async repliesToUtilityOutput(message: Message, fresh = false): Promise<boolean | undefined> {
+    const target = message.reference?.messageId;
+    if (message.author.bot || !target || message.reference?.channelId && message.reference.channelId !== message.channelId ||
+        !message.mentions?.repliedUser?.bot) return false;
+    const botId = message.client?.user?.id;
+    if (botId && (message.content.includes(`<@${botId}>`) || message.content.includes(`<@!${botId}>`))) return false;
+    const origin = await this.findOrigin(message.guildId!, message.channelId, target, fresh).catch(() => undefined);
+    if (origin === undefined) return undefined;
+    return !!origin && origin.origin !== "chat";
   }
 }

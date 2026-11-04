@@ -97,14 +97,23 @@ describe("social eligibility boundary", () => {
     profile.chat.channelMemoryModes = { thread: "disabled" };
     expect((await policy.check(current, "observation")).eligible).toBe(false);
   });
-  it("excludes utility events themselves without rejecting a human question that references them", async () => {
+  it("ignores replies to the bot's utility output in admission and context, but not replies to chat or a typed mention", async () => {
     const { profile, records, policy, message } = fixture();
+    policy.bindGuardedForgetPolicy(() => Promise.resolve(false));
+    const toBot = (reply: Message, content = "nice"): Message => Object.assign(reply, { content, mentions: { repliedUser: { id: "bot", bot: true } }, client: { user: { id: "bot" } } });
     message("utility", true);
-    records.set("utility", { messageId: "utility", guildId: profile.guildId, channelId: "channel", origin: "link_fix", sourceMessageId: null, createdAt: 1 });
-    const first = message("first", false, "utility");
-    const second = message("second", false, "first");
-    expect((await policy.check(first)).eligible).toBe(true);
-    expect((await policy.check(second)).eligible).toBe(true);
+    records.set("utility", { messageId: "utility", guildId: profile.guildId, channelId: "channel", origin: "link_fix", sourceMessageId: "link", createdAt: 1 });
+    const first = toBot(message("first", false, "utility"));
+    expect(await policy.check(first)).toMatchObject({ eligible: false, reason: "utility_interaction" });
+    expect(await policy.check(first, "observation")).toMatchObject({ eligible: false, reason: "utility_interaction" });
+    expect(await policy.checkGuardedSource(first, first.member, false, true)).toMatchObject({ eligible: false, reason: "utility_interaction" });
+    expect((await policy.check(toBot(message("asked", false, "utility"), "<@bot> what is this?"))).eligible).toBe(true);
+    message("chat", true);
+    records.set("chat", { messageId: "chat", guildId: profile.guildId, channelId: "channel", origin: "chat", sourceMessageId: null, createdAt: 1 });
+    expect((await policy.check(toBot(message("answer", false, "chat")))).eligible).toBe(true);
+    message("legacy", true);
+    expect((await policy.check(toBot(message("old", false, "legacy")))).eligible).toBe(true);
+    expect((await policy.check(message("second", false, "first"))).eligible).toBe(true);
     expect((await policy.check(message("new"))).eligible).toBe(true);
     expect((await policy.check(message("utility", true))).eligible).toBe(false);
   });
