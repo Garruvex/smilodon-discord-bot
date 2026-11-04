@@ -10,6 +10,7 @@ export interface ParticipationOverride {
   continuationEnabled?: boolean | undefined;
   spontaneousEnabled?: boolean | undefined;
   reactionsEnabled?: boolean | undefined;
+  joinConfirmation?: boolean | undefined;
   activity?: "quiet" | "balanced" | "lively" | undefined;
 }
 export interface ParticipationSettings {
@@ -23,6 +24,8 @@ export interface ParticipationSettings {
   barePingMode: "acknowledge" | "personality";
   activity: "quiet" | "balanced" | "lively";
   shadowMode: boolean;
+  // A second, stricter question before an unsolicited join counts (simple contract). Off unless set.
+  joinConfirmation?: boolean | undefined;
   decisionContract?: DecisionContract | undefined;
   simpleActionThresholds?: SimpleActionThresholds | undefined;
   channelOverrides: Readonly<Record<string, ParticipationOverride>>;
@@ -47,12 +50,13 @@ export const defaultParticipation: ParticipationSettings = {
 
 const presets: Record<ParticipationSettings["activity"], ChatActivityLimits> = {
   quiet: { continuationIntervalMs: 30_000, continuationPerExchange: 6, continuationPerWindow: 15, evaluationCooldownMs: 30_000, textCooldownMs: 120_000, reactionCooldownMs: 40_000, textPerWindow: 1, reactionsPerWindow: 3 },
-  balanced: { continuationIntervalMs: 15_000, continuationPerExchange: 10, continuationPerWindow: 30, evaluationCooldownMs: 25_000, textCooldownMs: 90_000, reactionCooldownMs: 30_000, textPerWindow: 3, reactionsPerWindow: 5 },
-  lively: { continuationIntervalMs: 15_000, continuationPerExchange: 12, continuationPerWindow: 40, evaluationCooldownMs: 20_000, textCooldownMs: 60_000, reactionCooldownMs: 20_000, textPerWindow: 4, reactionsPerWindow: 6 },
+  balanced: { continuationIntervalMs: 10_000, continuationPerExchange: 12, continuationPerWindow: 40, evaluationCooldownMs: 15_000, textCooldownMs: 45_000, reactionCooldownMs: 20_000, textPerWindow: 6, reactionsPerWindow: 8 },
+  lively: { continuationIntervalMs: 5_000, continuationPerExchange: 20, continuationPerWindow: 60, evaluationCooldownMs: 8_000, textCooldownMs: 20_000, reactionCooldownMs: 10_000, textPerWindow: 12, reactionsPerWindow: 12 },
 };
 
 export interface ResolvedParticipation extends ParticipationSettings {
   messagesPerDecision: number;
+  joinConfirmation: boolean;
   reactionsEnabled?: boolean | undefined;
   limits: ChatActivityLimits;
 }
@@ -65,6 +69,7 @@ export function resolveParticipation(settings: ParticipationSettings | undefined
   return {
     ...configured, ...override,
     shadowMode: override.shadowMode ?? configured.shadowMode,
+    joinConfirmation: override.joinConfirmation ?? configured.joinConfirmation ?? false,
     messagesPerDecision: configured.messagesPerDecision ?? PARTICIPATION_LIMITS.joinEveryMessages.default,
     continuationEnabled: override.continuationEnabled ?? configured.continuationEnabled,
     activity: override.activity ?? configured.activity,

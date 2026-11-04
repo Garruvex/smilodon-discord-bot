@@ -465,9 +465,9 @@ export class CharacterRuntime {
       proposed === "reply" && !actions.reply || proposed === "react" && !actions.react ? "action_unavailable" :
       proposed === "react" && outcome.reactionSelectionFailed ? "reaction_selection_failed" :
       threshold.value > 0 && outcome.score !== null && outcome.score < threshold.value ? "below_threshold" : "would_act";
-    // Joining unasked is the riskiest move: a second, stricter question must agree before it counts. Follow-ups skip it.
+    // With join confirmation on, joining unasked needs a second question to agree. Follow-ups skip it.
     let confirmation: { result: "yes" | "no" | "failed"; latencyMs: number; usage: unknown; failure: string | null } | null = null;
-    if (kind === "joining" && admission === "would_act" && proposed !== null && proposed !== "ignore") {
+    if (kind === "joining" && participation.joinConfirmation && admission === "would_act" && proposed !== null && proposed !== "ignore") {
       const second = await simple.confirmJoin(decisionInput, proposed);
       confirmation = { result: second.confirmed === null ? "failed" : second.confirmed ? "yes" : "no", latencyMs: second.latencyMs, usage: second.usage, failure: second.failure ?? null };
       if (second.confirmed === null) admission = "join_confirmation_failed"; else if (!second.confirmed) admission = "join_not_confirmed";
@@ -492,7 +492,8 @@ export class CharacterRuntime {
       thought: thought ? { outcome: thoughtOutcome, stance: thought.stance, length: thought.length, want: thought.want, heldOffered: held !== null, failure: thought.failure ?? null,
         latencyMs: thought.latencyMs, usage: thought.usage } : null }, "Simple participation decision");
     if (admission !== "admitted" || proposed === null || proposed === "ignore") return finish(outcome.status);
-    const reaction = proposed === "react" ? emojiReactionIdentifier(outcome.emojiChoice) : null;
+    // A reply may carry the decision's extra reaction; a react needs one.
+    const reaction = outcome.emojiChoice ? emojiReactionIdentifier(outcome.emojiChoice) : null;
     if (proposed === "react" && !reaction) return finish(outcome.status);
     const decision = this.decisionEngine.admitSimple(request, { action: proposed, kind, now: turn.now, policyVersion: fingerprint });
     reportConversationDecision(this.logger, decision, "preflight", resolveConversationTrigger(request).interaction);
@@ -500,9 +501,9 @@ export class CharacterRuntime {
     if (!request.characterEvaluation && !request.characterShadow) await this.registry.observe(current, turn);
     const context = await this.registry.contribute(turn);
     const steering = proposed === "reply" && thought?.status === "valid" && !shadow && thought.stance && thought.stance !== "none" && thought.length ?
-      [{ moduleId: "participation", text: `Planned approach: ${lengthText[thought.length]} ${stanceText[thought.stance]}. Stay natural; say nothing if there is nothing real to add.` }] : [];
+      [{ moduleId: "participation", text: `Planned approach: ${lengthText[thought.length]} ${stanceText[thought.stance]}. Stay natural and in character.` }] : [];
     request = { ...request, characterContext: [...(request.characterContext ?? []), ...context, ...steering,
-      ...(proposed === "reply" ? [{ moduleId: "participation", text: "You decided to join this conversation. Reply briefly and naturally to the current message; a short answer or acknowledgment is fine. Do not invent facts or promise actions." }] : [])] };
+      ...(proposed === "reply" ? [{ moduleId: "participation", text: `${kind === "followup" ? "You are still talking with this person." : "You decided to join this conversation."} Reply briefly and naturally to the current message; a short answer or acknowledgment is fine. Do not invent facts or promise actions.` }] : [])] };
     turn.request = request;
     return { turn, request, fingerprint, allowed: true, decisionStatus: outcome.status, acceptedContribution: null, exchangeId: `simple:${current.authorId}`, targetMessageId: null,
       memoryContextSignature: JSON.stringify(context), participation: { action: proposed === "reply" ? "reply" : "ignore", reaction }, styleUserId: null, styleSignature: null,

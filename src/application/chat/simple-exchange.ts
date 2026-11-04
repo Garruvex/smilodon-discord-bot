@@ -37,10 +37,11 @@ export function classifySimpleTurn(input: { events: readonly ChannelHistoryMessa
     cursor = cursor.replyToMessageId ? byId.get(cursor.replyToMessageId) : undefined;
   }
 
-  // Rule 4: the bot's latest message in the channel was addressed to this author, inside
-  // the idle window, after this process started, and the author has not turned elsewhere.
-  const last = [...history].reverse().find(isBot);
-  if (last && last.replyToAuthorId === current.authorId && last.timestampMs >= startedAt &&
+  // Rule 4: the bot's latest message to this author is inside the idle window, after this
+  // process started, and the author has not turned elsewhere. Answering someone else in
+  // between does not close it: group chats run several exchanges at once.
+  const last = [...history].reverse().find((event) => isBot(event) && event.replyToAuthorId === current.authorId);
+  if (last && last.timestampMs >= startedAt &&
       current.timestampMs - last.timestampMs <= exchangeIdleMs &&
       !history.some((event) => event.timestampMs > last.timestampMs && event.authorId === current.authorId &&
         elsewhere(event, history.filter((candidate) => candidate.timestampMs < event.timestampMs), byId, botId, aliases))) {

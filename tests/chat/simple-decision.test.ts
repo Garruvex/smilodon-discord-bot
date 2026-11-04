@@ -21,14 +21,15 @@ const route = (provider: StructuredCharacterProvider, source: SimpleRoute["sourc
 const native = (values: Record<string, unknown>, confidence: Record<string, unknown> = { action: 0.9 }): unknown => ({ values, confidence });
 
 describe("simple decision decoding", () => {
-  it("accepts a valid LLM action and reads the emoji only for react", () => {
-    expect(decodeSimpleDecision({ action: "reply", emoji: "👍" }, false, all)).toEqual({ action: "reply", emoji: null, reactionSelectionFailed: false, score: null });
+  it("accepts a valid LLM action, requires the emoji for react and keeps it as an extra on reply", () => {
+    expect(decodeSimpleDecision({ action: "reply", emoji: "👍" }, false, all)).toEqual({ action: "reply", emoji: "👍", reactionSelectionFailed: false, score: null });
+    expect(decodeSimpleDecision({ action: "reply", emoji: "none" }, false, all)).toEqual({ action: "reply", emoji: null, reactionSelectionFailed: false, score: null });
     expect(decodeSimpleDecision({ action: "react", emoji: "😂" }, false, all)).toMatchObject({ action: "react", emoji: "😂", reactionSelectionFailed: false });
     expect(decodeSimpleDecision({ action: "ignore", emoji: "none" }, false, all)).toMatchObject({ action: "ignore", emoji: null });
   });
   it("never lets a bad emoji void reply or ignore, but fails a react", () => {
     for (const emoji of [undefined, "none", "🦄", 7, null]) {
-      expect(decodeSimpleDecision({ action: "reply", emoji }, false, all)).toMatchObject({ action: "reply", reactionSelectionFailed: false });
+      expect(decodeSimpleDecision({ action: "reply", emoji }, false, all)).toMatchObject({ action: "reply", emoji: null, reactionSelectionFailed: false });
       expect(decodeSimpleDecision({ action: "ignore", emoji }, false, all)).toMatchObject({ action: "ignore" });
       expect(decodeSimpleDecision({ action: "react", emoji }, false, all)).toMatchObject({ action: "react", emoji: null, reactionSelectionFailed: true });
     }
@@ -142,7 +143,7 @@ describe("join confirmation", () => {
     expect(await ask({ confirm: "no" }).confirmJoin(await input(), "react")).toMatchObject({ confirmed: false });
     expect(await ask({ confirm: "maybe" }).confirmJoin(await input(), "reply")).toMatchObject({ confirmed: null, failure: "invalid_output" });
     expect(await ask({ confirm: "yes", extra: 1 }).confirmJoin(await input(), "reply")).toMatchObject({ confirmed: null });
-    expect(seen[0]).toContain("so be strict"); expect(seen[1]).toContain("add an emoji reaction");
+    expect(seen[0]).toContain("This is a second look"); expect(seen[1]).toContain("add an emoji reaction");
     expect(seen[0]).not.toContain("<b>");
   });
   it("reads the native answer and treats a provider failure as no confirmation", async () => {

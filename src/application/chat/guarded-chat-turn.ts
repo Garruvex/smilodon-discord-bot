@@ -259,6 +259,8 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
   delete response.replyTargetMessageId; delete response.inferredAddressing;
   await check();
   const engine = new ConversationDecisionEngine();
+  // A simple-contract reply also carries the reaction the decision chose from the server's allowlist.
+  if (prepared?.conversationDecision?.decision.reasonCode === "simple_reply" && prepared.participation?.reaction) response.reactionEmoji = prepared.participation.reaction;
   let decision = engine.finalize(request, response, dependencies.now(), prepared?.fingerprint, prepared?.conversationDecision);
   if (resolveConversationTrigger(input).explicit && (response.responseIntent === "social" || response.responseIntent === "closing") && dependencies.admitSocialPing && !dependencies.admitSocialPing()) {
     decision = { ...decision, status: "denied", decision: { ...decision.decision, action: "silent", reasonCode: "duplicate_ping" } };

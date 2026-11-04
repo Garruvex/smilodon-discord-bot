@@ -35,7 +35,7 @@ interface Harness {
   run: (overrides: Partial<ChatRequest> & Pick<Partial<ChatConversationInput>, "activityLimits"> & { current: ChannelHistoryMessage; history?: ChannelHistoryMessage[] }) => Promise<{ result: ChatResponse; deliver: ReturnType<typeof vi.fn> }>;
   setNow: (value: number) => void;
 }
-function setup(instance: DecisionContract = "simple", decide: (prompt: string) => unknown = (prompt) => prompt.includes("so be strict") ? { confirm: "yes" } : { action: "reply", emoji: "none" }): Harness {
+function setup(instance: DecisionContract = "simple", decide: (prompt: string) => unknown = (prompt) => prompt.includes("This is a second look") ? { confirm: "yes" } : { action: "reply", emoji: "none" }): Harness {
   const connection = createSqliteDatabaseConnection(mkdtempSync(join(tmpdir(), "simple-runtime-"))); connections.push(connection);
   const repository = new SqliteMemoryRepository(connection.database); const doc = freshDocument(); doc.features.chatbot = true; doc.features.channelHistory = true; doc.channels.chatbot = [channelId];
   const profiles = memoryProvider(doc);
@@ -69,9 +69,9 @@ describe("simple participation", () => {
       try {
         const { result, deliver } = await run({ current: message("current", 99_000, actorUserId, "anyone know a good cat toy") });
         expect(generate).not.toHaveBeenCalled();
-        expect(simpleCall).toHaveBeenCalledTimes(2); // the decision, then the joining double check
+        expect(simpleCall).toHaveBeenCalledTimes(1); // no joining double check outside the quiet preset
         expect(decisions(logger)).toHaveLength(1);
-        expect(decisions(logger)[0]).toMatchObject({ contract: "simple", contractSource: "instance", kind: "joining", basis: null, proposedAction: "reply", confirmation: { result: "yes" },
+        expect(decisions(logger)[0]).toMatchObject({ contract: "simple", contractSource: "instance", kind: "joining", basis: null, proposedAction: "reply", confirmation: null,
           preview: shadowMode, status: "valid", scoreKind: "unavailable", route: { source: "reply", model: "decision-model", reasoningEffort: "low" },
           admission: shadowMode ? "preview_not_sent" : "admitted", trial: shadowMode });
         expect(JSON.stringify(decisions(logger)[0])).not.toContain("cat toy");
@@ -81,7 +81,7 @@ describe("simple participation", () => {
     }
   });
   it("reacts with the chosen emoji and writes no reply text", async () => {
-    const { profiles, reply, run, logger, service } = setup("simple", (prompt) => prompt.includes("so be strict") ? { confirm: "yes" } : { action: "react", emoji: "😂" });
+    const { profiles, reply, run, logger, service } = setup("simple", (prompt) => prompt.includes("This is a second look") ? { confirm: "yes" } : { action: "react", emoji: "😂" });
     await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
     try {
       const { result, deliver } = await run({ current: message("current", 99_000, actorUserId, "my cat just fell off the shelf"), historyReactionsEnabled: true });
@@ -90,8 +90,17 @@ describe("simple participation", () => {
       expect(result.reactionEmoji).toBe("😂"); expect(result.replyTargetMessageId).toBe("current");
     } finally { service.stopScheduling(); await service.drain(); }
   });
+  it("replies and also reacts when the decision picks an emoji with reply", async () => {
+    const { profiles, reply, run, service } = setup("simple", () => ({ action: "reply", emoji: "🎉" }));
+    await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    try {
+      const { result, deliver } = await run({ current: message("current", 99_000, actorUserId, "we shipped it"), historyReactionsEnabled: true });
+      expect(reply).toHaveBeenCalledOnce(); expect(deliver).toHaveBeenCalledOnce();
+      expect(result.reactionEmoji).toBe("🎉"); expect(result.conversationDecision?.decision.action).toBe("reply_and_react");
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
   it("hands a server emoji to Discord in its mention form", async () => {
-    const { profiles, runtime, run, service } = setup("simple", (prompt) => prompt.includes("so be strict") ? { confirm: "yes" } : { action: "react", emoji: ":party_blob:" });
+    const { profiles, runtime, run, service } = setup("simple", (prompt) => prompt.includes("This is a second look") ? { confirm: "yes" } : { action: "react", emoji: ":party_blob:" });
     runtime.bindEmojiSource(() => [{ id: "123456789012345678", name: "party_blob", animated: true }]);
     await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
     try {
@@ -143,10 +152,10 @@ describe("simple participation", () => {
       expect(decisions(logger)[0]).toMatchObject({ kind: "followup", basis: "open_exchange", proposedAction: "reply" });
     } finally { service.stopScheduling(); await service.drain(); }
   });
-  it("double checks an unsolicited join, and a refusal or failed check means no action", async () => {
+  it("double checks an unsolicited join when join confirmation is on, and a refusal or failed check means no action", async () => {
     for (const [confirm, admission, result] of [["no", "join_not_confirmed", "no"], ["maybe", "join_confirmation_failed", "failed"]] as const) {
-      const { profiles, run, logger, simpleCall, service } = setup("simple", (prompt) => prompt.includes("so be strict") ? { confirm } : { action: "reply", emoji: "none" });
-      await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+      const { profiles, run, logger, simpleCall, service } = setup("simple", (prompt) => prompt.includes("This is a second look") ? { confirm } : { action: "reply", emoji: "none" });
+      await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId], joinConfirmation: true } });
       try {
         await run({ current: message("current", 99_000, actorUserId, "anyone know a good cat toy") });
         expect(simpleCall).toHaveBeenCalledTimes(2);
@@ -249,7 +258,7 @@ describe("simple participation", () => {
   });
   it("steers an admitted reply with the held thought's stance and length, never with model-written text", async () => {
     const answer = (prompt: string): unknown => prompt.includes("Imagine the bot replies") ? { stance: "joke", length: "one_line" } :
-      prompt.includes("so be strict") ? { confirm: "yes" } : { action: "reply", emoji: "none" };
+      prompt.includes("This is a second look") ? { confirm: "yes" } : { action: "reply", emoji: "none" };
     const { profiles, reply, run, service } = setup("simple", answer);
     await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] }, character: { enabled: true, modules: { thoughts: { enabled: true, shadow: false } } } });
     try {

@@ -93,7 +93,8 @@ describe("scheduler diagnostic outcomes", () => {
     const { logger, records } = captureDiagnosticLogger();
     const scheduler = new ChatScheduler(() => now, 1, 12, 256, logger);
     const limits = { ...balancedChatLimits, evaluationCooldownMs: 100, optionalTurnsPerWindow: 1 };
-    const operation = vi.fn(() => Promise.resolve("silent"));
+    // The join cooldown runs from delivered output; a silent check does not start it.
+    const operation = vi.fn(() => { scheduler.reserveOutput("g:c", "reaction", limits, true)!(true); return Promise.resolve("reacted"); });
     await scheduler.run("g:c", true, limits, operation);
     await scheduler.run("g:c", true, limits, operation);
     now = 101;
@@ -101,6 +102,17 @@ describe("scheduler diagnostic outcomes", () => {
     expect(operation).toHaveBeenCalledOnce();
     expect(terminalQueueEvents(records).map((record) => record.reason)).toEqual(["executed", "evaluation_cooldown", "evaluation_budget"]);
     expect(new Set(terminalQueueEvents(records).map((record) => record.jobId)).size).toBe(3);
+    scheduler.stop();
+  });
+
+  it("does not hold back the next join check after a silent one", async () => {
+    const scheduler = new ChatScheduler(() => 0, 1, 12, 256, null);
+    const limits = { ...balancedChatLimits, evaluationCooldownMs: 100 };
+    const operation = vi.fn(() => Promise.resolve("silent"));
+    await scheduler.run("g:c", true, limits, operation);
+    expect(scheduler.evaluationDelayMs("g:c", limits)).toBe(0);
+    await scheduler.run("g:c", true, limits, operation);
+    expect(operation).toHaveBeenCalledTimes(2);
     scheduler.stop();
   });
 

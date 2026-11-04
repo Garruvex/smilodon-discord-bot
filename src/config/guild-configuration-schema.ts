@@ -113,6 +113,7 @@ const guildChatSchema = z.preprocess((value) => {
     barePingMode: z.enum(["acknowledge", "personality"]).default("acknowledge"),
     activity: z.enum(["quiet", "balanced", "lively"]).default("balanced"),
     shadowMode: z.boolean().default(false),
+    joinConfirmation: z.boolean().optional(),
     decisionContract: z.enum(["legacy", "simple"]).optional(),
     simpleActionThresholds: z.object({ followup: z.number().min(0).max(1).optional(), joining: z.number().min(0).max(1).optional() }).optional(),
     channelOverrides: z.record(snowflake, z.object({
@@ -120,7 +121,7 @@ const guildChatSchema = z.preprocess((value) => {
       decisionContract: z.enum(["legacy", "simple"]).optional(),
       simpleActionThresholds: z.object({ followup: z.number().min(0).max(1).optional(), joining: z.number().min(0).max(1).optional() }).optional(),
       continuationEnabled: z.boolean().optional(), spontaneousEnabled: z.boolean().optional(),
-      reactionsEnabled: z.boolean().optional(), activity: z.enum(["quiet", "balanced", "lively"]).optional(),
+      reactionsEnabled: z.boolean().optional(), joinConfirmation: z.boolean().optional(), activity: z.enum(["quiet", "balanced", "lively"]).optional(),
     })).default({}),
     advanced: z.object({
       concurrency: bounded(PARTICIPATION_LIMITS.concurrency).optional(),

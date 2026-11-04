@@ -88,6 +88,16 @@ describe("Discord context guard", () => {
     expect(next.history.map((event) => event.messageId)).not.toContain("old");
     expect(next.history.map((event) => event.messageId)).not.toContain("derived");
   });
+  it("links an optional bot reply sent without a Discord reference to the message it answered", async () => {
+    const { support, current, old, profile, messages, origins } = fixture(true);
+    const prior = await GuardedConversationContext.open(support.createContextPort(current), { count: 40, budget: 12000, burstIds: [] });
+    const bot = { ...old, id: "joined", content: "same here", createdTimestamp: 2000, author: { ...old.author, id: "bot", bot: true }, reference: null } as Message;
+    messages.set(bot.id, bot);
+    await origins.record({ guildId: profile.guildId, channelId: "channel", messageId: bot.id, origin: "chat", sourceMessageId: old.id,
+      contextProvenance: prior.provenance(bot.content), createdAt: bot.createdTimestamp });
+    const next = await GuardedConversationContext.open(support.createContextPort(current), { count: 40, budget: 12000, burstIds: [] });
+    expect(next.history.find((event) => event.messageId === "joined")).toMatchObject({ replyToMessageId: "old", replyToAuthorId: "bob" });
+  });
   it.each([false, true])("uses cached channel membership without REST lookups when role exclusions are absent, warm message cache=%s", async (warm) => {
     const { support, current, fetchMember } = fixture(warm);
     const context = await GuardedConversationContext.open(support.createContextPort(current), { count: 40, budget: 12000, burstIds: [] });

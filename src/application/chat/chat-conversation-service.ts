@@ -501,7 +501,7 @@ export class ChatConversationService {
   public runCharacterEvaluation<T>(guildId: string, channelId: string, limits: ChatActivityLimits, operation: () => Promise<T>, cost = 1): Promise<T | null> {
     // Synthetic probes share guild admission/concurrency but never reserve a
     // public output or use a channel's spontaneous text cooldown.
-    return this.scheduler.run(`${guildId}:evaluation-${channelId}`, true, { ...limits, continuation: false, optionalCallCost: cost }, operation);
+    return this.scheduler.run(`${guildId}:evaluation-${channelId}`, true, { ...limits, continuation: false, cooldownFromCheck: true, optionalCallCost: cost }, operation);
   }
 
   public stopScheduling(): void {

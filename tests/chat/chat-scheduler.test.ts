@@ -55,17 +55,20 @@ describe("bounded channel scheduler", () => {
     await Promise.all([first, direct, stale]);
     expect(calls).toEqual(["direct"]);
   });
-  it("silent evaluations consume allowance but cooldown expiry never creates output", async () => {
+  it("silent evaluations hold nothing back, delivered output starts the cooldown and expiry never creates output", async () => {
     let now = 0;
     const scheduler = new ChatScheduler(() => now);
     const evaluate = vi.fn(() => Promise.resolve("silent"));
     await scheduler.run("c", true, balancedChatLimits, evaluate);
     await scheduler.run("c", true, balancedChatLimits, evaluate);
-    expect(evaluate).toHaveBeenCalledOnce();
-    now = 100_000;
-    expect(evaluate).toHaveBeenCalledOnce();
+    expect(evaluate).toHaveBeenCalledTimes(2);
+    scheduler.reserveOutput("c", "reaction", balancedChatLimits, true)!(true);
     await scheduler.run("c", true, balancedChatLimits, evaluate);
     expect(evaluate).toHaveBeenCalledTimes(2);
+    now = 100_000;
+    expect(evaluate).toHaveBeenCalledTimes(2);
+    await scheduler.run("c", true, balancedChatLimits, evaluate);
+    expect(evaluate).toHaveBeenCalledTimes(3);
   });
   it("reserves text/reaction capacity atomically and releases failed sends", () => {
     const scheduler = new ChatScheduler(() => 0);

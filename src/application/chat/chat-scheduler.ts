@@ -25,6 +25,8 @@ export interface ChatActivityLimits {
   optionalTurnsPerWindow?: number;
   optionalCallCost?: number;
   continuation?: boolean;
+  // Synthetic probes never deliver, so their cooldown runs from the last check instead of the last output.
+  cooldownFromCheck?: boolean;
   continuationIntervalMs?: number;
   exchangeId?: string | undefined;
   continuationPerExchange?: number;
@@ -32,8 +34,8 @@ export interface ChatActivityLimits {
 }
 
 export const balancedChatLimits: ChatActivityLimits = {
-  evaluationCooldownMs: 25_000, textCooldownMs: 90_000, reactionCooldownMs: 30_000,
-  textPerWindow: 3, reactionsPerWindow: 5,
+  evaluationCooldownMs: 15_000, textCooldownMs: 45_000, reactionCooldownMs: 20_000,
+  textPerWindow: 6, reactionsPerWindow: 8,
 };
 
 interface Job {
@@ -46,7 +48,7 @@ interface Job {
   report: QueueReporter;
 }
 interface Activity {
-  lastEvaluation: number;
+  lastCheck: number;
   text: number[];
   reaction: number[];
   continuation: number[];
@@ -112,7 +114,7 @@ export class ChatScheduler {
       queue.push({ optional, expiresAt, limits, resolve: resolve as (value: unknown) => void, reject, report,
         run: bindDiagnosticTask(async () => {
           const activity = this.state(key);
-          if (optional && !limits.continuation && this.now() - activity.lastEvaluation < limits.evaluationCooldownMs) {
+          if (optional && !limits.continuation && this.now() - (limits.cooldownFromCheck ? activity.lastCheck : this.lastOptionalOutput(activity)) < limits.evaluationCooldownMs) {
             report("skipped", "evaluation_cooldown"); return null;
           }
           const guild = key.split(":")[0]!;
@@ -123,7 +125,7 @@ export class ChatScheduler {
             report("skipped", "evaluation_budget"); return null;
           }
           if (optional) {
-            if (!limits.continuation) activity.lastEvaluation = this.now();
+            if (!limits.continuation) activity.lastCheck = this.now();
             for (let index = 0; index < cost; index++) evaluations.push(this.now());
             this.evaluations.set(guild, evaluations);
           }
@@ -209,8 +211,13 @@ export class ChatScheduler {
       this.now() - (values.at(-1) ?? -Infinity) >= (kind === "text" ? limits.textCooldownMs : limits.reactionCooldownMs);
   }
 
+  // The join cooldown runs from the bot's last delivered optional text or reaction, not from
+  // its last check: a check that stayed silent does not hold back the next message.
   public evaluationDelayMs(key: string, limits: ChatActivityLimits): number {
-    return Math.max(0, limits.evaluationCooldownMs - (this.now() - this.state(key).lastEvaluation));
+    return Math.max(0, limits.evaluationCooldownMs - (this.now() - this.lastOptionalOutput(this.state(key))));
+  }
+  private lastOptionalOutput(activity: Activity): number {
+    return Math.max(activity.text.at(-1) ?? -Infinity, activity.reaction.at(-1) ?? -Infinity);
   }
 
   public bufferOpportunity(key: string, job: () => void): void {
@@ -261,7 +268,7 @@ export class ChatScheduler {
         const idle = [...this.activity.keys()].find((id) => !this.running.has(id) && !this.pending.has(id) && !this.activity.get(id)!.reservedContinuation && this.activity.get(id)!.reservedText === 0 && this.activity.get(id)!.reservedReaction === 0);
         if (idle) this.activity.delete(idle);
       }
-      state = { lastEvaluation: -Infinity, text: [], reaction: [], continuation: [], reservedContinuation: false, reservedText: 0, reservedReaction: 0 };
+      state = { lastCheck: -Infinity, text: [], reaction: [], continuation: [], reservedContinuation: false, reservedText: 0, reservedReaction: 0 };
       this.activity.set(key, state);
     }
     return state;

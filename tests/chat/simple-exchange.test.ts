@@ -38,11 +38,12 @@ describe("simple participation classification", () => {
     expect(classify(message("now", start, "alice", "and tomorrow?"), events, start + 1)).toMatchObject({ kind: "joining" });
     expect(classify(message("now", start, "alice", "and tomorrow?"), events, start - 1000)).toMatchObject({ kind: "followup", basis: "open_exchange" });
   });
-  it("does not carry an exchange to another person or past the bot answering someone else", () => {
+  it("does not carry an exchange to another person, but keeps it open past the bot answering someone else", () => {
     const events = answered(start);
     expect(classify(message("now", start, "bob", "and you?"), events)).toMatchObject({ kind: "joining" });
     const later = [...events, message("other", start - 500, "bob", "q"), message("other-answer", start - 400, "bot", "a", { replyToMessageId: "other", replyToAuthorId: "bob" })];
-    expect(classify(message("now", start, "alice", "and tomorrow?"), later)).toMatchObject({ kind: "joining" });
+    expect(classify(message("now", start, "alice", "and tomorrow?"), later)).toMatchObject({ kind: "followup", basis: "open_exchange" });
+    expect(classify(message("now", start, "bob", "and then?"), later)).toMatchObject({ kind: "followup", basis: "open_exchange", anchorMessageId: "other-answer" });
   });
   it("ends an open exchange when this author addressed another human in between", () => {
     const events = [...answered(start), message("aside", start - 500, "alice", "ok", { replyToMessageId: "bobmsg", replyToAuthorId: "bob" })];

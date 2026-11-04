@@ -265,6 +265,9 @@ export class ChatTurnSupport {
           if (message.author.bot && origin?.origin !== "chat") return null;
           const user = this.toChatUser(message.author, actor);
           const event = { ...this.toChannelHistoryMessages([message])[0]!, author: { ...user, roleNames: [...user.roleNames].sort() }, content: message.content, imageCount: 0, replyToAuthorId: null, replyToAuthorDisplayName: null };
+          // Optional replies are sent without a Discord reply reference. The delivery record still
+          // names the message the bot answered, so the exchange stays visible to follow-up rules.
+          if (message.author.bot && !event.replyToMessageId && origin?.sourceMessageId && origin.sourceMessageId !== id) event.replyToMessageId = origin.sourceMessageId;
           return { event, sourceMessageId: origin?.sourceMessageId ?? null, assets: this.imageAssetDescriptors(message), origin: message.author.bot ? "chat" : "human", provenance: origin?.contextProvenance ?? null };
         };
         const result = resolve(); filtered.set(id, result); return result;

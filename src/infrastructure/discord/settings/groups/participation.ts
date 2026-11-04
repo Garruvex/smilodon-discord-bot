@@ -65,6 +65,8 @@ export const participation = group("participation", [
       (v) => ({ chatParticipation: { spontaneousThreshold: v / 100 } })),
     "check-every": tuned(PARTICIPATION_LIMITS.joinEveryMessages, (p) => resolveParticipation(p.chat.participation, "").messagesPerDecision,
       (v) => ({ chatParticipation: { messagesPerDecision: v } })),
+    confirm: toggle({ read: (p) => configured(p).joinConfirmation === true,
+      write: (v, p) => v === (configured(p).joinConfirmation === true) ? {} : { chatParticipation: { joinConfirmation: v } } }),
   }),
 
   // Which decision contract answers optional turns. Unset inherits the instance default.
@@ -113,7 +115,7 @@ export const participation = group("participation", [
     params: {
       channel: { kind: "channel", textOnly: true, threads: true, required: true },
       observe: { kind: "toggle" }, joining: { kind: "toggle" }, preview: { kind: "toggle" },
-      "follow-ups": { kind: "toggle" }, reactions: { kind: "toggle" },
+      "follow-ups": { kind: "toggle" }, reactions: { kind: "toggle" }, "join-confirm": { kind: "toggle" },
       activity: { kind: "choice", choices: activities }, reset: { kind: "toggle" },
       "decision-contract": { kind: "choice", choices: contracts },
       "followup-threshold": { kind: "integer", min: 0, max: 100 }, "joining-threshold": { kind: "integer", min: 0, max: 100 },
@@ -125,10 +127,11 @@ export const participation = group("participation", [
       const observe = values.getBoolean("observe"); const joining = values.getBoolean("joining");
       const preview = values.getBoolean("preview"); const followUps = values.getBoolean("follow-ups");
       const reactions = values.getBoolean("reactions"); const reset = values.getBoolean("reset") === true;
+      const joinConfirm = values.getBoolean("join-confirm");
       const activity = values.getString("activity") as ParticipationOverride["activity"] | null;
       const contract = values.getString("decision-contract");
       const followupThreshold = values.getInteger("followup-threshold"); const joiningThreshold = values.getInteger("joining-threshold");
-      if (!reset && [observe, joining, preview, followUps, reactions, activity, contract, followupThreshold, joiningThreshold].every((value) => value === null)) {
+      if (!reset && [observe, joining, preview, followUps, reactions, joinConfirm, activity, contract, followupThreshold, joiningThreshold].every((value) => value === null)) {
         return Promise.resolve({ ok: false, message: text.message(path, "nothing") });
       }
 
@@ -148,6 +151,7 @@ export const participation = group("participation", [
         ...(preview === null ? {} : { shadowMode: preview }),
         ...(followUps === null ? {} : { continuationEnabled: followUps }),
         ...(reactions === null ? {} : { reactionsEnabled: reactions }),
+        ...(joinConfirm === null ? {} : { joinConfirmation: joinConfirm }),
         ...(activity ? { activity } : {}),
       };
       if (!reset) {
