@@ -171,6 +171,7 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
       statement: record.statement, updatedAt: record.updatedAt, embedding: null, source: record.source === "administrator" ? "administrator" : record.source === "consolidation" ? "consolidation" : "community",
     })), causalChains, ...(aliasCandidates.length ? { aliasCandidates } : {}),
     message: lease.currentEvent?.type === "reaction_snapshot" ? `Respond only if useful to this authorized reaction snapshot: ${JSON.stringify(lease.currentEvent)}` : lease.current.content,
+    ...(lease.currentEvent?.type !== "reaction_snapshot" && lease.current.linkPreviews?.length ? { messageLinkPreviews: lease.current.linkPreviews } : {}),
     replyChain: lease.currentEvent?.type === "reaction_snapshot" ? [...lease.replyChain, lease.current] : lease.replyChain, replyChainSummary, channelHistory: lease.history, currentBurst: lease.burst,
     ...(lease.currentEvent ? { currentEvent: lease.currentEvent } : {}),
     birthday: null, images, imageInputEnabled: capabilities.imageInputEnabled, webSearchMode: capabilities.webSearchMode, imageGenerationEnabled: capabilities.imageGenerationEnabled, includeSources: input.includeSources,

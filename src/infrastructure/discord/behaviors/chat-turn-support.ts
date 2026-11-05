@@ -23,9 +23,12 @@ import { planImageDelivery } from "../../../application/chat/chat-image-delivery
 import type { GuildConfiguration } from "../../../config/guild-configuration.js";
 import type { PlaybackActor } from "../../../application/music/playback-service.js";
 import { createPlaybackActorFromMember } from "../commands/music/music-command-support.js";
+import { embedImageAssets, embedImageSource, messageLinkPreviews } from "./discord-embeds.js";
 
 const supportedImageTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const allowedDiscordImageHosts = new Set(["cdn.discordapp.com", "media.discordapp.net"]);
+// Discord's media proxy for link-preview images (images-ext-1, -2, ...).
+const discordEmbedProxyHost = /^images-ext-\d+\.discordapp\.net$/u;
 const maximumImageBytes = 8 * 1024 * 1024;
 
 export interface ChatDeliveryPayload {
@@ -214,6 +217,8 @@ export class ChatTurnSupport {
         const actor = message.author.bot ? null : await member(message.author.id, signal);
         const admitted = state(signal).filtered.get(messageId);
         if (admitted ? !await admitted : !(await eligibility.checkGuardedSource(message, actor, messageId === source.id, await readable(), state(signal).forgotten.get(messageId))).eligible) return null;
+        const embedded = embedImageSource(message, assetId);
+        if (embedded) return this.loadImageUrl(embedded.url, embedded.contentType, signal);
         const attachment = message.attachments.get(assetId);
         return attachment && this.isSupportedImageAttachment(attachment) ? this.loadImageDataUrl(attachment, signal) : null;
       },
@@ -388,6 +393,7 @@ export class ChatTurnSupport {
       const target = referenceId
         ? selectedById.get(referenceId)
         : undefined;
+      const linkPreviews = messageLinkPreviews(message);
       return {
         author: this.toChatUser(message.author, message.member),
         channelId: message.channelId,
@@ -398,7 +404,8 @@ export class ChatTurnSupport {
         content: message.content.slice(0, chatMemoryLimits.maxUserMessageChars),
         imageCount: [...message.attachments.values()].filter((attachment) =>
           attachment.contentType?.startsWith("image/"),
-        ).length,
+        ).length + embedImageAssets(message).length,
+        ...(linkPreviews.length ? { linkPreviews } : {}),
         hasReplyReference: Boolean(referenceId),
         replyToAuthorId: target?.author.id ?? (referenceId ? message.mentions?.repliedUser?.id : null) ?? null,
         replyToAuthorDisplayName: target
@@ -414,8 +421,8 @@ export class ChatTurnSupport {
   }
 
   private imageAssetDescriptors(message: Message): GuardedAssetDescriptor[] {
-    return [...(message.attachments?.values() ?? [])].filter((attachment) => this.isSupportedImageAttachment(attachment))
-      .map((attachment) => ({ id: attachment.id, contentType: this.normalizeContentType(attachment.contentType)!, size: attachment.size }));
+    return [...[...(message.attachments?.values() ?? [])].filter((attachment) => this.isSupportedImageAttachment(attachment))
+      .map((attachment) => ({ id: attachment.id, contentType: this.normalizeContentType(attachment.contentType)!, size: attachment.size })), ...embedImageAssets(message)];
   }
 
   private isSupportedImageAttachment(attachment: Attachment): boolean {
@@ -432,8 +439,16 @@ export class ChatTurnSupport {
     const contentType = this.normalizeContentType(attachment.contentType);
     if (!contentType || !supportedImageTypes.has(contentType)) return null;
     if (attachment.size <= 0 || attachment.size > maximumImageBytes) return null;
-    const url = new URL(attachment.url);
-    if (url.protocol !== "https:" || !allowedDiscordImageHosts.has(url.hostname)) {
+    return this.loadImageUrl(attachment.url, contentType, signal, false);
+  }
+
+  // Attachments come from Discord's CDN; link-preview images only through
+  // Discord's media proxy, so the bot never fetches the open web here.
+  private async loadImageUrl(source: string, contentType: string, signal?: AbortSignal, embedProxy = true): Promise<string | null> {
+    if (!supportedImageTypes.has(contentType)) return null;
+    let url: URL;
+    try { url = new URL(source); } catch { return null; }
+    if (url.protocol !== "https:" || !(allowedDiscordImageHosts.has(url.hostname) || embedProxy && discordEmbedProxyHost.test(url.hostname))) {
       this.logger.warn(
         { reason: "host_denied" },
         "Dropped image attachment: URL failed host allow-list check",

@@ -294,6 +294,15 @@ describe("buildChatContext", () => {
     expect(context).toContain(`2. [id=222-msg, t=${new Date(1_700_000_010_000).toISOString()}] "Bob" (222):`);
     expect(context).toContain("[2 images attached]");
   });
+  it("shows link previews on history, reply chain and the current message through the shared renderer", () => {
+    const linkPreviews = [{ url: "https://example.com", site: "Example", title: "Ten cats", description: null }];
+    const context = buildChatContext(baseRequest({ message: "https://example.com", messageLinkPreviews: linkPreviews,
+      replyChain: [{ messageId: "r", timestampMs: 1, authorId: "1", authorDisplayName: "A", content: "hop", imageCount: 0, linkPreviews }],
+      channelHistory: [{ messageId: "h", timestampMs: 1, authorId: "2", authorDisplayName: "B", content: "old", imageCount: 1, linkPreviews }] }));
+    const fenced = ["[link preview: <<<BEGIN-UNTRUSTED-DATA>>>", "Example — Ten cats", "<<<END-UNTRUSTED-DATA>>>]"].join(String.fromCharCode(10));
+    expect(context.split(fenced)).toHaveLength(4);
+    expect(context).toContain("[1 image attached]");
+  });
   it("keeps an earlier bot answer's addressee separate from a second person directly replying to it", () => {
     const request = baseRequest({ botUserId: "bot", currentUser: { id: "new-speaker", displayName: "Bystander", roleNames: [] },
       currentEvent: { type: "message", messageId: "current", authorId: "new-speaker", channelId: "channel", timestampMs: 3000, replyToMessageId: "advice", mentionedUserIds: [] },

@@ -112,6 +112,8 @@ export interface ChatRequest {
   // call MemoryEngine.recall at all).
   causalChains: readonly CausalChainLink[];
   message: string;
+  // Discord's previews of links in the current message (see LinkPreview).
+  messageLinkPreviews?: readonly LinkPreview[];
   replyChain: readonly ReplyChainMessage[];
   // Set only when the actual reply chain extends further back than what's
   // included in replyChain above (past maxReplyChainDepth/maxReplyChainChars
@@ -200,6 +202,13 @@ export interface ChatHistoryMessage {
 // One hop of a resolved Discord reply chain, oldest ancestor first, ending
 // just before the current message (which is carried separately as
 // ChatRequest.message).
+export interface LinkPreview {
+  url: string | null;
+  site: string | null;
+  title: string | null;
+  description: string | null;
+}
+
 export interface ReplyChainMessage {
   author?: ChatUser;
   channelId?: string;
@@ -224,6 +233,10 @@ export interface ReplyChainMessage {
   content: string;
   contentTruncated?: boolean;
   imageCount: number;
+  // Discord's own unfurl of links in the message (title, site, summary).
+  // Presentation metadata, not authored text: kept out of content hashes
+  // because Discord hydrates it after the message is created.
+  linkPreviews?: readonly LinkPreview[];
 }
 
 // One recent channel message included as ambient context — same shape as
@@ -239,6 +252,10 @@ export interface ChannelHistoryMessage {
   content: string;
   contentTruncated?: boolean;
   imageCount: number;
+  // Discord's own unfurl of links in the message (title, site, summary).
+  // Presentation metadata, not authored text: kept out of content hashes
+  // because Discord hydrates it after the message is created.
+  linkPreviews?: readonly LinkPreview[];
   // True when this message was itself a Discord reply to something,
   // independent of whether that target could be resolved below. Needed so
   // "replied to something outside our fetched window/cache" (target

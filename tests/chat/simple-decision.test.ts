@@ -64,6 +64,14 @@ describe("simple decision prompt", () => {
     expect(prompt).toContain("held back from replying to m1"); expect(prompt).toContain("one-line agree reply");
     expect(simplePrompt({ ...base, held: { sourceMessageId: "gone", stance: "agree", length: "short" } }, "decision")).not.toContain("held back");
   });
+  it("shows Discord's link preview so a bare link has something to judge", async () => {
+    const base = await input();
+    const current = { ...base.current, content: "https://example.com/cats",
+      linkPreviews: [{ url: "https://example.com/cats", site: "Example", title: "Ten cats that \u003cb>dance", description: null }] };
+    const prompt = simplePrompt({ ...base, current }, "decision");
+    expect(prompt).toContain('"linkPreview":"Example — Ten cats that '); expect(prompt).not.toContain("<b>dance");
+    expect(simplePrompt(base, "decision")).not.toContain('"linkPreview"');
+  });
 });
 
 describe("persona digest", () => {

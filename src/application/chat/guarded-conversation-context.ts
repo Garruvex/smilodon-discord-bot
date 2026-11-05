@@ -23,8 +23,11 @@ export interface GuardedContextSource {
   provenance: ContextProvenance | null;
 }
 export interface GuardedAssetDescriptor { id: string; contentType: string; size: number }
+// Link-preview images ("embed-" ids) are left out: Discord hydrates them
+// after the message is created, and they derive from the URL already in the
+// hashed text. Pinning them would invalidate sources that merely unfurled.
 export const guardedAssetsHash = (assets: readonly GuardedAssetDescriptor[]): string => hashContent(JSON.stringify(
-  [...assets].map(({ id, contentType, size }) => ({ id, contentType, size })).sort((a, b) => a.id.localeCompare(b.id))));
+  [...assets].filter((asset) => !asset.id.startsWith("embed-")).map(({ id, contentType, size }) => ({ id, contentType, size })).sort((a, b) => a.id.localeCompare(b.id))));
 export interface GuardedContextPort {
   evidenceChanged?: () => boolean;
   refresh?: () => Promise<GuardedContextPort>;

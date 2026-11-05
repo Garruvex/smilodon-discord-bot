@@ -10,6 +10,7 @@ import {
   type GroundedProposedGuildKnowledgeCandidate,
   type GroundedProposedMemoryAction,
 } from "../../application/chat/chat-provider.js";
+import { promptMessageText } from "../../application/chat/prompt-message.js";
 
 export const chatModelOutputSchema = z.object({
   responseIntent: z.enum(["answer", "clarify", "social", "closing", "contribute", "abstain"]).nullable().optional(),
@@ -520,7 +521,6 @@ export function buildChatContext(request: ChatRequest): string {
   const replyParticipants = new Map([...request.channelHistory, ...request.replyChain].map((hop) => [hop.messageId, hop]));
   const replyChain = request.replyChain.length > 0
     ? replyChainSummaryLine + request.replyChain.map((hop, index) => {
-        const imageNote = hop.imageCount > 0 ? ` [${hop.imageCount} image${hop.imageCount > 1 ? "s" : ""} attached]` : "";
         const target = hop.replyToMessageId ? replyParticipants.get(hop.replyToMessageId) : undefined;
         const targetId = hop.replyToAuthorId ?? target?.authorId;
         const targetName = hop.replyToAuthorDisplayName ?? target?.authorDisplayName ?? "unknown";
@@ -528,14 +528,13 @@ export function buildChatContext(request: ChatRequest): string {
           ? `; replyingTo=${contextData(targetName)} (${targetId}, msg=${hop.replyToMessageId ?? "unknown"}); replyTargetSameAsCurrentUser=${targetId === request.currentUser.id ? "yes" : "no"}`
           : hop.hasReplyReference || hop.replyToMessageId ? `; replyingTo=unknown; msg=${hop.replyToMessageId ?? "unknown"}` : "";
         return `${index + 1}. [id=${hop.messageId}, t=${formatTimestamp(hop.timestampMs)}] ` +
-          `${contextData(hop.authorDisplayName)} (${hop.authorId}): ${wrapUntrusted(hop.content)}${hop.contentTruncated ? " [content truncated; remainder unavailable]" : ""}${imageNote} ` +
+          `${contextData(hop.authorDisplayName)} (${hop.authorId}): ${promptMessageText(hop, wrapUntrusted)} ` +
           `[sameAsCurrentUser=${hop.authorId === request.currentUser.id ? "yes" : "no"}${targetNote}]`;
       }).join("\n")
     : "none";
   // Ambient recent channel chatter, not reply-linked — see ChatRequest.channelHistory.
   const channelHistory = request.channelHistory.length > 0
     ? request.channelHistory.map((hop, index) => {
-        const imageNote = hop.imageCount > 0 ? ` [${hop.imageCount} image${hop.imageCount > 1 ? "s" : ""} attached]` : "";
         const currentUserNote = hop.authorId === request.currentUser.id
           ? "sameAsCurrentUser=yes"
           : "sameAsCurrentUser=no";
@@ -552,7 +551,7 @@ export function buildChatContext(request: ChatRequest): string {
             : "";
         return `${index + 1}. [id=${hop.messageId}, t=${formatTimestamp(hop.timestampMs)}] ` +
           `${contextData(hop.authorDisplayName)} (${hop.authorId}) [${currentUserNote}${replyTargetNote}]: ` +
-          `${wrapUntrusted(hop.content)}${hop.contentTruncated ? " [content truncated; remainder unavailable]" : ""}${imageNote}`;
+          promptMessageText(hop, wrapUntrusted);
       }).join("\n")
     : "none";
   // Explicit, structured, user-supplied facts (currently just birthday) —
@@ -578,7 +577,7 @@ export function buildChatContext(request: ChatRequest): string {
     `<causal_chains>\n${causalChains}\n</causal_chains>\n\n` +
     `<reply_chain>\n${replyChain}\n</reply_chain>\n\n` +
     `<channel_history>\n${channelHistory}\n</channel_history>\n\n` +
-    `<current_message>\n${request.currentEvent?.type === "reaction_snapshot" ? "Synthetic event note (not human-authored)" : contextData(request.currentUser.displayName)}: ${wrapUntrusted(request.message)}\n</current_message>`
+    `<current_message>\n${request.currentEvent?.type === "reaction_snapshot" ? "Synthetic event note (not human-authored)" : contextData(request.currentUser.displayName)}: ${promptMessageText({ content: request.message, ...(request.messageLinkPreviews ? { linkPreviews: request.messageLinkPreviews } : {}) }, wrapUntrusted)}\n</current_message>`
   );
 }
 
