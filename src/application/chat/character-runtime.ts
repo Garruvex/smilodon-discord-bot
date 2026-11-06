@@ -439,7 +439,7 @@ export class CharacterRuntime {
       return finish("unavailable");
     }
     const events = [...request.replyChain, ...request.channelHistory, ...burst];
-    const classification = classifySimpleTurn({ events, current, botId, aliases: request.aliasCandidates, startedAt: this.startedAt });
+    const classification = classifySimpleTurn({ events, current, botId, aliases: request.aliasCandidates, startedAt: this.startedAt, recentMessages: settings.context.decisionMessages });
     if (classification.excluded) return exclude(classification.excluded);
     const { kind, basis } = classification;
     if (!(kind === "followup" ? participation.continuationEnabled : participation.spontaneousEnabled)) return exclude(kind === "followup" ? "followups_disabled" : "joining_disabled", { kind, basis });

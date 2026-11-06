@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { classifySimpleTurn } from "../../src/application/chat/simple-exchange.js";
-import { exchangeIdleMs } from "../../src/application/chat/exchange-window.js";
 import type { ChannelHistoryMessage } from "../../src/application/chat/chat-provider.js";
 
 const start = 1_000_000;
@@ -10,7 +9,7 @@ const answered = (at: number, to = "alice"): ChannelHistoryMessage[] => [
   message("ask", at - 2000, to, "can you check this"),
   message("answer", at - 1000, "bot", "sure", { replyToMessageId: "ask", replyToAuthorId: to }),
 ];
-const classify = (current: ChannelHistoryMessage, events: ChannelHistoryMessage[], startedAt = 0): ReturnType<typeof classifySimpleTurn> => classifySimpleTurn({ events, current, botId: "bot", startedAt });
+const classify = (current: ChannelHistoryMessage, events: ChannelHistoryMessage[], startedAt = 0): ReturnType<typeof classifySimpleTurn> => classifySimpleTurn({ events, current, botId: "bot", startedAt, recentMessages: 10 });
 
 describe("simple participation classification", () => {
   it("is joining when the bot has not spoken to this person", () => {
@@ -27,11 +26,13 @@ describe("simple participation classification", () => {
     const current = message("now", start, "alice", "wait what", { replyToMessageId: "answer", replyToAuthorId: "bot" });
     expect(classify(current, events)).toMatchObject({ kind: "joining" });
   });
-  it("opens an exchange for an unlinked message inside the idle window, inclusive at the boundary", () => {
+  it("opens an exchange by recent messages, not elapsed time, because people rarely use reply", () => {
     const events = answered(start);
-    const anchor = start - 1000;
-    expect(classify(message("now", anchor + exchangeIdleMs, "alice", "and tomorrow?"), events)).toMatchObject({ kind: "followup", basis: "open_exchange", anchorMessageId: "answer" });
-    expect(classify(message("late", anchor + exchangeIdleMs + 1, "alice", "and tomorrow?"), events)).toMatchObject({ kind: "joining" });
+    const hoursLater = start + 3 * 60 * 60 * 1000;
+    expect(classify(message("now", hoursLater, "alice", "and tomorrow?"), events)).toMatchObject({ kind: "followup", basis: "open_exchange", anchorMessageId: "answer" });
+    const chatter = Array.from({ length: 10 }, (_, index) => message(`chat-${index}`, start + index + 1, "bob", "unrelated"));
+    expect(classify(message("now", start + 100, "alice", "and tomorrow?"), [...events, ...chatter])).toMatchObject({ kind: "joining" });
+    expect(classify(message("now", start + 100, "alice", "and tomorrow?"), [...events, ...chatter.slice(1)])).toMatchObject({ kind: "followup", basis: "open_exchange" });
   });
   it("closes an open exchange when the anchor predates process start", () => {
     const events = answered(start);

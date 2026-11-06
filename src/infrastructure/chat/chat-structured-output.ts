@@ -369,7 +369,7 @@ export function buildChatInstructions(request: ChatRequest, safetyGuard: string)
       `current user. When a line also has replyingTo and replyTargetSameAsCurrentUser, those fields identify who ` +
       `that message was directed at; never treat a bot reply directed at somebody else as something the bot said ` +
       `to the current user. replyingTo="unknown" means the message was a reply but its target fell outside this ` +
-      `window — distinct from having no replyingTo field at all, which means it wasn't a reply. ` +
+      `window — distinct from having no replyingTo field at all, which means it wasn't a reply. People here rarely use Discord's reply, keeping it for messages far back, so a missing replyingTo says nothing about who a line is for; judge that from the order and content. ` +
       `This restriction on following its topic is about what <current_message> is *about* — it does not limit ` +
       `what you may look up. A question that is explicitly about the channel itself (who said what, who talked to ` +
       `you recently, what someone said earlier, how many times X happened) should be answered by scanning the ` +

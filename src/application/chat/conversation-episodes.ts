@@ -1,4 +1,3 @@
-import { exchangeIdleMs } from "./exchange-window.js";
 import type { ChannelHistoryMessage } from "./chat-provider.js";
 import { forgetEpisodeUser } from "./conversation-episode-store.js";
 
@@ -44,8 +43,9 @@ export class ConversationEpisodes {
       chars += event.content.length; return chars <= 8_000;
     }).slice(0, 16).reverse();
   }
-  public hasRecentConversation(key: string, authorId: string, botId: string, now = Date.now()): boolean {
-    return (this.channels.get(key) ?? []).some((event) => event.authorId === botId && event.replyToAuthorId === authorId && now - event.timestampMs <= exchangeIdleMs);
+  // Counted in messages, not time, so it matches what the decision then reads.
+  public hasRecentConversation(key: string, authorId: string, botId: string, recentMessages: number): boolean {
+    return (this.channels.get(key) ?? []).slice(-recentMessages - 1).some((event) => event.authorId === botId && event.replyToAuthorId === authorId);
   }
   public forget(guildId: string, userId: string): void {
     for (const [key, events] of this.channels) {

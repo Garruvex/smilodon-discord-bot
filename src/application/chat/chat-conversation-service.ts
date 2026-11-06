@@ -457,8 +457,8 @@ export class ChatConversationService {
       this.logger?.warn({ error, guildId, channelId }, "Failed to exclude a utility interaction from stored context")));
   }
 
-  public hasRecentConversation(guildId: string, channelId: string, authorId: string, botId: string): boolean {
-    return this.episodes.hasRecentConversation(`${guildId}:${channelId}`, authorId, botId, this.now());
+  public hasRecentConversation(guildId: string, channelId: string, authorId: string, botId: string, recentMessages: number): boolean {
+    return this.episodes.hasRecentConversation(`${guildId}:${channelId}`, authorId, botId, recentMessages);
   }
   public get optionalDecisionAvailable(): boolean { return this.characterRuntime?.decisionAvailable ?? false; }
   public optionalEvaluationDelayMs(guildId: string, channelId: string, limits: ChatActivityLimits): number {

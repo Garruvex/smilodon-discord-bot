@@ -1,6 +1,5 @@
 import { addressedElsewhere, isRecipientCorrection, type RecipientAliases } from "./character-decision.js";
 import type { ChannelHistoryMessage } from "./chat-provider.js";
-import { exchangeIdleMs } from "./exchange-window.js";
 
 export type SimpleKind = "followup" | "joining";
 export type FollowupBasis = "linked" | "open_exchange";
@@ -15,7 +14,7 @@ const maxChainDepth = 24;
 // It reads only the supplied authorized events and never treats the bot's last
 // response to an author as proof of an exchange by itself (unlike exchangeBranch).
 export function classifySimpleTurn(input: { events: readonly ChannelHistoryMessage[]; current: ChannelHistoryMessage; botId: string;
-  aliases?: readonly RecipientAliases[] | undefined; startedAt: number }): SimpleClassification {
+  aliases?: readonly RecipientAliases[] | undefined; startedAt: number; recentMessages: number }): SimpleClassification {
   const { current, botId, startedAt } = input; const aliases = input.aliases ?? [];
   const history = [...new Map(input.events.filter((event) => event.messageId !== current.messageId && event.timestampMs <= current.timestampMs)
     .map((event) => [event.messageId, event])).values()].sort((a, b) => a.timestampMs - b.timestampMs);
@@ -37,12 +36,12 @@ export function classifySimpleTurn(input: { events: readonly ChannelHistoryMessa
     cursor = cursor.replyToMessageId ? byId.get(cursor.replyToMessageId) : undefined;
   }
 
-  // Rule 4: the bot's latest message to this author is inside the idle window, after this
+  // Rule 4: the bot's latest message to this author is among the recent messages, after this
   // process started, and the author has not turned elsewhere. Answering someone else in
-  // between does not close it: group chats run several exchanges at once.
-  const last = [...history].reverse().find((event) => isBot(event) && event.replyToAuthorId === current.authorId);
+  // between does not close it: group chats run several exchanges at once. No clock decides
+  // this: people here rarely use reply, and the decision reads the elapsed time itself.
+  const last = history.slice(-input.recentMessages).reverse().find((event) => isBot(event) && event.replyToAuthorId === current.authorId);
   if (last && last.timestampMs >= startedAt &&
-      current.timestampMs - last.timestampMs <= exchangeIdleMs &&
       !history.some((event) => event.timestampMs > last.timestampMs && event.authorId === current.authorId &&
         elsewhere(event, history.filter((candidate) => candidate.timestampMs < event.timestampMs), byId, botId, aliases))) {
     return { kind: "followup", basis: "open_exchange", anchorMessageId: last.messageId };

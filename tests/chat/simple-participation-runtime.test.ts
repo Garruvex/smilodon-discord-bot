@@ -154,7 +154,7 @@ describe("simple participation", () => {
       expect(exclusions(logger).map((entry) => entry.reason)).toEqual(["no_action_available"]);
     } finally { service.stopScheduling(); await service.drain(); }
   });
-  it("classifies an unlinked message inside the idle window as an open-exchange follow-up and logs the basis", async () => {
+  it("classifies an unlinked message after a recent bot answer as an open-exchange follow-up and logs the basis", async () => {
     const { profiles, run, logger, service, setNow } = setup();
     await profiles.update(guildId, { chatParticipation: { continuationEnabled: true } });
     try {

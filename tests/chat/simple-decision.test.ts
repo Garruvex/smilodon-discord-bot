@@ -64,6 +64,13 @@ describe("simple decision prompt", () => {
     expect(prompt).toContain("held back from replying to m1"); expect(prompt).toContain("one-line agree reply");
     expect(simplePrompt({ ...base, held: { sourceMessageId: "gone", stance: "agree", length: "short" } }, "decision")).not.toContain("held back");
   });
+  it("tells both the decision and the thought step who a continuing message is for", async () => {
+    const base = await input();
+    const rule = "is for that person, even without a reply or mention";
+    expect(simplePrompt(base, "decision")).toContain(rule);
+    expect(simplePrompt(base, "thought")).toContain(rule);
+    expect(simplePrompt(base, "decision")).toContain("replyToRef null says nothing about who a message is for");
+  });
   it("shows Discord's link preview so a bare link has something to judge", async () => {
     const base = await input();
     const current = { ...base.current, content: "https://example.com/cats",

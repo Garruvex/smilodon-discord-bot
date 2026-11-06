@@ -4,6 +4,7 @@ import { BehaviorEvent, BehaviorResult, type BotBehavior } from "../../../applic
 import type { ChatConversationService } from "../../../application/chat/chat-conversation-service.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
 import type { GuildConfiguration } from "../../../config/guild-configuration.js";
+import { characterSettings } from "../../../application/chat/character-settings.js";
 import { resolveParticipation } from "../../../application/chat/participation-policy.js";
 import { passiveScopeReasons } from "../../../application/chat/chat-policy.js";
 import { addressesBotName } from "../../../domain/chat/name-mention.js";
@@ -51,10 +52,13 @@ export class ProactiveChatBehavior implements BotBehavior<BehaviorEvent.MessageC
     if (policy.continuationEnabled && this.inOpenExchange(message, botId)) return "implicit_followup";
     return policy.spontaneousEnabled ? "group_conversation" : policy.continuationEnabled ? "implicit_followup" : null;
   }
-  // The bot spoke to this author a moment ago, so this is the natural next turn of a
-  // conversation already underway. The decision stage still re-checks the structure.
+  // The bot spoke to this author within the recent messages, so this may be the next turn
+  // of a conversation already underway. The decision stage judges whether it really is.
   private inOpenExchange(message: Message, botId: string): boolean {
-    return !!message.guildId && this.conversation.hasRecentConversation(message.guildId, message.channelId, message.author.id, botId);
+    const profile = message.guildId ? this.profiles.find(message.guildId) : null;
+    if (!profile) return false;
+    const recentMessages = characterSettings(profile).context.decisionMessages;
+    return !!message.guildId && this.conversation.hasRecentConversation(message.guildId, message.channelId, message.author.id, botId, recentMessages);
   }
   public async matches(message: Message): Promise<boolean> {
     const trigger = this.trigger(message);
