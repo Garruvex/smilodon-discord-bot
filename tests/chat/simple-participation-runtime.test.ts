@@ -125,6 +125,18 @@ describe("simple participation", () => {
       expect(reply).not.toHaveBeenCalled(); expect(deliver).not.toHaveBeenCalled();
     } finally { service.stopScheduling(); await service.drain(); }
   });
+  it("lets the reply model decline after the decision admits a reply, and tells it so", async () => {
+    const { profiles, reply, run, service } = setup();
+    await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    reply.mockResolvedValueOnce({ ...response(""), ambientAction: "ignore" });
+    try {
+      const { result, deliver } = await run({ current: message("current", 99_000, actorUserId, "anyone know a good cat toy") });
+      expect(reply).toHaveBeenCalledOnce(); expect(deliver).not.toHaveBeenCalled();
+      expect(result.ambientAction).toBe("ignore"); expect(result.conversationDecision?.decision.action).toBe("silent");
+      const request = (reply.mock.calls as unknown as [ChatRequest][])[0]![0];
+      expect(JSON.stringify(request.characterContext)).toContain("stay silent");
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
   it("counts a delivered follow-up against that author's exchange limit", async () => {
     const { profiles, reply, run, logger, simpleCall, service, setNow } = setup();
     await profiles.update(guildId, { chatParticipation: { continuationEnabled: true } });
@@ -265,7 +277,7 @@ describe("simple participation", () => {
       await run({ current: message("current", 99_000, actorUserId, "my cat knocked over the plant again") });
       const context = JSON.stringify((reply.mock.calls[0] as unknown as [ChatRequest])[0].characterContext);
       expect(context).toContain("Planned approach: a one-line reply, with a light joke.");
-      expect(context).toContain("You decided to join this conversation");
+      expect(context).toContain("joining is still your call");
     } finally { service.stopScheduling(); await service.drain(); }
   });
   it("waits out one idle window before a linked follow-up into an exchange from before the restart", async () => {

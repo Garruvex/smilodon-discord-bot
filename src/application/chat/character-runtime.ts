@@ -60,6 +60,14 @@ export interface CharacterEvaluationAdmission {
 const stanceText: Record<ThoughtStance, string> = { answer: "answering directly", agree: "agreeing", add: "adding one useful point", joke: "with a light joke",
   comfort: "comforting", ask_back: "asking a short question back", acknowledge: "acknowledging", none: "" };
 const lengthText: Record<ThoughtLength, string> = { one_line: "a one-line reply,", short: "a short reply,", normal: "a normal-length reply," };
+// The decision only cleared this turn to be considered. The reply model sees
+// memories, images and previews that decision did not, so it has the last word.
+const simpleDeclineText = 'If so, reply briefly and naturally to the current message. If not, stay silent: set ambientAction="ignore" and response="". Silence is a normal outcome, not a failure. Do not invent facts or promise actions.';
+const simpleReplyGuidance = {
+  joining: `A first check said this conversation may be open to you, but joining is still your call. No one asked you, so ask whether you have something of your own to add: a real opinion, a joke that lands, or a question you actually want answered. Repeating what was said, or an acknowledgment with nothing behind it, is not enough. ${simpleDeclineText}`,
+  followup: `You may still be talking with this person. Ask whether this message is really for you and whether anything needs saying; a short answer or acknowledgment is fine when it continues the exchange, but they may have turned to someone else or finished. ${simpleDeclineText}`,
+} as const;
+
 export class CharacterRuntime {
   private readonly registry: CharacterModuleRegistry;
   private readonly memory: CharacterMemory;
@@ -503,7 +511,7 @@ export class CharacterRuntime {
     const steering = proposed === "reply" && thought?.status === "valid" && !shadow && thought.stance && thought.stance !== "none" && thought.length ?
       [{ moduleId: "participation", text: `Planned approach: ${lengthText[thought.length]} ${stanceText[thought.stance]}. Stay natural and in character.` }] : [];
     request = { ...request, characterContext: [...(request.characterContext ?? []), ...context, ...steering,
-      ...(proposed === "reply" ? [{ moduleId: "participation", text: `${kind === "followup" ? "You are still talking with this person." : "You decided to join this conversation."} Reply briefly and naturally to the current message; a short answer or acknowledgment is fine. Do not invent facts or promise actions.` }] : [])] };
+      ...(proposed === "reply" ? [{ moduleId: "participation", text: simpleReplyGuidance[kind] }] : [])] };
     turn.request = request;
     return { turn, request, fingerprint, allowed: true, decisionStatus: outcome.status, acceptedContribution: null, exchangeId: `simple:${current.authorId}`, targetMessageId: null,
       memoryContextSignature: JSON.stringify(context), participation: { action: proposed === "reply" ? "reply" : "ignore", reaction }, styleUserId: null, styleSignature: null,
