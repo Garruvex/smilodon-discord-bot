@@ -1,4 +1,4 @@
-import { PermissionFlagsBits, type Client, type TextChannel, type GuildMember, type Message } from "discord.js";
+import { PermissionFlagsBits, RESTJSONErrorCodes, type Client, type TextChannel, type GuildMember, type Message } from "discord.js";
 import { mapWithConcurrency } from "../../../application/concurrency/map-with-concurrency.js";
 import type { SocialChatEligibility } from "../behaviors/social-chat-eligibility.js";
 
@@ -10,6 +10,10 @@ import type {
 } from "../../../application/context/channel-history-reader.js";
 
 const fetchPageSize = 100;
+const isDepartedAuthor = (error: unknown): boolean => {
+  const code = (error as { code?: unknown } | null)?.code;
+  return code === RESTJSONErrorCodes.UnknownMember || code === RESTJSONErrorCodes.UnknownUser;
+};
 
 export class DiscordChannelHistoryReader implements ChannelHistoryReader {
   public constructor(private readonly client: Client, private readonly eligibility: SocialChatEligibility | null = null) {}
@@ -126,11 +130,18 @@ export class DiscordChannelHistoryReader implements ChannelHistoryReader {
           }
 
           const content = message.content.trim().slice(0, request.maxCharactersPerMessage);
-          if (!message.author.bot && this.eligibility?.hasContextRoleExclusions(message) && !members.has(message.author.id)) {
-            members.set(message.author.id, message.member ? Promise.resolve(message.member) : channel.guild.members.fetch(message.author.id).catch(() => null));
+          const candidate = !message.author.bot && !message.system && content.length > 0;
+          // Read the same fresh member validateBatch will compare against. The
+          // gateway cache misses authors who have not spoken since a restart,
+          // and a batch built from their username could never validate, so its
+          // channel would retry the same batch forever. A departed author is
+          // skipped for good; any other failure aborts this read for a retry.
+          if (candidate && !members.has(message.author.id)) {
+            members.set(message.author.id, channel.guild.members.fetch({ user: message.author.id, force: true, cache: false })
+              .catch((error: unknown) => { if (isDepartedAuthor(error)) return null; throw error; }));
           }
-          const member = await (members.get(message.author.id) ?? Promise.resolve(message.member));
-          const eligible = !message.author.bot && !message.system && content.length > 0 &&
+          const member = candidate ? await members.get(message.author.id)! : null;
+          const eligible = candidate && !!member &&
             (!this.eligibility || (await this.eligibility.checkBackgroundSource(message, member)).eligible);
           // Don't advance the cursor past a message we're deferring to the
           // next batch — only past ones we've fully consumed (pushed, or
@@ -151,7 +162,7 @@ export class DiscordChannelHistoryReader implements ChannelHistoryReader {
             guildId: request.guildId,
             channelId: request.channelId,
             authorId: message.author.id,
-            authorDisplayName: member?.displayName ?? message.author.username,
+            authorDisplayName: member.displayName,
             content,
             createdAt: message.createdTimestamp,
           });
