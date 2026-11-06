@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { GuardedConversationContext } from "../../src/application/chat/guarded-conversation-context.js";
 import { SocialOutputSuppressed } from "../../src/application/chat/message-origin-store.js";
-import { decodeSimpleDecision, personaDigest, personaDigestChars, selectSimpleRoute, SimpleParticipationService, simplePrompt, type SimpleDecisionInput, type SimpleRoute } from "../../src/application/chat/simple-decision.js";
+import { addresseeAllowsReply, decodeSimpleDecision, personaDigest, type Addressee, personaDigestChars, selectSimpleRoute, SimpleParticipationService, simplePrompt, type SimpleDecisionInput, type SimpleRoute } from "../../src/application/chat/simple-decision.js";
 import type { ChannelHistoryMessage, StructuredCharacterProvider } from "../../src/application/chat/chat-provider.js";
 import { guardedEvent, guardedFixture } from "../helpers/guarded-context-fixture.js";
 import { buildEmojiChoices, serverEmojiCap, unicodeEmojiChoices } from "../../src/application/chat/simple-emoji.js";
@@ -22,8 +22,8 @@ const native = (values: Record<string, unknown>, confidence: Record<string, unkn
 
 describe("simple decision decoding", () => {
   it("accepts a valid LLM action, requires the emoji for react and keeps it as an extra on reply", () => {
-    expect(decodeSimpleDecision({ action: "reply", emoji: "👍" }, false, all)).toEqual({ action: "reply", emoji: "👍", reactionSelectionFailed: false, score: null });
-    expect(decodeSimpleDecision({ action: "reply", emoji: "none" }, false, all)).toEqual({ action: "reply", emoji: null, reactionSelectionFailed: false, score: null });
+    expect(decodeSimpleDecision({ action: "reply", emoji: "👍" }, false, all)).toEqual({ action: "reply", emoji: "👍", reactionSelectionFailed: false, addressee: null, score: null });
+    expect(decodeSimpleDecision({ action: "reply", emoji: "none" }, false, all)).toEqual({ action: "reply", emoji: null, reactionSelectionFailed: false, addressee: null, score: null });
     expect(decodeSimpleDecision({ action: "react", emoji: "😂" }, false, all)).toMatchObject({ action: "react", emoji: "😂", reactionSelectionFailed: false });
     expect(decodeSimpleDecision({ action: "ignore", emoji: "none" }, false, all)).toMatchObject({ action: "ignore", emoji: null });
   });
@@ -41,11 +41,17 @@ describe("simple decision decoding", () => {
     expect(decodeSimpleDecision("reply", false, all)).toBeNull();
   });
   it("reads native action probability and tolerates an absent emoji answer", () => {
-    expect(decodeSimpleDecision(native({ action: "reply" }, { action: 0.81 }), true, all)).toEqual({ action: "reply", emoji: null, reactionSelectionFailed: false, score: 0.81 });
+    expect(decodeSimpleDecision(native({ action: "reply" }, { action: 0.81 }), true, all)).toEqual({ action: "reply", emoji: null, reactionSelectionFailed: false, addressee: null, score: 0.81 });
     expect(decodeSimpleDecision(native({ action: "react", emoji: "❤️" }, { action: 0.7, emoji: 0.6 }), true, all)).toMatchObject({ emoji: "❤️", score: 0.7 });
     expect(decodeSimpleDecision(native({ action: "react" }, { action: 0.7 }), true, all)).toMatchObject({ reactionSelectionFailed: true });
     expect(decodeSimpleDecision(native({ action: "reply" }, {}), true, all)).toBeNull();
     expect(decodeSimpleDecision(native({ action: "reply" }, { action: 2 }), true, all)).toBeNull();
+  });
+  it("reads who the message is for and leaves an unknown answer null, which never allows a reply", () => {
+    expect(decodeSimpleDecision(native({ action: "reply", addressee: "open_question" }, { action: 0.8 }), true, all)).toMatchObject({ addressee: "open_question" });
+    expect(decodeSimpleDecision({ action: "reply", emoji: "none", addressee: "someone_else" }, false, all)).toMatchObject({ addressee: "someone_else" });
+    expect(decodeSimpleDecision({ action: "reply", emoji: "none", addressee: "everyone" }, false, all)).toMatchObject({ action: "reply", addressee: null });
+    expect(["bot", "open_question", "someone_else", "nobody", null].filter((value) => addresseeAllowsReply(value as Addressee | null))).toEqual(["bot", "open_question"]);
   });
 });
 
@@ -134,8 +140,9 @@ describe("simple participation service", () => {
     const outcome = await new SimpleParticipationService(route({ generateCharacterData: generate }, "native", null)).decide(await input({ actions: { reply: true, react: false } }));
     expect(outcome).toMatchObject({ status: "valid", action: "reply", score: 0.77, scoreKind: "native_probability" });
     const schema = (generate.mock.calls as unknown as [string, { properties: Record<string, { enum?: string[] }> }][])[0]![1];
-    expect(schema).toMatchObject({ "x-native-simple": true }); expect(Object.keys(schema.properties)).toEqual(["action"]);
+    expect(schema).toMatchObject({ "x-native-simple": true }); expect(Object.keys(schema.properties)).toEqual(["action", "addressee"]);
     expect(schema.properties.action!.enum).toEqual(["reply", "ignore"]);
+    expect(schema.properties.addressee!.enum).toEqual(["bot", "open_question", "someone_else", "nobody"]);
   });
 });
 

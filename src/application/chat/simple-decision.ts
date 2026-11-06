@@ -19,6 +19,11 @@ export const thoughtStances = ["answer", "agree", "add", "joke", "comfort", "ask
 export const thoughtLengths = ["one_line", "short", "normal"] as const;
 export type ThoughtStance = typeof thoughtStances[number];
 export type ThoughtLength = typeof thoughtLengths[number];
+// Who the current message is for. A text reply is only ever allowed for the first two.
+export const addressees = ["bot", "open_question", "someone_else", "nobody"] as const;
+export type Addressee = typeof addressees[number];
+export const addresseeAllowsReply = (addressee: Addressee | null): boolean => addressee === "bot" || addressee === "open_question";
+const addresseeQuestion = "Who is this message for, judging from the conversation order and content? bot: it speaks to the bot, or answers something the bot just said. open_question: a question or invitation open to anyone, which nobody has answered yet. someone_else: it speaks to or answers another person, including talking to them about the bot. nobody: a remark, reaction or sticker that asks nothing of anyone.";
 export type ReasoningEffort = NonNullable<StructuredCallOptions["reasoningEffort"]>;
 
 export interface SimpleRoute {
@@ -40,7 +45,7 @@ export interface SimpleThoughtOutcome {
 export interface SimpleConfirmation { confirmed: boolean | null; latencyMs: number; usage: CallUsage | null; failure?: FailureCategory | "invalid_output" | "unavailable" }
 export interface SimpleDecisionOutcome {
   status: "valid" | "failed" | "unavailable"; failure?: FailureCategory | "invalid_output" | "timeout_budget";
-  action: SimpleAction | null; emoji: string | null; emojiChoice: SimpleEmojiOption | null; reactionSelectionFailed: boolean;
+  action: SimpleAction | null; emoji: string | null; emojiChoice: SimpleEmojiOption | null; reactionSelectionFailed: boolean; addressee: Addressee | null;
   score: number | null; scoreKind: "native_probability" | "unavailable";
   route: Omit<SimpleRoute, "provider"> | null; latencyMs: number; usage: CallUsage | null; thought: SimpleThoughtOutcome | null;
 }
@@ -62,12 +67,14 @@ function actionSchema(route: SimpleRoute, actions: SimpleDecisionInput["actions"
     // Native questions need two or more choices, so an unavailable reaction drops the emoji question.
     const properties: Record<string, unknown> = {
       action: { type: "string", enum: allowed, description: "Should the bot reply with text, only react with an emoji, or ignore this message?" },
+      ...(actions.reply ? { addressee: { type: "string", enum: addressees, description: addresseeQuestion } } : {}),
       ...(actions.react ? { emoji: { type: "string", enum: emoji, "x-optional": true, description: "Which emoji fits best? Required for react. With reply, pick one only if the bot would also react to the message; otherwise none." } } : {}),
     };
     return { schema: { type: "object", "x-native-simple": true, properties }, allowed };
   }
-  return { allowed, schema: { type: "object", additionalProperties: false, required: ["action", "emoji"],
-    properties: { action: { type: "string", enum: allowed }, emoji: { type: "string", enum: emoji } } } };
+  return { allowed, schema: { type: "object", additionalProperties: false, required: ["action", "emoji", ...(actions.reply ? ["addressee"] : [])],
+    properties: { action: { type: "string", enum: allowed }, emoji: { type: "string", enum: emoji },
+      ...(actions.reply ? { addressee: { type: "string", enum: addressees, description: addresseeQuestion } } : {}) } } };
 }
 function thoughtSchema(route: SimpleRoute): Record<string, unknown> {
   if (route.source === "native") return { type: "object", "x-native-simple": true, properties: {
@@ -111,36 +118,38 @@ Imagine the bot replies to the message marked currentRef. Say what it would do (
 Data: ${escape(data)}`;
   return `${common}
 Decide what the bot should do about the message marked currentRef.
-The bot is a regular member of this group chat, not an assistant waiting to be asked. A message to the room is open to anyone, the bot included.
-- reply: the message is meant for the bot, or the bot has something in character to say: an opinion, a joke, agreement, a reaction, or a question back. Casual chat is reason enough; a brief reply is fine.
-- react: one emoji says enough, for thanks, a closing, a photo or a light social signal.
-- ignore: the message is clearly for someone else, the bot would interrupt a private back-and-forth, or it genuinely has nothing to say.
+First work out who the message is for (addressee). Cutting in on people who are not talking to the bot is rude, however good the line would be.
+- reply: only when the message speaks to the bot, or is an open question or invitation nobody has answered yet. Having something to say is not enough on its own.
+- react: the way to take part without cutting in, so use it freely, on messages for anyone: something funny, warm, impressive or sad, thanks, a closing, a photo, or any light social signal.
+- ignore: nothing in the message calls for a reply or stands out enough for an emoji.
 Choose only from availableActions. Also choose an emoji from the list, or none. For react it is required. For reply it is an optional extra reaction on the same message, the way people often react and answer; choose none unless it really fits. For ignore it is unused. Names in :colons: are this server's own custom emoji; prefer one that fits how this community talks.
 Data: ${escape(data)}`;
 }
 
 const nativeEnvelope = z.object({ values: z.record(z.unknown()), confidence: z.record(z.unknown()) }).strict();
-const llmEnvelope = z.object({ action: z.unknown(), emoji: z.unknown().optional() }).strict();
+const llmEnvelope = z.object({ action: z.unknown(), emoji: z.unknown().optional(), addressee: z.unknown().optional() }).strict();
 const llmConfirm = z.object({ confirm: z.unknown() }).strict();
-interface DecodedDecision { action: SimpleAction; emoji: string | null; reactionSelectionFailed: boolean; score: number | null }
+interface DecodedDecision { action: SimpleAction; emoji: string | null; reactionSelectionFailed: boolean; addressee: Addressee | null; score: number | null }
 // The action is validated first and alone. Emoji problems never void a valid reply or ignore.
 export function decodeSimpleDecision(raw: unknown, native: boolean, allowed: readonly SimpleAction[], choices: readonly string[] = simpleEmoji): DecodedDecision | null {
-  let action: unknown; let emoji: unknown; let score: number | null = null;
+  let action: unknown; let emoji: unknown; let answered: unknown; let score: number | null = null;
   if (native) {
     const envelope = nativeEnvelope.safeParse(raw); if (!envelope.success) return null;
-    action = envelope.data.values.action; emoji = envelope.data.values.emoji;
+    action = envelope.data.values.action; emoji = envelope.data.values.emoji; answered = envelope.data.values.addressee;
     const selected = probability.safeParse(envelope.data.confidence.action); if (selected.success) score = selected.data;
   } else {
     const envelope = llmEnvelope.safeParse(raw); if (!envelope.success) return null;
-    action = envelope.data.action; emoji = envelope.data.emoji;
+    action = envelope.data.action; emoji = envelope.data.emoji; answered = envelope.data.addressee;
   }
   if (typeof action !== "string" || !allowed.includes(action as SimpleAction)) return null;
   if (native && score === null) return null;
   const picked = typeof emoji === "string" && choices.includes(emoji) ? emoji : null;
-  if (action === "react") return { action, emoji: picked, reactionSelectionFailed: picked === null, score };
+  // A missing or unknown addressee stays null, which never allows a reply.
+  const addressee = addressees.find((option) => option === answered) ?? null;
+  if (action === "react") return { action, emoji: picked, reactionSelectionFailed: picked === null, addressee, score };
   // A reply may carry an extra reaction; a missing or unusable one just means none.
-  if (action === "reply") return { action, emoji: picked, reactionSelectionFailed: false, score };
-  return { action: action as SimpleAction, emoji: null, reactionSelectionFailed: false, score };
+  if (action === "reply") return { action, emoji: picked, reactionSelectionFailed: false, addressee, score };
+  return { action: action as SimpleAction, emoji: null, reactionSelectionFailed: false, addressee, score };
 }
 function decodeThought(raw: unknown, native: boolean): { stance: ThoughtStance; length: ThoughtLength; want: number | null } | null {
   let values: Record<string, unknown>; let want: number | null = null;
@@ -201,7 +210,7 @@ export class SimpleParticipationService {
   // One decision request, plus an independent inner-thought request run at the same time.
   public async decide(input: SimpleDecisionInput): Promise<SimpleDecisionOutcome> {
     const route = this.route; const started = performance.now();
-    const base = { action: null, emoji: null, emojiChoice: null, reactionSelectionFailed: false, score: null, scoreKind: "unavailable" as const, thought: null };
+    const base = { action: null, emoji: null, emojiChoice: null, reactionSelectionFailed: false, addressee: null, score: null, scoreKind: "unavailable" as const, thought: null };
     if (!route) return { ...base, status: "unavailable", route: null, latencyMs: 0, usage: null };
     const tokens = input.emoji.map((option) => option.token);
     const { schema, allowed } = actionSchema(route, input.actions, tokens); const description = { source: route.source, endpoint: route.endpoint, model: route.model, reasoningEffort: route.reasoningEffort };
@@ -221,7 +230,7 @@ export class SimpleParticipationService {
     if (decided.status === "rejected") return { ...base, status: "failed", route: description, latencyMs, thought: thoughtOutcome, ...failureDetail(decided.reason, "usage") };
     const decoded = decodeSimpleDecision(decided.value.raw, native, allowed, tokens);
     if (!decoded) return { ...base, status: "failed", failure: "invalid_output", route: description, latencyMs, usage: decided.value.usage, thought: thoughtOutcome };
-    return { status: "valid", action: decoded.action, emoji: decoded.emoji, emojiChoice: input.emoji.find((option) => option.token === decoded.emoji) ?? null, reactionSelectionFailed: decoded.reactionSelectionFailed, score: decoded.score,
+    return { status: "valid", action: decoded.action, emoji: decoded.emoji, emojiChoice: input.emoji.find((option) => option.token === decoded.emoji) ?? null, reactionSelectionFailed: decoded.reactionSelectionFailed, addressee: decoded.addressee, score: decoded.score,
       scoreKind: native ? "native_probability" : "unavailable", route: description, latencyMs, usage: decided.value.usage, thought: thoughtOutcome };
   }
 }

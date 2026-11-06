@@ -28,7 +28,7 @@ import { CharacterDecisionService, type CharacterDecision, type DecisionOutcome 
 import { createCharacterModules } from "./character-modules/index.js";
 import { hash, personaFingerprint, serious } from "./character-modules/shared.js";
 import { resolveParticipation, contributionPolicy, passiveChannelAllowed, resolveDecisionContract, resolveSimpleThreshold, type DecisionContract } from "./participation-policy.js";
-import type { SimpleParticipationService } from "./simple-decision.js";
+import { addresseeAllowsReply, type SimpleParticipationService } from "./simple-decision.js";
 import { classifySimpleTurn } from "./simple-exchange.js";
 import { buildEmojiChoices, emojiReactionIdentifier, unicodeEmojiChoices, type ServerEmoji } from "./simple-emoji.js";
 import { exchangeIdleMs } from "./exchange-window.js";
@@ -468,10 +468,14 @@ export class CharacterRuntime {
       this.registry.reset(guildId); emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "privacy_changed" }); throw new SocialOutputSuppressed();
     }
     const threshold = resolveSimpleThreshold(profile.chat.participation, channelId, kind);
-    const proposed = outcome.action;
+    // Text only goes to someone speaking to the bot or an open question. A reply that came with
+    // an emoji keeps the emoji when the message turns out to be for someone else.
+    const notAddressed = outcome.action === "reply" && !addresseeAllowsReply(outcome.addressee);
+    const proposed = notAddressed && actions.react && outcome.emojiChoice ? "react" : outcome.action;
     let admission = outcome.status !== "valid" ? outcome.failure ?? "decision_failed" : proposed === "ignore" ? "model_ignore" :
       proposed === "reply" && !actions.reply || proposed === "react" && !actions.react ? "action_unavailable" :
-      proposed === "react" && outcome.reactionSelectionFailed ? "reaction_selection_failed" :
+      proposed === "reply" && notAddressed ? "not_addressed" :
+      proposed === "react" && !outcome.emojiChoice ? "reaction_selection_failed" :
       threshold.value > 0 && outcome.score !== null && outcome.score < threshold.value ? "below_threshold" : "would_act";
     // With join confirmation on, joining unasked needs a second question to agree. Follow-ups skip it.
     let confirmation: { result: "yes" | "no" | "failed"; latencyMs: number; usage: unknown; failure: string | null } | null = null;
@@ -487,14 +491,14 @@ export class CharacterRuntime {
     if (thought) {
       thoughtOutcome = thought.status === "failed" ? "failed" : shadow ? "shadow" : null;
       if (thoughtOutcome === null) {
-        if ((proposed === "ignore" || admission === "join_not_confirmed") && thought.stance !== "none" && thoughtsModule) {
+        if ((proposed === "ignore" || notAddressed || admission === "join_not_confirmed") && thought.stance !== "none" && thoughtsModule) {
           thoughtsModule.simpleHold(heldKey, scope, turn.now, settings.modules.thoughts.holdSeconds, { sourceMessageId: current.messageId, stance: thought.stance!, length: thought.length! });
           thoughtOutcome = "held";
         } else if (proposed === "reply" && thought.stance !== "none") { thoughtsModule?.simpleClear(heldKey); thoughtOutcome = admission === "admitted" ? "used" : "would_use"; }
         else thoughtOutcome = "discarded";
       }
     }
-    this.logger?.info({ ...log, sourceMessageId: current.messageId, kind, basis, status: outcome.status, proposedAction: proposed, emoji: outcome.emoji, admission,
+    this.logger?.info({ ...log, sourceMessageId: current.messageId, kind, basis, status: outcome.status, proposedAction: proposed, addressee: outcome.addressee, emoji: outcome.emoji, admission,
       emojiOptions: actions.react ? emoji.length : 0, score: outcome.score, scoreKind: outcome.scoreKind, threshold: threshold.value, thresholdSource: threshold.source, availableReply: actions.reply, availableReact: actions.react,
       route: outcome.route, latencyMs: outcome.latencyMs, usage: outcome.usage, confirmation, preview: participation.shadowMode, trial: admission !== "admitted",
       thought: thought ? { outcome: thoughtOutcome, stance: thought.stance, length: thought.length, want: thought.want, heldOffered: held !== null, failure: thought.failure ?? null,
