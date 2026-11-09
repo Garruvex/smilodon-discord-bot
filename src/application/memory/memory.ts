@@ -4,21 +4,29 @@
 // expression, provenance, contradictory-claim loss, duplicated authorization).
 
 import type { ChannelMemoryMode } from "./memory-channel-policy.js";
+import type { GuardedRetrievalQuery } from "../context/retrieval-query.js";
+import type { ContextProvenance } from "../chat/context-provenance.js";
+import type { GuardedBackgroundContext } from "../context/guarded-background-context.js";
+import type { GuardedConversationContext } from "../chat/guarded-conversation-context.js";
 
-export type MemoryKind = "fact" | "preference" | "episode";
+export type MemoryKind = "fact" | "preference" | "episode" | "impression" | "state";
 export type MemoryAudience = "private" | "channel" | "guild";
 // npc/faction/location: campaign-lore entities (D&D bot use case) — they
 // have no self-report path (see resolveInitialStatus in memory-engine.ts),
 // so a live-chat-sourced fact about one stays "candidate" the same way
 // team/project facts already do; only consolidation-sourced facts about
 // them auto-activate.
-export type MemorySubjectType = "member" | "guild" | "team" | "project" | "npc" | "faction" | "location";
+export type MemorySubjectType = "member" | "guild" | "team" | "project" | "npc" | "faction" | "location" | "persona";
 export type MemoryStatus = "candidate" | "active" | "superseded" | "expired";
 export type MemorySourceKind = "live" | "explicit" | "administrator" | "consolidation";
 
 export interface Memory {
+  contextProvenance?: ContextProvenance | null;
   id: string;
   guildId: string;
+  // Null/omitted means an ordinary fact. Module-owned records are retained
+  // for management but must never enter generic conversational recall.
+  moduleId?: string | null;
   kind: MemoryKind;
   audience: MemoryAudience;
   ownerUserId: string | null;
@@ -84,6 +92,8 @@ export type MemoryRelationPredicate =
 export type MemoryRelationKind = "association" | "consequence";
 
 export interface MemoryRelation {
+  channelId?: string | null;
+  contextProvenance?: ContextProvenance | null;
   id: string;
   guildId: string;
   fromSubjectType: MemorySubjectType;
@@ -99,6 +109,8 @@ export interface MemoryRelation {
 }
 
 export interface RelationCreateInput {
+  channelId?: string | null;
+  contextProvenance?: ContextProvenance | null;
   guildId: string;
   fromSubjectType: MemorySubjectType;
   fromSubjectId: string;
@@ -112,6 +124,8 @@ export interface RelationCreateInput {
 }
 
 export interface RelatedSubjectsQuery {
+  context?: GuardedConversationContext;
+  now?: number;
   guildId: string;
   // The current channel the recall is happening in — matches canRecall's
   // isolationChannelId rule exactly: a relation is visible when its own
@@ -127,6 +141,7 @@ export interface RelatedSubjectsQuery {
 }
 
 export interface RelatedSubject {
+  sourceRelation?: MemoryRelation;
   subjectType: MemorySubjectType;
   subjectId: string;
   // 1 = directly connected to one of the query's subjectIds, 2 = connected
@@ -172,9 +187,16 @@ export function canRecall(memory: Pick<Memory, "guildId" | "isolationChannelId" 
   }
 }
 
+export function canRecallOrdinaryMemory(memory: Memory, context: RecallContext, now: number): boolean {
+  return memory.moduleId == null && canRecall(memory, context, now);
+}
+
 // --- Repository contract -----------------------------------------------
 
 export interface RepositoryIngestInput {
+  contextProvenance?: ContextProvenance | null;
+  // Set only by a dedicated application module, never by model proposals.
+  moduleId?: string | null;
   sourceTimestampMs?: number | null;
   sourceQuote?: string | null;
   sourceChannelMode?: ChannelMemoryMode | null;
@@ -265,6 +287,7 @@ export interface ForgetQuery {
 // The natural identity a memory row is keyed by — the same tuple the
 // memories_identity unique index covers (see schema.ts).
 export interface MemoryIdentity {
+  moduleId?: string | null;
   guildId: string;
   ownerUserId: string | null;
   channelId: string | null;
@@ -288,6 +311,7 @@ export interface CandidateWithAsserters {
 }
 
 export interface PromoteCandidateCommand {
+  contextProvenance?: ContextProvenance | null;
   guildId: string;
   memoryId: string;
   // Other candidate rows under the same identity that corroborated this
@@ -298,6 +322,7 @@ export interface PromoteCandidateCommand {
 }
 
 export interface ActiveSubjectQuery {
+  moduleId?: string | null;
   guildId: string;
   subjectType: MemorySubjectType;
   subjectId: string;
@@ -324,12 +349,23 @@ export interface SupersedeCommand {
   now: number;
 }
 
+export interface SourceForgetQuery { guildId: string; subjectId: string; topic: string; slot: string; channelId: string; sourceTimestampMs: number }
+
 export interface MemoryRepository {
+  migrateRelationshipExpiries?(guildId: string): Promise<number>;
+  deleteExpiredModuleData?(guildId: string, now: number, historyDays: number): Promise<number>;
+  clearModuleData?(guildId: string, moduleId: string): Promise<number>;
+  findDueCallbackCandidates?(input: CandidateQuery): Promise<RecallCandidates>;
+  claimCallbackMemory?(input: { guildId: string; memoryId: string; updatedAt: number; expected: unknown; value: unknown; maxPerDay: number; dayStart: number; now: number }): Promise<boolean>;
+  findModuleCandidates?(input: CandidateQuery & { moduleId: string }): Promise<RecallCandidates>;
+  compareAndSetStructuredValue?(input: { guildId: string; memoryId: string; updatedAt: number; expected: unknown; value: unknown }): Promise<boolean>;
   findObservedAliases(input: CandidateQuery & { message: string }): Promise<{ alias: string; subjectId: string }[]>;
+  findAliasSources?(input: CandidateQuery & { message: string }): Promise<readonly Memory[]>;
   reclassifyPublicMemory(input: { guildId: string; memoryId: string; sourceMessageId: string; sourceChannelId: string;
     assertedByUserId: string; sourceQuote: string; mode: "shared" | "isolated"; sourceTimestampMs?: number; now: number }): Promise<boolean>;
   recordForgetCutoff(input: { guildId: string; subjectId: string; topic: string; slot: string; scopeKey: string; cutoff: number }): Promise<void>;
-  isSourceForgotten(input: { guildId: string; subjectId: string; topic: string; slot: string; channelId: string; sourceTimestampMs: number }): Promise<boolean>;
+  isSourceForgotten(input: SourceForgetQuery): Promise<boolean>;
+  sourcesForgotten?(inputs: readonly SourceForgetQuery[]): Promise<readonly boolean[]>;
   ingest(input: RepositoryIngestInput): Promise<Memory>;
   findRecallCandidates(input: CandidateQuery): Promise<RecallCandidates>;
   findById(guildId: string, id: string): Promise<Memory | null>;
@@ -386,6 +422,8 @@ export interface MemoryRepository {
 // --- Engine contract -----------------------------------------------------
 
 export interface MemoryRecallInput {
+  query?: GuardedRetrievalQuery;
+  context?: GuardedConversationContext;
   filterSubjectIds?: readonly string[];
   guildId: string;
   channelId: string;
@@ -437,6 +475,7 @@ export interface MemoryRecallInput {
 // path back to the query's subjectIds) — a scoped-out follow-up, not
 // silently dropped.
 export interface CausalChainLink {
+  sourceRelation?: MemoryRelation;
   fromSubjectType: MemorySubjectType;
   fromSubjectId: string;
   predicate: MemoryRelationPredicate;
@@ -445,8 +484,10 @@ export interface CausalChainLink {
 }
 
 export interface MemoryContext {
+  // Internal minimal alias receipts; never serialized as ordinary facts.
+  aliasSources?: readonly Memory[];
   maxSerializedChars?: number;
-  aliasCandidates?: readonly { alias: string; subjectIds: readonly string[] }[];
+  aliasCandidates?: readonly { alias: string; subjectIds: readonly string[]; incomplete?: boolean }[];
   memories: readonly Memory[];
   // Rendered into the prompt by chat-structured-output.ts. See
   // CausalChainLink's doc comment for the hop-depth limitation.
@@ -504,6 +545,7 @@ export type ProposedMemory =
     };
 
 export interface MemoryIngestInput {
+  context?: GuardedBackgroundContext | GuardedConversationContext;
   sourceTimestampMs?: number;
   guildId: string;
   channelId: string;
@@ -571,6 +613,7 @@ export interface ProposedRelation {
 }
 
 export interface MemoryRelationIngestInput {
+  context?: GuardedBackgroundContext | GuardedConversationContext;
   guildId: string;
   channelId: string;
   channelMode: ChannelMemoryMode;
@@ -598,6 +641,6 @@ export interface MemoryEngine {
   // Provenance for one memory — see MemoryRepository.findSources. Exposed at
   // the engine level so callers (e.g. /memory list) don't need direct
   // repository access just to render a "view source" link.
-  listSources(memoryId: string): Promise<readonly MemorySource[]>;
+  listSources(memoryId: string, memory?: Memory): Promise<readonly MemorySource[]>;
   listPromptSources?(memoryIds: readonly string[]): Promise<readonly MemorySource[]>;
 }

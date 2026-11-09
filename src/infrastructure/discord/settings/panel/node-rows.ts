@@ -43,6 +43,7 @@ const selectTextLimit = 100;
 const reportLimit = 1500;
 const maxSelectValues = 25;
 const textChannelTypes = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
+const threadChannelTypes = [ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.AnnouncementThread];
 
 export function truncate(value: string, limit: number): string {
   return value.length <= limit ? value : `${value.slice(0, limit - 1)}…`;
@@ -175,7 +176,7 @@ function picker(
       .setMaxValues(maxValues)
       .setDefaultChannels(...selected)
       .setPlaceholder(context.ui.settings.value.notSet);
-    if (option.textOnly) select.setChannelTypes(...textChannelTypes);
+    if (option.textOnly) select.setChannelTypes(...textChannelTypes, ...(option.kind === "channel" && option.threads ? threadChannelTypes : []));
     return select;
   }
   return new RoleSelectMenuBuilder()

@@ -61,7 +61,7 @@ export async function fetchXPost(rawUrl: string, options: FetchXPostOptions = {}
     const timeoutSignal = AbortSignal.timeout(fetchTimeoutMs);
     const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
     try {
-      const response = await fetch(mirrorUrl, { signal, headers: { Accept: "application/json" } });
+      const response = await fetch(mirrorUrl, { signal, redirect: "error", headers: { Accept: "application/json" } });
       if (!response.ok) continue;
       const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
       if (!contentType.includes("application/json")) continue;

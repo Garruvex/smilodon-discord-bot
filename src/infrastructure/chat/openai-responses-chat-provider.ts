@@ -1,4 +1,8 @@
+import { chatImageLabel, reportStructuredUsage, type StructuredCallOptions } from "../../application/chat/chat-provider.js";
 import { z } from "zod";
+import { performance } from "node:perf_hooks";
+import { diagnosticElapsed, emitChatDiagnostic, safeFailure } from "../../application/diagnostics/chat-diagnostics.js";
+import { modelDiagnosticLogger } from "../../application/diagnostics/model-diagnostics.js";
 
 import {
   ChatProviderError,
@@ -142,6 +146,9 @@ interface FunctionCallOutputItem {
 }
 
 export class OpenAiResponsesChatProvider implements ChatProvider {
+  public readonly nativeWebSearchSupported = true;
+  public readonly applicationToolsSupported = true;
+  public readonly imageGenerationSupported = true;
   private readonly modelChain: ModelFallbackChain;
   // Separate chain for the two standalone structured-output calls (own
   // prompt/schema, outside the main reply turn) — falls back to the primary
@@ -175,15 +182,14 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
       ...request.images.flatMap((image) => [
         {
           type: "input_text",
-          text: image.source === "current_message"
-            ? `CURRENT MESSAGE IMAGE ${image.sourceIndex + 1} (untrusted image input):`
-            : `REPLY CHAIN IMAGE ${image.sourceIndex + 1} (untrusted image input):`,
+          text: chatImageLabel(image),
         },
         { type: "input_image", image_url: image.dataUrl, detail: "auto" },
       ]),
     ];
     const customTools = request.enabledTools ?? [];
     const toolContext: ChatToolContext = {
+      ...(request.turnSignal ? { signal: request.turnSignal } : {}),
       guildId: request.guildId,
       channelId: request.channelId,
       currentUser: request.currentUser,
@@ -283,7 +289,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     stream: boolean,
     observer?: ChatResponseObserver,
   ): Promise<unknown> {
-    request.onModelAttempt?.();
+    await request.beforeModelAttempt?.();
     const response = await fetch(`${this.baseUrl}/responses`, {
       method: "POST",
       headers: {
@@ -318,7 +324,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
           : undefined,
         stream: stream || undefined,
       }),
-      signal: AbortSignal.timeout(stream ? 180_000 : 60_000),
+      signal: request.turnSignal ? AbortSignal.any([request.turnSignal, AbortSignal.timeout(stream ? 180_000 : 60_000)]) : AbortSignal.timeout(stream ? 180_000 : 60_000),
     });
     if (!response.ok) {
       const errorBody: unknown = await response.json().catch(() => null);
@@ -340,12 +346,17 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     tools: readonly ChatTool[],
     ctx: ChatToolContext,
   ): Promise<ChatToolResult> {
+    const started = performance.now();
     const tool = tools.find((candidate) => candidate.name === call.name);
-    if (!tool) return { content: `Unknown tool "${call.name}".` };
+    if (!tool) {
+      emitChatDiagnostic(modelDiagnosticLogger(), { event: "chat.tool.completed", status: "unknown_tool", durationMs: diagnosticElapsed(started) });
+      return { content: `Unknown tool "${call.name}".` };
+    }
     let args: unknown;
     try {
       args = JSON.parse(call.arguments);
     } catch {
+      emitChatDiagnostic(modelDiagnosticLogger(), { event: "chat.tool.completed", status: "invalid_arguments", durationMs: diagnosticElapsed(started) });
       return { content: "Invalid tool arguments — could not parse as JSON." };
     }
     // Racing a timer can't actually cancel tool.execute() — the loser keeps
@@ -353,15 +364,20 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     // side-effecting tool (see ChatToolContext.signal) notice and bail out
     // right before it would otherwise mutate anything.
     const timeoutController = new AbortController();
+    const signal = ctx.signal ? AbortSignal.any([ctx.signal, timeoutController.signal]) : timeoutController.signal;
     const timer = setTimeout(() => timeoutController.abort(), toolExecutionTimeoutMs);
     try {
-      return await Promise.race([
-        tool.execute(args, { ...ctx, signal: timeoutController.signal }),
+      const result = await Promise.race([
+        tool.execute(args, { ...ctx, signal }),
         new Promise<ChatToolResult>((_, reject) => {
-          timeoutController.signal.addEventListener("abort", () => reject(new Error("tool_timeout")));
+          if (signal.aborted) reject(new Error("tool_cancelled"));
+          else signal.addEventListener("abort", () => reject(new Error("tool_cancelled")), { once: true });
         }),
       ]);
-    } catch {
+      emitChatDiagnostic(modelDiagnosticLogger(), { event: "chat.tool.completed", status: "completed", durationMs: diagnosticElapsed(started) });
+      return result;
+    } catch (error) {
+      emitChatDiagnostic(modelDiagnosticLogger(), { event: "chat.tool.completed", status: timeoutController.signal.aborted ? "timeout" : "failed", durationMs: diagnosticElapsed(started), ...safeFailure(error, "operation_error") });
       return { content: "That tool failed to run right now — treat it as unavailable for this reply." };
     } finally {
       clearTimeout(timer);
@@ -381,9 +397,10 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     instructions: string,
     schemaName: string,
     jsonSchema: object,
-    options?: { maxOutputTokens?: number; timeoutMs?: number },
+    options?: StructuredCallOptions & { maxOutputTokens?: number; timeoutMs?: number; beforeAttempt?: () => Promise<void> },
   ): Promise<string> {
     const body = await this.summaryModelChain.run(async (model) => {
+      await options?.beforeAttempt?.();
       const response = await fetch(`${this.baseUrl}/responses`, {
         method: "POST",
         headers: {
@@ -394,14 +411,14 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
           model,
           instructions,
           input: [{ role: "user", content: [{ type: "input_text", text: "Follow the instructions." }] }],
-          reasoning: { effort: this.generation.reasoningEffort },
+          reasoning: { effort: options?.reasoningEffort ?? this.generation.reasoningEffort },
           text: {
             verbosity: this.generation.verbosity,
             format: { type: "json_schema", name: schemaName, strict: true, schema: jsonSchema },
           },
           max_output_tokens: options?.maxOutputTokens ?? this.generation.maxOutputTokens,
         }),
-        signal: AbortSignal.timeout(options?.timeoutMs ?? 30_000),
+        signal: options?.signal ?? AbortSignal.timeout(options?.timeoutMs ?? 30_000),
       });
       if (!response.ok) {
         const errorBody: unknown = await response.json().catch(() => null);
@@ -416,8 +433,11 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
         );
       }
       return response.json();
-    });
+    }, options);
     const parsed = responseSchema.parse(body);
+    if (parsed.usage) reportStructuredUsage(options, { inputTokens: parsed.usage.input_tokens, outputTokens: parsed.usage.output_tokens,
+      totalTokens: parsed.usage.total_tokens, cachedInputTokens: parsed.usage.input_tokens_details?.cached_tokens ?? null,
+      reasoningTokens: parsed.usage.output_tokens_details?.reasoning_tokens ?? null });
     const texts: string[] = [];
     for (const item of parsed.output) {
       if (item.type !== "message") continue;
@@ -428,11 +448,12 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     return texts.join("\n").trim();
   }
 
-  public async analyzeUserCustomization(rawText: string): Promise<UserCustomizationAnalysisResult> {
+  public async analyzeUserCustomization(rawText: string, options?: StructuredCallOptions): Promise<UserCustomizationAnalysisResult> {
     const text = await this.callStructuredOutput(
       buildUserCustomizationAnalysisPrompt(rawText),
       "user_customization_analysis",
       userCustomizationAnalysisJsonSchema,
+      options,
     );
     const analysis = parseUserCustomizationAnalysisOutput(text);
     if (!analysis.ok) {
@@ -445,34 +466,43 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     return { ok: true, markdown };
   }
 
+  public async generateCharacterData(prompt: string, schema: Record<string, unknown>, options?: StructuredCallOptions): Promise<unknown> {
+    return JSON.parse(await this.callStructuredOutput(prompt, "character_data", schema, options)) as unknown;
+  }
+
   public async summarizeDroppedExchanges(
     exchanges: readonly { user: string; assistant: string }[],
     speaker: { id: string; displayName: string },
+    options?: StructuredCallOptions,
   ): Promise<readonly DroppedExchangeFact[]> {
     const text = await this.callStructuredOutput(
       buildDroppedExchangeConsolidationPrompt(exchanges, speaker),
       "dropped_exchange_consolidation",
       droppedExchangeConsolidationJsonSchema,
+      options,
     );
     return parseDroppedExchangeConsolidationOutput(text).facts;
   }
 
-  public async classifyMemoryConflict(existingStatement: string, newStatement: string): Promise<boolean> {
+  public async classifyMemoryConflict(existingStatement: string, newStatement: string, options?: StructuredCallOptions): Promise<boolean> {
     const text = await this.callStructuredOutput(
       buildMemoryConflictClassificationPrompt(existingStatement, newStatement),
       "memory_conflict_classification",
       memoryConflictClassificationJsonSchema,
+      options,
     );
     return parseMemoryConflictClassificationOutput(text).related;
   }
 
   public async summarizeReplyChainOverflow(
-    hops: readonly { authorDisplayName: string; content: string }[],
+    hops: readonly { authorDisplayName: string; authorId?: string; timestampMs?: number; content: string }[],
+    options?: StructuredCallOptions,
   ): Promise<string> {
     const text = await this.callStructuredOutput(
       buildReplyChainOverflowSummaryPrompt(hops),
       "reply_chain_overflow_summary",
       replyChainOverflowSummaryJsonSchema,
+      options,
     );
     return parseReplyChainOverflowSummaryOutput(text).summary;
   }
@@ -481,11 +511,13 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     draftResponse: string,
     context: readonly { authorId: string; authorDisplayName: string; content: string }[],
     currentMessage: string,
+    beforeAttempt?: () => Promise<void>,
   ): Promise<{ needsCorrection: boolean; correctionNotes: string | null }> {
     const text = await this.callStructuredOutput(
       buildAttributionVerificationPrompt(draftResponse, context, currentMessage),
       "attribution_verification",
       attributionVerificationJsonSchema,
+      ...(beforeAttempt ? [{ beforeAttempt }] : []),
     );
     return parseAttributionVerificationOutput(text);
   }
@@ -499,8 +531,10 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     userMessage: string,
     assistantReply: string,
     speaker: { id: string; displayName: string },
+    options?: StructuredCallOptions,
   ): Promise<readonly PersonalMemoryExtractionAction[]> {
     return this.summaryModelChain.run(async (model) => {
+      await options?.beforeAttempt?.();
       const response = await fetch(`${this.baseUrl}/responses`, {
         method: "POST",
         headers: {
@@ -552,12 +586,12 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
     });
   }
 
-  public async compilePersonaBundle(content: string): Promise<readonly number[]> {
+  public async compilePersonaBundle(content: string, options?: StructuredCallOptions): Promise<readonly number[]> {
     const text = await this.callStructuredOutput(
       buildPersonaBundleCompilationPrompt(content),
       "persona_bundle_compilation",
       personaBundleCompilationJsonSchema,
-      { maxOutputTokens: personaBundleCompilationMaxOutputTokens, timeoutMs: personaBundleCompilationTimeoutMs },
+      { ...options, maxOutputTokens: personaBundleCompilationMaxOutputTokens, timeoutMs: personaBundleCompilationTimeoutMs },
     );
     return [...parsePersonaBundleSectionSelection(text, content)];
   }
@@ -565,11 +599,13 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
   public async evolvePersonaDrift(
     currentText: string,
     exchanges: readonly { user: string; assistant: string }[],
+    options?: StructuredCallOptions,
   ): Promise<string> {
     const text = await this.callStructuredOutput(
       buildPersonaDriftEvolutionPrompt(currentText, exchanges),
       "persona_drift_evolution",
       personaDriftEvolutionJsonSchema,
+      options,
     );
     return parsePersonaDriftEvolutionOutput(text).text;
   }
@@ -577,9 +613,11 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
   public async summarizeChannelMessages(
     guildId: string,
     messages: readonly ChannelSummaryMessage[],
+    options?: StructuredCallOptions,
   ): Promise<ChannelSummaryResult> {
     const summary = prepareChannelMessageSummary(guildId, messages);
     return this.summaryModelChain.run(async (model) => {
+      await options?.beforeAttempt?.();
       const response = await fetch(`${this.baseUrl}/responses`, {
         method: "POST",
         headers: {
@@ -724,6 +762,8 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
       generatedImages,
       ambientAction: modelOutput.ambientAction,
       ...(modelOutput.participationReason !== undefined ? { participationReason: modelOutput.participationReason } : {}),
+      ...(modelOutput.responseIntent ? { responseIntent: modelOutput.responseIntent } : {}),
+      ...(modelOutput.referentSourceIds?.length ? { referentSourceIds: modelOutput.referentSourceIds } : {}),
       reactionEmoji: modelOutput.reactionEmoji,
       historyReactions: modelOutput.historyReactions,
     };
@@ -755,10 +795,12 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
   public async generateReferenceImage(
     prompt: string,
     reference: { data: Buffer; contentType: string },
+    options?: { signal?: AbortSignal; beforeAttempt?: () => Promise<void> },
   ): Promise<{ ok: true; images: readonly GeneratedChatImage[] } | { ok: false; reason: string }> {
     const referenceDataUrl = `data:${reference.contentType};base64,${reference.data.toString("base64")}`;
     try {
       const body = await this.modelChain.run(async (model) => {
+        await options?.beforeAttempt?.(); options?.signal?.throwIfAborted();
         const response = await fetch(`${this.baseUrl}/responses`, {
           method: "POST",
           headers: {
@@ -777,7 +819,7 @@ export class OpenAiResponsesChatProvider implements ChatProvider {
             tools: [{ type: "image_generation" }],
             tool_choice: "required",
           }),
-          signal: AbortSignal.timeout(50_000),
+          signal: options?.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(50_000)]) : AbortSignal.timeout(50_000),
         });
         if (!response.ok) {
           const errorBody: unknown = await response.json().catch(() => null);

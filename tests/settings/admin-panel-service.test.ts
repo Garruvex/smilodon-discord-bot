@@ -2,6 +2,7 @@ import { ChannelType, PermissionsBitField, type PermissionResolvable } from "dis
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AdminPanelHealth } from "../../src/application/settings/admin-panel-health.js";
+import { ChannelEditScheduler } from "../../src/application/concurrency/channel-edit-scheduler.js";
 import type { AdminPanelState, AdminPanelStateStore } from "../../src/application/settings/admin-panel-state-store.js";
 import { AdminPanelService } from "../../src/infrastructure/discord/settings/panel/admin-panel-service.js";
 import { engineFixture, guildId, slashValues, type EngineFixture } from "../helpers/settings-fixtures.js";
@@ -112,7 +113,7 @@ interface Harness {
   settle: () => Promise<void>;
 }
 
-async function harness(channel = fakeChannel()): Promise<Harness> {
+async function harness(channel = fakeChannel(), scheduler = new ChannelEditScheduler({ maxEdits: 1000 })): Promise<Harness> {
   const fixture = engineFixture();
   await fixture.run("access.admin-panel", slashValues({ channel: { id: panelChannelId } }));
   const client = {
@@ -133,6 +134,7 @@ async function harness(channel = fakeChannel()): Promise<Harness> {
     health,
     { log: audit } as never,
     logger as never,
+    scheduler,
   );
   const settle = (): Promise<void> => service.refresh(guildId);
   await settle();
@@ -142,6 +144,30 @@ async function harness(channel = fakeChannel()): Promise<Harness> {
 const storedIds = (store: AdminPanelStateStore): Record<string, string> => ({ ...store.find(guildId)?.messages });
 
 describe("AdminPanelService", () => {
+  it("paces admin edits through the shared budget and cancels a waiting redraw on shutdown", async () => {
+    const scheduler = new ChannelEditScheduler({ maxEdits: 1, windowMs: 5000 });
+    const f = await harness(fakeChannel(), scheduler);
+    for (const message of f.channel.messages.values()) message.edit.mockClear();
+    const pending = f.service.refresh(guildId, "all");
+    await vi.advanceTimersByTimeAsync(0);
+    const edits = (): number => [...f.channel.messages.values()].reduce((total, message) => total + message.edit.mock.calls.length, 0);
+    const initial = edits(); expect(initial).toBeLessThanOrEqual(1);
+    await vi.advanceTimersByTimeAsync(4999); expect(edits()).toBe(initial);
+    await vi.advanceTimersByTimeAsync(1); expect(edits()).toBe(initial + 1);
+    f.service.stop(); await pending; await f.service.drain(); await vi.advanceTimersByTimeAsync(20000);
+    expect(edits()).toBe(initial + 1); scheduler.stop();
+  });
+
+  it("does not publish an old settings payload after configuration changes during backoff", async () => {
+    const scheduler = new ChannelEditScheduler({ maxEdits: 1, windowMs: 5000 }); const f = await harness(fakeChannel(), scheduler);
+    for (const message of f.channel.messages.values()) message.edit.mockClear();
+    const pending = f.service.refresh(guildId, "all"); await vi.advanceTimersByTimeAsync(0);
+    const edits = (): number => [...f.channel.messages.values()].reduce((total, message) => total + message.edit.mock.calls.length, 0);
+    const initial = edits(); await f.fixture.profiles.update(guildId, { language: "ja" });
+    await vi.advanceTimersByTimeAsync(5000); await pending; expect(edits()).toBe(initial);
+    f.service.stop(); scheduler.stop();
+  });
+
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   });

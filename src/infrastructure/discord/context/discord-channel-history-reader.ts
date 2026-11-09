@@ -1,4 +1,5 @@
-import { PermissionFlagsBits, type Client, type TextChannel } from "discord.js";
+import { PermissionFlagsBits, RESTJSONErrorCodes, type Client, type TextChannel, type GuildMember, type Message } from "discord.js";
+import { mapWithConcurrency } from "../../../application/concurrency/map-with-concurrency.js";
 import type { SocialChatEligibility } from "../behaviors/social-chat-eligibility.js";
 
 import type {
@@ -9,18 +10,74 @@ import type {
 } from "../../../application/context/channel-history-reader.js";
 
 const fetchPageSize = 100;
+const isDepartedAuthor = (error: unknown): boolean => {
+  const code = (error as { code?: unknown } | null)?.code;
+  return code === RESTJSONErrorCodes.UnknownMember || code === RESTJSONErrorCodes.UnknownUser;
+};
 
 export class DiscordChannelHistoryReader implements ChannelHistoryReader {
   public constructor(private readonly client: Client, private readonly eligibility: SocialChatEligibility | null = null) {}
 
+  public async validateBatch(messages: readonly ChannelHistoryMessage[], signal?: AbortSignal): Promise<boolean> {
+    signal?.throwIfAborted();
+    const first = messages[0];
+    if (!first || messages.length > 500 || !this.eligibility?.canReadBackground(first.guildId, first.channelId) ||
+        messages.some((source) => source.guildId !== first.guildId || source.channelId !== first.channelId)) return false;
+    const channel = await this.client.channels.fetch(first.channelId, { force: true }).catch(() => null);
+    if (!channel?.isTextBased() || channel.isDMBased() || channel.guildId !== first.guildId) return false;
+    const me = await channel.guild.members.fetchMe({ force: true }).catch(() => null);
+    const permissions = me ? channel.permissionsFor(me) : null;
+    if (!permissions?.has(PermissionFlagsBits.ViewChannel) || !permissions.has(PermissionFlagsBits.ReadMessageHistory)) return false;
+    const fresh = new Map<string, Message>();
+    // Dense batches need only a few page reads. Sparse batches get bounded
+    // exact-ID reads instead of an unbounded scan through unrelated history.
+    if (messages.every((source) => /^\d+$/u.test(source.id))) {
+      let before = (messages.reduce((maximum, source) => BigInt(source.id) > maximum ? BigInt(source.id) : maximum, 0n) + 1n).toString();
+      for (let pageIndex = 0; pageIndex < 5; pageIndex++) {
+        signal?.throwIfAborted();
+        const page = await channel.messages.fetch({ before, limit: 100, cache: false }).catch(() => null);
+        if (!page?.size) break;
+        for (const message of page.values()) fresh.set(message.id, message);
+        if (messages.every((source) => fresh.has(source.id)) || page.size < 100) break;
+        const oldest = page.last()?.id; if (!oldest || oldest === before) break; before = oldest;
+      }
+    }
+    const missing = messages.filter((source) => !fresh.has(source.id));
+    if (missing.length > 16) return false;
+    await mapWithConcurrency(missing, 4, async (source) => {
+      signal?.throwIfAborted();
+      const message = await channel.messages.fetch({ message: source.id, force: true, cache: false }).catch(() => null);
+      if (message) fresh.set(source.id, message);
+    });
+    const members = new Map<string, GuildMember>();
+    await mapWithConcurrency([...new Set(messages.map((source) => source.authorId))], 4, async (user) => {
+      signal?.throwIfAborted();
+      const member = await channel.guild.members.fetch({ user, force: true, cache: false }).catch(() => null);
+      if (member) members.set(user, member);
+    });
+    for (const source of messages) {
+      signal?.throwIfAborted();
+      const message = fresh.get(source.id); const member = members.get(source.authorId);
+      if (!message || !member || message.author.bot || message.system || message.author.id !== source.authorId ||
+          message.createdTimestamp !== source.createdAt || message.content.trim().slice(0, source.content.length) !== source.content ||
+          member.displayName !== source.authorDisplayName || !(await this.eligibility.checkBackgroundSource(message, member)).eligible) return false;
+    }
+    return this.eligibility.canReadBackground(first.guildId, first.channelId);
+  }
+
   public async canLearn(guildId: string, channelId: string, sourceMessageId: string): Promise<boolean> {
+    if (this.eligibility && !this.eligibility.canReadBackground(guildId, channelId)) return false;
     const channel = await this.client.channels.fetch(channelId).catch(() => null);
     if (!channel?.isTextBased() || channel.isDMBased() || channel.guildId !== guildId) return false;
     const message = await channel.messages.fetch(sourceMessageId).catch(() => null);
-    return Boolean(message && !message.author.bot && (!this.eligibility || (await this.eligibility.check(message, "observation")).eligible));
+    const member = message && this.eligibility?.hasContextRoleExclusions(message) && !message.member
+      ? await channel.guild.members.fetch(message.author.id).catch(() => null) : message?.member ?? null;
+    return Boolean(message && !message.author.bot && (!this.eligibility || (await this.eligibility.checkBackgroundSource(message, member)).eligible));
   }
 
   public async readBatch(request: ChannelHistoryReadRequest): Promise<ChannelHistoryReadResult> {
+    if (this.eligibility && !this.eligibility.canReadBackground(request.guildId, request.channelId))
+      return { ok: false, code: "scope_denied", message: "The channel is no longer selected for history scans or daily summaries." };
     const channel = await this.client.channels.fetch(request.channelId).catch(() => null);
     if (!channel) {
       return { ok: false, code: "channel_not_found", message: "The configured channel was not found or is inaccessible." };
@@ -53,9 +110,12 @@ export class DiscordChannelHistoryReader implements ChannelHistoryReader {
     let oldestSeenMessageId: string | null = null;
     let reachedBoundary = false;
     let characters = 0;
+    const members = new Map<string, Promise<GuildMember | null>>();
 
     try {
       while (messages.length < request.maxMessages && characters < request.maxCharacters) {
+        if (this.eligibility && !this.eligibility.canReadBackground(request.guildId, request.channelId))
+          return { ok: false, code: "scope_denied", message: "Background reading scope changed during the scan." };
         const page = await channel.messages.fetch({ limit: fetchPageSize, ...(before ? { before } : {}) });
         if (page.size === 0) {
           reachedBoundary = true;
@@ -70,8 +130,19 @@ export class DiscordChannelHistoryReader implements ChannelHistoryReader {
           }
 
           const content = message.content.trim().slice(0, request.maxCharactersPerMessage);
-          const eligible = !message.author.bot && !message.system && content.length > 0 &&
-            (!this.eligibility || (await this.eligibility.check(message, "observation")).eligible);
+          const candidate = !message.author.bot && !message.system && content.length > 0;
+          // Read the same fresh member validateBatch will compare against. The
+          // gateway cache misses authors who have not spoken since a restart,
+          // and a batch built from their username could never validate, so its
+          // channel would retry the same batch forever. A departed author is
+          // skipped for good; any other failure aborts this read for a retry.
+          if (candidate && !members.has(message.author.id)) {
+            members.set(message.author.id, channel.guild.members.fetch({ user: message.author.id, force: true, cache: false })
+              .catch((error: unknown) => { if (isDepartedAuthor(error)) return null; throw error; }));
+          }
+          const member = candidate ? await members.get(message.author.id)! : null;
+          const eligible = candidate && !!member &&
+            (!this.eligibility || (await this.eligibility.checkBackgroundSource(message, member)).eligible);
           // Don't advance the cursor past a message we're deferring to the
           // next batch — only past ones we've fully consumed (pushed, or
           // permanently skipped as ineligible). Advancing on every message
@@ -91,7 +162,7 @@ export class DiscordChannelHistoryReader implements ChannelHistoryReader {
             guildId: request.guildId,
             channelId: request.channelId,
             authorId: message.author.id,
-            authorDisplayName: message.member?.displayName ?? message.author.username,
+            authorDisplayName: member.displayName,
             content,
             createdAt: message.createdTimestamp,
           });

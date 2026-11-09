@@ -38,3 +38,12 @@ export function containsBotName(content: string, displayName: string): boolean {
   }
   return false;
 }
+
+// A third-person reference to the character is not an invitation to answer.
+export function addressesBotName(content: string, displayName: string): boolean {
+  const name = displayName.trim(); if (!name) return false;
+  const text = content.trim().replace(/^(?:hey|hi|yo|嗨|嘿|哈囉)[,，!！\s]+/iu, "");
+  if (text.toLocaleLowerCase() === name.toLocaleLowerCase()) return true;
+  if (!text.toLocaleLowerCase().startsWith(name.toLocaleLowerCase())) return false;
+  return /^(?:[,，、:：!?！？]|\s+(?:did|do|are|can|could|would|will|have|what|how|why|please)|(?:你|您|請|幫|能|可|在嗎|我想|我需要))/iu.test(text.slice(name.length));
+}

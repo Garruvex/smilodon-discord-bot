@@ -19,7 +19,7 @@ CREATE TABLE "memory_forget_cutoffs" (
 CREATE TABLE "memory_observed_aliases" (
 	"guild_id" text NOT NULL,
 	"alias" text NOT NULL,
-	"memory_id" text NOT NULL,
+	"memory_id" uuid NOT NULL,
 	CONSTRAINT "memory_observed_aliases_memory_id_alias_pk" PRIMARY KEY("memory_id","alias")
 );
 --> statement-breakpoint

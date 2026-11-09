@@ -1,9 +1,12 @@
 import type { Client, GuildTextBasedChannel, Message } from "discord.js";
 import type { Logger } from "pino";
+import { chatDeliveryText } from "../../../application/i18n/chat-delivery.js";
+import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
+import { conversationEffects } from "../../../application/chat/conversation-effects.js";
 
-import { ChatAccessService } from "../../../application/access/chat-access-service.js";
+import { ChatPolicy } from "../../../application/chat/chat-policy.js";
+import { buildChatTurnInput, type ChatTurnEnvironment } from "./chat-turn-request.js";
 import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
-import type { ChannelHistoryMessage } from "../../../application/chat/chat-provider.js";
 import { ChatStateCommitError, type ChatConversationService } from "../../../application/chat/chat-conversation-service.js";
 import type { MessageReactionWatch, MessageReactionWatchStore } from "../../../application/chat/message-reaction-watch.js";
 import type { PersonaSource } from "../../../application/chat/persona-source.js";
@@ -16,7 +19,6 @@ import type { IsGameChannel } from "./game-channel-guard.js";
 import { SocialOutputSuppressed, type MessageOriginStore } from "../../../application/chat/message-origin-store.js";
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
 import { resolveParticipation } from "../../../application/chat/participation-policy.js";
-import { resolveChannelMemoryMode } from "../../../application/memory/memory-channel-policy.js";
 
 class ReactionOutputSuppressed extends Error {}
 
@@ -84,7 +86,8 @@ export class ReactionReplyScheduler {
   private currentTick: Promise<void> | null = null;
   private readonly perMessageQueue = new KeyedSerialQueue();
   private readonly turnSupport: ChatTurnSupport;
-  private readonly chatAccess: ChatAccessService;
+  private readonly policy: ChatPolicy;
+  private readonly turnEnvironment: ChatTurnEnvironment;
   // In-memory only — a process restart resets a watch's attempt count back
   // to zero, which just means a couple of extra retries in the worst case,
   // never fewer than intended. Not worth a schema migration/persisted
@@ -104,7 +107,8 @@ export class ReactionReplyScheduler {
     origins: MessageOriginStore | null = null,
   ) {
     this.turnSupport = new ChatTurnSupport(logger, eligibility, origins);
-    this.chatAccess = new ChatAccessService(configuration);
+    this.policy = new ChatPolicy(configuration);
+    this.turnEnvironment = { profiles, ownerUserIds: configuration.ownerUserIds, support: this.turnSupport };
   }
 
   // true: still has attempts left, caller should leave the watch pending
@@ -239,11 +243,12 @@ export class ReactionReplyScheduler {
       return;
     }
 
-    const { reactorIds, reactions, complete } = await this.collectUniqueReactorIds(message, profile, watch.channelId);
+    const { reactorIds, reactions, complete, canTrigger } = await this.collectUniqueReactorIds(message, profile, watch.channelId);
     if (!complete) {
       await this.handleFetchFailure(watch, now, null, "Failed to fully fetch this message's reactor lists");
       return;
     }
+    if (!canTrigger) { await this.giveUp(watch, now, "interaction_access_denied"); return; }
     // Below chat.reactionReplyMinReactors distinct eligible human reactors,
     // the watch is marked done WITHOUT calling the model. Counts unique
     // reactors across every emoji on the message, not raw reaction-add events.
@@ -306,10 +311,9 @@ export class ReactionReplyScheduler {
   }
 
   // Excludes the bot's own id (it never counts toward its own threshold),
-  // any other bot, and anyone the guild's normal chat-access policy
-  // (role/channel allow-list) wouldn't let talk to the bot at all — a
-  // restricted member's emoji shouldn't be able to trigger or shape a
-  // reply any more than their words could. Fetches each emoji's reactor
+  // any other bot, and explicit collection opt-outs. Non-triggering people
+  // may contribute context, but at least one eligible reactor must retain
+  // interaction access. Fetches each emoji's reactor
   // list rather than trusting `.count`/cache alone — a reaction on a
   // message the bot wasn't actively watching when it landed is routinely
   // not fully cached. `complete: false` means at least one emoji's reactor
@@ -317,7 +321,7 @@ export class ReactionReplyScheduler {
   // failure (retry) rather than evaluating a possibly-undercounted total.
   private async collectUniqueReactorIds(
     message: Message, profile: GuildConfiguration, channelId: string,
-  ): Promise<{ reactorIds: Set<string>; reactions: EmojiReaction[]; complete: boolean }> {
+  ): Promise<{ reactorIds: Set<string>; reactions: EmojiReaction[]; complete: boolean; canTrigger: boolean }> {
     const rawIds = new Set<string>();
     const rawReactions: EmojiReaction[] = [];
     let complete = true;
@@ -336,14 +340,18 @@ export class ReactionReplyScheduler {
       rawReactions.push({ emoji: emojiLabel(reaction.emoji), emojiId: reaction.emoji.id, userIds });
     }
     const eligibleIds = new Set<string>();
+    let canTrigger = false;
     for (const id of rawIds) {
       const member = await message.guild?.members.fetch(id).catch(() => null) ?? null;
-      if (this.chatAccess.canUseMentionChat(profile, member, id, channelId)) eligibleIds.add(id);
+      if (this.policy.canCollect(profile, { userId: id, member })) {
+        eligibleIds.add(id);
+        if (!this.policy.actorReasons(profile, channelId, { userId: id, member }).length) canTrigger = true;
+      }
     }
     const reactions = rawReactions
       .map((reaction) => ({ ...reaction, userIds: reaction.userIds.filter((id) => eligibleIds.has(id)) }))
       .filter((reaction) => reaction.userIds.length > 0);
-    return { reactorIds: eligibleIds, reactions, complete };
+    return { reactorIds: eligibleIds, reactions, complete, canTrigger };
   }
 
   private async replyToReactions(
@@ -354,30 +362,20 @@ export class ReactionReplyScheduler {
     if (!profile) return "feature_disabled";
     const author = message.author;
     const reactorList = [...reactorIds].filter((id) => id !== author.id);
+    const eligible = this.turnSupport.createEligibilityCheck(message, "reaction");
+    const canTrigger = (): boolean => {
+      const current = this.profiles.find(guildId);
+      return !!current && reactorList.some((id) => {
+        const member = message.guild?.members.cache?.get(id) ?? null;
+        return !this.policy.actorReasons(current, message.channelId, { userId: id, member }).length;
+      });
+    };
     const mentionedUsers = await Promise.all(reactorList.slice(0, 20).map(async (id) => {
       const member = await message.guild?.members.fetch(id).catch(() => null);
       return { id, displayName: member?.displayName ?? id, username: member?.user?.username ?? null,
         globalName: member?.user?.globalName ?? null, guildNickname: member?.nickname ?? null,
         kind: "human" as const, roleNames: [] as string[] };
     }));
-    // `before: null` — fetch the most recent channel activity rather than
-    // "before message.id", since this turn is evaluated minutes after
-    // `message` was sent and needs to see whatever was said in between
-    // (see ChatTurnSupport.resolveChannelHistory's own doc comment).
-    const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory
-      ? this.turnSupport.toChannelHistoryMessages(await this.turnSupport.resolveChannelHistory(
-          message, profile.chat.channelHistoryLimit, new Set([message.id]), null,
-        ))
-      : [];
-    const currentUser = {
-      ...this.turnSupport.toChatUser(author, message.member),
-      id: author.id,
-      displayName: message.member?.displayName ?? author.username,
-      roleNames: message.member?.roles.cache
-        .filter((role) => role.id !== guildId)
-        .map((role) => role.name.slice(0, 50))
-        .slice(0, 10) ?? [],
-    };
     const displayNames = new Map(mentionedUsers.map((user) => [user.id, user.displayName]));
     const syntheticPrompt = `(${reactorIds.size} ${reactorIds.size === 1 ? "person" : "people"} reacted to your message ` +
       `"${message.content.slice(0, chatMemoryLimits.maxUserMessageChars)}": ` +
@@ -390,65 +388,53 @@ export class ReactionReplyScheduler {
     };
 
     try {
-      const { kept, overflow } = await this.turnSupport.resolveReplyChain(message);
-      const response = await this.conversation.run({
-        guildId, channelId: message.channelId, sourceMessageId: message.id,
-        canExecute: () => this.turnSupport.isEligible(message, "reaction"),
-        activityLimits: resolveParticipation(profile.chat.participation, message.channelId).limits,
-        resolveActivityLimits: () => resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).limits,
-        resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
-        refreshContextMessage: (event) => this.turnSupport.refreshHistoryEvent(message, event),
-        shouldDeliver: () => !resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).shadowMode,
-        shadowMode: resolveParticipation(profile.chat.participation, message.channelId).shadowMode,
-        afterDecision: async (result) => {
-          if (!await this.canDeliver(channel, guildId)) return;
-          const reserve = (): ((success: boolean) => void) | null => this.conversation.reserveReaction(guildId, message.channelId,
-            resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).limits);
-          if (result.reactionEmoji && await this.turnSupport.isEligible(message, "history_reaction")) {
-            const release = reserve();
-            if (release) { try { await message.react(result.reactionEmoji); release(true); } catch { release(false); } }
-          }
-          await this.turnSupport.applyHistoryReactions(channel, result.historyReactions,
-            { guildId, sourceMessageId: message.id }, reserve);
-        },
-        botUserId: author.id,
+      const response = await this.conversation.run(buildChatTurnInput(this.turnEnvironment, profile, persona, {
+        interaction: "reaction", source: message, text: syntheticPrompt, botUserId: author.id, mentionedUsers,
+        canExecute: async () => canTrigger() && await eligible(),
         currentEvent: {
           type: "reaction_snapshot", channelId: message.channelId, targetMessageId: message.id,
           targetAuthorId: author.id, observedAt: Date.now(), complete: true, exactReactionTimes: "unknown",
           reactions: reactions.map((reaction) => ({ emoji: reaction.emoji, emojiId: reaction.emojiId, actorIds: reaction.userIds })),
         },
-        personality: persona.personality, examplePool: persona.examplePool, loreChunks: persona.loreChunks,
-        personaDrift: persona.personaDrift, personaDriftEnabled: profile.chat.personaDriftEnabled,
-        personalitySourceHash: persona.personalitySourceHash,
-        currentUser, mentionedUsers,
-        message: syntheticPrompt,
-        replyChain: this.turnSupport.toChannelHistoryMessages(kept),
-        replyChainOverflow: this.turnSupport.toChannelHistoryMessages(overflow), channelHistory,
-        images: [], webSearchMode: profile.chat.webSearchMode,
-        imageGenerationEnabled: false, includeSources: profile.chat.includeSources,
-        triggerMode: "reaction",
-        channelHistoryEnabled: profile.features.channelHistory,
-        historyReactionsEnabled: profile.features.historyReactions && profile.features.channelHistory,
-        toolsEnabled: false,
-        channelMemoryModes: profile.chat.channelMemoryModes,
-        channelIsNsfw: "nsfw" in channel ? Boolean(channel.nsfw) : false,
-      }, async (deliveredResponse) => {
+        afterDecision: async (result) => {
+          const effects = conversationEffects(result); if (!effects) return;
+          if (!await this.canDeliver(channel, guildId)) return;
+          const reserve = (): ((success: boolean) => void) | null => this.conversation.reserveReaction(guildId, message.channelId,
+            resolveParticipation(this.profiles.find(guildId)?.chat.participation, message.channelId).limits);
+          if (effects.reactionEmoji && await this.turnSupport.isEligible(message, "history_reaction")) {
+            const release = reserve();
+            if (release) { try { await withDiscordCaller("chat_reaction", () => message.react(effects.reactionEmoji!)); release(true); } catch { release(false); } }
+          }
+          await this.turnSupport.applyHistoryReactions(channel, effects.historyReactions,
+            { guildId, sourceMessageId: message.id }, reserve);
+        },
+      }), async (deliveredResponse) => {
+        const selectedTarget = deliveredResponse.replyTargetMessageId ? await channel.messages.fetch(deliveredResponse.replyTargetMessageId).catch(() => null) : message;
+        if (!selectedTarget || !await this.turnSupport.isEligible(selectedTarget, "reaction")) throw new SocialOutputSuppressed();
         const { deliveredText } = await this.turnSupport.deliverChatResponse({
-          sourceMessage: message, trigger: "reaction",
+          contextProvenance: deliveredResponse.contextProvenance ?? null,
+          ...(deliveredResponse.contextLease ? { contextLease: deliveredResponse.contextLease } : {}),
+          sourceMessage: selectedTarget, purpose: "reaction",
           sender: {
-            first: async (payload) => { await ensureDelivery(); return message.reply({
+            first: async (payload) => { await ensureDelivery(); return selectedTarget.reply({
+              nonce: payload.nonce, enforceNonce: payload.enforceNonce,
               content: payload.content, files: [...payload.files],
               allowedMentions: reactorMentions,
             }); },
             rest: async (payload) => { await ensureDelivery(); return channel.send({
+              nonce: payload.nonce, enforceNonce: payload.enforceNonce,
               content: payload.content, files: [...payload.files],
               allowedMentions: reactorMentions,
             }); },
           },
           text: deliveredResponse.text,
+          characterMessages: deliveredResponse.characterMessages, characterDelayMs: deliveredResponse.characterDelayMs, characterIsCurrent: deliveredResponse.characterIsCurrent,
+          characterCanDeliver: deliveredResponse.characterCanDeliver,
+          recordDelivery: (sent) => { deliveredResponse.characterDeliveryProof = [...(deliveredResponse.characterDeliveryProof ?? []), { messageId: sent.id, content: sent.content }]; },
           sources: deliveredResponse.sources,
           images: deliveredResponse.generatedImages,
           emptyFallbackContent: "I ran out of words. Very premium of me.",
+          partialDeliveryNotice: chatDeliveryText[profile.language].partial,
           maxImageAggregateBytes: 8 * 1024 * 1024,
         });
         return deliveredText;

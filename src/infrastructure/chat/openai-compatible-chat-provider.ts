@@ -1,3 +1,4 @@
+import { chatImageLabel, reportStructuredUsage, type StructuredCallOptions } from "../../application/chat/chat-provider.js";
 import type { Logger } from "pino";
 import { z } from "zod";
 
@@ -18,6 +19,7 @@ import {
 } from "../../application/chat/channel-message-summarization.js";
 import { buildChatContext, buildChatInstructions, chatModelJsonSchema, parseChatModelOutput } from "./chat-structured-output.js";
 import { ModelFallbackChain } from "./model-fallback-chain.js";
+import { buildMemoryConflictClassificationPrompt, memoryConflictClassificationJsonSchema, parseMemoryConflictClassificationOutput } from "../../application/chat/memory-conflict-classification.js";
 import {
   buildUserCustomizationAnalysisPrompt,
   parseUserCustomizationAnalysisOutput,
@@ -47,6 +49,9 @@ const errorResponseSchema = z.object({
 });
 
 export class OpenAiCompatibleChatProvider implements ChatProvider {
+  public readonly nativeWebSearchSupported = false;
+  public readonly applicationToolsSupported = false;
+  public readonly imageGenerationSupported = false;
   private readonly warnedGuilds = new Set<string>();
   private readonly modelChain: ModelFallbackChain;
   // Separate chain for the standalone analyzeUserCustomization call — falls
@@ -77,9 +82,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
             ...request.images.flatMap((image) => [
               {
                 type: "text",
-                text: image.source === "current_message"
-                  ? `CURRENT MESSAGE IMAGE ${image.sourceIndex + 1} (untrusted image input):`
-                  : `REPLY CHAIN IMAGE ${image.sourceIndex + 1} (untrusted image input):`,
+                text: chatImageLabel(image),
               },
               { type: "image_url", image_url: { url: image.dataUrl } },
             ]),
@@ -87,7 +90,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
         }
       : { role: "user", content: userContent };
     const body = await this.modelChain.run(async (model) => {
-      request.onModelAttempt?.();
+      await request.beforeModelAttempt?.();
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
@@ -105,7 +108,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
             json_schema: { name: "persona_chat_response", strict: true, schema: chatModelJsonSchema },
           },
         }),
-        signal: AbortSignal.timeout(45_000),
+        signal: request.turnSignal ? AbortSignal.any([request.turnSignal, AbortSignal.timeout(45_000)]) : AbortSignal.timeout(45_000),
       });
       if (!response.ok) {
         const errorBody: unknown = await response.json().catch(() => null);
@@ -141,13 +144,16 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
       generatedImages: [],
       ambientAction: modelOutput.ambientAction,
       ...(modelOutput.participationReason !== undefined ? { participationReason: modelOutput.participationReason } : {}),
+      ...(modelOutput.responseIntent ? { responseIntent: modelOutput.responseIntent } : {}),
+      ...(modelOutput.referentSourceIds?.length ? { referentSourceIds: modelOutput.referentSourceIds } : {}),
       reactionEmoji: modelOutput.reactionEmoji,
       historyReactions: modelOutput.historyReactions,
     };
   }
 
-  public async analyzeUserCustomization(rawText: string): Promise<UserCustomizationAnalysisResult> {
+  public async analyzeUserCustomization(rawText: string, options?: StructuredCallOptions): Promise<UserCustomizationAnalysisResult> {
     const body = await this.summaryModelChain.run(async (model) => {
+      await options?.beforeAttempt?.();
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
@@ -162,7 +168,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
             json_schema: { name: "user_customization_analysis", strict: true, schema: userCustomizationAnalysisJsonSchema },
           },
         }),
-        signal: AbortSignal.timeout(30_000),
+        signal: options?.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000),
       });
       if (!response.ok) {
         const errorBody: unknown = await response.json().catch(() => null);
@@ -177,7 +183,7 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
         );
       }
       return response.json();
-    });
+    }, options);
     const parsed = responseSchema.parse(body);
     const analysis = parseUserCustomizationAnalysisOutput(parsed.choices[0]!.message.content);
     if (!analysis.ok) {
@@ -188,6 +194,28 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
       return { ok: false, reason: "No usable style preferences were found in that file." };
     }
     return { ok: true, markdown };
+  }
+
+  public async classifyMemoryConflict(existingStatement: string, newStatement: string, options?: StructuredCallOptions): Promise<boolean> {
+    const result = await this.generateCharacterData(buildMemoryConflictClassificationPrompt(existingStatement, newStatement), memoryConflictClassificationJsonSchema, options);
+    return parseMemoryConflictClassificationOutput(JSON.stringify(result)).related;
+  }
+
+  public generateCharacterData(prompt: string, schema: Record<string, unknown>, options?: StructuredCallOptions): Promise<unknown> {
+    return this.summaryModelChain.run(async (model) => {
+      await options?.beforeAttempt?.(); options?.signal?.throwIfAborted();
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: "POST", headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model, messages: [{ role: "system", content: prompt }],
+          response_format: { type: "json_schema", json_schema: { name: "character_data", strict: true, schema } } }),
+        signal: options?.signal ?? AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) throw new ChatProviderError(`Character utility call returned HTTP ${response.status}.`, response.status, null);
+      const body = responseSchema.parse(await response.json());
+      if (body.usage) reportStructuredUsage(options, { inputTokens: body.usage.prompt_tokens, outputTokens: body.usage.completion_tokens,
+        totalTokens: body.usage.total_tokens, cachedInputTokens: null, reasoningTokens: null });
+      return JSON.parse(body.choices[0]!.message.content) as unknown;
+    }, options);
   }
 
   // See ChatProvider.extractPersonalMemories — chat_completions is the
@@ -202,8 +230,10 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
     userMessage: string,
     assistantReply: string,
     speaker: { id: string; displayName: string },
+    options?: StructuredCallOptions,
   ): Promise<readonly PersonalMemoryExtractionAction[]> {
     return this.summaryModelChain.run(async (model) => {
+      await options?.beforeAttempt?.();
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
@@ -240,9 +270,11 @@ export class OpenAiCompatibleChatProvider implements ChatProvider {
   public async summarizeChannelMessages(
     guildId: string,
     messages: readonly ChannelSummaryMessage[],
+    options?: StructuredCallOptions,
   ): Promise<ChannelSummaryResult> {
     const summary = prepareChannelMessageSummary(guildId, messages);
     const body = await this.summaryModelChain.run(async (model) => {
+      await options?.beforeAttempt?.();
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {

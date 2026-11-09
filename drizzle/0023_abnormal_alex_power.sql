@@ -1,0 +1,1 @@
+ALTER TABLE "message_origins" ADD COLUMN "context_provenance" jsonb;

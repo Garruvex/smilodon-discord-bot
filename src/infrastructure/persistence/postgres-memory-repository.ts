@@ -1,4 +1,7 @@
+import { hasLegacyRelationshipExpiry } from "./memory-repository-shared.js";
 import { randomUUID } from "node:crypto";
+import { memoryClaimProof } from "../../application/memory/memory-claim-provenance.js";
+import { memoryRelationProof } from "../../application/memory/memory-relation-provenance.js";
 import type { ChannelMemoryMode } from "../../application/memory/memory-channel-policy.js";
 import { aliasQueryTokens, observedSubjectNames } from "../../application/memory/observed-subject-names.js";
 
@@ -11,6 +14,7 @@ import type {
   CandidateQuery,
   CandidateWithAsserters,
   ForgetQuery,
+  SourceForgetQuery,
   Memory,
   MemoryAudience,
   MemoryIdentity,
@@ -30,7 +34,7 @@ import type {
 } from "../../application/memory/memory.js";
 import * as schema from "../database/schema.js";
 import {
-  assertersOf, collectRelatedSubjects, maxCandidatesPerIdentity, maxSupersedeChainDepth,
+  assertersOf, authorizedRelationRows, collectRelatedSubjects, maxCandidatesPerIdentity, maxSupersedeChainDepth, retainCallbackMetadata,
 } from "./memory-repository-shared.js";
 
 // Verified against a real pgvector-enabled Postgres 16 instance (isolation,
@@ -60,14 +64,17 @@ const maxEligibleCandidates = 2_000;
 function identityLockKey(identity: MemoryIdentity): string {
   return [
     identity.guildId, identity.ownerUserId ?? "", identity.channelId ?? "", identity.isolationChannelId ?? "",
+    identity.moduleId ?? "",
     identity.subjectType, identity.subjectId, identity.topic, identity.slot,
   ].join("\u0001");
 }
 
 function toMemory(row: typeof schema.memories.$inferSelect): Memory {
   return {
+    ...(memoryClaimProof(row.contextProvenance, row) ? { contextProvenance: memoryClaimProof(row.contextProvenance, row) } : {}),
     id: row.id,
     guildId: row.guildId,
+    moduleId: row.moduleId,
     kind: row.kind as MemoryKind,
     audience: row.audience as MemoryAudience,
     ownerUserId: row.ownerUserId,
@@ -97,6 +104,7 @@ function toMemory(row: typeof schema.memories.$inferSelect): Memory {
 function identityCondition(identity: MemoryIdentity): ReturnType<typeof and> {
   return and(
     eq(schema.memories.guildId, identity.guildId),
+    identity.moduleId == null ? isNull(schema.memories.moduleId) : eq(schema.memories.moduleId, identity.moduleId),
     identity.ownerUserId === null ? isNull(schema.memories.ownerUserId) : eq(schema.memories.ownerUserId, identity.ownerUserId),
     identity.channelId === null ? isNull(schema.memories.channelId) : eq(schema.memories.channelId, identity.channelId),
     identity.isolationChannelId === null
@@ -110,6 +118,22 @@ function identityCondition(identity: MemoryIdentity): ReturnType<typeof and> {
 }
 
 export class PostgresMemoryRepository implements MemoryRepository {
+  public async findAliasSources(input: CandidateQuery & { message: string }): Promise<readonly Memory[]> {
+    const tokens = aliasQueryTokens(input.message); if (!tokens.length) return [];
+    const matches = await this.database.selectDistinct({ id: schema.memories.id, updatedAt: schema.memories.updatedAt })
+      .from(schema.memoryObservedAliases).innerJoin(schema.memories, eq(schema.memories.id, schema.memoryObservedAliases.memoryId)).where(and(
+        eq(schema.memoryObservedAliases.guildId, input.guildId), eq(schema.memories.guildId, input.guildId), inArray(schema.memoryObservedAliases.alias, tokens),
+        eq(schema.memories.subjectType, "member"), eq(schema.memories.status, "active"), isNull(schema.memories.moduleId),
+        or(isNull(schema.memories.expiresAt), gt(schema.memories.expiresAt, new Date(input.now))),
+        or(isNull(schema.memories.isolationChannelId), eq(schema.memories.isolationChannelId, input.channelId)),
+        or(eq(schema.memories.audience, "guild"), and(eq(schema.memories.audience, "channel"), eq(schema.memories.channelId, input.channelId)),
+          and(eq(schema.memories.audience, "private"), eq(schema.memories.ownerUserId, input.userId))),
+      )).orderBy(desc(schema.memories.updatedAt), asc(schema.memories.id)).limit(129);
+    if (!matches.length) return [];
+    return (await this.database.select().from(schema.memories).where(and(eq(schema.memories.guildId, input.guildId), inArray(schema.memories.id, matches.map((row) => row.id))))
+      .orderBy(desc(schema.memories.updatedAt), asc(schema.memories.id))).map(toMemory);
+  }
+
   public async findObservedAliases(input: CandidateQuery & { message: string }): Promise<{ alias: string; subjectId: string }[]> {
     const tokens = aliasQueryTokens(input.message);
     if (!tokens.length) return [];
@@ -118,7 +142,8 @@ export class PostgresMemoryRepository implements MemoryRepository {
       FROM memory_observed_aliases a JOIN memories m ON m.id = a.memory_id
       WHERE a.guild_id = ${input.guildId} AND a.alias IN (${sql.join(tokens.map((token) => sql`${token}`), sql`, `)})
         AND m.guild_id = ${input.guildId} AND m.subject_type = 'member' AND m.status = 'active'
-        AND (m.expires_at IS NULL OR m.expires_at > ${new Date(input.now)})
+        AND m.module_id IS NULL
+        AND (m.expires_at IS NULL OR m.expires_at > ${sql.param(new Date(input.now), schema.memories.expiresAt)})
         AND (m.isolation_channel_id IS NULL OR m.isolation_channel_id = ${input.channelId})
         AND (m.audience = 'guild' OR (m.audience = 'channel' AND m.channel_id = ${input.channelId})
           OR (m.audience = 'private' AND m.owner_user_id = ${input.userId}))
@@ -131,6 +156,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
     return this.database.transaction(async (transaction) => {
       const [memory] = await transaction.select().from(schema.memories).where(and(
         eq(schema.memories.guildId, input.guildId), eq(schema.memories.id, input.memoryId),
+        isNull(schema.memories.moduleId),
         eq(schema.memories.audience, "private"), eq(schema.memories.subjectType, "member"),
         eq(schema.memories.subjectId, input.assertedByUserId), eq(schema.memories.ownerUserId, input.assertedByUserId),
       )).limit(1).for("update");
@@ -169,9 +195,27 @@ export class PostgresMemoryRepository implements MemoryRepository {
     ));
     return rows.some((row) => row.cutoff.getTime() >= input.sourceTimestampMs);
   }
+  public async sourcesForgotten(inputs: readonly SourceForgetQuery[]): Promise<readonly boolean[]> {
+    if (!inputs.length) return [];
+    const first = inputs[0]!;
+    if (inputs.length > 500 || inputs.some((input) => input.guildId !== first.guildId || input.channelId !== first.channelId)) throw new Error("Forget batch must be bounded to one channel.");
+    const rows = await this.database.select().from(schema.memoryForgetCutoffs).where(and(
+      eq(schema.memoryForgetCutoffs.guildId, first.guildId),
+      inArray(schema.memoryForgetCutoffs.subjectId, [...new Set(inputs.map((input) => input.subjectId))]),
+      inArray(schema.memoryForgetCutoffs.scopeKey, ["*", first.channelId]),
+      inArray(schema.memoryForgetCutoffs.topic, [...new Set(["*", ...inputs.map((input) => input.topic)])]),
+      inArray(schema.memoryForgetCutoffs.slot, [...new Set(["*", ...inputs.map((input) => input.slot)])]),
+    ));
+    const forgotten = inputs.map((input) => rows.some((row) => row.subjectId === input.subjectId &&
+      (row.topic === "*" || row.topic === input.topic) && (row.slot === "*" || row.slot === input.slot) && row.cutoff.getTime() >= input.sourceTimestampMs));
+    return forgotten;
+  }
   public constructor(private readonly database: PostgresJsDatabase<typeof schema>) {}
 
   public async ingest(input: RepositoryIngestInput): Promise<Memory> {
+    if (input.moduleId != null && !/^[a-z][a-z0-9.-]{0,63}$/.test(input.moduleId)) {
+      throw new Error("Invalid memory module ID");
+    }
     return this.database.transaction(async (transaction) => {
       // Serializes concurrent ingests for this exact identity — see
       // identityLockKey. Released automatically at transaction end.
@@ -208,7 +252,8 @@ export class PostgresMemoryRepository implements MemoryRepository {
       if (existing && !isRevision) {
         const updated = await transaction.update(schema.memories).set({
           statement: input.statement,
-          structuredValue: input.structuredValue ?? null,
+          contextProvenance: memoryClaimProof(input.contextProvenance, input) ?? memoryClaimProof(existing.contextProvenance, input),
+          structuredValue: retainCallbackMetadata(existing.structuredValue, input.structuredValue ?? null, false, input.now),
           // See SqliteMemoryRepository.ingest — a restatement never lowers
           // importance.
           importance: Math.max(existing.importance, input.importance),
@@ -231,6 +276,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
         const inserted = await transaction.insert(schema.memories).values({
           id: newId,
           guildId: input.guildId,
+          moduleId: input.moduleId ?? null,
           kind: input.kind,
           audience: input.audience,
           ownerUserId: input.ownerUserId,
@@ -241,7 +287,8 @@ export class PostgresMemoryRepository implements MemoryRepository {
           topic: input.topic,
           slot: input.slot,
           statement: input.statement,
-          structuredValue: input.structuredValue ?? null,
+          contextProvenance: memoryClaimProof(input.contextProvenance, input),
+          structuredValue: retainCallbackMetadata(existing?.structuredValue, input.structuredValue ?? null, isRevision, input.now),
           status: input.status,
           source: input.source,
           importance: input.importance,
@@ -288,6 +335,60 @@ export class PostgresMemoryRepository implements MemoryRepository {
   }
 
   public async findRecallCandidates(query: CandidateQuery): Promise<RecallCandidates> {
+    return this.selectCandidates(query, null);
+  }
+  public async migrateRelationshipExpiries(guildId: string): Promise<number> {
+    const rows = await this.database.select().from(schema.memories).where(and(eq(schema.memories.guildId, guildId), eq(schema.memories.moduleId, "relationships"), eq(schema.memories.status, "active"), isNotNull(schema.memories.expiresAt)));
+    let count = 0;
+    for (const row of rows) {
+      if (!hasLegacyRelationshipExpiry(toMemory(row))) continue;
+      const result = await this.database.update(schema.memories).set({ expiresAt: null }).where(and(eq(schema.memories.id, row.id), eq(schema.memories.status, "active"), eq(schema.memories.updatedAt, row.updatedAt), eq(schema.memories.expiresAt, row.expiresAt!), eq(schema.memories.structuredValue, row.structuredValue))).returning({ id: schema.memories.id });
+      count += result.length;
+    }
+    return count;
+  }
+  public findModuleCandidates(query: CandidateQuery & { moduleId: string }): Promise<RecallCandidates> {
+    return this.selectCandidates(query, query.moduleId);
+  }
+  public async deleteExpiredModuleData(guildId: string, now: number, historyDays: number): Promise<number> {
+    await this.migrateRelationshipExpiries(guildId);
+    const rows = await this.database.delete(schema.memories).where(and(eq(schema.memories.guildId, guildId), isNotNull(schema.memories.moduleId),
+      or(and(isNotNull(schema.memories.expiresAt), lte(schema.memories.expiresAt, new Date(now))),
+        and(ne(schema.memories.status, "active"), lte(schema.memories.updatedAt, new Date(now - historyDays * 86_400_000)))))).returning({ id: schema.memories.id });
+    return rows.length;
+  }
+  public async clearModuleData(guildId: string, moduleId: string): Promise<number> {
+    const rows = await this.database.delete(schema.memories).where(and(eq(schema.memories.guildId, guildId), eq(schema.memories.moduleId, moduleId))).returning({ id: schema.memories.id });
+    return rows.length;
+  }
+  public async compareAndSetStructuredValue(input: { guildId: string; memoryId: string; updatedAt: number; expected: unknown; value: unknown }): Promise<boolean> {
+    const rows = await this.database.update(schema.memories).set({ structuredValue: input.value }).where(and(
+      eq(schema.memories.guildId, input.guildId), eq(schema.memories.id, input.memoryId), eq(schema.memories.status, "active"),
+      eq(schema.memories.updatedAt, new Date(input.updatedAt)),
+      input.expected == null ? isNull(schema.memories.structuredValue) : eq(schema.memories.structuredValue, input.expected),
+    )).returning({ id: schema.memories.id });
+    return rows.length === 1;
+  }
+  public claimCallbackMemory(input: { guildId: string; memoryId: string; updatedAt: number; expected: unknown; value: unknown; maxPerDay: number; dayStart: number; now: number }): Promise<boolean> {
+    return this.database.transaction(async (transaction) => {
+      await transaction.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`callback:${input.guildId}`}, 0))`);
+      const [row] = await transaction.select({ count: sql<number>`cast(count(distinct ${schema.memories.structuredValue}->'callback'->>'attemptId') as integer)` }).from(schema.memories).where(and(
+        eq(schema.memories.guildId, input.guildId), ne(schema.memories.id, input.memoryId),
+        sql`(${schema.memories.structuredValue}->'callback'->>'quotaDayStart')::numeric >= ${input.dayStart}`,
+        sql`((${schema.memories.structuredValue}->'callback'->>'status') in ('sending', 'delivered', 'uncertain') or
+          ((${schema.memories.structuredValue}->'callback'->>'status') = 'claimed' and (${schema.memories.structuredValue}->'callback'->>'leaseUntil')::numeric > ${input.now}))`,
+      ));
+      if ((row?.count ?? 0) >= input.maxPerDay) return false;
+      const changed = await transaction.update(schema.memories).set({ structuredValue: input.value }).where(and(
+        eq(schema.memories.guildId, input.guildId), eq(schema.memories.id, input.memoryId), eq(schema.memories.status, "active"),
+        eq(schema.memories.updatedAt, new Date(input.updatedAt)),
+        input.expected == null ? isNull(schema.memories.structuredValue) : eq(schema.memories.structuredValue, input.expected),
+      )).returning({ id: schema.memories.id });
+      return changed.length === 1;
+    });
+  }
+  public findDueCallbackCandidates(query: CandidateQuery): Promise<RecallCandidates> { return this.selectCandidates(query, null, true); }
+  private async selectCandidates(query: CandidateQuery, moduleId: string | null, dueCallbacks = false): Promise<RecallCandidates> {
     // subjectIds, when given, is applied in SQL alongside the other filters
     // — not as a post-fetch JS filter — so it narrows what the LIMIT below
     // bounds rather than being applied after it. Filtering after a LIMIT
@@ -317,6 +418,11 @@ export class PostgresMemoryRepository implements MemoryRepository {
       : [desc(schema.memories.updatedAt)];
     const rows = await this.database.select().from(schema.memories).where(and(
       eq(schema.memories.guildId, query.guildId),
+      moduleId === null ? isNull(schema.memories.moduleId) : eq(schema.memories.moduleId, moduleId),
+      dueCallbacks ? sql`(${schema.memories.structuredValue}->'callback'->>'dueAt')::numeric <= ${query.now}
+        and (${schema.memories.structuredValue}->'callback'->>'nextAttemptAt')::numeric <= ${query.now}
+        and (${schema.memories.structuredValue}->'callback'->>'expiresAt')::numeric > ${query.now}
+        and (${schema.memories.structuredValue}->'callback'->>'status') in ('pending', 'claimed', 'sending')` : undefined,
       eq(schema.memories.status, "active"),
       or(isNull(schema.memories.expiresAt), gt(schema.memories.expiresAt, new Date(query.now))),
       or(isNull(schema.memories.isolationChannelId), eq(schema.memories.isolationChannelId, query.channelId)),
@@ -365,7 +471,11 @@ export class PostgresMemoryRepository implements MemoryRepository {
   }
   public async findPromptSources(memoryIds: readonly string[]): Promise<readonly MemorySource[]> {
     if (!memoryIds.length) return [];
-    const rows = await this.database.select().from(schema.memorySources).where(inArray(schema.memorySources.memoryId, [...memoryIds]))
+    const rows = await this.database.select().from(schema.memorySources).where(and(
+      inArray(schema.memorySources.memoryId, [...memoryIds]),
+      inArray(schema.memorySources.memoryId, this.database.select({ id: schema.memories.id }).from(schema.memories)
+        .where(isNull(schema.memories.moduleId))),
+    ))
       .orderBy(desc(schema.memorySources.createdAt)).limit(memoryIds.length * 2);
     return rows.map((row) => ({ ...row, sourceTimestampMs: row.sourceTimestamp?.getTime() ?? null,
       sourceChannelMode: row.sourceChannelMode as ChannelMemoryMode | null, source: row.source as MemorySourceKind, createdAt: row.createdAt.getTime() }));
@@ -491,9 +601,11 @@ export class PostgresMemoryRepository implements MemoryRepository {
       await transaction.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${identityLockKey(targetMemory)}, 0))`);
       // Re-check under the lock: a concurrent promotion may have absorbed
       // (deleted) this row while we waited.
-      const stillCandidate = await transaction.select({ id: schema.memories.id }).from(schema.memories)
+      const stillCandidate = await transaction.select().from(schema.memories)
         .where(and(eq(schema.memories.id, target.id), eq(schema.memories.status, "candidate"))).limit(1);
       if (stillCandidate.length === 0) return null;
+      const contextProvenance = memoryClaimProof(command.contextProvenance, stillCandidate[0]!);
+      if (command.contextProvenance && !contextProvenance) return null;
       const identity = identityCondition(targetMemory);
       const active = await transaction.select({ id: schema.memories.id }).from(schema.memories)
         .where(and(identity, eq(schema.memories.status, "active"))).limit(1);
@@ -510,6 +622,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
         await transaction.delete(schema.memories).where(inArray(schema.memories.id, absorbed));
       }
       const [promoted] = await transaction.update(schema.memories).set({
+        contextProvenance,
         status: "active", expiresAt: null, validFrom: new Date(command.now), updatedAt: new Date(command.now),
       }).where(and(eq(schema.memories.id, target.id), eq(schema.memories.status, "candidate"))).returning();
       return promoted ? toMemory(promoted) : null;
@@ -521,6 +634,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
   // scanning an unbounded set rather than reflecting an expected scale.
   public async findActiveBySubject(query: ActiveSubjectQuery): Promise<readonly Memory[]> {
     const rows = await this.database.select().from(schema.memories).where(and(
+      query.moduleId == null ? isNull(schema.memories.moduleId) : eq(schema.memories.moduleId, query.moduleId),
       eq(schema.memories.guildId, query.guildId),
       eq(schema.memories.subjectType, query.subjectType),
       eq(schema.memories.subjectId, query.subjectId),
@@ -552,9 +666,29 @@ export class PostgresMemoryRepository implements MemoryRepository {
 
   public async createRelations(inputs: readonly RelationCreateInput[]): Promise<number> {
     if (inputs.length === 0) return 0;
+    // Module context cannot create ordinary graph edges. In particular,
+    // deleting its supporting memory would otherwise SET NULL the FK and
+    // make a previously hidden edge visible to generic recall.
+    const supportingIds = inputs.flatMap((input) => input.supportingMemoryId ? [input.supportingMemoryId] : []);
+    const moduleSources = supportingIds.length ? await this.database.select({ id: schema.memories.id })
+      .from(schema.memories).where(and(inArray(schema.memories.id, supportingIds), isNotNull(schema.memories.moduleId))) : [];
+    const blocked = new Set(moduleSources.map((memory) => memory.id));
+    inputs = inputs.filter((input) => input.supportingMemoryId === null || !blocked.has(input.supportingMemoryId));
+    if (inputs.length === 0) return 0;
+    for (const input of inputs) {
+      const proof = memoryRelationProof(input.contextProvenance, input); if (!proof) continue;
+      await this.database.update(schema.memoryRelations).set({ contextProvenance: proof, supportingMemoryId: input.supportingMemoryId }).where(and(
+        eq(schema.memoryRelations.guildId, input.guildId), eq(schema.memoryRelations.fromSubjectType, input.fromSubjectType), eq(schema.memoryRelations.fromSubjectId, input.fromSubjectId),
+        eq(schema.memoryRelations.toSubjectType, input.toSubjectType), eq(schema.memoryRelations.toSubjectId, input.toSubjectId),
+        eq(schema.memoryRelations.predicate, input.predicate), eq(schema.memoryRelations.kind, input.kind),
+        input.channelId == null ? isNull(schema.memoryRelations.channelId) : eq(schema.memoryRelations.channelId, input.channelId),
+        input.isolationChannelId === null ? isNull(schema.memoryRelations.isolationChannelId) : eq(schema.memoryRelations.isolationChannelId, input.isolationChannelId),
+      ));
+    }
     // ON CONFLICT DO NOTHING against memory_relations_identity — re-extracting
     // a known edge is a no-op, not a duplicate row.
     const inserted = await this.database.insert(schema.memoryRelations).values(inputs.map((input) => ({
+      channelId: input.channelId ?? null, contextProvenance: memoryRelationProof(input.contextProvenance, input),
       id: randomUUID(),
       guildId: input.guildId,
       fromSubjectType: input.fromSubjectType,
@@ -585,10 +719,17 @@ export class PostgresMemoryRepository implements MemoryRepository {
     for (let hop = 1; hop <= query.maxHops && frontier.length > 0; hop++) {
       const rows = await this.database.select().from(schema.memoryRelations).where(and(
         eq(schema.memoryRelations.guildId, query.guildId),
+        or(isNull(schema.memoryRelations.channelId), eq(schema.memoryRelations.channelId, query.channelId)),
+        query.context ? and(eq(schema.memoryRelations.channelId, query.channelId), isNotNull(schema.memoryRelations.contextProvenance)) : undefined,
+        notExists(this.database.select({ id: schema.memories.id }).from(schema.memories).where(and(
+          eq(schema.memories.id, schema.memoryRelations.supportingMemoryId),
+          isNotNull(schema.memories.moduleId),
+        ))),
         or(inArray(schema.memoryRelations.fromSubjectId, frontier), inArray(schema.memoryRelations.toSubjectId, frontier)),
         or(isNull(schema.memoryRelations.isolationChannelId), eq(schema.memoryRelations.isolationChannelId, query.channelId)),
-      )).orderBy(asc(schema.memoryRelations.createdAt), asc(schema.memoryRelations.id));
-      frontier = collectRelatedSubjects(rows, frontier, hop, querySubjects, visited, results);
+      )).orderBy(asc(schema.memoryRelations.createdAt), asc(schema.memoryRelations.id)).limit(256);
+      const allowed = await authorizedRelationRows(rows, query, (id) => this.findById(query.guildId, id));
+      frontier = collectRelatedSubjects(allowed, frontier, hop, querySubjects, visited, results);
     }
     return [...results.values()];
   }

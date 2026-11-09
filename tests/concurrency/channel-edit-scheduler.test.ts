@@ -17,6 +17,53 @@ describe("ChannelEditScheduler", () => {
     expect(write).toHaveBeenCalledOnce();
   });
 
+  it("preserves the channel budget when the last slot is replaced", async () => {
+    vi.useFakeTimers();
+    const scheduler = new ChannelEditScheduler({ maxEdits: 1, windowMs: 5000 });
+    const first = scheduler.register({ channelId: "channel", key: "slot", priority: 0 });
+    await first.schedule(() => Promise.resolve(true)); first.unregister();
+    const next = scheduler.register({ channelId: "channel", key: "slot", priority: 0 });
+    const write = vi.fn(() => Promise.resolve(true)); const done = next.schedule(write);
+    await vi.advanceTimersByTimeAsync(4999); expect(write).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1); await done; expect(write).toHaveBeenCalledOnce(); scheduler.stop();
+  });
+
+  it.each([{ retryAfter: 20000 }, { status: 429, rawError: { retry_after: 20 } }])("honors channel retry metadata across slot replacement: %j", async (error) => {
+    vi.useFakeTimers();
+    const scheduler = new ChannelEditScheduler({ maxEdits: 3, windowMs: 5000 });
+    const first = scheduler.register({ channelId: "channel", key: "slot", priority: 0 });
+    const failure = Object.assign(new Error("rate limited"), error);
+    await expect(first.schedule(() => Promise.reject(failure))).rejects.toBe(failure); first.unregister();
+    const next = scheduler.register({ channelId: "channel", key: "slot", priority: 0 });
+    const write = vi.fn(() => Promise.resolve(true)); const done = next.schedule(write);
+    await vi.advanceTimersByTimeAsync(19999); expect(write).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1); await done; expect(write).toHaveBeenCalledOnce(); scheduler.stop();
+  });
+
+  it("keeps only the newest pending edit during server backoff and leaves other channels independent", async () => {
+    vi.useFakeTimers();
+    const scheduler = new ChannelEditScheduler(); const slot = scheduler.register({ channelId: "channel", key: "slot", priority: 0 });
+    const failure = Object.assign(new Error("rate limited"), { retryAfter: 10000 });
+    await expect(slot.schedule(() => Promise.reject(failure))).rejects.toBe(failure);
+    const stale = vi.fn(() => Promise.resolve(true)); const latest = vi.fn(() => Promise.resolve(true));
+    const one = slot.schedule(stale); const two = slot.schedule(latest);
+    const other = vi.fn(() => Promise.resolve(true)); await scheduler.register({ channelId: "other", key: "other", priority: 0 }).schedule(other);
+    expect(other).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(10000); await Promise.all([one, two]);
+    expect(stale).not.toHaveBeenCalled(); expect(latest).toHaveBeenCalledOnce(); scheduler.stop();
+  });
+
+  it("drops pending backoff writes on shutdown", async () => {
+    vi.useFakeTimers(); const scheduler = new ChannelEditScheduler();
+    const slot = scheduler.register({ channelId: "channel", key: "slot", priority: 0 });
+    const failure = Object.assign(new Error("rate limited"), { retryAfter: 20000 });
+    await expect(slot.schedule(() => Promise.reject(failure))).rejects.toBe(failure);
+    const write = vi.fn(() => Promise.resolve(true)); const done = slot.schedule(write);
+    scheduler.stop(); await done; await vi.advanceTimersByTimeAsync(30000);
+    await scheduler.register({ channelId: "channel", key: "slot", priority: 0 }).schedule(write);
+    expect(write).not.toHaveBeenCalled(); expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("holds edits past the budget until the window frees up", async () => {
     vi.useFakeTimers();
     const scheduler = new ChannelEditScheduler({ maxEdits: 2, windowMs: 5_000 });

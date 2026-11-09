@@ -6,6 +6,9 @@ import { describe, expect, it } from "vitest";
 
 import { createSqliteDatabaseConnection } from "../../src/infrastructure/database/sqlite-database.js";
 import { SqliteChatStateStore } from "../../src/infrastructure/persistence/sqlite-chat-state-store.js";
+import { captureIncompleteTurnProvenance } from "../../src/application/chat/context-provenance.js";
+import { hashContent } from "../../src/application/assets/content-hash.js";
+import { decisionRequest } from "../helpers/conversation-decision-fixtures.js";
 
 function store(): SqliteChatStateStore {
   const directory = mkdtempSync(join(tmpdir(), "sqlite-chat-state-"));
@@ -14,6 +17,20 @@ function store(): SqliteChatStateStore {
 }
 
 describe("SqliteChatStateStore", () => {
+  it("preserves scoped dependency metadata and confirmed assistant IDs across reloads", async () => {
+    const chatStateStore = store();
+    const proof = captureIncompleteTurnProvenance(decisionRequest({ currentBurst: [], channelHistory: [],
+      currentEvent: { type: "message", messageId: "source", channelId: "channel", timestampMs: 1, authorId: "alice", replyToMessageId: null, mentionedUserIds: [] },
+    }), "whole response")!;
+    await chatStateStore.commitSuccessfulExchange({ guildId: "guild", userId: "alice", channelId: "channel", userMessage: "question",
+      assistantMessage: "stored prefix", now: 10, actions: [], contextProvenance: proof, assistantMessageIds: ["part-1", "part-2"] });
+    const state = await chatStateStore.load("guild", "alice", "channel", 11);
+    expect(state.exchanges[0]?.contextProvenance).toEqual({ ...proof, outputHash: hashContent("stored prefix") });
+    expect(state.exchanges[0]?.assistant.messageIds).toEqual(["part-1", "part-2"]);
+    await chatStateStore.commitSuccessfulExchange({ guildId: "guild", userId: "other", channelId: "channel", userMessage: "question",
+      assistantMessage: "answer", now: 10, actions: [], contextProvenance: proof });
+    expect((await chatStateStore.load("guild", "other", "channel", 11)).exchanges[0]?.contextProvenance).toBeNull();
+  });
   it("persists a session exchange and a profile memory", async () => {
     const chatStateStore = store();
     await chatStateStore.commitSuccessfulExchange({

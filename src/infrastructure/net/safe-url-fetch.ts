@@ -10,6 +10,7 @@ const maximumRedirects = 3;
 
 export interface FetchLinkOptions {
   signal?: AbortSignal;
+  allowUrl?: (url: URL) => boolean;
 }
 
 export type FetchLinkResult =
@@ -153,6 +154,7 @@ export async function fetchLinkContent(rawUrl: string, options: FetchLinkOptions
     const validated = validateUrl(target);
     if (!validated.ok) return { ok: false, reason: validated.reason };
     const { url } = validated;
+    if (options.allowUrl && !options.allowUrl(url)) return { ok: false, reason: "that source requires separate authorization." };
 
     if (await resolveIsPrivate(url.hostname)) {
       return { ok: false, reason: "that address points to a private or internal network." };

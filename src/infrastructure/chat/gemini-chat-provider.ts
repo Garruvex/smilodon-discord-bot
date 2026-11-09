@@ -1,4 +1,8 @@
+import { chatImageLabel, reportStructuredUsage, type StructuredCallOptions } from "../../application/chat/chat-provider.js";
 import { GoogleGenAI } from "@google/genai";
+import { performance } from "node:perf_hooks";
+import { diagnosticElapsed, emitChatDiagnostic, safeFailure } from "../../application/diagnostics/chat-diagnostics.js";
+import { modelDiagnosticLogger } from "../../application/diagnostics/model-diagnostics.js";
 import type { Content, FunctionCall, GenerateContentResponse, Part, Tool } from "@google/genai";
 
 import {
@@ -85,6 +89,9 @@ const toolBudgetExhaustedMessage = "Tool call budget exhausted. Do not call any 
 // requests to that model simply return no inlineData parts.
 
 export class GeminiChatProvider implements ChatProvider {
+  public readonly nativeWebSearchSupported = true;
+  public readonly applicationToolsSupported = true;
+  public readonly imageGenerationSupported = true;
   private readonly modelChain: ModelFallbackChain;
   // Separate chain for the two standalone structured-output calls (own
   // prompt/schema, outside the main reply turn) — falls back to the primary
@@ -114,6 +121,7 @@ export class GeminiChatProvider implements ChatProvider {
     void observer; // No partial-image-preview streaming for Gemini in v1 — see plan notes.
     const customTools = request.enabledTools ?? [];
     const toolContext: ChatToolContext = {
+      ...(request.turnSignal ? { signal: request.turnSignal } : {}),
       guildId: request.guildId,
       channelId: request.channelId,
       currentUser: request.currentUser,
@@ -143,9 +151,9 @@ export class GeminiChatProvider implements ChatProvider {
     }];
 
     for (let roundTrip = 0; ; roundTrip++) {
-      const response = await this.modelChain.run((model) => {
-        request.onModelAttempt?.();
-        return this.generateContent(model, buildChatInstructions(request, chatSafetyGuard), contents, this.buildTools(request, customTools));
+      const response = await this.modelChain.run(async (model) => {
+        await request.beforeModelAttempt?.();
+        return this.generateContent(model, buildChatInstructions(request, chatSafetyGuard), contents, this.buildTools(request, customTools), request.turnSignal);
       });
       const functionCalls = response.functionCalls ?? [];
 
@@ -161,9 +169,9 @@ export class GeminiChatProvider implements ChatProvider {
           this.modelTurn(response),
           this.functionResponseTurn(functionCalls, functionCalls.map(() => ({ content: toolBudgetExhaustedMessage }))),
         ];
-        const finalizeResponse = await this.modelChain.run((model) => {
-          request.onModelAttempt?.();
-          return this.generateContent(model, buildChatInstructions(request, chatSafetyGuard), contents, undefined);
+        const finalizeResponse = await this.modelChain.run(async (model) => {
+          await request.beforeModelAttempt?.();
+          return this.generateContent(model, buildChatInstructions(request, chatSafetyGuard), contents, undefined, request.turnSignal);
         });
         return this.mergePendingImages(
           this.parseResponse(finalizeResponse, request),
@@ -192,9 +200,7 @@ export class GeminiChatProvider implements ChatProvider {
     if (!match) return [];
     const mimeType = match[1] ?? "application/octet-stream";
     const data = match[2] ?? "";
-    const label = image.source === "current_message"
-      ? `CURRENT MESSAGE IMAGE ${image.sourceIndex + 1} (untrusted image input):`
-      : `REPLY CHAIN IMAGE ${image.sourceIndex + 1} (untrusted image input):`;
+    const label = chatImageLabel(image);
     return [{ text: label }, { inlineData: { mimeType, data } }];
   }
 
@@ -222,13 +228,14 @@ export class GeminiChatProvider implements ChatProvider {
     systemInstruction: string,
     contents: Content[],
     tools: Tool[] | undefined,
+    turnSignal?: AbortSignal,
   ): Promise<GenerateContentResponse> {
     try {
       return await this.client.models.generateContent({
         model,
         contents,
         config: {
-          abortSignal: AbortSignal.timeout(60_000),
+          abortSignal: turnSignal ? AbortSignal.any([turnSignal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000),
           systemInstruction,
           maxOutputTokens: this.generation.maxOutputTokens,
           responseMimeType: "application/json",
@@ -278,22 +285,31 @@ export class GeminiChatProvider implements ChatProvider {
     tools: readonly ChatTool[],
     ctx: ChatToolContext,
   ): Promise<ChatToolResult> {
+    const started = performance.now();
     const tool = tools.find((candidate) => candidate.name === call.name);
-    if (!tool) return { content: `Unknown tool "${call.name}".` };
+    if (!tool) {
+      emitChatDiagnostic(modelDiagnosticLogger(), { event: "chat.tool.completed", status: "unknown_tool", durationMs: diagnosticElapsed(started) });
+      return { content: `Unknown tool "${call.name}".` };
+    }
     // Racing a timer can't actually cancel tool.execute() — the loser keeps
     // running after this returns. The AbortController at least lets a
     // side-effecting tool (see ChatToolContext.signal) notice and bail out
     // right before it would otherwise mutate anything.
     const timeoutController = new AbortController();
+    const signal = ctx.signal ? AbortSignal.any([ctx.signal, timeoutController.signal]) : timeoutController.signal;
     const timer = setTimeout(() => timeoutController.abort(), toolExecutionTimeoutMs);
     try {
-      return await Promise.race([
-        tool.execute(call.args ?? {}, { ...ctx, signal: timeoutController.signal }),
+      const result = await Promise.race([
+        tool.execute(call.args ?? {}, { ...ctx, signal }),
         new Promise<ChatToolResult>((_, reject) => {
-          timeoutController.signal.addEventListener("abort", () => reject(new Error("tool_timeout")));
+          if (signal.aborted) reject(new Error("tool_cancelled"));
+          else signal.addEventListener("abort", () => reject(new Error("tool_cancelled")), { once: true });
         }),
       ]);
-    } catch {
+      emitChatDiagnostic(modelDiagnosticLogger(), { event: "chat.tool.completed", status: "completed", durationMs: diagnosticElapsed(started) });
+      return result;
+    } catch (error) {
+      emitChatDiagnostic(modelDiagnosticLogger(), { event: "chat.tool.completed", status: timeoutController.signal.aborted ? "timeout" : "failed", durationMs: diagnosticElapsed(started), ...safeFailure(error, "operation_error") });
       return { content: "That tool failed to run right now — treat it as unavailable for this reply." };
     } finally {
       clearTimeout(timer);
@@ -337,6 +353,8 @@ export class GeminiChatProvider implements ChatProvider {
       generatedImages,
       ambientAction: modelOutput.ambientAction,
       ...(modelOutput.participationReason !== undefined ? { participationReason: modelOutput.participationReason } : {}),
+      ...(modelOutput.responseIntent ? { responseIntent: modelOutput.responseIntent } : {}),
+      ...(modelOutput.referentSourceIds?.length ? { referentSourceIds: modelOutput.referentSourceIds } : {}),
       reactionEmoji: modelOutput.reactionEmoji,
       historyReactions: modelOutput.historyReactions,
     };
@@ -369,9 +387,10 @@ export class GeminiChatProvider implements ChatProvider {
   public async generateReferenceImage(
     prompt: string,
     reference: { data: Buffer; contentType: string },
+    options?: { signal?: AbortSignal; beforeAttempt?: () => Promise<void> },
   ): Promise<{ ok: true; images: readonly GeneratedChatImage[] } | { ok: false; reason: string }> {
     try {
-      const response = await this.modelChain.run((model) => this.client.models.generateContent({
+      const response = await this.modelChain.run(async (model) => { await options?.beforeAttempt?.(); options?.signal?.throwIfAborted(); return this.client.models.generateContent({
         model,
         contents: [{
           role: "user",
@@ -381,10 +400,10 @@ export class GeminiChatProvider implements ChatProvider {
           ],
         }],
         config: {
-          abortSignal: AbortSignal.timeout(50_000),
+          abortSignal: options?.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(50_000)]) : AbortSignal.timeout(50_000),
           responseModalities: ["TEXT", "IMAGE"],
         },
-      }));
+      }); });
       const images = (response.candidates?.[0]?.content?.parts ?? [])
         .filter((part): part is Part & { inlineData: { data: string; mimeType?: string } } =>
           Boolean(part.inlineData?.data))
@@ -398,12 +417,13 @@ export class GeminiChatProvider implements ChatProvider {
     }
   }
 
-  public async analyzeUserCustomization(rawText: string): Promise<UserCustomizationAnalysisResult> {
-    const response = await this.summaryModelChain.run((model) => this.generateStructured(
+  public async analyzeUserCustomization(rawText: string, options?: StructuredCallOptions): Promise<UserCustomizationAnalysisResult> {
+    const response = await this.summaryModelChain.run(async (model) => { await options?.beforeAttempt?.(); return this.generateStructured(
       model,
       buildUserCustomizationAnalysisPrompt(rawText),
       userCustomizationAnalysisJsonSchema,
-    ));
+      undefined, undefined, options?.signal,
+    ); }, options);
     const analysis = parseUserCustomizationAnalysisOutput((response.text ?? "").trim());
     if (!analysis.ok) {
       return { ok: false, reason: analysis.reason ?? "That file couldn't be accepted as a customization." };
@@ -415,35 +435,49 @@ export class GeminiChatProvider implements ChatProvider {
     return { ok: true, markdown };
   }
 
+  public async generateCharacterData(prompt: string, schema: Record<string, unknown>, options?: StructuredCallOptions): Promise<unknown> {
+    const response = await this.summaryModelChain.run(async (model) => { await options?.beforeAttempt?.();
+      return this.generateStructured(model, prompt, schema, undefined, undefined, options?.signal); }, options);
+    const usage = response.usageMetadata;
+    if (usage) reportStructuredUsage(options, { inputTokens: usage.promptTokenCount ?? 0, outputTokens: usage.candidatesTokenCount ?? 0,
+      totalTokens: usage.totalTokenCount ?? 0, cachedInputTokens: usage.cachedContentTokenCount ?? null, reasoningTokens: usage.thoughtsTokenCount ?? null });
+    return JSON.parse((response.text ?? "").trim()) as unknown;
+  }
+
   public async summarizeDroppedExchanges(
     exchanges: readonly { user: string; assistant: string }[],
     speaker: { id: string; displayName: string },
+    options?: StructuredCallOptions,
   ): Promise<readonly DroppedExchangeFact[]> {
-    const response = await this.summaryModelChain.run((model) => this.generateStructured(
+    const response = await this.summaryModelChain.run(async (model) => { await options?.beforeAttempt?.(); return this.generateStructured(
       model,
       buildDroppedExchangeConsolidationPrompt(exchanges, speaker),
       droppedExchangeConsolidationJsonSchema,
-    ));
+      undefined, undefined, options?.signal,
+    ); }, options);
     return parseDroppedExchangeConsolidationOutput((response.text ?? "").trim()).facts;
   }
 
-  public async classifyMemoryConflict(existingStatement: string, newStatement: string): Promise<boolean> {
-    const response = await this.summaryModelChain.run((model) => this.generateStructured(
+  public async classifyMemoryConflict(existingStatement: string, newStatement: string, options?: StructuredCallOptions): Promise<boolean> {
+    const response = await this.summaryModelChain.run(async (model) => { await options?.beforeAttempt?.(); return this.generateStructured(
       model,
       buildMemoryConflictClassificationPrompt(existingStatement, newStatement),
       memoryConflictClassificationJsonSchema,
-    ));
+      undefined, undefined, options?.signal,
+    ); }, options);
     return parseMemoryConflictClassificationOutput((response.text ?? "").trim()).related;
   }
 
   public async summarizeReplyChainOverflow(
-    hops: readonly { authorDisplayName: string; content: string }[],
+    hops: readonly { authorDisplayName: string; authorId?: string; timestampMs?: number; content: string }[],
+    options?: StructuredCallOptions,
   ): Promise<string> {
-    const response = await this.summaryModelChain.run((model) => this.generateStructured(
+    const response = await this.summaryModelChain.run(async (model) => { await options?.beforeAttempt?.(); return this.generateStructured(
       model,
       buildReplyChainOverflowSummaryPrompt(hops),
       replyChainOverflowSummaryJsonSchema,
-    ));
+      undefined, undefined, options?.signal,
+    ); }, options);
     return parseReplyChainOverflowSummaryOutput((response.text ?? "").trim()).summary;
   }
 
@@ -451,12 +485,12 @@ export class GeminiChatProvider implements ChatProvider {
     draftResponse: string,
     context: readonly { authorId: string; authorDisplayName: string; content: string }[],
     currentMessage: string,
+    beforeAttempt?: () => Promise<void>,
   ): Promise<{ needsCorrection: boolean; correctionNotes: string | null }> {
-    const response = await this.summaryModelChain.run((model) => this.generateStructured(
-      model,
-      buildAttributionVerificationPrompt(draftResponse, context, currentMessage),
-      attributionVerificationJsonSchema,
-    ));
+    const response = await this.summaryModelChain.run(async (model) => {
+      await beforeAttempt?.();
+      return this.generateStructured(model, buildAttributionVerificationPrompt(draftResponse, context, currentMessage), attributionVerificationJsonSchema);
+    });
     return parseAttributionVerificationOutput((response.text ?? "").trim());
   }
 
@@ -468,8 +502,10 @@ export class GeminiChatProvider implements ChatProvider {
     userMessage: string,
     assistantReply: string,
     speaker: { id: string; displayName: string },
+    options?: StructuredCallOptions,
   ): Promise<readonly PersonalMemoryExtractionAction[]> {
     return this.summaryModelChain.run(async (model) => {
+      await options?.beforeAttempt?.();
       const response = await this.generateStructured(
         model,
         buildPersonalMemoryExtractionPrompt(userMessage, assistantReply, speaker),
@@ -479,40 +515,47 @@ export class GeminiChatProvider implements ChatProvider {
     });
   }
 
-  public async compilePersonaBundle(content: string): Promise<readonly number[]> {
-    const response = await this.summaryModelChain.run((model) => this.generateStructured(
+  public async compilePersonaBundle(content: string, options?: StructuredCallOptions): Promise<readonly number[]> {
+    const response = await this.summaryModelChain.run(async (model) => { await options?.beforeAttempt?.(); return this.generateStructured(
       model,
       buildPersonaBundleCompilationPrompt(content),
       personaBundleCompilationJsonSchema,
       personaBundleCompilationMaxOutputTokens,
       personaBundleCompilationTimeoutMs,
-    ));
+      options?.signal,
+    ); }, options);
     return [...parsePersonaBundleSectionSelection((response.text ?? "").trim(), content)];
   }
 
   public async evolvePersonaDrift(
     currentText: string,
     exchanges: readonly { user: string; assistant: string }[],
+    options?: StructuredCallOptions,
   ): Promise<string> {
-    const response = await this.summaryModelChain.run((model) => this.generateStructured(
+    const response = await this.summaryModelChain.run(async (model) => { await options?.beforeAttempt?.(); return this.generateStructured(
       model,
       buildPersonaDriftEvolutionPrompt(currentText, exchanges),
       personaDriftEvolutionJsonSchema,
-    ));
+      undefined, undefined, options?.signal,
+    ); }, options);
     return parsePersonaDriftEvolutionOutput((response.text ?? "").trim()).text;
   }
 
   public async summarizeChannelMessages(
     guildId: string,
     messages: readonly ChannelSummaryMessage[],
+    options?: StructuredCallOptions,
   ): Promise<ChannelSummaryResult> {
     const summary = prepareChannelMessageSummary(guildId, messages);
-    const response = await this.summaryModelChain.run((model) => this.generateStructured(
-      model,
-      summary.prompt,
-      channelMessageSummaryJsonSchema,
-      this.generation.summaryMaxOutputTokens ?? channelMessageSummaryMaxOutputTokens,
-    ));
+    const response = await this.summaryModelChain.run(async (model) => {
+      await options?.beforeAttempt?.();
+      return this.generateStructured(
+        model,
+        summary.prompt,
+        channelMessageSummaryJsonSchema,
+        this.generation.summaryMaxOutputTokens ?? channelMessageSummaryMaxOutputTokens,
+      );
+    });
     return summary.parse((response.text ?? "").trim());
   }
 
@@ -525,13 +568,14 @@ export class GeminiChatProvider implements ChatProvider {
     jsonSchema: Record<string, unknown>,
     maxOutputTokens: number = this.generation.maxOutputTokens,
     timeoutMs = 30_000,
+    signal?: AbortSignal,
   ): Promise<GenerateContentResponse> {
     try {
       return await this.client.models.generateContent({
         model,
         contents: [{ role: "user", parts: [{ text: "Follow the instructions above." }] }],
         config: {
-          abortSignal: AbortSignal.timeout(timeoutMs),
+          abortSignal: signal ?? AbortSignal.timeout(timeoutMs),
           systemInstruction: prompt,
           maxOutputTokens,
           responseMimeType: "application/json",

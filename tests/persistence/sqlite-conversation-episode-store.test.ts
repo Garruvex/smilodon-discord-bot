@@ -6,6 +6,18 @@ import { createSqliteDatabaseConnection } from "../../src/infrastructure/databas
 import { SqliteConversationEpisodeStore } from "../../src/infrastructure/persistence/sqlite-conversation-episode-store.js";
 
 describe("persisted bounded conversation episodes", () => {
+  it("retains an explicitly extended window across restart and falls back to legacy retention when disabled", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "conversation-extended-")); const now = Date.now();
+    const first = createSqliteDatabaseConnection(directory); const store = new SqliteConversationEpisodeStore(first.database);
+    await store.observe("g", "c", { messageId: "18-minutes-ago", timestampMs: now - 18 * 60_000, authorId: "alice", authorDisplayName: "Alice", content: "earlier", imageCount: 0 }, now, 20 * 60_000);
+    first.close(); const reopened = createSqliteDatabaseConnection(directory);
+    try {
+      const again = new SqliteConversationEpisodeStore(reopened.database);
+      expect((await again.load("g", "c", now)).map((event) => event.messageId)).toEqual(["18-minutes-ago"]);
+      await again.observe("g", "c", { messageId: "latest", timestampMs: now, authorId: "bob", authorDisplayName: "Bob", content: "new", imageCount: 0 }, now);
+      expect((await again.load("g", "c", now)).map((event) => event.messageId)).toEqual(["latest"]);
+    } finally { reopened.close(); }
+  });
   it("preserves shared context across restart, prunes old events, and removes utility reply branches", async () => {
     const directory = mkdtempSync(join(tmpdir(), "conversation-episodes-"));
     const now = Date.now();

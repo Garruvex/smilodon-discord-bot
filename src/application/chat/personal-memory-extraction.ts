@@ -128,7 +128,7 @@ const personalMemoryExtractionPreamble =
   `Use a stable topic from: ${memoryTopicIds.join(", ")}. Use a short lowercase semantic slot such as food.fruit, ` +
   `role.overwatch, or current.discord_bot. Use upsert for a new/corrected durable fact and remove only for an ` +
   `explicit forget/correction request. Do not store transcripts, jokes, temporary details, secrets, credentials, ` +
-  `or sensitive financial/medical data. Every upsert action also carries importance: "high" for something that ` +
+  `or sensitive financial/medical data. A correction about who a message was addressed to is temporary conversation routing, never a durable member fact. Every upsert action also carries importance: "high" for something that ` +
   `defines who the speaker is or shapes how you should treat them going forward (their name, role, a stated ` +
   `boundary or strong preference, a recurring relationship); "medium" for a genuine but more situational fact ` +
   `(a hobby, a one-off preference, something they're currently doing); "low" for a minor, easily-superseded detail ` +

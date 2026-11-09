@@ -2,6 +2,7 @@ import type { BirthdayStore } from "../../birthdays/birthday-store.js";
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
 import type { ChatTool, ChatToolContext, ChatToolResult } from "./chat-tool.js";
 import { guildCalendarDate, validateBirthday } from "../../birthdays/birthday-message.js";
+import { SocialOutputSuppressed } from "../message-origin-store.js";
 
 interface BirthdayMemberSetArgs {
   userId: string;
@@ -42,6 +43,8 @@ export class BirthdayMemberSetTool implements ChatTool<BirthdayMemberSetArgs> {
   ) {}
 
   public async execute(args: BirthdayMemberSetArgs, ctx: ChatToolContext): Promise<ChatToolResult> {
+    if (ctx.signal?.aborted) return { content: "Birthday update timed out; nothing was saved." };
+    await ctx.beforeModelAttempt?.(); ctx.signal?.throwIfAborted();
     const { userId, month, day } = args;
     if (typeof userId !== "string" || !/^\d{17,20}$/.test(userId) ||
         !Number.isInteger(month) || month < 1 || month > 12 ||
@@ -71,9 +74,18 @@ export class BirthdayMemberSetTool implements ChatTool<BirthdayMemberSetArgs> {
         return { content: "Birthdays are not enabled in this server; nothing was saved." };
       }
       if (ctx.signal?.aborted) return { content: "Birthday update timed out; nothing was saved." };
+      await ctx.beforeModelAttempt?.(); ctx.signal?.throwIfAborted();
+      const currentRoles = await this.resolveMemberRoles(ctx.guildId, ctx.currentUser.id);
+      const currentAdminRoles = this.profiles.find(ctx.guildId)?.roles.botAdministrator;
+      if (!currentRoles?.some((roleId) => currentAdminRoles?.has(roleId)))
+        return { content: "Only bot administrators can set another member's birthday; nothing was saved." };
+      await ctx.beforeModelAttempt?.(); ctx.signal?.throwIfAborted();
+      if (!this.profiles.find(ctx.guildId)?.features.birthdays)
+        return { content: "Birthdays are not enabled in this server; nothing was saved." };
       await this.birthdayStore.setBirthday(ctx.guildId, userId, month, day, details);
       return { content: JSON.stringify({ saved: true, userId, month, day }) };
-    } catch {
+    } catch (error) {
+      if (error instanceof SocialOutputSuppressed || ctx.signal?.aborted) throw error;
       return { content: "Could not save the member's birthday. Ask the user to try again; nothing was confirmed." };
     }
   }

@@ -8,12 +8,20 @@ const memoryModes = {
 };
 
 export const zhTWMemory: SettingsTextCatalog = {
-  "memory.sharing": { label: "共享個人記憶", description: "確認頻道記憶模式後再啟用；既有私人記憶不會改變。" },
-  "memory.sharing.enabled": { label: "共享個人記憶", description: "允許新的個人事實在已設定的範圍內共享。" },
+  "memory.context-opt-out": {"label": "上下文排除名單", "description": "以 Discord 頻道可見性決定上下文範圍；互動身分組僅決定誰能觸發機器人。"},
+  "memory.context-opt-out.roles": {"label": "排除身分組", "description": "不收集這些身分組的訊息與表情回應，也不使用包含其來源的記憶。"},
+  "memory.context-opt-out.users": {"label": "排除使用者 ID", "description": "以逗號分隔 Discord 使用者 ID；留空清除。", "messages": {"invalid": "請輸入以逗號或空白分隔的 Discord 使用者 ID。"}},
+  "memory.impressions": {
+    label: "印象與共同經歷",
+    description: "來源仍可使用時，保留有依據的過往記憶。",
+    messages: { behavior: "啟用記憶淡化後，較舊的興趣與語氣印象會較少被回想起來。只要來源仍有效且可存取，過往事件仍可供回憶。舊興趣不應被當成現在的偏好。讀取或重新整理印象，不會讓依據變新；來源被刪除或到期後，就不能再支持該印象。" },
+  },
+  "memory.advanced": { label: "進階記憶設定", description: "調整記憶淡化速度與舊版紀錄的清理時間。" },
+  "memory.advanced.half-life": { label: "淡化半衰期（天）", description: "淡化的回憶權重每隔幾天減半；僅在啟用記憶淡化時生效。" },
+  "memory.advanced.history": { label: "舊版本保留天數", description: "不再使用的角色紀錄版本在幾天後清除；不影響使用中的紀錄。" },
+  "memory.sharing": { label: "共享個人記憶", description: "依各頻道的記憶模式，分享新的個人事實。" },
+  "memory.sharing.enabled": { label: "共享個人記憶", description: "既有私人記憶不會因此公開。" },
   "memory": { title: "記憶", description: "機器人會回顧和記住的內容" },
-  "memory.channel-history": { label: "頻道歷史", description: "把頻道最近的訊息當作回覆的背景" },
-  "memory.channel-history.enabled": { label: "頻道歷史", description: "開啟或關閉頻道歷史" },
-  "memory.channel-history.limit": { label: "訊息數", description: "要納入的最近頻道訊息數量" },
 
   "memory.memory-mode": {
     label: "頻道記憶模式",

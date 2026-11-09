@@ -5,19 +5,27 @@ import { forgetEpisodeUser } from "./conversation-episode-store.js";
 // keys never merge across audiences; explicit reply links preserve branches.
 export class ConversationEpisodes {
   private readonly channels = new Map<string, ChannelHistoryMessage[]>();
+  private readonly excluded = new Map<string, Set<string>>();
   private readonly versions = new Map<string, number>();
-  public observe(key: string, event: ChannelHistoryMessage, now = Date.now()): void {
+  public observe(key: string, event: ChannelHistoryMessage, now = Date.now(), retentionMs = 900_000): void {
+    const excluded = this.excluded.get(key);
+    if (excluded?.has(event.messageId) || event.replyToMessageId && excluded?.has(event.replyToMessageId)) {
+      excluded?.add(event.messageId); return;
+    }
     const previous = this.channels.get(key)?.find((item) => item.messageId === event.messageId);
-    if (!previous || previous.content !== event.content) this.versions.set(key, (this.versions.get(key) ?? 0) + 1);
-    const events = (this.channels.get(key) ?? []).filter((item) => item.messageId !== event.messageId && item.timestampMs >= now - 900_000);
+    if (!previous || JSON.stringify([previous.content, previous.imageCount, previous.replyToMessageId, previous.authorId]) !== JSON.stringify([event.content, event.imageCount, event.replyToMessageId, event.authorId])) this.versions.set(key, (this.versions.get(key) ?? 0) + 1);
+    const events = (this.channels.get(key) ?? []).filter((item) => item.messageId !== event.messageId && item.timestampMs >= now - retentionMs);
     events.push(event);
     if (this.channels.size >= 256 && !this.channels.has(key)) {
       const oldest = this.channels.keys().next().value!;
-      this.channels.delete(oldest); this.versions.delete(oldest);
+      this.channels.delete(oldest); this.versions.delete(oldest); this.excluded.delete(oldest);
     }
     this.channels.set(key, events.slice(-48));
   }
   public version(key: string): number { return this.versions.get(key) ?? 0; }
+  public windowSnapshot(key: string, minutes: number, now = Date.now()): ChannelHistoryMessage[] {
+    return (this.channels.get(key) ?? []).filter((event) => event.timestampMs >= now - minutes * 60_000).slice(-48);
+  }
   public snapshot(key: string, authorId: string, targetId: string | null, now = Date.now()): ChannelHistoryMessage[] {
     const events = (this.channels.get(key) ?? []).filter((item) => item.timestampMs >= now - 900_000);
     const branch = new Set<string>(targetId ? [targetId] : []);
@@ -35,8 +43,9 @@ export class ConversationEpisodes {
       chars += event.content.length; return chars <= 8_000;
     }).slice(0, 16).reverse();
   }
-  public hasRecentConversation(key: string, authorId: string, botId: string, now = Date.now()): boolean {
-    return (this.channels.get(key) ?? []).some((event) => event.authorId === botId && event.replyToAuthorId === authorId && now - event.timestampMs <= 120_000);
+  // Counted in messages, not time, so it matches what the decision then reads.
+  public hasRecentConversation(key: string, authorId: string, botId: string, recentMessages: number): boolean {
+    return (this.channels.get(key) ?? []).slice(-recentMessages - 1).some((event) => event.authorId === botId && event.replyToAuthorId === authorId);
   }
   public forget(guildId: string, userId: string): void {
     for (const [key, events] of this.channels) {
@@ -55,6 +64,11 @@ export class ConversationEpisodes {
       for (const event of events) if (event.replyToMessageId && excluded.has(event.replyToMessageId)) excluded.add(event.messageId);
       if (excluded.size === before) break;
     }
+    const tombstones = this.excluded.get(key) ?? new Set<string>();
+    excluded.forEach((id) => tombstones.add(id));
+    while (tombstones.size > 512) tombstones.delete(tombstones.values().next().value!);
+    if (this.excluded.size >= 256 && !this.excluded.has(key)) this.excluded.delete(this.excluded.keys().next().value!);
+    this.excluded.set(key, tombstones);
     this.channels.set(key, events.filter((event) => !excluded.has(event.messageId)));
     this.versions.set(key, (this.versions.get(key) ?? 0) + 1);
   }

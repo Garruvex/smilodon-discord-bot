@@ -1,3 +1,4 @@
+import { seedLegacyDrift } from "../helpers/legacy-drift-fixture.js";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -47,7 +48,7 @@ describe("FilePersonaSource", () => {
   it("returns the stable default persona when no guild persona is configured", async () => {
     const source = new FilePersonaSource("unused", logger());
 
-    await expect(source.resolve(profile())).resolves.toEqual({
+    await expect(source.resolve(profile())).resolves.toMatchObject({
       personality: defaultPersonality,
       loreChunks: [],
       examplePool: [],
@@ -71,6 +72,9 @@ describe("FilePersonaSource", () => {
     expect(resolved.personality).toBe("A stable custom persona.");
     expect(resolved.loreChunks).toEqual([]);
     expect(resolved.examplePool).toEqual([]);
+    await expect(resolved.configurationContext?.check()).resolves.toBeUndefined();
+    writeFileSync(join(assetDirectory, "personality.md"), "An edited persona.", "utf8");
+    await expect(resolved.configurationContext?.check()).rejects.toThrow();
   });
 
   it("uses a compiled bundle's core/chunks when its hash matches the current file", async () => {
@@ -160,17 +164,17 @@ describe("FilePersonaSource", () => {
     expect(resolved.examplePool).toEqual([{ tags: "greeting", user: "hi", character: "hey there" }]);
   });
 
-  it("injects the evolved persona-drift text when the guild has it enabled", async () => {
+  it("excludes unproven global drift even when enabled and its persona hash matches", async () => {
     const runtimeDirectory = mkdtempSync(join(tmpdir(), "persona-source-"));
     temporaryDirectories.push(runtimeDirectory);
     const driftStore = new PersonaDriftStore(runtimeDirectory);
     const personalityHash = createHash("sha256").update(defaultPersonality, "utf8").digest("hex");
-    await driftStore.evolve(guildId, "A little more playful lately.", personalityHash);
+    await seedLegacyDrift(runtimeDirectory, guildId, "A little more playful lately.", personalityHash);
     const source = new FilePersonaSource(runtimeDirectory, logger(), driftStore);
 
     const resolved = await source.resolve(profile({ personaDriftEnabled: true }));
 
-    expect(resolved.personaDrift).toBe("A little more playful lately.");
+    expect(resolved.personaDrift).toBeNull();
   });
 
   it("omits persona drift when the guild has it disabled, even if evolved state exists", async () => {
@@ -178,7 +182,7 @@ describe("FilePersonaSource", () => {
     temporaryDirectories.push(runtimeDirectory);
     const driftStore = new PersonaDriftStore(runtimeDirectory);
     const personalityHash = createHash("sha256").update(defaultPersonality, "utf8").digest("hex");
-    await driftStore.evolve(guildId, "A little more playful lately.", personalityHash);
+    await seedLegacyDrift(runtimeDirectory, guildId, "A little more playful lately.", personalityHash);
     const source = new FilePersonaSource(runtimeDirectory, logger(), driftStore);
 
     const resolved = await source.resolve(profile({ personaDriftEnabled: false }));
@@ -190,7 +194,7 @@ describe("FilePersonaSource", () => {
     const runtimeDirectory = mkdtempSync(join(tmpdir(), "persona-source-"));
     temporaryDirectories.push(runtimeDirectory);
     const driftStore = new PersonaDriftStore(runtimeDirectory);
-    await driftStore.evolve(guildId, "A little more playful lately.", "stale-personality-hash");
+    await seedLegacyDrift(runtimeDirectory, guildId, "A little more playful lately.", "stale-personality-hash");
     const source = new FilePersonaSource(runtimeDirectory, logger(), driftStore);
 
     const resolved = await source.resolve(profile({ personaDriftEnabled: true }));
@@ -217,7 +221,7 @@ describe("FilePersonaSource", () => {
     // basis) — a lore-only edit changes the file's sourceHash without
     // touching the core, so this must no longer match and the drift must
     // be discarded.
-    await driftStore.evolve(guildId, "A little more playful lately.", hashContent("Compiled core."));
+    await seedLegacyDrift(runtimeDirectory, guildId, "A little more playful lately.", hashContent("Compiled core."));
     const source = new FilePersonaSource(runtimeDirectory, logger(), driftStore);
 
     const resolved = await source.resolve(profile({

@@ -11,6 +11,8 @@ import type { BirthdayAnnouncer } from "../application/birthdays/birthday-announ
 import type { MemberDepartureService } from "../application/members/member-departure-service.js";
 import type { MemberWelcomeService } from "../application/members/member-welcome-service.js";
 import type { BoostTrackingService } from "../application/members/boost-tracking-service.js";
+import { diagnosticPolicyVersion, traceGateway } from "../application/diagnostics/gateway-diagnostics.js";
+import { DiscordRateLimitDiagnostics, withDiscordCaller } from "../application/diagnostics/discord-diagnostics.js";
 
 export class Application {
   // Flips true once Lavalink and the control-panel (emoji catalog +
@@ -18,6 +20,7 @@ export class Application {
   // then, interactions are rejected with a "still starting up" reply instead
   // of reaching a music/control-panel handler that isn't ready yet.
   private ready = false;
+  private readonly rateLimitDiagnostics: DiscordRateLimitDiagnostics;
 
   public constructor(
     private readonly client: Client,
@@ -33,6 +36,7 @@ export class Application {
     private readonly logger: Logger,
     private readonly onFatalError?: (reason: string) => void,
   ) {
+    this.rateLimitDiagnostics = new DiscordRateLimitDiagnostics(logger);
     this.registerDiscordEvents();
   }
 
@@ -56,6 +60,10 @@ export class Application {
               : {}),
           }
         : { configured: false },
+      decision: { primary: this.configuration.decision ? { provider: "openai-compatible", model: this.configuration.decision.model } :
+        (this.configuration.utilityChat ?? this.configuration.chat) ? { provider: (this.configuration.utilityChat ?? this.configuration.chat)!.provider, models: (this.configuration.utilityChat ?? this.configuration.chat)!.models } : null,
+        fallback: this.configuration.decision && (this.configuration.utilityChat ?? this.configuration.chat) ?
+          { provider: (this.configuration.utilityChat ?? this.configuration.chat)!.provider, models: (this.configuration.utilityChat ?? this.configuration.chat)!.models } : null },
       guilds: profiles.map((profile) => ({
         guildId: profile.guildId,
         guildName: profile.guildName,
@@ -79,6 +87,7 @@ export class Application {
   public async stop(reason: string): Promise<void> {
     this.logger.info({ reason }, "Stopping application");
     this.controlChannelService.stop();
+    this.adminPanelService.stop();
     this.musicPresenceService.stop();
     this.birthdayAnnouncer.stop();
     this.dependencies.channelSummaryScheduler?.stop();
@@ -100,13 +109,14 @@ export class Application {
     // having waited for it — see ChatConversationService.drain.
     await this.client.destroy();
     await Promise.all([
+      this.adminPanelService.drain(),
       this.dependencies.chatConversationService?.drain(),
       // .stop() above only clears the interval — a tick already in flight
       // (now potentially long, see ChannelSummaryScheduler.drain's own
       // comment) keeps running until this resolves.
       this.dependencies.channelSummaryScheduler?.drain(),
       this.dependencies.reactionReplyScheduler?.drain(),
-    ]);
+    ]).finally(() => this.rateLimitDiagnostics.stop());
   }
 
   private registerDiscordEvents(): void {
@@ -260,17 +270,13 @@ export class Application {
     });
 
     this.client.on(Events.MessageCreate, (message) => {
-      if (!this.ready) {
-        void this.replyStartingUpIfControlChannelMessage(message).catch((error: unknown) => {
-          this.logger.error({ error }, "Failed to reply during startup gate");
-        });
-        return;
-      }
-
-      void (async (): Promise<void> => {
-        if (await this.controlChannelService.handleMessage(message)) return;
+      void traceGateway(this.logger, { guildId: message.guildId ?? undefined, channelId: message.channelId,
+        sourceMessageId: message.id, kind: "message_created", policyVersion: diagnosticPolicyVersion(message.guildId ? this.dependencies.guildConfigurationProvider.find(message.guildId) : null) }, async () => {
+        if (!this.ready) { await this.replyStartingUpIfControlChannelMessage(message); return "startup_gate"; }
+        if (await withDiscordCaller("control_panel", () => this.controlChannelService.handleMessage(message))) return "control_channel";
         await this.dependencies.behaviorDispatcher.dispatch(BehaviorEvent.MessageCreated, message);
-      })().catch((error: unknown) => {
+        return "dispatched";
+      }).catch((error: unknown) => {
         this.logger.error({ error }, "Message behavior dispatch failed");
       });
     });
@@ -280,6 +286,8 @@ export class Application {
     // embed appearing, a pin) are skipped.
     this.client.on(Events.MessageUpdate, (oldMessage, newMessage) => {
       if (!this.ready) return;
+      if (newMessage.guildId && (newMessage.partial || oldMessage.content !== newMessage.content))
+        this.dependencies.chatConversationService?.excludeInteraction(newMessage.guildId, newMessage.channelId, newMessage.id);
       void (async (): Promise<void> => {
         const message = newMessage.partial ? await newMessage.fetch() : newMessage;
         if (!message.inGuild() || message.author.bot) return;
@@ -291,14 +299,17 @@ export class Application {
     });
 
     this.client.on(Events.MessageReactionAdd, (reaction, user) => {
-      if (!this.ready) return;
-      void (async (): Promise<void> => {
+      const message = reaction.message;
+      void traceGateway(this.logger, { guildId: message.guildId ?? undefined, channelId: message.channelId,
+        sourceMessageId: message.id, kind: "reaction_added", policyVersion: diagnosticPolicyVersion(message.guildId ? this.dependencies.guildConfigurationProvider.find(message.guildId) : null) }, async () => {
+        if (!this.ready) return "startup_gate";
         const fullReaction = reaction.partial ? await reaction.fetch() : reaction;
         if (fullReaction.message.partial) await fullReaction.message.fetch();
         const fullUser = user.partial ? await user.fetch() : user;
-        if (!fullReaction.message.guildId) return; // DM reactions are out of scope
+        if (!fullReaction.message.guildId) return "out_of_scope";
         await this.dependencies.behaviorDispatcher.dispatch(BehaviorEvent.ReactionAdded, { reaction: fullReaction, user: fullUser });
-      })().catch((error: unknown) => {
+        return "dispatched";
+      }).catch((error: unknown) => {
         this.logger.error({ error }, "Reaction behavior dispatch failed");
       });
     });
@@ -331,10 +342,12 @@ export class Application {
 
     // The admin panel repairs itself when its messages or channel go away.
     this.client.on(Events.MessageDelete, (message) => {
+      if (message.guildId) this.dependencies.chatConversationService?.excludeInteraction(message.guildId, message.channelId, message.id);
       this.adminPanelService.handleMessagesDeleted(message.guildId, message.channelId, [message.id]);
       if (message.guildId !== null) this.dependencies.campaign.handleMessagesDeleted(message.guildId, message.channelId, [message.id]);
     });
     this.client.on(Events.MessageBulkDelete, (messages, channel) => {
+      for (const id of messages.keys()) this.dependencies.chatConversationService?.excludeInteraction(channel.guildId, channel.id, id);
       this.adminPanelService.handleMessagesDeleted(channel.guildId, channel.id, [...messages.keys()]);
       this.dependencies.campaign.handleMessagesDeleted(channel.guildId, channel.id, [...messages.keys()]);
     });
@@ -390,56 +403,17 @@ export class Application {
       this.logger.warn({ message }, "Discord client warning");
     });
 
-    // Only catches a *proactive* wait — discord.js predicting, from its own
-    // local bucket tracking, that it needs to pause before sending a
-    // request. An unexpected 429 response (e.g. Discord's undocumented
-    // per-channel message-edit sublimit, confirmed as the real cause of a
-    // multi-second panel stall via direct REST response logging below) goes
-    // through a different internal path that retries silently and never
-    // reaches this listener — @discordjs/rest only surfaces that case if
-    // `rejectOnRateLimit` is explicitly configured, which this bot doesn't
-    // do. Kept for the proactive case it does catch; not a substitute for
-    // the response-level logging below.
+    // Proactive waits and actual 429 responses are separate counters; both
+    // are aggregated by caller/target rather than logging every retry.
     this.client.rest.on("rateLimited", (info) => {
-      this.logger.warn(
-        {
-          route: info.route,
-          method: info.method,
-          timeToResetMs: info.timeToReset,
-          global: info.global,
-        },
-        "Discord REST request was rate limited",
-      );
+      this.rateLimitDiagnostics.observe({ kind: "proactive_wait", method: info.method, path: info.url, waitMs: Math.max(info.timeToReset, info.retryAfter, info.sublimitTimeout) });
     });
 
-    // Temporary: pins down where a multi-second message.edit() delay
-    // actually comes from. This fires once the HTTP response is received —
-    // if its timestamp lands close to when the edit call started, discord.js
-    // sent and received the request fast and the delay is downstream of
-    // that; if it lands close to when the edit call *finished*, the request
-    // itself (queued send, network, or response body) is what's slow.
-    // Filtered to message routes only to avoid flooding the log with every
-    // other REST call the bot makes (interactions, commands, etc.). Even so,
-    // the lyrics panel alone makes one of these every second or two, so
-    // successes are trace-only and 429s warnings — keep failures visible
-    // when chasing edit latency or rate limits.
+    // Capture unexpected 429s as well as the proactive REST wait signal.
     this.client.rest.on("response", (request, response) => {
-      if (!request.route.includes("/messages/")) return;
-      const level = response.status === 429 ? "warn" : "trace";
-      this.logger[level](
-        {
-          method: request.method,
-          route: request.route,
-          status: response.status,
-          time: Date.now(),
-          remaining: response.headers.get("x-ratelimit-remaining"),
-          resetAfter: response.headers.get("x-ratelimit-reset-after"),
-          retryAfter: response.headers.get("retry-after"),
-          scope: response.headers.get("x-ratelimit-scope"),
-          bucket: response.headers.get("x-ratelimit-bucket"),
-        },
-        "Discord REST response for a message route",
-      );
+      if (response.status !== 429) return;
+      this.rateLimitDiagnostics.observe({ kind: "response_429", method: request.method, path: request.path,
+        waitMs: Number(response.headers.get("retry-after")) * 1000 });
     });
   }
 

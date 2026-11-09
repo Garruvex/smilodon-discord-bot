@@ -1,0 +1,399 @@
+{
+  "synthetic": true,
+  "mode": "recorded-policy-comparison",
+  "hypotheticalOnly": true,
+  "humanReviewRequired": true,
+  "outputs": [
+    {
+      "name": "50–60 second reading and typing delay",
+      "baseline": true,
+      "proposed": true,
+      "expected": true,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 2.845100000000002
+    },
+    {
+      "name": "closing: lol",
+      "baseline": false,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.33690000000024156
+    },
+    {
+      "name": "closing: okay",
+      "baseline": false,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.10809999999992215
+    },
+    {
+      "name": "closing: 哈哈",
+      "baseline": false,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.13379999999961
+    },
+    {
+      "name": "closing: 謝謝",
+      "baseline": false,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.12019999999984066
+    },
+    {
+      "name": "closing: 晚安",
+      "baseline": false,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.0603000000000975
+    },
+    {
+      "name": "closing: 不是在跟你說，我在問別人",
+      "baseline": false,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.09609999999975116
+    },
+    {
+      "name": "rejected label at .99: acknowledgment-only",
+      "baseline": true,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.15320000000019718
+    },
+    {
+      "name": "rejected label at .99: repetition",
+      "baseline": true,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.23080000000027212
+    },
+    {
+      "name": "rejected label at .99: generic-advice",
+      "baseline": true,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.13229999999975917
+    },
+    {
+      "name": "rejected label at .99: speculative-help",
+      "baseline": true,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.0967000000000553
+    },
+    {
+      "name": "rejected label at .99: topic-hijack",
+      "baseline": true,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.053400000000237924
+    },
+    {
+      "name": "rejected label at .99: stale-information",
+      "baseline": true,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.02970000000004802
+    },
+    {
+      "name": "another person interleaves",
+      "baseline": false,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.057299999999941065
+    },
+    {
+      "name": "explicit other reply",
+      "baseline": false,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.03150000000005093
+    },
+    {
+      "name": "explicit other mention",
+      "baseline": false,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.039500000000316504
+    },
+    {
+      "name": "plain-name other recipient",
+      "baseline": false,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.12409999999999854
+    },
+    {
+      "name": "unresolved name",
+      "baseline": false,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.03530000000000655
+    },
+    {
+      "name": "ambiguous alias",
+      "baseline": false,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.03110000000015134
+    },
+    {
+      "name": "extra bot output cannot renew window",
+      "baseline": false,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.3702000000002954
+    },
+    {
+      "name": "explicit bot reply remains addressed after window expiry",
+      "baseline": true,
+      "proposed": true,
+      "expected": true,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.059900000000197906
+    },
+    {
+      "name": "missing context",
+      "baseline": false,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.19950000000017099
+    },
+    {
+      "name": "no provider",
+      "baseline": true,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "unavailable",
+      "calls": 0,
+      "latencyMs": 0.02750000000014552
+    },
+    {
+      "name": "invented or future evidence",
+      "baseline": true,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "failed",
+      "calls": 1,
+      "latencyMs": 0.10710000000017317
+    },
+    {
+      "name": "strong score cannot override a closed opening",
+      "baseline": true,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.05780000000004293
+    },
+    {
+      "name": "welcome spontaneous group joke",
+      "baseline": true,
+      "proposed": true,
+      "expected": true,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.056199999999989814
+    },
+    {
+      "name": "third-person bot reference is not an address",
+      "baseline": false,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.21699999999964348
+    },
+    {
+      "name": "missing image context abstains",
+      "baseline": false,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.08699999999998909
+    },
+    {
+      "name": "delayed personal motorcycle question: bystander, model bot",
+      "baseline": true,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.06029999999964275
+    },
+    {
+      "name": "delayed personal motorcycle question: bystander, model others",
+      "baseline": true,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.0522000000000844
+    },
+    {
+      "name": "delayed personal motorcycle question: alice, model bot",
+      "baseline": true,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.04459999999971842
+    },
+    {
+      "name": "delayed personal motorcycle question: alice, model others",
+      "baseline": true,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.04280000000017026
+    },
+    {
+      "name": "fresh different-speaker motorcycle question (continuation): bystander, model bot",
+      "baseline": false,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.05079999999998108
+    },
+    {
+      "name": "fresh different-speaker motorcycle question (spontaneous): bystander, model bot",
+      "baseline": true,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.04470000000037544
+    },
+    {
+      "name": "fresh different-speaker motorcycle question (continuation): bystander, model others",
+      "baseline": false,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.03819999999996071
+    },
+    {
+      "name": "fresh different-speaker motorcycle question (spontaneous): bystander, model others",
+      "baseline": true,
+      "proposed": false,
+      "expected": false,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.04129999999986467
+    },
+    {
+      "name": "different human asks about the bot in a reply to earlier advice at 5000",
+      "baseline": true,
+      "proposed": true,
+      "expected": true,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.0421000000001186
+    },
+    {
+      "name": "different human asks about the bot in a reply to earlier advice at 21600000",
+      "baseline": true,
+      "proposed": true,
+      "expected": true,
+      "correct": true,
+      "status": "valid",
+      "calls": 1,
+      "latencyMs": 0.039900000000216096
+    }
+  ],
+  "audit": {
+    "revision": "41e23a8c0f48f0dd96e5679cd40d06c694f0c977",
+    "fixture": "tests/fixtures/participation-replay.json",
+    "fixtureSha256": "2ef142fddc5855b9b1b65e9c495c2f8c7966f416fe7797e1af56ddf128ad97a0",
+    "clientDate": "2026-10-20",
+    "timezone": "Asia/Taipei",
+    "networkCalls": 0,
+    "discordSends": 0,
+    "realModelEvaluation": "not_run",
+    "livePilot": "not_run"
+  }
+}

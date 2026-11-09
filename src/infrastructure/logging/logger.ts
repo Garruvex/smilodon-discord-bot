@@ -1,8 +1,10 @@
-import pino, { type Logger } from "pino";
+import pino, { type DestinationStream, type Logger } from "pino";
 
 import type { ApplicationConfiguration } from "../../config/configuration.js";
+import { diagnosticFields, diagnosticProcessRunId, safeFailure } from "../../application/diagnostics/chat-diagnostics.js";
+import { diagnosticBuildVersion } from "../../application/diagnostics/gateway-diagnostics.js";
 
-export function createLogger(configuration: ApplicationConfiguration): Logger {
+export function createLogger(configuration: ApplicationConfiguration, destination?: DestinationStream): Logger {
   const prettyTransport = configuration.environment === "production"
     ? {}
     : {
@@ -13,18 +15,22 @@ export function createLogger(configuration: ApplicationConfiguration): Logger {
       };
   return pino({
     level: configuration.logLevel,
+    mixin: () => ({ ...diagnosticFields() }),
     base: {
       application: "fntu-discord-bot",
       environment: configuration.environment,
+      instanceName: configuration.instanceName ?? "default",
+      processRunId: diagnosticProcessRunId,
+      buildVersion: diagnosticBuildVersion(),
     },
     redact: {
       paths: ["token", "apiKey", "authorization", "req.headers.authorization"],
       censor: "[REDACTED]",
     },
     serializers: {
-      error: pino.stdSerializers.err,
-      err: pino.stdSerializers.err,
+      error: (error: unknown) => safeFailure(error, "operation_error"),
+      err: (error: unknown) => safeFailure(error, "operation_error"),
     },
     ...prettyTransport,
-  });
+  }, destination);
 }

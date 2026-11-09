@@ -1,4 +1,5 @@
 import type { Language } from "../application/i18n/language.js";
+import type { CharacterSettingsPatch } from "../application/chat/character-settings.js";
 import type { ParticipationSettings } from "../application/chat/participation-policy.js";
 import type { LinkAction, RaidAction, SecurityWindow, SpamAction } from "../domain/security/detection-policy.js";
 import type { TrapAction, TrapDeleteWindow, TrapTimeoutDuration } from "../domain/security/trap-policy.js";
@@ -9,6 +10,7 @@ import {
 } from "./guild-configuration-schema.js";
 
 export interface UpdateGuildConfigurationInput {
+  character?: CharacterSettingsPatch;
   chatParticipation?: Partial<ParticipationSettings>;
   chatParticipationResetAdvanced?: boolean;
   idleImageUrl?: string | null;
@@ -56,6 +58,8 @@ export interface UpdateGuildConfigurationInput {
   // never wholesale-replaced) — same "add" semantics as chatbotChannelIds.
   chatbotChannelMemoryModes?: Readonly<Record<string, "shared" | "isolated" | "session_only" | "disabled">>;
   chatbotSharedMemoryEnabled?: boolean;
+  contextOptOutUserIds?: readonly string[];
+  contextOptOutRoleIds?: readonly string[];
   chatbotPersonaDriftEnabled?: boolean;
   // The whole daily-summary list, as a settings list option sends it;
   // applied before the single-channel operations below.
@@ -227,6 +231,7 @@ export function toGuildConfiguration(parsed: ParsedGuildConfigurationFile, sourc
       autoQueueVoteOptionCount: parsed.music.autoQueueVote.optionCount,
     },
     chat: parsed.chat,
+    character: parsed.character,
     security: parsed.security,
     sourceFile,
   };
@@ -286,6 +291,7 @@ export function toGuildConfigurationDocument(configuration: GuildConfiguration):
       },
     },
     chat: configuration.chat,
+    character: configuration.character,
     security: configuration.security,
   });
 }
@@ -295,6 +301,12 @@ export function applyGuildConfigurationUpdate(
   input: UpdateGuildConfigurationInput,
 ): ParsedGuildConfigurationFile {
   const next = structuredClone(document);
+  if (input.character) {
+    const { modules, channelOverrides, ...controls } = input.character;
+    Object.assign(next.character, controls);
+    if (channelOverrides) Object.assign(next.character.channelOverrides, channelOverrides);
+    if (modules) for (const [id, values] of Object.entries(modules)) Object.assign(next.character.modules[id as keyof typeof next.character.modules], values);
+  }
   if (input.idleImageUrl !== undefined) next.branding.idleImageUrl = input.idleImageUrl;
   if (input.idleImageAsset !== undefined) next.branding.idleImageAsset = input.idleImageAsset;
   if (input.controlPanelChannelId !== undefined) next.channels.controlPanel = input.controlPanelChannelId;
@@ -323,6 +335,8 @@ export function applyGuildConfigurationUpdate(
     next.chat.channelMemoryModes = { ...next.chat.channelMemoryModes, ...input.chatbotChannelMemoryModes };
   }
   if (input.chatbotSharedMemoryEnabled !== undefined) next.chat.sharedMemoryEnabled = input.chatbotSharedMemoryEnabled;
+  if (input.contextOptOutUserIds !== undefined) next.chat.contextOptOutUserIds = [...new Set(input.contextOptOutUserIds)];
+  if (input.contextOptOutRoleIds !== undefined) next.chat.contextOptOutRoleIds = [...new Set(input.contextOptOutRoleIds)];
   if (input.chatbotDisabledToolNames !== undefined) next.chat.disabledTools = [...input.chatbotDisabledToolNames];
   if (input.chatbotPersonaDriftEnabled !== undefined) next.chat.personaDriftEnabled = input.chatbotPersonaDriftEnabled;
   if (input.contextDailyChannelIds !== undefined) next.chat.contextDailyChannelIds = [...new Set(input.contextDailyChannelIds)];
@@ -350,12 +364,17 @@ export function applyGuildConfigurationUpdate(
   if (input.chatbotMaxImagesPerRequest !== undefined) next.chat.maxImagesPerRequest = input.chatbotMaxImagesPerRequest;
   if (input.ambientReplies !== undefined) next.features.ambientReplies = input.ambientReplies;
   if (input.ambientCooldownSeconds !== undefined) next.chat.ambientCooldownSeconds = input.ambientCooldownSeconds;
-  if (input.chatParticipation !== undefined) next.chat.participation = {
-    ...next.chat.participation, ...input.chatParticipation,
+  if (input.chatParticipation !== undefined) {
+    const { observationChannelIds, ...participationPatch } = input.chatParticipation;
+    next.chat.participation = {
+    ...next.chat.participation, ...participationPatch,
+    ...(observationChannelIds === undefined ? {} : { observationChannelIds: [...observationChannelIds] }),
     spontaneousChannelIds: [...(input.chatParticipation.spontaneousChannelIds ?? next.chat.participation.spontaneousChannelIds)],
     advanced: { ...next.chat.participation.advanced, ...input.chatParticipation.advanced },
+    ...(input.chatParticipation.simpleActionThresholds === undefined ? {} : { simpleActionThresholds: { ...next.chat.participation.simpleActionThresholds, ...input.chatParticipation.simpleActionThresholds } }),
     channelOverrides: { ...next.chat.participation.channelOverrides, ...input.chatParticipation.channelOverrides },
   };
+  }
   if (input.chatParticipationResetAdvanced) next.chat.participation.advanced = {};
   if (input.channelHistory !== undefined) next.features.channelHistory = input.channelHistory;
   if (input.channelHistoryLimit !== undefined) next.chat.channelHistoryLimit = input.channelHistoryLimit;

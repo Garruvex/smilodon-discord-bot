@@ -1,5 +1,10 @@
 // Port for whatever embeddings provider is configured (OpenAI, Gemini) — see
 // infrastructure/chat/openai-embeddings-client.ts and gemini-embeddings-client.ts.
+export interface EmbeddingCallOptions {
+  signal?: AbortSignal;
+  beforeAttempt?: () => Promise<void>;
+  cacheScope?: string;
+}
 export interface EmbeddingsClient {
   // Identifies the exact provider+model+dimensionality producing vectors
   // from this instance — two clients with different values here can put
@@ -9,6 +14,6 @@ export interface EmbeddingsClient {
   // optional) so a fingerprint mismatch can never silently degrade to
   // "unknown == unknown, treat as compatible" for a forgotten implementation.
   readonly modelId: string;
-  embed(text: string): Promise<number[]>;
-  embedMany?(texts: readonly string[]): Promise<number[][]>;
+  embed(text: string, options?: EmbeddingCallOptions): Promise<number[]>;
+  embedMany?(texts: readonly string[], options?: EmbeddingCallOptions): Promise<number[][]>;
 }

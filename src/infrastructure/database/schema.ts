@@ -1,3 +1,4 @@
+import type { ContextProvenance } from "../../application/chat/context-provenance.js";
 import { sql } from "drizzle-orm";
 import { bigint, boolean, index, integer, json, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, vector } from "drizzle-orm/pg-core";
 import type { MessageOrigin } from "../../application/chat/message-origin-store.js";
@@ -6,10 +7,11 @@ import type { ChannelHistoryMessage } from "../../application/chat/chat-provider
 export const memoryObservedAliases = pgTable("memory_observed_aliases", {
   guildId: text("guild_id").notNull(),
   alias: text("alias").notNull(),
-  memoryId: text("memory_id").notNull().references(() => memories.id, { onDelete: "cascade" }),
+  memoryId: uuid("memory_id").notNull().references(() => memories.id, { onDelete: "cascade" }),
 }, (table) => [primaryKey({ columns: [table.memoryId, table.alias] }), index("memory_observed_aliases_lookup").on(table.guildId, table.alias)]);
 
 export const conversationEpisodes = pgTable("conversation_episodes", {
+  retentionMs: integer("retention_ms").notNull().default(900_000),
   guildId: text("guild_id").notNull(), channelId: text("channel_id").notNull(),
   events: jsonb("events").$type<ChannelHistoryMessage[]>().notNull().default([]),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
@@ -21,6 +23,7 @@ export const messageOrigins = pgTable("message_origins", {
   channelId: text("channel_id").notNull(),
   origin: text("origin").$type<MessageOrigin>().notNull(),
   sourceMessageId: text("source_message_id"),
+  contextProvenance: jsonb("context_provenance").$type<ContextProvenance>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
 }, (table) => [index("message_origins_scope_idx").on(table.guildId, table.channelId)]);
 
@@ -237,8 +240,10 @@ export const roleMenus = pgTable("role_menus", {
 // audience" — the two compose independently (see MemoryEngine.canRecall).
 // Legacy tables above stay in place, unused, until migration is verified.
 export const memories = pgTable("memories", {
+  contextProvenance: jsonb("context_provenance").$type<ContextProvenance>(),
   id: uuid("id").primaryKey(),
   guildId: text("guild_id").notNull(),
+  moduleId: text("module_id"),
   // Content shape only ("fact" | "preference" | "episode") — independent of
   // who can see it. Never encodes audience (no "guild_fact"/"channel_episode").
   kind: text("kind").notNull(),
@@ -286,6 +291,7 @@ export const memories = pgTable("memories", {
   uniqueIndex("memories_identity").on(
     table.guildId, sql`coalesce(${table.ownerUserId}, '')`, sql`coalesce(${table.channelId}, '')`,
     sql`coalesce(${table.isolationChannelId}, '')`,
+    sql`coalesce(${table.moduleId}, '')`,
     table.subjectType, table.subjectId, table.topic, table.slot,
   ).where(sql`${table.status} = 'active'`),
   index("memories_embedding_hnsw").using("hnsw", table.embedding.op("vector_cosine_ops")),
@@ -320,6 +326,8 @@ export const memorySources = pgTable("memory_sources", {
 // here, just an edge between two (subjectType, subjectId) pairs that may or
 // may not have memories of their own.
 export const memoryRelations = pgTable("memory_relations", {
+  channelId: text("channel_id"),
+  contextProvenance: jsonb("context_provenance").$type<ContextProvenance | null>(),
   id: uuid("id").primaryKey(),
   guildId: text("guild_id").notNull(),
   fromSubjectType: text("from_subject_type").notNull(),
@@ -350,7 +358,7 @@ export const memoryRelations = pgTable("memory_relations", {
   // reason as memories_identity.
   uniqueIndex("memory_relations_identity").on(
     table.guildId, table.fromSubjectType, table.fromSubjectId, table.predicate, table.kind,
-    table.toSubjectType, table.toSubjectId, sql`coalesce(${table.isolationChannelId}, '')`,
+    table.toSubjectType, table.toSubjectId, sql`coalesce(${table.isolationChannelId}, '')`, sql`coalesce(${table.channelId}, '')`,
   ),
 ]);
 

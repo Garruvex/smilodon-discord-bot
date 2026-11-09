@@ -1,3 +1,4 @@
+import type { ContextProvenance } from "../../application/chat/context-provenance.js";
 import { sql } from "drizzle-orm";
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import type { MessageOrigin } from "../../application/chat/message-origin-store.js";
@@ -10,6 +11,7 @@ export const memoryObservedAliases = sqliteTable("memory_observed_aliases", {
 }, (table) => [primaryKey({ columns: [table.memoryId, table.alias] }), index("memory_observed_aliases_lookup").on(table.guildId, table.alias)]);
 
 export const conversationEpisodes = sqliteTable("conversation_episodes", {
+  retentionMs: integer("retention_ms").notNull().default(900_000),
   guildId: text("guild_id").notNull(), channelId: text("channel_id").notNull(),
   events: text("events", { mode: "json" }).$type<ChannelHistoryMessage[]>().notNull().default([]),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
@@ -21,6 +23,7 @@ export const messageOrigins = sqliteTable("message_origins", {
   channelId: text("channel_id").notNull(),
   origin: text("origin").$type<MessageOrigin>().notNull(),
   sourceMessageId: text("source_message_id"),
+  contextProvenance: text("context_provenance", { mode: "json" }).$type<ContextProvenance>(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 }, (table) => [index("message_origins_scope_idx").on(table.guildId, table.channelId)]);
 
@@ -77,8 +80,10 @@ export const chatMemories = sqliteTable("chat_memories", {
 // column); recall does a SQL-filtered scan followed by an application-side
 // cosine pass — see MemoryEngine's SQLite ceiling handling.
 export const memories = sqliteTable("memories", {
+  contextProvenance: text("context_provenance", { mode: "json" }).$type<ContextProvenance>(),
   id: text("id").primaryKey(),
   guildId: text("guild_id").notNull(),
+  moduleId: text("module_id"),
   kind: text("kind").notNull(),
   audience: text("audience").notNull(),
   ownerUserId: text("owner_user_id"),
@@ -108,6 +113,7 @@ export const memories = sqliteTable("memories", {
   uniqueIndex("memories_identity").on(
     table.guildId, sql`coalesce(${table.ownerUserId}, '')`, sql`coalesce(${table.channelId}, '')`,
     sql`coalesce(${table.isolationChannelId}, '')`,
+    sql`coalesce(${table.moduleId}, '')`,
     table.subjectType, table.subjectId, table.topic, table.slot,
   ).where(sql`${table.status} = 'active'`),
 ]);
@@ -128,6 +134,8 @@ export const memorySources = sqliteTable("memory_sources", {
 
 // See schema.ts's memoryRelations for the design rationale.
 export const memoryRelations = sqliteTable("memory_relations", {
+  channelId: text("channel_id"),
+  contextProvenance: text("context_provenance", { mode: "json" }).$type<ContextProvenance | null>(),
   id: text("id").primaryKey(),
   guildId: text("guild_id").notNull(),
   fromSubjectType: text("from_subject_type").notNull(),
@@ -146,7 +154,7 @@ export const memoryRelations = sqliteTable("memory_relations", {
   // See schema.ts's memory_relations_identity.
   uniqueIndex("memory_relations_identity").on(
     table.guildId, table.fromSubjectType, table.fromSubjectId, table.predicate, table.kind,
-    table.toSubjectType, table.toSubjectId, sql`coalesce(${table.isolationChannelId}, '')`,
+    table.toSubjectType, table.toSubjectId, sql`coalesce(${table.isolationChannelId}, '')`, sql`coalesce(${table.channelId}, '')`,
   ),
 ]);
 

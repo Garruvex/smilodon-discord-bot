@@ -1,9 +1,24 @@
+import { GuardedEvaluationContext } from "../application/context/guarded-evaluation-context.js";
+import { guardModelTransport } from "../application/context/guarded-model-transport.js";
+import { guardEmbeddingTransport } from "../application/context/guarded-embedding-transport.js";
+import { interviewProbes } from "../application/chat/character-evaluation.js";
+import { CommandModule } from "../application/commands/command.js";
+import { settingsAccessPolicy } from "../infrastructure/discord/settings/engine/settings-engine.js";
 import { defaultLanguage } from "../application/i18n/language.js";
+import { instrumentModel, modelGenerationHealth } from "../application/diagnostics/model-diagnostics.js";
+import { diagnosticPipelineStatus } from "../application/diagnostics/chat-diagnostics.js";
 import { catalogIssues } from "../application/i18n/texts.js";
 import type { Logger } from "pino";
 import type { MessageOriginStore } from "../application/chat/message-origin-store.js";
 import type { ConversationEpisodeStore } from "../application/chat/conversation-episode-store.js";
 import { SocialChatEligibility } from "../infrastructure/discord/behaviors/social-chat-eligibility.js";
+import { ChatTurnSupport } from "../infrastructure/discord/behaviors/chat-turn-support.js";
+import { guardedToolResourcePort } from "../application/chat/guarded-tool-gateway.js";
+import { ReviewedMusicTool } from "../infrastructure/discord/commands/music/reviewed-music-tool.js";
+import { conversationConfiguration } from "../application/context/conversation-configuration.js";
+import { withSessionMessageOrigins } from "../application/chat/session-message-origins.js";
+import { isGuardedContext } from "../application/chat/guarded-conversation-context.js";
+import { resolveChannelMemoryMode } from "../application/memory/memory-channel-policy.js";
 import { ConversationObservationBehavior } from "../infrastructure/discord/behaviors/conversation-observation-behavior.js";
 import { ProactiveChatBehavior } from "../infrastructure/discord/behaviors/proactive-chat-behavior.js";
 
@@ -49,6 +64,8 @@ import { FurryReactionCommand } from "../infrastructure/discord/commands/image/f
 import { BooruSearchCommand } from "../infrastructure/discord/commands/image/booru-search-command.js";
 import { FursuitFurtrackCommand } from "../infrastructure/discord/commands/image/fursuit-furtrack-command.js";
 import { DiagnosticCommand } from "../infrastructure/discord/commands/diagnostics/diagnostic-command.js";
+import { ExplainMessageCommand } from "../infrastructure/discord/commands/diagnostics/explain-message-command.js";
+import { diagnosticStore } from "../application/diagnostics/chat-diagnostics.js";
 import { PauseCommand } from "../infrastructure/discord/commands/music/pause-command.js";
 import { PlayCommand } from "../infrastructure/discord/commands/music/play-command.js";
 import { ResumeCommand } from "../infrastructure/discord/commands/music/resume-command.js";
@@ -97,14 +114,25 @@ import type { ChatProvider } from "../application/chat/chat-provider.js";
 import { OpenAiCompatibleChatProvider } from "../infrastructure/chat/openai-compatible-chat-provider.js";
 import { OpenAiResponsesChatProvider } from "../infrastructure/chat/openai-responses-chat-provider.js";
 import { GeminiChatProvider } from "../infrastructure/chat/gemini-chat-provider.js";
-import type { Client } from "discord.js";
+import type { Client, Message } from "discord.js";
 import { GuildAssetStore } from "../application/assets/guild-asset-store.js";
 import { ComponentRegistry } from "../application/components/component-registry.js";
 import { ComponentDispatcher } from "../application/components/component-dispatcher.js";
 import { PollComponentHandler } from "../infrastructure/discord/components/poll-component-handler.js";
 import type { ChatStateStore } from "../application/chat/chat-state-store.js";
 import { ChatConversationService } from "../application/chat/chat-conversation-service.js";
+import { CharacterRuntime } from "../application/chat/character-runtime.js";
+import { CharacterEvaluationStore } from "../application/chat/character-evaluation.js";
+import { CharacterEvalCommand, FeltLikeBotCommand } from "../infrastructure/discord/commands/diagnostics/character-eval-command.js";
+import { resolveParticipation } from "../application/chat/participation-policy.js";
+import { SocialOutputSuppressed } from "../application/chat/message-origin-store.js";
+import { HttpDecisionProvider } from "../infrastructure/chat/http-decision-provider.js";
+import { OpenAiNativeDecisionProvider } from "../infrastructure/chat/openai-native-decision-provider.js";
+import { contextualDecisionProviders } from "../application/chat/contextual-decision-providers.js";
+import { SimpleParticipationService, selectSimpleRoute } from "../application/chat/simple-decision.js";
+import { characterSettings, characterInactiveReason } from "../application/chat/character-settings.js";
 import { ChatToolRegistry } from "../application/chat/tools/chat-tool-registry.js";
+import { DiscordServerLookupTool } from "../infrastructure/discord/discord-server-lookup-tool.js";
 import { DiceRollTool } from "../application/chat/tools/dice-tool.js";
 import { EightBallTool } from "../application/chat/tools/eightball-tool.js";
 import { BooruSearchTool } from "../application/chat/tools/booru-search-tool.js";
@@ -120,7 +148,7 @@ import { RelevantPersonaLoreSelector } from "../application/chat/persona-lore-se
 import { PersonaBundleCompiler } from "../application/chat/persona-bundle-compiler.js";
 import { PersonaDriftStore } from "../application/chat/persona-drift-store.js";
 import type { MemoryRepository } from "../application/memory/memory.js";
-import { DefaultMemoryEngine } from "../application/memory/memory-engine.js";
+import { createGuardedMemoryEngine } from "../application/context/guarded-memory-gateway.js";
 import type { MemoryEngine } from "../application/memory/memory.js";
 import type { ChannelSummaryCheckpointStore } from "../application/context/channel-summary-checkpoint-store.js";
 import { ChannelSummaryScheduler } from "../application/context/channel-summary-scheduler.js";
@@ -177,7 +205,11 @@ type ProviderConfig =
 // same 3-way branch, just parameterized on which config block it's building
 // from. summaryModels defaults to the provider's own `models` when omitted
 // (utilityChat never sets it — it IS the summary/utility model already).
-function createChatProviderFromConfig(config: ProviderConfig, logger: Logger): ChatProvider {
+export function createChatProviderFromConfig(config: ProviderConfig, logger: Logger): ChatProvider {
+  return guardModelTransport(instrumentModel(createRawChatProviderFromConfig(config, logger), logger), logger);
+}
+
+function createRawChatProviderFromConfig(config: ProviderConfig, logger: Logger): ChatProvider {
   const summaryModels = config.summaryModels ?? config.models;
   if (config.provider === "openai-responses") {
     return new OpenAiResponsesChatProvider(
@@ -334,7 +366,9 @@ export function registerCommands(
   commandRegistry.register(new BoostsCommand(boostHistoryStore));
   commandRegistry.register(new QuoteCommand());
   commandRegistry.register(new QuoteContextCommand());
-  commandRegistry.register(new DiagnosticCommand());
+  commandRegistry.register(new DiagnosticCommand(diagnosticStore(logger), configuration.ownerUserIds, () => diagnosticPipelineStatus(logger), null,
+    (guildId) => guildId ? guildConfigurationProvider.find(guildId)?.language ?? "en" : "en"));
+  commandRegistry.register(new ExplainMessageCommand(diagnosticStore(logger), guildConfigurationProvider));
   const setupCommand = new SetupCommand(guildSetupService);
   commandRegistry.register(setupCommand);
   const adminPanelHealth = new AdminPanelHealth();
@@ -348,18 +382,19 @@ export function registerCommands(
     embeddings: configuration.embeddings
       ? { provider: configuration.embeddings.provider, model: configuration.embeddings.model }
       : null,
-  }));
+  }, () => chatProvider?.nativeWebSearchSupported === true, () => chatProvider?.applicationToolsSupported === true,
+  () => chatProvider?.imageGenerationSupported === true));
   commandRegistry.register(new VoteCommand(pollService));
   const embeddingsClient = configuration.embeddings
-    ? new CachingEmbeddingsClient(
-        configuration.embeddings.provider === "gemini"
+    ? guardEmbeddingTransport(new CachingEmbeddingsClient(
+        instrumentModel(configuration.embeddings.provider === "gemini"
           ? new GeminiEmbeddingsClient(configuration.embeddings.apiKey, configuration.embeddings.model, embeddingDimensions)
           : new OpenAiEmbeddingsClient(
               configuration.embeddings.baseUrl,
               configuration.embeddings.apiKey,
               configuration.embeddings.model,
-            ),
-      )
+            ), logger),
+      ), logger)
     : null;
   commandRegistry.register(new BirthdayCommand(birthdayStore, guildConfigurationProvider));
   commandRegistry.register(new RemindCommand(reminderStore));
@@ -453,7 +488,7 @@ export function registerCommands(
         configuration.memory.relevanceEvalIncludePrivate ?? false,
       )
     : null;
-  const memoryEngine = new DefaultMemoryEngine(
+  const memoryEngine = createGuardedMemoryEngine(
     memoryRepository, embeddingsClient, logger.child({ component: "memory-engine" }), configuration.memory,
     utilityProvider,
     relevanceTraceCollector,
@@ -463,6 +498,13 @@ export function registerCommands(
       return user.bot;
     },
     (guildId) => guildConfigurationProvider.find(guildId)?.chat.sharedMemoryEnabled === true,
+    (guildId, channelId) => {
+      const profile = guildConfigurationProvider.find(guildId); if (!profile) return null;
+      const settings = characterSettings(profile);
+      return !characterInactiveReason(settings, "fading", channelId, { context: profile.features.channelHistory, decision: false,
+        memorySharing: profile.chat.sharedMemoryEnabled === true, continuation: false, spontaneous: false,
+        excluded: !profile.features.chatbot || profile.chat.channelMemoryModes[channelId] === "disabled" }) ? settings.modules.fading.halfLifeDays : null;
+    },
   );
   const memberProfileService = new MemberProfileService(memoryEngine, birthdayStore, userCustomizationStore);
   commandRegistry.register(new MemoryCommand(chatStateStore, memberProfileService, memoryEngine, personalMemoryExtractionQueueStore));
@@ -490,6 +532,7 @@ export function registerCommands(
   );
   const settingsUpdater = new SettingsUpdateService(guildConfigurationProvider, guildAssetStore, auditLogService);
   const settingsDeps = {
+    chatProviderAvailable: chatProvider !== null,
     assets: guildAssetStore,
     applicationEmojiCatalog,
     auditLogService,
@@ -558,6 +601,7 @@ export function createDependencies(
   messageOriginStore: MessageOriginStore,
   conversationEpisodeStore: ConversationEpisodeStore,
 ): ApplicationDependencies {
+  messageOriginStore = withSessionMessageOrigins(messageOriginStore);
   const {
     campaign,
     commandRegistry,
@@ -600,8 +644,13 @@ export function createDependencies(
     logger.child({ component: "components" }),
   );
   const behaviorRegistry = new BehaviorRegistry();
+  const channelEditScheduler = new ChannelEditScheduler();
   const isGameChannel = (guildId: string, channelIds: readonly string[]): Promise<boolean> => campaign.isGameChannel(guildId, channelIds);
   const socialEligibility = new SocialChatEligibility(configuration, guildConfigurationProvider, messageOriginStore, isGameChannel);
+  socialEligibility.bindGuardedForgetPolicy((message) => memoryRepository.isSourceForgotten({ guildId: message.guildId!,
+    subjectId: message.author.id, topic: "*", slot: `source:${message.id}`, channelId: message.channelId, sourceTimestampMs: message.createdTimestamp }),
+  memoryRepository.sourcesForgotten ? (messages): Promise<readonly boolean[]> => memoryRepository.sourcesForgotten!(messages.map((message) => ({ guildId: message.guildId!,
+    subjectId: message.author.id, topic: "*", slot: `source:${message.id}`, channelId: message.channelId, sourceTimestampMs: message.createdTimestamp }))) : undefined);
 
   // Prefers the cheaper utility model when configured, same preference as
   // ChatConversationService's own consolidation call. Null when no chat
@@ -632,12 +681,13 @@ export function createDependencies(
   // model, so a command's LLM exposure has one source of truth — the
   // command file itself — instead of a second array to keep in sync here.
   const commandToolBindings = commandRegistry.getAll().flatMap((command) =>
-    command.toolBinding ? [command.toolBinding] : []);
+    command.toolBinding ? [ReviewedMusicTool.from(command) ?? command.toolBinding] : []);
   const chatToolRegistry = new ChatToolRegistry([
     new DiceRollTool(),
     new EightBallTool(),
     new BooruSearchTool(),
     new MemoryLookupTool(memoryEngine),
+    new DiscordServerLookupTool(discordClient, guildConfigurationProvider),
     new BirthdayLookupTool(birthdayStore, guildConfigurationProvider),
     new BirthdaySetTool(birthdayStore, guildConfigurationProvider),
     new BirthdayMemberSetTool(birthdayStore, guildConfigurationProvider, async (guildId, userId) => {
@@ -655,6 +705,34 @@ export function createDependencies(
     ...commandToolBindings,
   ]);
   settingsEngine.bindChatToolRegistry(chatToolRegistry);
+  const structuredUtility = utilityProvider?.generateCharacterData ? { generateCharacterData: utilityProvider.generateCharacterData.bind(utilityProvider) } : null;
+  const structuredReply = chatProvider?.generateCharacterData ? { generateCharacterData: chatProvider.generateCharacterData.bind(chatProvider) } : null;
+  const dedicatedDecision = configuration.decision && configuration.decision.mode !== "decisions" ? guardModelTransport(instrumentModel(new HttpDecisionProvider(configuration.decision), logger), logger) : null;
+  const nativeDecision = configuration.decision?.mode === "decisions" ? guardModelTransport(instrumentModel(new OpenAiNativeDecisionProvider(configuration.decision), logger), logger) : null;
+  const contextualProviders = contextualDecisionProviders(nativeDecision ?? dedicatedDecision, structuredReply, structuredUtility);
+  logger.info({ contextualDecisionSource: contextualProviders.source, contextualDecisionModel: configuration.decision?.model ??
+    (contextualProviders.source === "reply" || !configuration.utilityChat ? configuration.chat?.summaryModels[0] : configuration.utilityChat.models[0]) ?? null,
+    contextualDecisionEndpoint: nativeDecision ? "decisions" : dedicatedDecision ? "chat/completions" : "reply-provider",
+    contextualFallbackSource: contextualProviders.fallback ? "reply" : null }, "Contextual decision provider selection");
+  const characterRuntime = chatProvider ? new CharacterRuntime(guildConfigurationProvider, memoryRepository,
+    structuredUtility,
+    chatProvider, dedicatedDecision ?? structuredUtility, personalMemoryExtractionQueueStore, undefined, logger.child({ component: "character" }), contextualProviders) : null;
+  if (characterRuntime) settingsEngine.bindCharacterRuntime(characterRuntime);
+  const simpleRoute = selectSimpleRoute({ native: nativeDecision, dedicated: dedicatedDecision, reply: structuredReply },
+    { decisionModel: configuration.decision?.model ?? null, replyModel: configuration.chat?.summaryModels[0] ?? null,
+      dedicatedEffort: configuration.decision?.reasoningEffort ?? null,
+      replyEffort: configuration.chat?.provider === "openai-responses" ? configuration.chat.decisionReasoningEffort ?? configuration.chat.summaryReasoningEffort ?? "low" : null });
+  characterRuntime?.bindSimpleDecision(new SimpleParticipationService(simpleRoute), configuration.participationDecisionContract ?? "legacy");
+  // Cached guild emoji only (no REST); managed or unavailable emoji cannot be used by the bot.
+  characterRuntime?.bindEmojiSource((guildId) => [...(discordClient.guilds.cache.get(guildId)?.emojis.cache.values() ?? [])]
+    .filter((emoji) => emoji.available !== false && !emoji.managed && !!emoji.name)
+    .map((emoji) => ({ id: emoji.id, name: emoji.name, animated: emoji.animated === true })));
+  logger.info({ participationDecisionContract: configuration.participationDecisionContract ?? "legacy", simpleDecisionSource: simpleRoute?.source ?? "unavailable",
+    simpleDecisionEndpoint: simpleRoute?.endpoint ?? null, simpleDecisionModel: simpleRoute?.model ?? null, simpleDecisionReasoningEffort: simpleRoute?.reasoningEffort ?? null }, "Simple participation decision route");
+  const diagnosticCommand = commandRegistry.getAll().find((command): command is DiagnosticCommand => command instanceof DiagnosticCommand);
+  diagnosticCommand?.bindProviderHealth({ decision: () => characterRuntime?.decisionHealth ?? null, generation: () => modelGenerationHealth(logger),
+    checkDecision: () => characterRuntime?.checkDecisionHealth() ?? Promise.resolve(null) });
+  characterRuntime?.bindTargetPreferences(async (guildId, userId) => ({ customization: await userCustomizationStore.load(guildId, userId) }));
   const chatConversationService = chatProvider
     ? new ChatConversationService(
         chatProvider,
@@ -671,16 +749,98 @@ export function createDependencies(
         personaDriftStore,
         personalMemoryExtractionQueueStore,
         conversationEpisodeStore,
+        characterRuntime,
       )
     : null;
+  chatConversationService?.bindContextForgetRecorder(async (guildId, userId, cutoff) => {
+    // The durable cutoff blocks late writes and read-time reuse first. Other
+    // members' derived session text is removed when its footprint names this subject.
+    await memoryRepository.recordForgetCutoff({ guildId, subjectId: userId, topic: "*", slot: "*", scopeKey: "*", cutoff });
+    const results = await Promise.allSettled([messageOriginStore.invalidateContextSubject?.(guildId, userId), chatStateStore.invalidateContextSubject?.(guildId, userId)]);
+    if (results.some((result) => result.status === "rejected")) throw new Error("Context source invalidation was incomplete");
+  });
   const personaSource = new FilePersonaSource(
     configuration.runtimeDataDirectory,
     logger.child({ component: "persona-source" }),
     personaDriftStore,
     embeddingsClient,
+    guildConfigurationProvider,
   );
+  if (characterRuntime) {
+    characterRuntime.bindPersonaVersion(async (guildId) => (await personaSource.resolve(guildConfigurationProvider.require(guildId))).personalitySourceHash);
+    const evaluationStore = new CharacterEvaluationStore(configuration.runtimeDataDirectory);
+    characterRuntime.bindEvaluationStore(evaluationStore);
+    commandRegistry.register(new FeltLikeBotCommand(guildConfigurationProvider, messageOriginStore, evaluationStore));
+    const evaluationRequest = async (guildId: string, channelId: string, userId: string, question: string): Promise<GuardedEvaluationContext> => {
+      const profile = guildConfigurationProvider.require(guildId); const persona = await personaSource.resolve(profile);
+      if (!persona.configurationContext) throw new Error("Evaluation persona authority unavailable");
+      const fingerprint = (): string => JSON.stringify(guildConfigurationProvider.find(guildId),
+        (_key, value: unknown) => value instanceof Set ? [...value].sort() : value);
+      const expected = fingerprint();
+      return GuardedEvaluationContext.open({ guildId, channelId, reviewerId: userId }, persona.configurationContext, question, characterSettings(profile), async () => {
+        const current = guildConfigurationProvider.find(guildId);
+        if (!current || fingerprint() !== expected || !characterSettings(current).modules.evaluation.enabled) return false;
+        if (userId === "character-evaluation") return characterSettings(current).modules.evaluation.probes && interviewProbes.some((probe) => probe === question);
+        const guild = discordClient.guilds.cache.get(guildId) ?? await discordClient.guilds.fetch(guildId).catch(() => null);
+        const member = await guild?.members.fetch({ user: userId, force: true }).catch(() => null);
+        if (!member) return false;
+        return accessPolicyService.evaluateMember(settingsAccessPolicy, CommandModule.Diagnostics, { guildId, channelId, userId,
+          roleIds: [...member.roles.cache.keys()], memberPermissions: member.permissions.bitfield, botPermissions: guild?.members.me?.permissions.bitfield ?? null }).allowed;
+      });
+    };
+    characterRuntime.bindCallbackPersona(async (guildId) => {
+      const persona = await personaSource.resolve(guildConfigurationProvider.require(guildId));
+      if (!persona.configurationContext) throw new Error("Callback persona authority unavailable"); return persona.configurationContext;
+    });
+    characterRuntime.bindProbeSchedule((guildId, channelId, question) => evaluationRequest(guildId, channelId, "character-evaluation", question));
+    channelSummaryScheduler?.bindCharacterConsolidation((context, subjectIds) => characterRuntime.afterMemoryConsolidation(context, subjectIds));
+    commandRegistry.register(new CharacterEvalCommand(guildConfigurationProvider, messageOriginStore, evaluationStore, characterRuntime, evaluationRequest));
+  }
   if (chatConversationService) for (const command of commandRegistry.getAll()) {
-    if (command instanceof MemoryCommand) command.bindConversationForget((guildId, userId) => chatConversationService.forgetConversation(guildId, userId));
+    if (command instanceof MemoryCommand) command.bindConversationForget((guildId, userId) => {
+      return chatConversationService.forgetConversation(guildId, userId);
+    });
+  }
+  if (characterRuntime && chatConversationService) {
+    characterRuntime.bindEvaluationAdmission({ run: (guildId, channelId, operation, cost) => chatConversationService.runCharacterEvaluation(guildId, channelId,
+      resolveParticipation(guildConfigurationProvider.find(guildId)?.chat.participation, channelId).limits, operation, cost) });
+    const resolveCallbackSource = async (guildId: string, channelId: string, sourceMessageId: string): Promise<Message<true> | null> => {
+      const channel = await discordClient.channels.fetch(channelId).catch(() => null);
+      if (!channel?.isTextBased() || channel.isDMBased() || channel.guildId !== guildId) return null;
+      const message = await channel.messages.fetch(sourceMessageId).catch(() => null);
+      return message && (await socialEligibility.check(message, "implicit_followup")).eligible ? message : null;
+    };
+    const callbackSources = new ChatTurnSupport(logger.child({ component: "callback-context" }), socialEligibility, messageOriginStore);
+    characterRuntime.bindCallbackDelivery({
+      context: async (guildId, channelId, sourceMessageId) => {
+        const source = await resolveCallbackSource(guildId, channelId, sourceMessageId); if (!source) return null;
+        const persona = await personaSource.resolve(guildConfigurationProvider.require(guildId));
+        const contextConfiguration = await conversationConfiguration(guildId, source.author.id, persona.configurationContext, userCustomizationStore);
+        return guardedToolResourcePort(callbackSources.createContextPort(source), chatToolRegistry, {
+          currentUser: callbackSources.toChatUser(source.author, source.member), channelMode: resolveChannelMemoryMode(guildConfigurationProvider.require(guildId).chat.channelMemoryModes, channelId),
+          channelIsNsfw: "nsfw" in source.channel && source.channel.nsfw, isOwner: configuration.ownerUserIds.has(source.author.id),
+        }, undefined, contextConfiguration, personaDriftStore, (id) => characterRuntime.readCharacterConfiguration(guildId, channelId, id));
+      },
+      run: (guildId, channelId, operation) => chatConversationService.runCallback(guildId, channelId,
+        resolveParticipation(guildConfigurationProvider.find(guildId)?.chat.participation, channelId).limits, operation),
+      check: async (guildId, channelId, sourceMessageId) => !!await resolveCallbackSource(guildId, channelId, sourceMessageId),
+      send: async (guildId, channelId, sourceMessageId, text, replyToMessageId, context) => {
+        const source = await resolveCallbackSource(guildId, channelId, sourceMessageId);
+        if (!source) throw new SocialOutputSuppressed();
+        const eventSource = replyToMessageId ? await resolveCallbackSource(guildId, channelId, replyToMessageId) : null;
+        const replyTarget = eventSource?.author.id === source.author.id ? eventSource : null;
+        const payload = { content: text, allowedMentions: { parse: [], repliedUser: false } };
+        if (!isGuardedContext(context) || !await context.validate()) throw new SocialOutputSuppressed();
+        const contextProvenance = context.provenance(text); if (!contextProvenance) throw new SocialOutputSuppressed();
+        const sent = replyTarget ? await replyTarget.reply(payload) : await source.channel.send(payload);
+        await messageOriginStore.record({ guildId, channelId, messageId: sent.id, origin: "chat", sourceMessageId, createdAt: Date.now(), contextProvenance });
+        chatConversationService.observe(guildId, channelId, { messageId: sent.id, timestampMs: Date.now(), authorId: discordClient.user!.id,
+          authorDisplayName: guildConfigurationProvider.require(guildId).displayName, content: text, imageCount: 0,
+          ...(replyTarget ? { replyToMessageId: replyTarget.id, replyToAuthorId: replyTarget.author.id } : {}),
+          author: { id: discordClient.user!.id, displayName: guildConfigurationProvider.require(guildId).displayName, roleNames: [], kind: "bot" } });
+        return sent.id;
+      },
+    });
   }
   const reactionReplyScheduler = chatConversationService
     ? new ReactionReplyScheduler(
@@ -702,7 +862,7 @@ export function createDependencies(
     logger.child({ component: "chat" }),
     messageReactionWatchStore,
     isGameChannel,
-    socialEligibility, messageOriginStore,
+    socialEligibility, messageOriginStore, channelEditScheduler,
   ));
   const ambientChatBehavior = new AmbientChatBehavior(
     () => discordClient.user?.id ?? null,
@@ -753,13 +913,13 @@ export function createDependencies(
     guildConfigurationProvider,
     playbackService,
     pollService,
-    behaviorDispatcher: new BehaviorDispatcher(behaviorRegistry),
+    behaviorDispatcher: new BehaviorDispatcher(behaviorRegistry, logger.child({ component: "behavior-dispatcher" })),
     settingsEngine,
     settingsUpdater,
     adminPanelHealth,
     channelSummaryScheduler,
     reactionReplyScheduler,
-    channelEditScheduler: new ChannelEditScheduler(),
+    channelEditScheduler,
     reminderScheduler,
     applicationEmojiCatalog,
     memoryEngine,

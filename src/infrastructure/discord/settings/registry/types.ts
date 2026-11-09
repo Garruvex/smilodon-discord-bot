@@ -41,8 +41,8 @@ export interface IntegerOption extends ValueOption<number> { kind: "integer"; mi
 export interface TextOption extends ValueOption<string> { kind: "text"; maxLength: number }
 // `clearable` lets the channel be unset: the panel allows an empty
 // selection and the slash command gets a `clear` option; write then
-// receives null.
-export interface ChannelOption extends ValueOption<string | null> { kind: "channel"; textOnly: boolean; clearable?: boolean }
+// receives null. `threads` adds threads to a textOnly picker.
+export interface ChannelOption extends ValueOption<string | null> { kind: "channel"; textOnly: boolean; threads?: boolean; clearable?: boolean }
 export interface RoleOption extends ValueOption<string> { kind: "role" }
 // A list owns the whole list: the panel sends it whole (a multi-select),
 // the slash surface derives add/remove options and rebuilds it from read().

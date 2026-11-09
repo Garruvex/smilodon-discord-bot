@@ -1,4 +1,5 @@
 import type { Logger } from "pino";
+import { emitChatDiagnostic, safeFailure, withDiagnosticScope } from "../diagnostics/chat-diagnostics.js";
 
 import type { GuildConfigurationProvider } from "../../config/guild-configuration-provider.js";
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
@@ -12,6 +13,10 @@ import type { ChannelHistoryMessage, ChannelHistoryReader } from "./channel-hist
 import type { ChannelMessageSummarizer, ChannelSummaryFact, ChannelSummaryRelation } from "./channel-message-summarizer.js";
 import type { ChannelSummaryCheckpointStore } from "./channel-summary-checkpoint-store.js";
 import type { PersonalMemoryExtractionJob, PersonalMemoryExtractionJobInput, PersonalMemoryExtractionQueueStore } from "./personal-memory-extraction-queue.js";
+import { GuardedBackgroundContext, type BackgroundModelPurpose } from "./guarded-background-context.js";
+import { BackgroundModelGateway } from "./background-model-gateway.js";
+import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
+import { approveMemoryIngest, approveRelationIngest } from "./approved-memory-ingest.js";
 
 // Hourly — same cadence as BirthdayAnnouncer. Daily's own once-per-~24h
 // gate (checkpoint.lastRunAt) means an hourly tick doesn't mean an hourly
@@ -167,6 +172,9 @@ function resolveEvidenceAsserter(
 }
 
 export class ChannelSummaryScheduler {
+  private readonly modelGateway: BackgroundModelGateway;
+  private characterConsolidation: ((context: GuardedBackgroundContext, subjectIds: readonly string[]) => Promise<void>) | null = null;
+  public bindCharacterConsolidation(handler: (context: GuardedBackgroundContext, subjectIds: readonly string[]) => Promise<void>): void { this.characterConsolidation = handler; }
   private checkTimer: NodeJS.Timeout | null = null;
   // Guards against an overlapping tick: if a checkNow() call is still
   // processing guilds when the next interval fires (or start()'s immediate
@@ -200,7 +208,17 @@ export class ChannelSummaryScheduler {
     // case, same as before this existed.
     private readonly summarizer: ChannelMessageSummarizer & Partial<PersonalMemoryExtractor>,
     private readonly logger: Logger,
-  ) {}
+  ) { this.modelGateway = new BackgroundModelGateway(summarizer); }
+
+  private openContext(purpose: BackgroundModelPurpose, messages: readonly ChannelHistoryMessage[],
+    current: () => Promise<boolean> = () => Promise.resolve(true)): Promise<GuardedBackgroundContext> {
+    const guildId = messages[0]?.guildId;
+    const fingerprint = (): string => JSON.stringify(guildId ? this.profiles.find(guildId) : null,
+      (_key, value: unknown) => value instanceof Set ? [...value].sort() : value);
+    const expected = fingerprint();
+    return GuardedBackgroundContext.open(purpose, messages, this.historyReader, async () => !!guildId && !!this.profiles.find(guildId) && fingerprint() === expected && await current(),
+      (status) => emitChatDiagnostic(this.logger, { event: "context.background.validation", purpose, sources: messages.length, status }));
+  }
 
   public start(): void {
     void this.checkNow(new Date());
@@ -232,7 +250,7 @@ export class ChannelSummaryScheduler {
           const channelIds = new Set([...profile.chat.contextScanChannelIds, ...profile.chat.contextDailyChannelIds]);
           for (const channelId of channelIds) {
             try {
-              await this.processChannel(profile, channelId, nowMs);
+              await withDiagnosticScope({ operation: "model", guildId: profile.guildId, channelId }, () => this.processChannel(profile, channelId, nowMs));
             } catch (error) {
               this.logger.error({ error, guildId: profile.guildId, channelId }, "Channel summary check failed");
             }
@@ -396,10 +414,10 @@ export class ChannelSummaryScheduler {
     const authorIds = new Set(messages.map((message) => message.authorId));
     let facts: readonly ChannelSummaryFact[];
     let relations: readonly ChannelSummaryRelation[];
+    let context: GuardedBackgroundContext;
     try {
-      const summary = await this.summarizer.summarizeChannelMessages(profile.guildId, messages.map((message) => ({
-        id: message.id, authorId: message.authorId, authorDisplayName: message.authorDisplayName, content: message.content,
-      })));
+      context = await this.openContext("summary", messages);
+      const summary = await this.modelGateway.summarize(context);
       facts = summary.facts;
       relations = summary.relations;
     } catch (error) {
@@ -458,10 +476,12 @@ export class ChannelSummaryScheduler {
     }));
 
     if (proposals.length > 0) {
+      await context.check();
       if (this.historyReader.canLearn && !(await this.historyReader.canLearn(profile.guildId, channelId, messages[0]!.id))) return true;
       let result;
       try {
-        result = await this.memoryEngine.ingest({
+        result = await this.memoryEngine.ingest(approveMemoryIngest({
+          context,
           guildId: profile.guildId, channelId, channelMode: mode,
           // Stable per-batch id (mode + guild + channel + cursor range) — a
           // retry of the exact same batch (e.g. after a partial failure)
@@ -471,7 +491,7 @@ export class ChannelSummaryScheduler {
           // consolidation batch spanning many messages.
           assertedByUserId: null, sourceMessageId: batchId, source: "consolidation", now, proposals,
           sourceTimestampMs: Math.max(...messages.map((message) => message.createdAt)),
-        });
+        }));
       } catch (error) {
         await this.checkpointStore.recordError(
           profile.guildId, channelId, "memory_ingest_failed", error instanceof Error ? error.message : "Memory ingest failed.", now,
@@ -489,6 +509,8 @@ export class ChannelSummaryScheduler {
         );
         return false;
       }
+      await this.characterConsolidation?.(context, result.ingested.filter((memory) => memory.subjectType === "member").map((memory) => memory.subjectId))
+        .catch((error: unknown) => this.logger.warn({ failure: safeFailure(error), guildId: profile.guildId, channelId }, "Character reflection after consolidation failed"));
     }
 
     // Enqueues one durable extraction job per distinct author with messages
@@ -528,6 +550,7 @@ export class ChannelSummaryScheduler {
         }));
       if (jobs.length > 0) {
         try {
+          await context.check();
           await this.extractionQueue.enqueueMany(jobs, now);
         } catch (error) {
           await this.checkpointStore.recordError(
@@ -550,6 +573,7 @@ export class ChannelSummaryScheduler {
       const validRelations = relations.filter((relation) =>
         knownSubjectIds.has(relation.fromSubjectId) && knownSubjectIds.has(relation.toSubjectId));
       if (validRelations.length > 0) {
+        await context.check();
         const proposals: ProposedRelation[] = validRelations.map((relation) => ({
           fromSubjectType: relation.fromSubjectType, fromSubjectId: relation.fromSubjectId,
           predicate: relation.predicate, kind: relation.kind,
@@ -560,10 +584,11 @@ export class ChannelSummaryScheduler {
           // several facts/memories, not one, so there's no single memory
           // row that's uniquely "the" support for a relation extracted
           // from the same batch — provenance here is the batch, not a row.
-          await this.memoryEngine.ingestRelations({
+          await this.memoryEngine.ingestRelations(approveRelationIngest({
             guildId: profile.guildId, channelId, channelMode: mode,
+            context,
             proposals, supportingMemoryId: null, now,
-          });
+          }));
         } catch (error) {
           await this.checkpointStore.recordError(
             profile.guildId, channelId, "relation_ingest_failed",
@@ -599,9 +624,9 @@ export class ChannelSummaryScheduler {
   // error (dequeue/mark itself failing) escapes, which the caller logs.
   private async processPersonalMemoryExtractionJobs(now: number): Promise<void> {
     if (!this.summarizer.extractPersonalMemories) return;
-    const extractPersonalMemories = this.summarizer.extractPersonalMemories.bind(this.summarizer);
     const jobs = await this.extractionQueue.dequeueDue(maxJobsProcessedPerTick, now);
     if (jobs.length === 0) return;
+    const reflections: { messages: readonly ChannelHistoryMessage[]; subjectId: string }[] = [];
 
     // The whole per-job body is wrapped in its own try/catch below — a
     // queue-store call itself failing (fail()'s own markFailed/
@@ -613,7 +638,7 @@ export class ChannelSummaryScheduler {
     // cleared, currentTick resolved) while real work was still happening
     // underneath it, meaning drain() no longer actually covers it and a new
     // tick could start concurrently with the old one's leftover workers.
-    await mapWithConcurrency(jobs, extractionConcurrency, async (job) => {
+    await mapWithConcurrency(jobs, extractionConcurrency, (job) => withDiagnosticScope({ operation: "model", guildId: job.guildId, channelId: job.channelId, sourceMessageId: job.batchId }, async () => {
       await this.extractionQueue.runForSubject(job.guildId, job.subjectId, async () => {
         try {
         const stillExists = (): Promise<boolean> => this.extractionQueue.exists(
@@ -640,9 +665,20 @@ export class ChannelSummaryScheduler {
         };
 
         let actions;
+        let context: GuardedBackgroundContext;
         try {
-          actions = await extractPersonalMemories(job.content, "", { id: job.subjectId, displayName: job.displayName });
+          if (!job.sourceMessages?.length || job.sourceMessages.map((source) => source.content).join("\n") !== job.content) throw new SocialOutputSuppressed();
+          context = await this.openContext("memory_extraction", job.sourceMessages.map((source) => ({
+            id: source.messageId, guildId: job.guildId, channelId: job.channelId, authorId: job.subjectId,
+            authorDisplayName: job.displayName, content: source.content, createdAt: source.timestampMs,
+          })), stillExists);
+          actions = await this.modelGateway.extract(context, job.subjectId);
         } catch (error) {
+          if (error instanceof SocialOutputSuppressed) {
+            await this.extractionQueue.markDeadLettered(job.guildId, job.channelId, job.batchId, job.subjectId,
+              "Original source content, current scope or eligibility changed before extraction.");
+            return;
+          }
           await fail(error, "Personal-memory extraction failed.");
           return;
         }
@@ -666,10 +702,12 @@ export class ChannelSummaryScheduler {
           if (profile) {
             const mode = resolveChannelMemoryMode(profile.chat.channelMemoryModes, job.channelId);
             try {
-              const result = await this.memoryEngine.ingest({
+              await context.check();
+              const result = await this.memoryEngine.ingest(approveMemoryIngest({
+                context,
                 guildId: job.guildId, channelId: job.channelId, channelMode: mode,
                 assertedByUserId: null, sourceMessageId: job.batchId, source: "consolidation", now, proposals,
-              });
+              }));
               if (result.failed > 0) {
                 await fail(null, `${result.failed} of ${proposals.length} proposed ${proposals.length === 1 ? "memory" : "memories"} failed to persist.`);
                 return;
@@ -681,6 +719,7 @@ export class ChannelSummaryScheduler {
           }
         }
         await this.extractionQueue.markSucceeded(job.guildId, job.channelId, job.batchId, job.subjectId);
+        reflections.push({ messages: context.messages, subjectId: job.subjectId });
         } catch (error) {
           this.logger.error(
             { error, guildId: job.guildId, channelId: job.channelId, subjectId: job.subjectId },
@@ -688,6 +727,14 @@ export class ChannelSummaryScheduler {
           );
         }
       });
-    });
+    }));
+    // Run after workers release their subject locks: reflection uses the
+    // same mutation boundary as forgetting and must not nest that lock.
+    if (this.characterConsolidation) for (const reflection of reflections) try {
+      // Job completion releases its lease. Reopen actual source authority
+      // independently; a failed/deleted job never starts reflection.
+      const context = await this.openContext("memory_extraction", reflection.messages);
+      await this.characterConsolidation(context, [reflection.subjectId]);
+    } catch (error) { this.logger.warn({ failure: safeFailure(error) }, "Character reflection after extraction failed"); }
   }
 }

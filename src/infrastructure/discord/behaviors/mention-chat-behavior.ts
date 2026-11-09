@@ -1,15 +1,24 @@
 import type { Message, User } from "discord.js";
+import { chatDeliveryText } from "../../../application/i18n/chat-delivery.js";
+import { randomBytes } from "node:crypto";
+import { ChannelEditScheduler } from "../../../application/concurrency/channel-edit-scheduler.js";
+import { ScheduledChatPreview } from "./scheduled-chat-preview.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from "discord.js";
 import type { Logger } from "pino";
+import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
+import { emitChatDiagnostic } from "../../../application/diagnostics/chat-diagnostics.js";
+import { mentionInteraction } from "../../../application/chat/conversation-trigger.js";
+import { conversationEffects } from "../../../application/chat/conversation-effects.js";
+import { MentionChatAccess } from "./mention-chat-access.js";
+import { buildChatTurnInput, type ChatTurnEnvironment } from "./chat-turn-request.js";
+import { resolvesReplyToBot } from "./direct-reply-resolver.js";
 import { SocialOutputSuppressed, type MessageOriginStore } from "../../../application/chat/message-origin-store.js";
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
 import { resolveParticipation, isLowSubstancePing } from "../../../application/chat/participation-policy.js";
-import { resolveChannelMemoryMode } from "../../../application/memory/memory-channel-policy.js";
 
-import { ChatAccessService } from "../../../application/access/chat-access-service.js";
+import { ChatPolicy } from "../../../application/chat/chat-policy.js";
 import { BehaviorEvent, BehaviorResult, type BotBehavior } from "../../../application/behaviors/behavior.js";
-import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
-import { ChatProviderError, type ChannelHistoryMessage, type ReplyChainMessage } from "../../../application/chat/chat-provider.js";
+import { ChatProviderError } from "../../../application/chat/chat-provider.js";
 import { ChatStateCommitError, type ChatConversationService } from "../../../application/chat/chat-conversation-service.js";
 import { ChannelTypingManager } from "../../../application/chat/channel-typing-manager.js";
 import type { PersonaSource } from "../../../application/chat/persona-source.js";
@@ -33,9 +42,10 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
   public readonly event = BehaviorEvent.MessageCreated;
   public readonly priority = 100;
   private readonly processedMessageIds = new Set<string>();
-  private readonly chatAccess: ChatAccessService;
+  private readonly chatAccess: MentionChatAccess;
   private readonly typing = new ChannelTypingManager();
   private readonly turnSupport: ChatTurnSupport;
+  private readonly turnEnvironment: ChatTurnEnvironment;
 
   public constructor(
     private readonly clientUserId: () => string | null,
@@ -51,99 +61,81 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
     // The narrator owns a D&D game's channels; chat stays out of them.
     private readonly isGameChannel: IsGameChannel | null = null,
     eligibility: SocialChatEligibility | null = null,
-    origins: MessageOriginStore | null = null,
+    private readonly origins: MessageOriginStore | null = null,
+    private readonly edits: ChannelEditScheduler = new ChannelEditScheduler(),
   ) {
-    this.chatAccess = new ChatAccessService(configuration);
+    this.chatAccess = new MentionChatAccess(new ChatPolicy(configuration), profiles, logger);
     this.turnSupport = new ChatTurnSupport(logger, eligibility, origins, (message) => {
       if (message.guildId) this.conversation?.excludeInteraction(message.guildId, message.channelId, message.id);
     });
+    this.turnEnvironment = { profiles, ownerUserIds: configuration.ownerUserIds, support: this.turnSupport };
   }
 
-  public matches(message: Message): Promise<boolean> {
+  public async matches(message: Message): Promise<boolean> {
     const botId = this.clientUserId();
-    return Promise.resolve(Boolean(botId && message.inGuild() && !message.author.bot && message.mentions.users.has(botId)));
+    if (!botId || !message.inGuild() || message.author.bot) return false;
+    if (message.mentions.users.has(botId)) return true;
+    if (!message.reference?.messageId || message.reference.channelId && message.reference.channelId !== message.channelId) return false;
+    const allowFetch = async (): Promise<boolean> => !await isInGameChannel(message, this.isGameChannel) && (await this.chatAccess.resolve(message, "explicit_reply")).admission.admitted;
+    const resolved = await resolvesReplyToBot(message, botId, this.origins, 4000, allowFetch);
+    if (!resolved) emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "unresolved_reply_origin" });
+    return resolved;
   }
 
   public async execute(message: Message): Promise<BehaviorResult> {
-    if (!message.inGuild()) return BehaviorResult.Continue;
-    const profile = this.profiles.find(message.guildId);
-    if (!profile?.features.chatbot) return BehaviorResult.Continue;
-    if (this.processedMessageIds.has(message.id)) return BehaviorResult.StopPropagation;
+    if (!message.inGuild()) {
+      emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "not_guild" });
+      return BehaviorResult.Continue;
+    }
+    let profile = this.profiles.find(message.guildId);
+    if (!profile?.features.chatbot) {
+      emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "chat_disabled" });
+      return BehaviorResult.Continue;
+    }
+    if (this.processedMessageIds.has(message.id)) {
+      emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "duplicate" });
+      return BehaviorResult.StopPropagation;
+    }
     this.rememberMessage(message.id);
-    if (await isInGameChannel(message, this.isGameChannel)) return BehaviorResult.Continue;
+    if (await isInGameChannel(message, this.isGameChannel)) {
+      emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "game_channel" });
+      return BehaviorResult.Continue;
+    }
 
-    if (!this.chatAccess.canUseMentionChat(profile, message.member, message.author.id, message.channelId)) {
-      await message.reply({
-        content: profile.chat.deniedMessage,
-        components: profile.chat.deniedLinkUrl
-          ? [createChatAccessDeniedLinkButton(profile.chat.deniedLinkUrl, profile.chat.deniedLinkLabel)]
-          : [],
-        flags: MessageFlags.SuppressEmbeds,
-        allowedMentions: { repliedUser: false },
-      });
+    const botUserId = this.clientUserId();
+    const interaction = botUserId && message.mentions.users.has(botUserId) ? mentionInteraction(message.content, botUserId, message.attachments.size > 0) : "explicit_reply";
+    const access = await this.chatAccess.resolve(message, interaction);
+    if (!access.profile || access.reason === "chat_disabled") return BehaviorResult.StopPropagation;
+    profile = access.profile;
+    if (access.reason !== "allowed") {
+      const unavailable = access.reason === "member_unavailable";
+      emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id,
+        reason: unavailable ? "access_unavailable" : "access_denied", accessReason: access.reason,
+        memberRefresh: unavailable ? "unavailable" : "current" });
+      if (unavailable) {
+        const note = { en: "I couldn't verify your current server membership. Please try again shortly.",
+          "zh-TW": "暫時無法確認你目前的伺服器成員資料，請稍後再試。", ja: "現在のサーバーメンバー情報を確認できませんでした。少し待って再度お試しください。" };
+        await this.sendNote(message.guildId, message.author, note[profile.language]);
+      } else {
+        await message.reply({ content: profile.chat.deniedMessage,
+          components: profile.chat.deniedLinkUrl ? [createChatAccessDeniedLinkButton(profile.chat.deniedLinkUrl, profile.chat.deniedLinkLabel)] : [],
+          flags: MessageFlags.SuppressEmbeds, allowedMentions: { repliedUser: false } });
+      }
       return BehaviorResult.StopPropagation;
     }
     if (!this.conversation) {
+      emitChatDiagnostic(this.logger, { event: "chat.route.skipped", behaviorId: this.id, reason: "provider_unconfigured" });
       await message.reply({ content: "The chat subscription has not been configured yet.", allowedMentions: { repliedUser: false } });
       return BehaviorResult.StopPropagation;
     }
-    if (!await this.turnSupport.isEligible(message)) return BehaviorResult.StopPropagation;
+    if (!await this.turnSupport.isEligible(message, interaction)) return BehaviorResult.StopPropagation;
+    this.conversation.cancelOptionalOpportunity?.(message.guildId, message.channelId, "addressed_request");
 
     const botId = this.clientUserId();
     const prompt = botId
       ? message.content.replace(new RegExp(`<@!?${botId}>`, "g"), "").trim()
       : message.content.trim();
-    const participation = resolveParticipation(profile.chat.participation, message.channelId);
     const lowSubstance = isLowSubstancePing(prompt, Boolean(message.reference?.messageId), message.attachments.size > 0);
-    // Oldest ancestor first, ending just before `message` itself.
-    const { kept: replyChainMessages, overflow: replyChainOverflowMessages } = await this.turnSupport.resolveReplyChain(message);
-    const replyChain: ReplyChainMessage[] = replyChainMessages.map((hop) => ({
-      author: this.turnSupport.toChatUser(hop.author, hop.member), channelId: hop.channelId,
-      replyToMessageId: hop.reference?.messageId ?? null,
-      messageId: hop.id,
-      timestampMs: hop.createdTimestamp,
-      authorId: hop.author.id,
-      authorDisplayName: hop.member?.displayName ?? hop.author.displayName,
-      content: hop.content.slice(0, chatMemoryLimits.maxUserMessageChars),
-      imageCount: [...hop.attachments.values()].filter((attachment) => attachment.contentType?.startsWith("image/")).length,
-    }));
-    // Older hops beyond replyChain's kept window — condensed into a recap
-    // by ChatConversationService before this turn's reply is generated (see
-    // ChatConversationInput.replyChainOverflow). No image handling here:
-    // by the time content is old enough to be summarized away, its images
-    // aren't worth the extra fetch/attach cost.
-    const replyChainOverflow: ReplyChainMessage[] = replyChainOverflowMessages.map((hop) => ({
-      author: this.turnSupport.toChatUser(hop.author, hop.member), channelId: hop.channelId,
-      replyToMessageId: hop.reference?.messageId ?? null,
-      messageId: hop.id,
-      timestampMs: hop.createdTimestamp,
-      authorId: hop.author.id,
-      authorDisplayName: hop.member?.displayName ?? hop.author.displayName,
-      content: hop.content.slice(0, chatMemoryLimits.maxUserMessageChars),
-      imageCount: 0,
-    }));
-    const channelHistory: ChannelHistoryMessage[] = profile.features.channelHistory
-      ? this.turnSupport.toChannelHistoryMessages(await this.turnSupport.resolveChannelHistory(
-          message,
-          profile.chat.channelHistoryLimit,
-          new Set(replyChainMessages.map((hop) => hop.id)),
-        ))
-      : [];
-    const { selected: imageAttachments, droppedUnsupported, droppedOverLimit } = profile.chat.imageInputEnabled
-      ? this.turnSupport.selectImageAttachments(
-          [...message.attachments.values()],
-          // Nearest-to-current hop first, so recency wins once truncated to the limit.
-          [...replyChainMessages].reverse().map((hop) => [...hop.attachments.values()]),
-          profile.chat.maxImagesPerRequest,
-        )
-      : { selected: [], droppedUnsupported: 0, droppedOverLimit: 0 };
-    // An empty tag is still a valid request when it's a reply — "@bot" on
-    // its own replying to someone else's message means "look at this", with
-    // the replied-to message standing in for the question (see the reply
-    // chain instructions in buildChatInstructions). Only bail out empty-
-    // handed when there's truly nothing to go on.
-    // A bare ping is a social acknowledgment opportunity. Let the persona
-    // use the available context instead of substituting a help-desk prompt.
 
     if (this.conversation.isBusy(message.guildId, message.author.id)) {
       await this.sendNote(
@@ -155,7 +147,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
 
     const stopTyping = this.typing.start(
       message.channelId,
-      async () => { if (!lowSubstance && await this.turnSupport.isEligible(message)) await message.channel.sendTyping(); },
+      async () => { if (!lowSubstance && await this.turnSupport.isEligible(message, interaction)) await message.channel.sendTyping(); },
     );
     // A plain object (rather than bare `let` variables) so TypeScript doesn't
     // over-narrow these to `never` in the catch block below: they're only
@@ -164,16 +156,8 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       preview: null,
       delivered: null,
     };
+    const previewState: { current: ScheduledChatPreview | null; closed: boolean } = { current: null, closed: false };
     try {
-      const { images, droppedFailed } = await this.turnSupport.loadImages(imageAttachments);
-      const droppedImageCount = droppedUnsupported + droppedOverLimit + droppedFailed;
-      if (droppedImageCount > 0) {
-        await this.sendNote(
-          message.guildId,
-          message.author,
-          `${droppedImageCount} image${droppedImageCount > 1 ? "s" : ""} skipped — check the per-message image limit, or the file's size/format.`,
-        );
-      }
       const startedAt = Date.now();
       this.logger.info({
         guildId: message.guildId,
@@ -183,98 +167,42 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         model: this.configuration.chat?.models[0],
         provider: this.configuration.chat?.provider,
         maxOutputTokens: this.configuration.chat?.maxOutputTokens,
-        imageCount: images.length,
-        droppedImageCount,
         webSearchMode: profile.chat.webSearchMode,
       }, "Chat API request started");
-      const mentionedUsers = message.mentions.users
-        .filter((user) => !user.bot && user.id !== message.author.id)
-        .map((user) => ({
-          ...this.turnSupport.toChatUser(user, message.mentions.members?.get(user.id) ?? null),
-          id: user.id,
-          displayName: message.mentions.members?.get(user.id)?.displayName ?? user.displayName,
-          roleNames: message.mentions.members?.get(user.id)?.roles.cache
-            .filter((role) => role.id !== message.guildId)
-            .map((role) => role.name.slice(0, 50))
-            .slice(0, 10) ?? [],
-        }));
-      const musicActor = this.turnSupport.resolveMusicActor(message, profile);
       const persona = await this.personaSource.resolve(profile);
-      const response = await this.conversation.run({
-        guildId: message.guildId,
-        channelId: message.channelId,
-        sourceMessageId: message.id,
-        channelHistoryEnabled: profile.features.channelHistory,
-        currentEvent: this.turnSupport.toMessageEvent(message), botUserId: this.clientUserId(),
-        canExecute: () => this.turnSupport.isEligible(message),
-        activityLimits: participation.limits,
-        resolveActivityLimits: () => resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits,
-        resolveMemoryMode: () => resolveChannelMemoryMode(this.profiles.find(message.guildId)?.chat.channelMemoryModes ?? {}, message.channelId),
-        refreshContextMessage: (event) => this.turnSupport.refreshHistoryEvent(message, event),
-        allowSilentDirect: lowSubstance && participation.barePingMode === "personality",
+      const response = await this.conversation.run(buildChatTurnInput(this.turnEnvironment, profile, persona, {
+        interaction, source: message, text: prompt, botUserId: this.clientUserId(),
+        canExecute: this.turnSupport.createEligibilityCheck(message, interaction),
         afterDecision: async (result) => {
+          const effects = conversationEffects(result); if (!effects) return;
           const reserve = (): ((success: boolean) => void) | null => this.conversation!.reserveReaction(message.guildId, message.channelId,
             resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits);
-          if (result.reactionEmoji && this.profiles.find(message.guildId)?.features.historyReactions &&
+          if (effects.reactionEmoji && this.profiles.find(message.guildId)?.features.historyReactions &&
               await this.turnSupport.isEligible(message, "history_reaction")) {
             const release = reserve();
-            if (release) { try { await message.react(result.reactionEmoji); release(true); } catch { release(false); } }
+            if (release) { try { await withDiscordCaller("chat_reaction", () => message.react(effects.reactionEmoji!)); release(true); } catch { release(false); } }
           }
-          await this.turnSupport.applyHistoryReactions(message.channel, result.historyReactions,
+          await this.turnSupport.applyHistoryReactions(message.channel, effects.historyReactions,
             { guildId: message.guildId, sourceMessageId: message.id }, reserve);
         },
-        personality: persona.personality,
-        examplePool: persona.examplePool,
-        loreChunks: persona.loreChunks,
-        personaDrift: persona.personaDrift,
-        personaDriftEnabled: profile.chat.personaDriftEnabled,
-        personalitySourceHash: persona.personalitySourceHash,
-        currentUser: {
-          ...this.turnSupport.toChatUser(message.author, message.member),
-          id: message.author.id,
-          displayName: message.member?.displayName ?? message.author.username,
-          roleNames: message.member?.roles.cache
-            .filter((role) => role.id !== message.guildId)
-            .map((role) => role.name.slice(0, 50))
-            .slice(0, 10) ?? [],
-        },
-        mentionedUsers,
-        message: prompt,
-        replyChain,
-        replyChainOverflow,
-        channelHistory,
-        images,
-        webSearchMode: profile.chat.webSearchMode,
-        imageGenerationEnabled: profile.chat.imageGenerationEnabled && !lowSubstance,
-        includeSources: profile.chat.includeSources,
-        triggerMode: "direct",
-        historyReactionsEnabled: profile.features.historyReactions && profile.features.channelHistory,
-        toolsEnabled: profile.chat.toolCallingEnabled && !lowSubstance,
-        disabledToolNames: new Set(profile.chat.disabledTools),
-        channelMemoryModes: profile.chat.channelMemoryModes,
-        isOwner: this.configuration.ownerUserIds.has(message.author.id),
-        channelIsNsfw: "nsfw" in message.channel ? Boolean(message.channel.nsfw) : false,
-        musicActor: musicActor?.actor ?? null,
-        musicResolveAccessSubjectFields: musicActor?.resolveAccessSubjectFields,
-        musicVolumeMaximum: musicActor?.volumeMaximum,
-        musicControllerRoleIds: musicActor?.musicControllerRoleIds,
-        musicBotAdministratorRoleIds: musicActor?.botAdministratorRoleIds,
-      }, async (deliveredResponse) => {
+      }), async (deliveredResponse) => {
         const emptyFallbackContent = deliveredResponse.generatedImages.length > 0
           ? "Here you go!"
           : "I ran out of words. Very premium of me.";
         const { deliveredText, firstMessageId } = await this.turnSupport.deliverChatResponse({
-          sourceMessage: message, origin: deliveredResponse.outputOrigin ?? "chat",
+          contextProvenance: deliveredResponse.contextProvenance ?? null,
+          ...(deliveredResponse.contextLease ? { contextLease: deliveredResponse.contextLease } : {}),
+          sourceMessage: message, purpose: interaction, origin: deliveredResponse.outputOrigin ?? "chat",
           sender: {
             first: async (payload) => {
-              sentMessages.delivered = sentMessages.preview
-                ? await sentMessages.preview.edit({
-                    content: payload.content,
-                    files: [...payload.files],
-                    attachments: [],
-                    allowedMentions: { repliedUser: false, parse: [] },
+              sentMessages.delivered = previewState.current
+                ? await previewState.current.finish(payload, async () => {
+                    if (deliveredResponse.characterIsCurrent && !deliveredResponse.characterIsCurrent() ||
+                      deliveredResponse.characterCanDeliver && !await deliveredResponse.characterCanDeliver() ||
+                      deliveredResponse.contextLease && !await deliveredResponse.contextLease.validate()) throw new SocialOutputSuppressed();
                   })
                 : await message.reply({
+                    nonce: payload.nonce, enforceNonce: payload.enforceNonce,
                     content: payload.content,
                     files: [...payload.files],
                     allowedMentions: { repliedUser: false, parse: [] },
@@ -282,15 +210,20 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
               return sentMessages.delivered;
             },
             rest: (payload) => message.channel.send({
+              nonce: payload.nonce, enforceNonce: payload.enforceNonce,
               content: payload.content,
               files: [...payload.files],
               allowedMentions: { repliedUser: false, parse: [] },
             }),
           },
           text: deliveredResponse.text,
+          characterMessages: deliveredResponse.characterMessages, characterDelayMs: deliveredResponse.characterDelayMs, characterIsCurrent: deliveredResponse.characterIsCurrent,
+          characterCanDeliver: deliveredResponse.characterCanDeliver,
+          recordDelivery: (sent) => { deliveredResponse.characterDeliveryProof = [...(deliveredResponse.characterDeliveryProof ?? []), { messageId: sent.id, content: sent.content }]; },
           sources: deliveredResponse.sources,
           images: deliveredResponse.generatedImages,
           emptyFallbackContent,
+          partialDeliveryNotice: chatDeliveryText[profile.language].partial,
           maxImageAggregateBytes: this.configuration.chatDelivery.maxGeneratedImageAggregateBytes,
         });
         if (deliveredResponse.outputOrigin !== "tool" && botId && profile.chat.channelMemoryModes[message.channelId] !== "disabled") this.conversation!.observe(message.guildId, message.channelId, {
@@ -299,7 +232,7 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
           replyToMessageId: message.id, replyToAuthorId: message.author.id,
         });
         if (deliveredResponse.outputOrigin !== "tool" && this.profiles.find(message.guildId)?.features.reactionReplies &&
-            this.messageReactionWatchStore && await this.turnSupport.isEligible(message)) {
+            this.messageReactionWatchStore && await this.turnSupport.isEligible(message, interaction)) {
           await this.messageReactionWatchStore.register(
             { guildId: message.guildId, channelId: message.channelId, messageId: firstMessageId },
             Date.now(),
@@ -312,17 +245,10 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         return deliveredText;
       }, {
         onImagePreview: async (image) => {
-          await this.turnSupport.assertEligible(message);
-          const payload = {
-            content: "Generating your image…",
-            files: [{ attachment: image.data, name: image.filename }],
-            allowedMentions: { repliedUser: false, parse: [] as never[] },
-          };
-          if (sentMessages.preview) {
-            await sentMessages.preview.edit({ ...payload, attachments: [] });
-          } else {
-            sentMessages.preview = await message.reply(payload);
-          }
+          if (previewState.closed) return;
+          previewState.current ??= new ScheduledChatPreview(message, this.edits, () => this.turnSupport.assertEligible(message, interaction), chatDeliveryText[profile.language].preview);
+          await previewState.current.preview(image);
+          sentMessages.preview = previewState.current.message;
         },
       });
       this.logger.info({
@@ -332,8 +258,6 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         userId: message.author.id,
         model: this.configuration.chat?.models[0],
         durationMs: Date.now() - startedAt,
-        imageCount: images.length,
-        droppedImageCount,
         generatedImageCount: response.generatedImages.length,
         webSearchUsed: response.webSearchUsed,
         sourceCount: response.sources.length,
@@ -381,12 +305,15 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
       // If an image-generation preview was already posted, replace it with the
       // error instead of leaving "Generating your image…" stuck forever while
       // also posting a separate error reply.
-      if (sentMessages.preview) {
-        await sentMessages.preview.edit({ content, files: [], attachments: [] }).catch(() => undefined);
+      if (sentMessages.delivered) return BehaviorResult.StopPropagation;
+      if (previewState.current?.message) {
+        await previewState.current.finish({ content, files: [], nonce: randomBytes(12).toString("hex"), enforceNonce: true }).catch(() => undefined);
       } else {
         await message.reply({ content, allowedMentions: { repliedUser: false } });
       }
     } finally {
+      previewState.closed = true;
+      previewState.current?.close();
       stopTyping();
     }
     return BehaviorResult.StopPropagation;

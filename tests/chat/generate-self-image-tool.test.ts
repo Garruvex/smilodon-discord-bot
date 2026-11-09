@@ -6,6 +6,9 @@ import type { GuildConfigurationProvider } from "../../src/config/guild-configur
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
 import type { ChatProvider, GeneratedChatImage } from "../../src/application/chat/chat-provider.js";
 import type { ChatToolContext } from "../../src/application/chat/tools/chat-tool.js";
+import { GuardedConversationContext } from "../../src/application/chat/guarded-conversation-context.js";
+import { SocialOutputSuppressed } from "../../src/application/chat/message-origin-store.js";
+import { guardedEvent, guardedFixture } from "../helpers/guarded-context-fixture.js";
 
 function fakeContext(): ChatToolContext {
   return {
@@ -29,7 +32,7 @@ function fakeProfile(overrides: Partial<{ imageGenerationEnabled: boolean; selfR
         : "guild-assets/guild-1/self-reference.png",
     },
   } as unknown as GuildConfiguration;
-  return { require: () => profile } as unknown as GuildConfigurationProvider;
+  return { require: () => profile, find: () => profile } as unknown as GuildConfigurationProvider;
 }
 
 function fakeAssets(readAsset: GuildAssetStore["readAsset"]): GuildAssetStore {
@@ -104,8 +107,27 @@ describe("GenerateSelfImageTool", () => {
 
     const result = await tool.execute({ prompt: "waving happily" }, ctx);
 
-    expect(generateReferenceImage).toHaveBeenCalledWith("waving happily", referenceBytes);
+    expect(generateReferenceImage.mock.calls[0]?.slice(0, 2)).toEqual(["waving happily", referenceBytes]);
     expect(ctx.pendingGeneratedImages).toEqual([generatedImage]);
     expect(result.content).toBe("Generated the image.");
+  });
+  it.each(["valid", "retry_changed", "result_changed"] as const)("checks the reference source on attempts and before image delivery: %s", async (scenario) => {
+    let bytes = referenceBytes;
+    const fixture = guardedFixture(guardedEvent("current", 4000, "draw yourself"), { guildId: "guild-1", channelId: "channel-1" });
+    const generateReferenceImage: NonNullable<ChatProvider["generateReferenceImage"]> = async (_prompt, _reference, options) => {
+      await options?.beforeAttempt?.();
+      if (scenario !== "valid") bytes = { data: Buffer.from("changed-reference"), contentType: "image/png" };
+      if (scenario === "retry_changed") await options?.beforeAttempt?.();
+      return { ok: true, images: [generatedImage] };
+    };
+    const tool = new GenerateSelfImageTool(fakeAssets(() => Promise.resolve(bytes)), fakeProfile(), { reply: vi.fn(), generateReferenceImage });
+    fixture.port.resource = (): Promise<string | null> => tool.readResource("guild-1");
+    const contextLease = await GuardedConversationContext.open(fixture.port, { count: 10, budget: 4000, burstIds: [] });
+    const context: ChatToolContext = { ...fakeContext(), contextLease, beforeModelAttempt: async (): Promise<void> => {
+      if (!await contextLease.validate()) throw new SocialOutputSuppressed();
+    } };
+    const result = tool.execute({ prompt: "waving" }, context);
+    if (scenario === "valid") { await result; expect(context.pendingGeneratedImages).toEqual([generatedImage]); expect(contextLease.provenance("picture")?.resources).toHaveLength(1); }
+    else { await expect(result).rejects.toBeInstanceOf(SocialOutputSuppressed); expect(context.pendingGeneratedImages).toEqual([]); }
   });
 });

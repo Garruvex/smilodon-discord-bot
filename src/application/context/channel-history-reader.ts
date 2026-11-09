@@ -9,6 +9,7 @@ export interface ChannelHistoryMessage {
 }
 
 export type ChannelHistoryFailureCode =
+  | "scope_denied"
   | "channel_not_found"
   | "guild_mismatch"
   | "unsupported_channel"
@@ -41,6 +42,9 @@ export interface ChannelHistoryReadRequest {
 
 /** Discord-independent input port for reading a bounded channel-history batch. */
 export interface ChannelHistoryReader {
+  // Revalidate the exact bounded representations before external processing.
+  // Missing support is not permission to process previously cached content.
+  validateBatch?(messages: readonly ChannelHistoryMessage[], signal?: AbortSignal): Promise<boolean>;
   canLearn?(guildId: string, channelId: string, sourceMessageId: string): Promise<boolean>;
   readBatch(request: ChannelHistoryReadRequest): Promise<ChannelHistoryReadResult>;
 }

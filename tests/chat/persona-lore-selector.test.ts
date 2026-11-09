@@ -84,7 +84,7 @@ describe("RelevantPersonaLoreSelector", () => {
       now: 1_000,
     });
 
-    expect(embed).toHaveBeenCalledWith("where were you born");
+    expect(embed).toHaveBeenCalledWith("where were you born", {});
   });
 
   it("embeds the shared query text — recent history and the direct reply-chain parent before the message", async () => {
@@ -106,6 +106,7 @@ describe("RelevantPersonaLoreSelector", () => {
 
     expect(embed).toHaveBeenCalledWith(
       "we were talking about rivers\nyeah the big one up north\nhave you ever been near the river\nwhat do you think?",
+      {},
     );
   });
 

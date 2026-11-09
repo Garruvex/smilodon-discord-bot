@@ -1,22 +1,40 @@
+import { randomBytes } from "node:crypto";
+import { discordContextSnapshotCurrent } from "../context/discord-context-revision.js";
+import { retryAfterMs } from "../../../application/concurrency/retry-after.js";
+import { chatDeliveryText } from "../../../application/i18n/chat-delivery.js";
+import type { GuardedConversationContext, GuardedContextPort, GuardedContextSource } from "../../../application/chat/guarded-conversation-context.js";
+import { registerConversationSource } from "../../../application/context/conversation-source-registry.js";
+import { withSessionMessageOrigins, type SessionMessageOriginStore } from "../../../application/chat/session-message-origins.js";
+import { guardedAssetsHash, type GuardedAssetDescriptor } from "../../../application/chat/guarded-conversation-context.js";
+import { bindProvenanceOutput, type ContextProvenance } from "../../../application/chat/context-provenance.js";
 import type { Attachment, Message, User, GuildMember } from "discord.js";
 import type { ChatUser, ConversationEvent } from "../../../application/chat/chat-provider.js";
 import type { Logger } from "pino";
-import type { SocialChatEligibility, SocialTrigger } from "./social-chat-eligibility.js";
-import { SocialOutputSuppressed, type MessageOriginStore, type MessageOrigin } from "../../../application/chat/message-origin-store.js";
+import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
+import { eligibilityReason, emitChatDiagnostic, safeFailure } from "../../../application/diagnostics/chat-diagnostics.js";
+import type { SocialChatEligibility } from "./social-chat-eligibility.js";
+import type { ChatPurpose } from "../../../application/chat/chat-policy.js";
+import { SocialOutputSuppressed, type MessageOriginStore, type MessageOrigin, type MessageOriginRecord } from "../../../application/chat/message-origin-store.js";
 
 import { chatMemoryLimits } from "../../../application/chat/chat-memory-policy.js";
-import type { ChannelHistoryMessage, ChatImage, ChatSource, GeneratedChatImage } from "../../../application/chat/chat-provider.js";
+import type { ChannelHistoryMessage, ChatSource, GeneratedChatImage } from "../../../application/chat/chat-provider.js";
 import { planChatDelivery } from "../../../application/chat/chat-message-chunker.js";
 import { planImageDelivery } from "../../../application/chat/chat-image-delivery.js";
 import type { GuildConfiguration } from "../../../config/guild-configuration.js";
 import type { PlaybackActor } from "../../../application/music/playback-service.js";
 import { createPlaybackActorFromMember } from "../commands/music/music-command-support.js";
+import { embedImageAssets, embedImageSource, messageLinkPreviews } from "./discord-embeds.js";
 
 const supportedImageTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const allowedDiscordImageHosts = new Set(["cdn.discordapp.com", "media.discordapp.net"]);
+// Discord's media proxy for link-preview images (images-ext-1, -2, ...).
+const discordEmbedProxyHost = /^images-ext-\d+\.discordapp\.net$/u;
 const maximumImageBytes = 8 * 1024 * 1024;
 
 export interface ChatDeliveryPayload {
+  // Reuse for every create attempt of this part. Message edits omit these.
+  nonce: string;
+  enforceNonce: true;
   content: string;
   files: readonly { attachment: Buffer; name: string }[];
 }
@@ -24,9 +42,8 @@ export interface ChatDeliveryPayload {
 export interface ChatDeliverySender {
   // Sends the very first message of the reply — usually message.reply(...),
   // or editing an existing "thinking…"/image-generation-preview placeholder.
-  // A failure here (after retries) propagates to the caller: nothing was
-  // delivered at all, so the caller's normal top-level error handling is
-  // the correct response.
+  // A failure propagates after bounded retries; a transport failure can leave
+  // acceptance unknown. Every create attempt must forward the supplied nonce.
   first(payload: ChatDeliveryPayload): Promise<Message>;
   // Sends every subsequent message — usually message.channel.send(...). A
   // failure here (after retries) is handled internally by
@@ -41,12 +58,16 @@ const deliveryRetryAttempts = 3;
 const deliveryRetryDelayMs = 500;
 
 async function sendWithRetry<T>(send: () => Promise<T>): Promise<T> {
+  const started = Date.now();
   let lastError: unknown;
   for (let attempt = 1; attempt <= deliveryRetryAttempts; attempt++) {
+    if (attempt > 1 && Date.now() - started >= 60_000) throw lastError;
     try {
       return await send();
     } catch (error) {
       if (error instanceof SocialOutputSuppressed) throw error;
+      const status = safeFailure(error, "operation_error").httpStatus;
+      if (retryAfterMs(error) !== null || status === 429 || status !== undefined && status >= 400 && status < 500 && status !== 408 || Date.now() - started >= 60_000) throw error;
       lastError = error;
       if (attempt < deliveryRetryAttempts) {
         await new Promise((resolve) => setTimeout(resolve, deliveryRetryDelayMs * attempt));
@@ -61,12 +82,13 @@ async function sendWithRetry<T>(send: () => Promise<T>): Promise<T> {
 // extracted from MentionChatBehavior so the two triggers share the exact
 // same tuned logic instead of forking it.
 export class ChatTurnSupport {
+  private readonly origins: SessionMessageOriginStore | null;
   public constructor(
     private readonly logger: Logger,
     private readonly eligibility: SocialChatEligibility | null = null,
-    private readonly origins: MessageOriginStore | null = null,
+    origins: MessageOriginStore | null = null,
     private readonly onUtilitySource: ((message: Message) => void) | null = null,
-  ) {}
+  ) { this.origins = origins ? withSessionMessageOrigins(origins) : null; }
 
   public toChatUser(user: User, member: GuildMember | null = null): ChatUser {
     return {
@@ -87,18 +109,224 @@ export class ChatTurnSupport {
     };
   }
 
-  public async refreshHistoryEvent(source: Message, event: ChannelHistoryMessage): Promise<ChannelHistoryMessage | null> {
-    if (event.channelId && event.channelId !== source.channelId) return null;
-    const message = await source.channel.messages.fetch(event.messageId).catch(() => null);
-    return message && await this.isEligible(message, "observation") ? this.toChannelHistoryMessages([message])[0]! : null;
+  public createContextPort(source: Message, reaction = false): GuardedContextPort {
+    const eligibility = this.eligibility;
+    const version = eligibility?.contextPolicyVersion(source);
+    const memoryMode = eligibility?.contextMemoryMode?.(source);
+    const sharing = eligibility?.canShareContext(source) ?? false;
+    const dependencies = new Set([source.id]);
+    const admittedSources = new Set<string>();
+    const actors = new Set<string>();
+    let changedEvidence = false;
+    let currentCollection = (): boolean => false;
+    const revisionCurrent = source.client ? discordContextSnapshotCurrent(source.client, source.guildId!, source.channelId, () => dependencies,
+      (change, changedMessageId) => {
+        changedEvidence = change === "message_update";
+        emitChatDiagnostic(this.logger, { event: "chat.snapshot.invalidated", gate: "context", change, ...(changedMessageId ? { changedMessageId } : {}) });
+      }, { current: () => currentCollection() }) : null;
+    const policyRevisionCurrent = source.client ? discordContextSnapshotCurrent(source.client, source.guildId!, source.channelId, () => dependencies,
+      (change, changedMessageId) => emitChatDiagnostic(this.logger, { event: "chat.snapshot.invalidated", gate: "context", change, ...(changedMessageId ? { changedMessageId } : {}) }),
+      { current: () => currentCollection(), ignoreMessageUpdates: true }) : null;
+    type Snapshot = { messages: Map<string, Message>; members: Map<string, Promise<GuildMember | null>>; filtered: Map<string, Promise<GuardedContextSource | null>>; forgotten: Map<string, boolean> };
+    const makeState = (): Snapshot => ({ messages: new Map(), members: new Map(), filtered: new Map(), forgotten: new Map() });
+    const snapshot = makeState();
+    if (revisionCurrent) snapshot.messages.set(source.id, source);
+    const passes = new WeakMap<AbortSignal, Snapshot>();
+    const state = (signal: AbortSignal): Snapshot => {
+      if (revisionCurrent) return snapshot;
+      let value = passes.get(signal); if (!value) { value = makeState(); passes.set(signal, value); } return value;
+    };
+    let channelAllowed: Promise<boolean> | null = null;
+    let channelScope: Promise<boolean> | null = null;
+    const scopeAllowed = (): Promise<boolean> => channelScope ??= eligibility?.canUseContextChannel(source) ?? Promise.resolve(false);
+    const readable = (): Promise<boolean> => channelAllowed ??= eligibility?.canReadHistory(source) ?? Promise.resolve(false);
+    const member = async (id: string, signal: AbortSignal, required = false): Promise<GuildMember | null> => {
+      if (signal.aborted) return null;
+      const cache = state(signal).members;
+      if (!cache.has(id)) {
+        const cached = revisionCurrent ? source.guild?.members.cache?.get(id) ?? (id === source.author.id ? source.member : null) : null;
+        const needsRoles = eligibility?.hasContextRoleExclusions(source) ?? true;
+        if (!cached && !required && !needsRoles) return null;
+        cache.set(id, cached ? Promise.resolve(cached) : !required && !needsRoles ? Promise.resolve(null) :
+          source.guild?.members.fetch({ user: id, ...(!revisionCurrent ? { force: true } : {}) }).catch(() => null) ?? Promise.resolve(null));
+      }
+      return cache.get(id)!;
+    };
+    const prefilter = async (messages: readonly Message[], signal: AbortSignal): Promise<void> => {
+      if (!revisionCurrent || !eligibility || signal.aborted) return;
+      const cache = state(signal).forgotten;
+      const human = messages.filter((message) => !message.author.bot && message.guildId === source.guildId &&
+        message.channelId === source.channelId && !cache.has(message.id));
+      const forgotten = await eligibility.sourcesForgotten(human);
+      if (!signal.aborted) human.forEach((message, index) => cache.set(message.id, forgotten[index]!));
+    };
+    currentCollection = (): boolean => !!eligibility && (memoryMode !== undefined && eligibility.collectionPolicyCurrent ?
+      eligibility.collectionPolicyCurrent(source, [...new Set([...actors, ...[...dependencies].flatMap((id) => {
+        const message = snapshot.messages.get(id); return admittedSources.has(id) && message && !message.author.bot ? [message.author.id] : [];
+      })])], [...dependencies].some((id) => id !== source.id), memoryMode) : eligibility.contextPolicyVersion(source) === version) &&
+      (!sharing || eligibility.canShareContext(source)) && (!revisionCurrent || eligibility.botCanReadChannel(source, false));
+    let policyRejected = false;
+    const policyCurrent = (): boolean => {
+      const allowed = currentCollection() && (!policyRevisionCurrent || policyRevisionCurrent());
+      if (!allowed && !policyRejected) {
+        policyRejected = true;
+        emitChatDiagnostic(this.logger, { event: "chat.guard.rejected", gate: "context", reason: "policy_changed" });
+      }
+      return allowed;
+    };
+    return registerConversationSource({
+      guildId: source.guildId!, channelId: source.channelId, sourceMessageId: source.id, actorId: reaction ? null : source.author.id, persist: eligibility?.canPersistContext(source) ?? false,
+      shareMemory: eligibility?.canShareContext(source) ?? false,
+      retention: eligibility?.contextRetention(source) ?? "none",
+      coverage: (report) => emitChatDiagnostic(this.logger, { event: "context.guard.coverage", ...report }),
+      work: (phase, status, durationMs) => emitChatDiagnostic(this.logger, { event: "context.guard.work", phase, status, durationMs }),
+      validation: (status, reads, mode) => emitChatDiagnostic(this.logger, { event: "context.guard.validation", status, reads, mode }),
+      policyCurrent,
+      evidenceChanged: () => changedEvidence,
+      refresh: async (): Promise<GuardedContextPort> => {
+        const fresh = await source.channel.messages.fetch({ message: source.id, force: true });
+        if (!fresh || fresh.guildId !== source.guildId || fresh.channelId !== source.channelId || fresh.author.id !== source.author.id) throw new SocialOutputSuppressed();
+        return this.createContextPort(fresh, reaction);
+      },
+      ...(revisionCurrent ? { snapshotCurrent: async (effect: boolean, signal: AbortSignal, sourceIds: readonly string[]): Promise<boolean> => {
+        dependencies.clear(); sourceIds.forEach((id) => dependencies.add(id));
+        if (signal.aborted || !policyCurrent() || !revisionCurrent()) return false;
+        // Collection is done once. At visible effects consult forget tombstones
+        // again, including changes made by another process sharing persistence.
+        if (effect) {
+          if (!await eligibility!.canUseContextChannel(source, [...dependencies].some((id) => id !== source.id))) return false;
+          const admitted = await Promise.all(sourceIds.map((id) => snapshot.filtered.get(id) ?? Promise.resolve(null)));
+          if (admitted.some((item) => !item)) return false;
+          const messages = admitted.filter((item) => item?.origin === "human").map((item) => snapshot.messages.get(item!.event.messageId));
+          if (messages.some((message) => !message)) return false;
+          const forgotten = await eligibility!.sourcesForgotten(messages as Message[]);
+          if (forgotten.some(Boolean)) {
+            forgotten.forEach((excluded, index) => {
+              if (excluded) emitChatDiagnostic(this.logger, { event: "context.eligibility.denied", sourceMessageId: messages[index]!.id, purpose: "guarded_current", reason: "source_forgotten" });
+            });
+            return false;
+          }
+        }
+        return !signal.aborted && policyCurrent();
+      } } : {}),
+      loadAsset: async (messageId, assetId, signal): Promise<string | null> => {
+        if (!eligibility || signal.aborted || !policyCurrent()) return null;
+        if (!await scopeAllowed()) return null;
+        const message = state(signal).messages.get(messageId) ?? await source.channel.messages.fetch({ message: messageId, force: true }).catch(() => null);
+        if (!message || message.guildId !== source.guildId || message.channelId !== source.channelId || signal.aborted) return null;
+        const actor = message.author.bot ? null : await member(message.author.id, signal);
+        const admitted = state(signal).filtered.get(messageId);
+        if (admitted ? !await admitted : !(await eligibility.checkGuardedSource(message, actor, messageId === source.id, await readable(), state(signal).forgotten.get(messageId))).eligible) return null;
+        const embedded = embedImageSource(message, assetId);
+        if (embedded) return this.loadImageUrl(embedded.url, embedded.contentType, signal);
+        const attachment = message.attachments.get(assetId);
+        return attachment && this.isSupportedImageAttachment(attachment) ? this.loadImageDataUrl(attachment, signal) : null;
+      },
+      prepareValidation: async (ids, signal): Promise<void> => {
+        if (!eligibility || signal.aborted || !ids.length) return;
+        if (!await readable()) return;
+        // Batch dense dependencies, including distant sessions, with at most
+        // three fresh pages. Tiny sets use individual reads instead. A page
+        // omission still needs an individual read; it never proves deletion.
+        let pending = [...new Set(ids.filter((id) => /^\d{1,20}$/u.test(id) && !state(signal).messages.has(id)))].map((id) => BigInt(id)).sort((a, b) => a > b ? -1 : a < b ? 1 : 0);
+        for (let pages = 0; pending.length >= 4 && pages < 3 && !signal.aborted; pages++) {
+          const newest = pending[0]!;
+          const fetched = await source.channel.messages.fetch({ limit: 100, before: String(newest + 1n), cache: false });
+          if (signal.aborted) return;
+          let oldest = newest;
+          for (const message of fetched.values()) {
+            if (message.guildId !== source.guildId || message.channelId !== source.channelId) continue;
+            state(signal).messages.set(message.id, message);
+            const id = BigInt(message.id); if (id < oldest) oldest = id;
+          }
+          await prefilter([...fetched.values()], signal);
+          // Do not refetch the same window for deleted/inaccessible IDs.
+          pending = pending.filter((id) => id < oldest);
+        }
+      },
+      read: async (id, signal): Promise<GuardedContextSource | null> => {
+        const filtered = state(signal).filtered;
+        if (filtered.has(id)) return filtered.get(id)!;
+        const resolve = async (): Promise<GuardedContextSource | null> => {
+          if (!eligibility || signal.aborted || !policyCurrent()) return null;
+          if (!await scopeAllowed()) return null;
+          if (id !== source.id && !await readable()) return null;
+          const messages = state(signal).messages;
+          const message = messages.get(id) ?? await source.channel.messages.fetch({ message: id, force: true }).catch(() => null);
+          if (!message || signal.aborted || message.guildId !== source.guildId || message.channelId !== source.channelId) return null;
+          messages.set(id, message);
+          if (message.author.bot && message.author.id !== source.client.user?.id) return null;
+          await prefilter([message], signal);
+          const actor = message.author.bot ? null : await member(message.author.id, signal);
+          const access = await eligibility.checkGuardedSource(message, actor, id === source.id, true, state(signal).forgotten.get(id));
+          if (!access.eligible) {
+            const reason = eligibilityReason.safeParse(access.reason);
+            if (reason.success) emitChatDiagnostic(this.logger, { event: "context.eligibility.denied", sourceMessageId: id, purpose: "guarded_current", reason: reason.data });
+            return null;
+          }
+          dependencies.add(id);
+          admittedSources.add(id);
+          const origin = message.author.bot ? await this.origins?.find(source.guildId!, source.channelId, id).catch(() => null) : null;
+          if (message.author.bot && origin?.origin !== "chat") return null;
+          const user = this.toChatUser(message.author, actor);
+          const event = { ...this.toChannelHistoryMessages([message])[0]!, author: { ...user, roleNames: [...user.roleNames].sort() }, content: message.content, imageCount: 0, replyToAuthorId: null, replyToAuthorDisplayName: null };
+          // Optional replies are sent without a Discord reply reference. The delivery record still
+          // names the message the bot answered, so the exchange stays visible to follow-up rules.
+          if (message.author.bot && !event.replyToMessageId && origin?.sourceMessageId && origin.sourceMessageId !== id) event.replyToMessageId = origin.sourceMessageId;
+          return { event, sourceMessageId: origin?.sourceMessageId ?? null, assets: this.imageAssetDescriptors(message), origin: message.author.bot ? "chat" : "human", provenance: origin?.contextProvenance ?? null };
+        };
+        const result = resolve(); filtered.set(id, result); return result;
+      },
+      page: async (before, signal): Promise<readonly string[]> => {
+        if (!eligibility || signal.aborted || !await readable()) return [];
+        const fetched = await source.channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
+        if (signal.aborted) return [];
+        for (const message of fetched.values()) state(signal).messages.set(message.id, message);
+        await prefilter([...fetched.values()], signal);
+        return [...fetched.keys()];
+      },
+      actor: async (id, signal): Promise<ChatUser | null> => {
+        const actor = await member(id, signal, true); if (!actor || actor.user.bot || !eligibility) return null;
+        // Use the same author rule without importing any of the member's messages.
+        const allowed = await eligibility.checkGuardedActor(source, actor, await readable());
+        if (allowed) actors.add(id);
+        return allowed ? this.toChatUser(actor.user, actor) : null;
+      },
+    });
   }
 
-  public async isEligible(message: Message, trigger: SocialTrigger = "direct"): Promise<boolean> {
-    return !this.eligibility || (await this.eligibility.check(message, trigger)).eligible;
+  public async isEligible(message: Message, purpose: ChatPurpose = "direct_mention"): Promise<boolean> {
+    if (!this.eligibility) return true;
+    const result = await this.eligibility.check(message, purpose);
+    const reason = eligibilityReason.safeParse(result.reason);
+    if (!result.eligible && reason.success) emitChatDiagnostic(this.logger, { event: "context.eligibility.denied",
+      sourceMessageId: message.id, purpose, reason: reason.data });
+    return result.eligible;
   }
 
-  public async assertEligible(message: Message, trigger: SocialTrigger = "direct"): Promise<void> {
-    if (!await this.isEligible(message, trigger)) throw new SocialOutputSuppressed();
+  public createEligibilityCheck(message: Message, purpose: ChatPurpose = "direct_mention"): () => Promise<boolean> {
+    const policy = (): boolean => !!this.eligibility && (this.eligibility.admission ?
+      this.eligibility.admission(message, purpose).eligible : this.eligibility.contextPolicyVersion(message) === version) && this.eligibility.botCanReadChannel(message, false);
+    const current = message.client ? discordContextSnapshotCurrent(message.client, message.guildId!, message.channelId, () => [message.id],
+      (change, changedMessageId) => emitChatDiagnostic(this.logger, { event: "chat.snapshot.invalidated", gate: "trigger", change, ...(changedMessageId ? { changedMessageId } : {}) }),
+      { current: policy, ignoreMessageUpdates: true }) : null;
+    const version = this.eligibility?.contextPolicyVersion(message);
+    let admission: Promise<boolean> | null = null;
+    return async (): Promise<boolean> => {
+      if (!current) return this.isEligible(message, purpose);
+      const fresh = (): boolean => {
+        const reason = !current() ? "discord_revision_changed" : !policy() ? "policy_changed" : null;
+        if (reason) emitChatDiagnostic(this.logger, { event: "chat.guard.rejected", gate: "trigger", reason });
+        return reason === null;
+      };
+      if (!fresh()) return false;
+      const allowed = await (admission ??= this.isEligible(message, purpose));
+      return allowed && fresh();
+    };
+  }
+
+  public async assertEligible(message: Message, purpose: ChatPurpose = "direct_mention"): Promise<void> {
+    if (!await this.isEligible(message, purpose)) throw new SocialOutputSuppressed();
   }
 
   // Null unless the guild has music enabled and the message has a
@@ -158,133 +386,14 @@ export class ChatTurnSupport {
     };
   }
 
-  // Walks up the reply chain from `message`, bounded by both a depth cap and
-  // a char budget (whichever hits first stops the walk) so a deep or
-  // verbose chain can't blow up prompt size. Returns ancestors oldest-first,
-  // ending just before `message`. A broken link (deleted/inaccessible
-  // message) stops the walk cleanly rather than throwing.
-  public async resolveReplyChain(message: Message): Promise<{ kept: Message[]; overflow: Message[] }> {
-    const kept: Message[] = [];
-    let current: Message = message;
-    let remainingChars = chatMemoryLimits.maxReplyChainChars;
-    for (let depth = 0; depth < chatMemoryLimits.maxReplyChainDepth; depth++) {
-      const referenceId = current.reference?.messageId;
-      if (!referenceId) break;
-      const parent = await current.channel.messages.fetch(referenceId).catch(() => null);
-      if (!parent) break;
-      if (!await this.isEligible(parent, "direct")) break;
-      const contentLength = Math.min(parent.content.length, chatMemoryLimits.maxUserMessageChars);
-      // Always keep at least the immediate parent even if it alone exceeds
-      // the budget; only stop *extending further* once the next hop won't fit.
-      if (kept.length > 0 && contentLength > remainingChars) break;
-      remainingChars -= contentLength;
-      kept.push(parent);
-      current = parent;
-    }
-    // `current` is now the oldest hop actually kept. If it's still a reply
-    // itself, the thread genuinely continues further back than the kept
-    // window reaches (depth cap or char budget stopped us, not a broken
-    // link or the real start of the thread) — walk further, bounded more
-    // loosely, purely as raw input for an on-demand overflow summary. This
-    // never fetches anything when the whole thread already fit in `kept`
-    // (the very next reference-id check fails immediately, no request
-    // made), so a normal shallow reply chain pays nothing extra.
-    const overflow: Message[] = [];
-    let overflowChars = chatMemoryLimits.maxReplyChainOverflowChars;
-    for (let depth = 0; depth < chatMemoryLimits.maxReplyChainOverflowDepth; depth++) {
-      const referenceId = current.reference?.messageId;
-      if (!referenceId) break;
-      const parent = await current.channel.messages.fetch(referenceId).catch(() => null);
-      if (!parent) break;
-      if (!await this.isEligible(parent, "direct")) break;
-      const contentLength = Math.min(parent.content.length, chatMemoryLimits.maxUserMessageChars);
-      if (overflow.length > 0 && contentLength > overflowChars) break;
-      overflowChars -= contentLength;
-      overflow.push(parent);
-      current = parent;
-    }
-    return { kept: kept.reverse(), overflow: overflow.reverse() };
-  }
-
-  // Fetches the last `limit` messages in the channel before `message`, from
-  // anyone — not reply-linked, unlike resolveReplyChain. `excludeIds` is the
-  // set of message IDs already covered by the resolved reply chain, so a
-  // message that's both "recently posted" and "an ancestor you replied to"
-  // doesn't show up under two different context sections. Bounded by a char
-  // budget the same way resolveReplyChain is; a fetch failure returns an
-  // empty list rather than throwing, since this is best-effort ambient
-  // context, not something the turn should fail over.
-  // `before` anchors the fetch window — defaults to `message.id`, i.e. "the
-  // channel leading up to `message`" (right for a live mention/ambient
-  // turn, where `message` IS the current moment). Pass `null` explicitly to
-  // fetch the most recent channel messages instead, with no cutoff — the
-  // right anchor for a turn evaluated well after `message` was sent (e.g.
-  // ReactionReplyScheduler, evaluated minutes after its own prior reply),
-  // where "before message.id" would silently miss everything that happened
-  // in between.
-  public async resolveChannelHistory(
-    message: Message,
-    limit: number,
-    excludeIds: ReadonlySet<string>,
-    before: string | null = message.id,
-  ): Promise<Message[]> {
-    // Oversample the raw fetch (Discord's own per-request cap is 100, so
-    // this never costs an extra round trip) — a flat "last `limit` from
-    // anyone" fetch lets our own replies, which appear after nearly every
-    // human turn in a busy channel, eat half or more of a small window,
-    // leaving too few distinct human messages for the model to reliably
-    // track who said what across several people talking at once.
-    const fetchLimit = Math.min(limit * 4, 100);
-    const fetched = await message.channel.messages.fetch({
-      limit: fetchLimit,
-      ...(before ? { before } : {}),
-    }).catch(() => null);
-    if (!fetched) return [];
-    const selfId = message.client.user?.id ?? null;
-    // Budgeted separately from human messages: our own recent replies are
-    // still valuable context (a human often reacts to what we just said),
-    // so they're not dropped outright — just capped at half the human
-    // budget so they can never crowd human speakers out of the window
-    // entirely. A third-party bot (e.g. a leveling bot) gets neither
-    // budget — noise, not conversational context.
-    const humanBudget = limit;
-    const selfBudget = Math.max(1, Math.ceil(limit / 2));
-    let humanKept = 0;
-    let selfKept = 0;
-    let remainingChars = chatMemoryLimits.maxChannelHistoryChars;
-    const kept: Message[] = [];
-    // Discord returns newest-first; walk nearest-to-current first so
-    // recency wins once a budget is hit, then reverse for oldest-first
-    // display (matching resolveReplyChain's convention).
-    for (const candidate of fetched.values()) {
-      if (excludeIds.has(candidate.id)) continue;
-      if (!await this.isEligible(candidate, "observation")) continue;
-      if (candidate.author.bot && candidate.author.id !== selfId) continue;
-      const isSelf = candidate.author.id === selfId;
-      if (isSelf ? selfKept >= selfBudget : humanKept >= humanBudget) continue;
-      const contentLength = Math.min(candidate.content.length, chatMemoryLimits.maxUserMessageChars);
-      if (kept.length > 0 && contentLength > remainingChars) break;
-      remainingChars -= contentLength;
-      kept.push(candidate);
-      if (isSelf) selfKept++; else humanKept++;
-      if (humanKept >= humanBudget && selfKept >= selfBudget) break;
-    }
-    return kept.reverse();
-  }
-
-  // Preserve not only who wrote each ambient-history message, but also who
-  // it was replying to. A bot reply's authorId is always the bot, so without
-  // the target the model can easily attach that reply to the wrong nearby
-  // human in a busy channel. Discord populates the message cache from the
-  // history fetch above; falling back to the selected window also keeps this
-  // deterministic in tests and in partial-cache situations.
   public toChannelHistoryMessages(messages: readonly Message[]): ChannelHistoryMessage[] {
     const selectedById = new Map(messages.map((message) => [message.id, message]));
     return messages.map((message) => {
       const referenceId = message.reference?.messageId;
       const target = referenceId
-        ? selectedById.get(referenceId) ?? message.channel.messages.cache.get(referenceId)
+        ? selectedById.get(referenceId)
         : undefined;
+      const linkPreviews = messageLinkPreviews(message);
       return {
         author: this.toChatUser(message.author, message.member),
         channelId: message.channelId,
@@ -295,63 +404,25 @@ export class ChatTurnSupport {
         content: message.content.slice(0, chatMemoryLimits.maxUserMessageChars),
         imageCount: [...message.attachments.values()].filter((attachment) =>
           attachment.contentType?.startsWith("image/"),
-        ).length,
+        ).length + embedImageAssets(message).length,
+        ...(linkPreviews.length ? { linkPreviews } : {}),
         hasReplyReference: Boolean(referenceId),
-        replyToAuthorId: target?.author.id ?? null,
+        replyToAuthorId: target?.author.id ?? (referenceId ? message.mentions?.repliedUser?.id : null) ?? null,
         replyToAuthorDisplayName: target
           ? target.member?.displayName ?? target.author.displayName
-          : null,
+          : referenceId ? message.mentions?.repliedUser?.displayName ?? null : null,
         replyToMessageId: referenceId ?? null,
       };
     });
   }
 
-  public selectImageAttachments(
-    current: readonly Attachment[],
-    // Reply-chain attachments grouped by hop, nearest-to-current hop first.
-    chainNearestFirst: readonly (readonly Attachment[])[],
-    limit: number,
-  ): {
-    selected: Array<{ attachment: Attachment; source: ChatImage["source"]; sourceIndex: number }>;
-    droppedUnsupported: number;
-    droppedOverLimit: number;
-  } {
-    const isImageLike = (attachment: Attachment): boolean => Boolean(attachment.contentType?.startsWith("image/"));
-    const chainImageLike = chainNearestFirst.flatMap((attachments) => attachments.filter(isImageLike));
-    const currentImageLike = current.filter(isImageLike);
-    const supportedCurrent = currentImageLike.filter((attachment) => this.isSupportedImageAttachment(attachment));
-    const supportedChain = chainImageLike.filter((attachment) => this.isSupportedImageAttachment(attachment));
-    const droppedUnsupportedAttachments = [
-      ...currentImageLike.filter((attachment) => !this.isSupportedImageAttachment(attachment)),
-      ...chainImageLike.filter((attachment) => !this.isSupportedImageAttachment(attachment)),
-    ];
-    if (droppedUnsupportedAttachments.length > 0) {
-      this.logger.warn(
-        {
-          images: droppedUnsupportedAttachments.map((attachment) => ({
-            name: attachment.name,
-            contentType: attachment.contentType,
-            size: attachment.size,
-          })),
-        },
-        "Dropped image attachment(s): unsupported content type or size",
-      );
-    }
-    const droppedUnsupported = droppedUnsupportedAttachments.length;
-    // Current message first, then chain images nearest-to-current first, so
-    // recency wins once truncated to the limit — the cap is a hard total
-    // across both sources combined, not per-source or per-hop.
-    const candidates: Array<{ attachment: Attachment; source: ChatImage["source"] }> = [
-      ...supportedCurrent.map((attachment) => ({ attachment, source: "current_message" as const })),
-      ...supportedChain.map((attachment) => ({ attachment, source: "reply_chain" as const })),
-    ];
-    const selected = candidates.slice(0, limit).map((item, sourceIndex) => ({ ...item, sourceIndex }));
-    const droppedOverLimit = Math.max(0, candidates.length - limit);
-    return { selected, droppedUnsupported, droppedOverLimit };
-  }
-
   private normalizeContentType(contentType: string | null): string | null {
     return contentType?.split(";", 1)[0]?.trim().toLowerCase() ?? null;
+  }
+
+  private imageAssetDescriptors(message: Message): GuardedAssetDescriptor[] {
+    return [...[...(message.attachments?.values() ?? [])].filter((attachment) => this.isSupportedImageAttachment(attachment))
+      .map((attachment) => ({ id: attachment.id, contentType: this.normalizeContentType(attachment.contentType)!, size: attachment.size })), ...embedImageAssets(message)];
   }
 
   private isSupportedImageAttachment(attachment: Attachment): boolean {
@@ -364,53 +435,62 @@ export class ChatTurnSupport {
     );
   }
 
-  public async loadImages(
-    attachments: readonly { attachment: Attachment; source: ChatImage["source"]; sourceIndex: number }[],
-  ): Promise<{ images: ChatImage[]; droppedFailed: number }> {
-    const images: ChatImage[] = [];
-    let droppedFailed = 0;
-    for (const { attachment, source, sourceIndex } of attachments) {
-      const dataUrl = await this.loadImageDataUrl(attachment);
-      if (dataUrl) {
-        images.push({ dataUrl, source, sourceIndex });
-      } else {
-        droppedFailed += 1;
-      }
-    }
-    return { images, droppedFailed };
-  }
-
-  private async loadImageDataUrl(attachment: Attachment): Promise<string | null> {
+  private async loadImageDataUrl(attachment: Attachment, signal?: AbortSignal): Promise<string | null> {
     const contentType = this.normalizeContentType(attachment.contentType);
     if (!contentType || !supportedImageTypes.has(contentType)) return null;
     if (attachment.size <= 0 || attachment.size > maximumImageBytes) return null;
-    const url = new URL(attachment.url);
-    if (url.protocol !== "https:" || !allowedDiscordImageHosts.has(url.hostname)) {
+    return this.loadImageUrl(attachment.url, contentType, signal, false);
+  }
+
+  // Attachments come from Discord's CDN; link-preview images only through
+  // Discord's media proxy, so the bot never fetches the open web here.
+  private async loadImageUrl(source: string, contentType: string, signal?: AbortSignal, embedProxy = true): Promise<string | null> {
+    if (!supportedImageTypes.has(contentType)) return null;
+    let url: URL;
+    try { url = new URL(source); } catch { return null; }
+    if (url.protocol !== "https:" || !(allowedDiscordImageHosts.has(url.hostname) || embedProxy && discordEmbedProxyHost.test(url.hostname))) {
       this.logger.warn(
-        { name: attachment.name, url: attachment.url },
+        { reason: "host_denied" },
         "Dropped image attachment: URL failed host allow-list check",
       );
       return null;
     }
     const response = await fetch(url, {
       headers: { Accept: contentType },
-      signal: AbortSignal.timeout(15_000),
+      redirect: "error",
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000),
     }).catch((error: unknown) => {
-      this.logger.warn({ name: attachment.name, error }, "Dropped image attachment: fetch failed");
+      this.logger.warn({ ...safeFailure(error, "operation_error") }, "Dropped image attachment: fetch failed");
       return null;
     });
     if (!response) return null;
     if (!response.ok) {
       this.logger.warn(
-        { name: attachment.name, status: response.status },
+        { status: response.status },
         "Dropped image attachment: fetch returned a non-OK status",
       );
       return null;
     }
-    const data = Buffer.from(await response.arrayBuffer());
+    const declaredLength = Number(response.headers.get("content-length"));
+    if (declaredLength > maximumImageBytes) { await response.body?.cancel(); return null; }
+    const reader = response.body?.getReader();
+    const chunks: Buffer[] = []; let bytes = 0;
+    if (reader) {
+      try {
+        for (;;) {
+          const chunk = await reader.read(); if (chunk.done) break;
+          const value: unknown = chunk.value;
+          if (!(value instanceof Uint8Array)) { await reader.cancel(); return null; }
+          bytes += value.byteLength;
+          if (bytes > maximumImageBytes) { await reader.cancel(); return null; }
+          chunks.push(Buffer.from(value));
+        }
+      } catch { return null; } finally { reader.releaseLock(); }
+    }
+    const data = reader ? Buffer.concat(chunks, bytes) : Buffer.from(await response.arrayBuffer());
     if (data.length === 0 || data.length > maximumImageBytes) {
       this.logger.warn(
-        { name: attachment.name, bytes: data.length },
+        { bytes: data.length },
         "Dropped image attachment: downloaded size out of bounds",
       );
       return null;
@@ -418,7 +498,7 @@ export class ChatTurnSupport {
     const actualContentType = this.detectImageContentType(data);
     if (!actualContentType) {
       this.logger.warn(
-        { name: attachment.name, contentType, actualHeaderBytes: data.subarray(0, 12).toString("hex") },
+        { reason: "signature_mismatch" },
         "Dropped image attachment: file signature did not match any supported image format",
       );
       return null;
@@ -464,15 +544,24 @@ export class ChatTurnSupport {
     sources: readonly ChatSource[];
     images: readonly GeneratedChatImage[];
     emptyFallbackContent: string;
+    partialDeliveryNotice?: string;
     maxImageAggregateBytes: number;
     sourceMessage?: Message;
-    trigger?: SocialTrigger;
+    purpose?: ChatPurpose;
     origin?: MessageOrigin;
+    contextProvenance?: ContextProvenance | null;
+    contextLease?: GuardedConversationContext;
+    characterMessages?: readonly string[] | undefined;
+    characterDelayMs?: number | undefined;
+    characterIsCurrent?: (() => boolean) | undefined;
+    characterCanDeliver?: (() => Promise<boolean>) | undefined;
+    recordDelivery?: ((message: Message) => void) | undefined;
   }): Promise<{ deliveredText: string; firstMessageId: string }> {
     const plan = planChatDelivery(params.text, params.sources);
     const imagePlan = planImageDelivery(params.images, params.maxImageAggregateBytes);
 
-    const sends: { content: string; files: { attachment: Buffer; name: string }[] }[] = plan.mode === "attachment"
+    const sends: { content: string; files: { attachment: Buffer; name: string }[] }[] = params.characterMessages?.length && params.characterMessages.every((content) => content.length <= 2000) && params.sources.length === 0 && params.images.length === 0
+      ? params.characterMessages.map((content) => ({ content, files: [] })) : plan.mode === "attachment"
       ? [{
           content: plan.note,
           files: [{ attachment: Buffer.from(plan.attachmentText, "utf8"), name: plan.attachmentFilename }],
@@ -514,32 +603,68 @@ export class ChatTurnSupport {
       sends[0]!.content = params.emptyFallbackContent;
     }
 
-    const sendAndRecord = async (send: () => Promise<Message>): Promise<Message> => {
-      if (params.sourceMessage) await this.assertEligible(params.sourceMessage, params.trigger ?? "direct");
-      const sent = await send();
+    const payloads: ChatDeliveryPayload[] = sends.map((send) => ({ ...send, nonce: randomBytes(12).toString("hex"), enforceNonce: true }));
+    const confirmedText: string[] = [];
+    let deliveredParts = 0;
+    let partial = false;
+    const assertCurrent = async (): Promise<void> => {
+      if (params.contextLease && params.sourceMessage && (params.contextLease.scope.guildId !== params.sourceMessage.guildId ||
+          params.contextLease.scope.channelId !== params.sourceMessage.channelId || params.contextLease.current.messageId !== params.sourceMessage.id)) throw new SocialOutputSuppressed();
+      if (params.contextLease && !await params.contextLease.validate("effect")) throw new SocialOutputSuppressed();
+      if (params.characterIsCurrent && !params.characterIsCurrent()) throw new SocialOutputSuppressed();
+      if (params.characterCanDeliver && !await params.characterCanDeliver()) throw new SocialOutputSuppressed();
+      if (params.sourceMessage) await this.assertEligible(params.sourceMessage, params.purpose ?? "direct_mention");
+    };
+    const sendAndRecord = async (send: () => Promise<Message>, expectedContent: string): Promise<Message> => {
+      const sent = await sendWithRetry(async () => { await assertCurrent(); return withDiscordCaller("chat_text", send); });
+      deliveredParts++; confirmedText.push(sent.content ?? expectedContent);
+      emitChatDiagnostic(this.logger, { event: "chat.delivery.part", deliveredMessageId: sent.id, part: deliveredParts });
+      try { params.recordDelivery?.(sent); }
+      catch (error) { emitChatDiagnostic(this.logger, { event: "chat.delivery.bookkeeping_failed", stage: "proof", ...safeFailure(error, "operation_error") }); }
       if (this.origins && params.sourceMessage?.guildId) {
-        await this.origins.record({
+        try {
+          const durableProof = params.contextLease ? params.contextLease.provenance(sent.content) : bindProvenanceOutput(params.contextProvenance, sent.content, {
+            guildId: params.sourceMessage.guildId, channelId: params.sourceMessage.channelId,
+          });
+          const sessionProof = durableProof ? null : params.contextLease?.sessionProvenance(sent.content);
+          const proof = durableProof ?? sessionProof ?? null; const assets = this.imageAssetDescriptors(sent);
+          const record: MessageOriginRecord = {
           guildId: params.sourceMessage.guildId, channelId: params.sourceMessage.channelId, messageId: sent.id,
           origin: params.origin ?? "chat", sourceMessageId: params.sourceMessage.id, createdAt: Date.now(),
-        }).catch((error: unknown) => this.logger.warn({ error, messageId: sent.id }, "Failed to record output origin; unknown output stays excluded"));
+          contextProvenance: (params.origin ?? "chat") === "chat" ? proof && assets.length ? { ...proof, outputAssetsHash: guardedAssetsHash(assets) } : proof : null,
+          };
+          if (sessionProof && record.origin === "chat") await this.origins.recordSession(record); else await this.origins.record(record);
+        } catch (error) { emitChatDiagnostic(this.logger, { event: "chat.delivery.bookkeeping_failed", stage: "origin", ...safeFailure(error, "operation_error") }); }
       }
       return sent;
     };
-    const [firstSend, ...restSends] = sends;
-    const firstMessage = await sendWithRetry(() => sendAndRecord(() => params.sender.first(firstSend!)));
+    const [firstSend, ...restSends] = payloads;
+    let firstMessage: Message;
+    try {
+      firstMessage = await sendAndRecord(() => params.sender.first(firstSend!), firstSend!.content);
+    } catch (error) {
+      emitChatDiagnostic(this.logger, { event: "chat.delivery.completed", plannedParts: sends.length, deliveredParts,
+        status: error instanceof SocialOutputSuppressed ? "suppressed" : "failed", ...(error instanceof SocialOutputSuppressed ? {} : safeFailure(error)) });
+      throw error;
+    }
     for (const send of restSends) {
       try {
-        await sendWithRetry(() => sendAndRecord(() => params.sender.rest(send)));
+        if (params.characterDelayMs) await new Promise((resolve) => setTimeout(resolve, params.characterDelayMs! / Math.max(1, restSends.length)));
+        await sendAndRecord(() => params.sender.rest(send), send.content);
       } catch (error) {
+        partial = true;
         if (error instanceof SocialOutputSuppressed) break;
         this.logger.warn({ error }, "Chat reply delivery failed partway through a multi-message response");
-        await params.sender.rest({
-          content: "(The rest of that reply couldn't be delivered — please try again.)",
-          files: [],
-        }).catch(() => undefined);
+        const status = safeFailure(error, "operation_error").httpStatus;
+        if (retryAfterMs(error) === null && (status === undefined || status >= 500)) {
+          try { await assertCurrent(); await withDiscordCaller("chat_text", () => params.sender.rest({
+            content: params.partialDeliveryNotice ?? chatDeliveryText.en.partial, files: [], nonce: randomBytes(12).toString("hex"), enforceNonce: true,
+          })); } catch { /* A notice cannot cause another delivery attempt. */ }
+        }
         break;
       }
     }
+    emitChatDiagnostic(this.logger, { event: "chat.delivery.completed", plannedParts: sends.length, deliveredParts, status: partial ? "partial" : "complete" });
     if (params.origin && params.origin !== "chat" && params.sourceMessage && !params.sourceMessage.author.bot) {
       this.eligibility?.markUtilitySource(params.sourceMessage);
       this.onUtilitySource?.(params.sourceMessage);
@@ -547,7 +672,7 @@ export class ChatTurnSupport {
         messageId: params.sourceMessage.id, origin: params.origin, sourceMessageId: null, createdAt: Date.now(),
       }).catch((error: unknown) => this.logger.warn({ error }, "Failed to persist functional interaction origin"));
     }
-    return { deliveredText: params.text, firstMessageId: firstMessage.id };
+    return { deliveredText: partial ? confirmedText.join("\n\n") : params.text, firstMessageId: firstMessage.id };
   }
 
   // Applies the model's spontaneous reactions on OTHER channel messages (see
@@ -571,7 +696,7 @@ export class ChatTurnSupport {
         if (target.reactions.cache.some((reaction) => reaction.me)) continue;
         const release = reserve?.();
         if (reserve && !release) continue;
-        try { await target.react(emoji); release?.(true); }
+        try { await withDiscordCaller("chat_reaction", () => target.react(emoji)); release?.(true); }
         catch (error) { release?.(false); throw error; }
       } catch (error) {
         this.logger.warn({ ...logContext, messageId, emoji, error }, "Failed to apply a history reaction");

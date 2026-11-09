@@ -27,7 +27,7 @@ function baseRequest(overrides: Partial<ChatRequest> = {}): ChatRequest {
     webSearchMode: "off",
     imageGenerationEnabled: false,
     includeSources: false,
-    triggerMode: "direct",
+    interaction: "direct_mention",
     ...overrides,
   };
 }
@@ -60,7 +60,7 @@ describe("naturalness prompt regressions", () => {
     expect(context).toContain("Synthetic event note (not human-authored)");
   });
   it("does not turn reaction emoji into compulsory engagement", () => {
-    const instructions = buildChatInstructions(baseRequest({ triggerMode: "reaction" }), chatSafetyGuard);
+    const instructions = buildChatInstructions(baseRequest({ interaction: "reaction" }), chatSafetyGuard);
     expect(instructions).toContain("Default to silence");
     expect(instructions).toContain("Do not tag reactors");
     expect(instructions).not.toContain("prefer this to doing nothing at all");
@@ -141,20 +141,23 @@ describe("buildChatInstructions", () => {
     expect(instructions).toMatch(/a URL, filename, quote, or\s+exact wording you did not actually see/);
   });
 
-  it("only includes ambient-judgment guidance when triggerMode is ambient", () => {
-    const direct = buildChatInstructions(baseRequest({ triggerMode: "direct" }), chatSafetyGuard);
-    expect(direct).not.toMatch(/not directly addressed/);
+  it("treats a name address as explicit and keeps optional guidance for unaddressed turns", () => {
+    const direct = buildChatInstructions(baseRequest({ interaction: "direct_mention" }), chatSafetyGuard);
+    expect(direct).not.toMatch(/Optional participation/);
     expect(direct).toMatch(/Set ambientAction to "reply"/);
 
-    const ambient = buildChatInstructions(baseRequest({ triggerMode: "ambient" }), chatSafetyGuard);
-    expect(ambient).toMatch(/not directly addressed/);
-    expect(ambient).toMatch(/"ignore"/);
-    expect(ambient).toMatch(/reactionEmoji/);
-    expect(ambient).toMatch(/independent/i);
+    const named = buildChatInstructions(baseRequest({ interaction: "name_address" }), chatSafetyGuard);
+    expect(named).toMatch(/Set ambientAction to "reply"/);
+    expect(named).not.toMatch(/Optional participation/);
+
+    const group = buildChatInstructions(baseRequest({ interaction: "group_conversation" }), chatSafetyGuard);
+    expect(group).toMatch(/Optional participation/);
+    expect(group).toMatch(/"ignore"/);
+    expect(group).toMatch(/reactionEmoji/);
   });
 
   it("gives a reaction-triggered turn its own prompt section, distinct from ambient's, without the ambient-only \"name merely appeared\" framing", () => {
-    const reaction = buildChatInstructions(baseRequest({ triggerMode: "reaction" }), chatSafetyGuard);
+    const reaction = buildChatInstructions(baseRequest({ interaction: "reaction" }), chatSafetyGuard);
     expect(reaction).toMatch(/Reaction trigger/);
     expect(reaction).toMatch(/reacted/i);
     expect(reaction).not.toMatch(/name merely appeared/);
@@ -162,7 +165,7 @@ describe("buildChatInstructions", () => {
     expect(reaction).toMatch(/"ignore"/);
     expect(reaction).toMatch(/reactionEmoji/);
 
-    const ambient = buildChatInstructions(baseRequest({ triggerMode: "ambient" }), chatSafetyGuard);
+    const ambient = buildChatInstructions(baseRequest({ interaction: "name_address" }), chatSafetyGuard);
     expect(ambient).not.toMatch(/Reaction trigger/);
   });
 
@@ -290,6 +293,32 @@ describe("buildChatContext", () => {
     expect(context).toContain(`1. [id=111-msg, t=${new Date(1_700_000_000_000).toISOString()}] "Alice" (111):`);
     expect(context).toContain(`2. [id=222-msg, t=${new Date(1_700_000_010_000).toISOString()}] "Bob" (222):`);
     expect(context).toContain("[2 images attached]");
+  });
+  it("shows link previews on history, reply chain and the current message through the shared renderer", () => {
+    const linkPreviews = [{ url: "https://example.com", site: "Example", title: "Ten cats", description: null }];
+    const context = buildChatContext(baseRequest({ message: "https://example.com", messageLinkPreviews: linkPreviews,
+      replyChain: [{ messageId: "r", timestampMs: 1, authorId: "1", authorDisplayName: "A", content: "hop", imageCount: 0, linkPreviews }],
+      channelHistory: [{ messageId: "h", timestampMs: 1, authorId: "2", authorDisplayName: "B", content: "old", imageCount: 1, linkPreviews }] }));
+    const fenced = ["[link preview: <<<BEGIN-UNTRUSTED-DATA>>>", "Example — Ten cats", "<<<END-UNTRUSTED-DATA>>>]"].join(String.fromCharCode(10));
+    expect(context.split(fenced)).toHaveLength(4);
+    expect(context).toContain("[1 image attached]");
+  });
+  it("keeps an earlier bot answer's addressee separate from a second person directly replying to it", () => {
+    const request = baseRequest({ botUserId: "bot", currentUser: { id: "new-speaker", displayName: "Bystander", roleNames: [] },
+      currentEvent: { type: "message", messageId: "current", authorId: "new-speaker", channelId: "channel", timestampMs: 3000, replyToMessageId: "advice", mentionedUserIds: [] },
+      message: "你也要當跑山猴嗎", replyChain: [
+        { messageId: "engine-question", timestampMs: 1000, authorId: "rider", authorDisplayName: "Rider", content: "那引擎要63單套還是63/580", imageCount: 0 },
+        { messageId: "advice", timestampMs: 2000, authorId: "bot", authorDisplayName: "Bot", content: "日常騎就63單套", imageCount: 0,
+          replyToMessageId: "engine-question", replyToAuthorId: "rider", replyToAuthorDisplayName: "Rider" },
+      ] });
+    const context = buildChatContext(request); const instructions = buildChatInstructions(request, chatSafetyGuard);
+    expect(context).toContain('replyingTo="Rider" (rider, msg=engine-question); replyTargetSameAsCurrentUser=no');
+    expect(context).toContain('new-speaker: "Bystander"');
+    expect(instructions).toContain("not necessarily whom the new person is addressing");
+    expect(instructions).toContain("not automatically the current speaker");
+    expect(instructions).toContain("do not answer for yourself when the new speaker is asking the original human");
+    const originalSpeaker = buildChatContext({ ...request, currentUser: { id: "rider", displayName: "Rider", roleNames: [] } });
+    expect(originalSpeaker).toContain('replyingTo="Rider" (rider, msg=engine-question); replyTargetSameAsCurrentUser=yes');
   });
 
   it("renders ambient channel history as its own fenced section", () => {

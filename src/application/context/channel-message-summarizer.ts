@@ -1,4 +1,5 @@
 import type { ProposedGuildKnowledgeCandidate } from "../chat/chat-provider.js";
+import type { StructuredCallOptions } from "../chat/chat-provider.js";
 import type { MemoryRelationKind, MemoryRelationPredicate, MemorySubjectType } from "../memory/memory.js";
 
 export interface ChannelSummaryMessage {
@@ -55,5 +56,6 @@ export interface ChannelMessageSummarizer {
   summarizeChannelMessages(
     guildId: string,
     messages: readonly ChannelSummaryMessage[],
+    options?: StructuredCallOptions,
   ): Promise<ChannelSummaryResult>;
 }

@@ -1,0 +1,1 @@
+export const contributionLabels = ["answer", "relevant-joke", "specific-opinion", "personal-reaction", "useful-observation", "none", "acknowledgment-only", "repetition", "generic-advice", "speculative-help", "topic-hijack", "stale-information"] as const;

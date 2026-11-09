@@ -1,3 +1,4 @@
+import { configurationFixture } from "../helpers/configuration-context-fixture.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { PersonaBundleCompiler } from "../../src/application/chat/persona-bundle-compiler.js";
@@ -20,7 +21,7 @@ describe("PersonaBundleCompiler.compile — self-consistency", () => {
     const provider = providerReturning([[1, 2], [1], []]);
     const compiler = new PersonaBundleCompiler(provider, null);
 
-    const bundle = await compiler.compile(content);
+    const bundle = await compiler.compile(await configurationFixture(content));
 
     expect(bundle?.chunks.map((chunk) => chunk.heading)).toEqual(["Backstory"]);
     expect(bundle?.core).toContain("Dislikes the mod team.");
@@ -30,7 +31,7 @@ describe("PersonaBundleCompiler.compile — self-consistency", () => {
     const provider = providerReturning([[1], [1], [1]]);
     const compiler = new PersonaBundleCompiler(provider, null);
 
-    await compiler.compile(content);
+    await compiler.compile(await configurationFixture(content));
 
     expect(provider.compilePersonaBundle).toHaveBeenCalledTimes(3);
   });
@@ -43,7 +44,7 @@ describe("PersonaBundleCompiler.compile — self-consistency", () => {
     const provider: ChatProvider = { reply: () => Promise.reject(new Error("not used")), compilePersonaBundle };
     const compiler = new PersonaBundleCompiler(provider, null);
 
-    await expect(compiler.compile(content)).resolves.toBeNull();
+    await expect(compiler.compile(await configurationFixture(content))).resolves.toBeNull();
   });
 });
 
@@ -62,7 +63,7 @@ describe("PersonaBundleCompiler.compile — embedding cache across reuploads", (
       embeddingTextVersion: personaLoreEmbeddingTextVersion,
     };
 
-    const bundle = await compiler.compile(content, previousBundle);
+    const bundle = await compiler.compile(await configurationFixture(content), previousBundle);
 
     expect(embed).not.toHaveBeenCalled();
     expect(bundle?.chunks).toEqual([{ heading: "Backstory", text: "Born in a forest.", embedding: [1, 2] }]);
@@ -82,9 +83,9 @@ describe("PersonaBundleCompiler.compile — embedding cache across reuploads", (
       embeddingTextVersion: personaLoreEmbeddingTextVersion,
     };
 
-    const bundle = await compiler.compile(content, previousBundle);
+    const bundle = await compiler.compile(await configurationFixture(content), previousBundle);
 
-    expect(embed).toHaveBeenCalledWith("Backstory\nBorn in a forest.");
+    expect(embed).toHaveBeenCalledWith("Backstory\nBorn in a forest.", expect.objectContaining({ beforeAttempt: expect.any(Function) as unknown, cacheScope: expect.stringContaining("configuration:") as unknown }));
     expect(bundle?.chunks).toEqual([{ heading: "Backstory", text: "Born in a forest.", embedding: [9, 9] }]);
   });
 
@@ -104,9 +105,9 @@ describe("PersonaBundleCompiler.compile — embedding cache across reuploads", (
       embeddingTextVersion: personaLoreEmbeddingTextVersion,
     };
 
-    const bundle = await compiler.compile(content, previousBundle);
+    const bundle = await compiler.compile(await configurationFixture(content), previousBundle);
 
-    expect(embed).toHaveBeenCalledWith("Backstory\nBorn in a forest.");
+    expect(embed).toHaveBeenCalledWith("Backstory\nBorn in a forest.", expect.objectContaining({ beforeAttempt: expect.any(Function) as unknown, cacheScope: expect.stringContaining("configuration:") as unknown }));
     expect(bundle?.chunks).toEqual([{ heading: "Backstory", text: "Born in a forest.", embedding: [9, 9] }]);
     expect(bundle?.embeddingModel).toBe("openai:text-embedding-3-small");
   });
@@ -124,9 +125,9 @@ describe("PersonaBundleCompiler.compile — embedding cache across reuploads", (
       embeddingTextVersion: 1,
     };
 
-    const bundle = await compiler.compile(content, previousBundle);
+    const bundle = await compiler.compile(await configurationFixture(content), previousBundle);
 
-    expect(embed).toHaveBeenCalledWith("Backstory\nBorn in a forest.");
+    expect(embed).toHaveBeenCalledWith("Backstory\nBorn in a forest.", expect.objectContaining({ beforeAttempt: expect.any(Function) as unknown, cacheScope: expect.stringContaining("configuration:") as unknown }));
     expect(bundle?.chunks[0]?.embedding).toEqual([9, 9]);
     expect(bundle?.embeddingTextVersion).toBe(personaLoreEmbeddingTextVersion);
   });

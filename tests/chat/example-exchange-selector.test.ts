@@ -123,7 +123,7 @@ describe("RelevantExampleExchangeSelector", () => {
       now: 1_000,
     });
 
-    expect(embed).toHaveBeenCalledWith("my exam today was a disaster");
+    expect(embed).toHaveBeenCalledWith("my exam today was a disaster", {});
   });
 
   it("excludes embedding from the serialized prompt-budget projection", async () => {
@@ -245,6 +245,6 @@ describe("RelevantExampleExchangeSelector", () => {
       replyChain: [{ content: "is pineapple on pizza okay" }],
     });
 
-    expect(embed).toHaveBeenCalledWith("is pineapple on pizza okay\nwhat do you think?");
+    expect(embed).toHaveBeenCalledWith("is pineapple on pizza okay\nwhat do you think?", {});
   });
 });

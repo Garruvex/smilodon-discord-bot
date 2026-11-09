@@ -1,8 +1,12 @@
+import type { GuardedConversationContext } from "./guarded-conversation-context.js";
+import { retrievalProjection } from "../context/retrieval-query.js";
+import { memoryModelOptions, checkMemoryContext } from "../memory/memory-context-guard.js";
+import { SocialOutputSuppressed } from "./message-origin-store.js";
+import { safeFailure } from "../diagnostics/chat-diagnostics.js";
 import type { Logger } from "pino";
 
 import { personaLoreLimits } from "./persona-lore-policy.js";
 import type { PersonaLoreChunk } from "./persona-source.js";
-import type { ChatHistoryMessage } from "./chat-provider.js";
 import type { EmbeddingsClient } from "./embeddings-client.js";
 import {
   bm25Score,
@@ -17,8 +21,9 @@ import {
 } from "./memory-relevance.js";
 
 export interface PersonaLoreSelectionInput {
+  context?: GuardedConversationContext;
   chunks: readonly PersonaLoreChunk[];
-  recentHistory: readonly ChatHistoryMessage[];
+  recentHistory: readonly { content: string; role?: "user" | "assistant" }[];
   message: string;
   now: number;
   // Bounded projection of the Discord reply chain this turn is responding
@@ -63,6 +68,8 @@ export class RelevantPersonaLoreSelector implements PersonaLoreSelector {
   ) {}
 
   public async select(input: PersonaLoreSelectionInput): Promise<readonly PersonaLoreChunk[]> {
+    await checkMemoryContext(input.context);
+    if (input.context) input = { ...input, ...retrievalProjection(input.context), replyChain: input.context.replyChain, replyChainSummary: null };
     if (input.chunks.length === 0) return input.chunks;
     const replyContext = [
       ...(input.replyChain ?? []).map((hop) => ({ content: hop.content })),
@@ -89,11 +96,13 @@ export class RelevantPersonaLoreSelector implements PersonaLoreSelector {
         // along. The overflow summary stays lexical-only (in `context`
         // above) so this string matches memory recall's and the example
         // selector's exactly and the embedding is shared.
-        const queryEmbedding = await this.embeddingsClient.embed(buildEmbeddingQueryText({
+        const queryText = buildEmbeddingQueryText({
           message: input.message,
           recentHistory: input.recentHistory,
           replyToContent: input.replyChain?.at(-1)?.content,
-        }));
+        });
+        const queryEmbedding = await this.embeddingsClient.embed(queryText, memoryModelOptions(input.context, "recall_embedding", [queryText]));
+        await checkMemoryContext(input.context);
         const compatible = input.chunks.filter((chunk) => chunk.embedding?.length === queryEmbedding.length);
         if (compatible.length > 0) {
           for (const chunk of compatible) cosineScores.set(chunk, cosineSimilarity(chunk.embedding!, queryEmbedding));
@@ -103,7 +112,8 @@ export class RelevantPersonaLoreSelector implements PersonaLoreSelector {
           rankings.push(embeddingOrder);
         }
       } catch (error) {
-        this.logger?.debug({ error }, "Embedding the current message failed; persona lore selection falling back to lexical-only ranking");
+        if (error instanceof SocialOutputSuppressed) throw error;
+        this.logger?.debug({ failure: safeFailure(error) }, "Embedding the current message failed; persona lore selection falling back to lexical-only ranking");
       }
     }
     // A chunk with zero lexical overlap AND no meaningfully similar

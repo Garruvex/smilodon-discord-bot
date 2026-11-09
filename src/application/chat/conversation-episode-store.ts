@@ -3,7 +3,7 @@ import type { ChannelHistoryMessage } from "./chat-provider.js";
 export const episodeRetentionMs = 15 * 60_000;
 export interface ConversationEpisodeStore {
   load(guildId: string, channelId: string, now: number): Promise<readonly ChannelHistoryMessage[]>;
-  observe(guildId: string, channelId: string, event: ChannelHistoryMessage, now: number): Promise<void>;
+  observe(guildId: string, channelId: string, event: ChannelHistoryMessage, now: number, retentionMs?: number): Promise<void>;
   exclude(guildId: string, channelId: string, sourceMessageId: string): Promise<void>;
   deleteExpired(now: number): Promise<void>;
   forgetUser(guildId: string, userId: string): Promise<void>;
@@ -16,9 +16,9 @@ export function forgetEpisodeUser(events: readonly ChannelHistoryMessage[], user
   return kept;
 }
 
-export function boundEpisodeEvents(events: readonly ChannelHistoryMessage[], now: number): ChannelHistoryMessage[] {
+export function boundEpisodeEvents(events: readonly ChannelHistoryMessage[], now: number, retentionMs = episodeRetentionMs): ChannelHistoryMessage[] {
   let characters = 0;
-  return [...new Map(events.filter((event) => event.timestampMs >= now - episodeRetentionMs)
+  return [...new Map(events.filter((event) => event.timestampMs >= now - retentionMs)
     .map((event) => [event.messageId, { ...event, content: event.content.slice(0, 2000) }])).values()]
     .sort((a, b) => b.timestampMs - a.timestampMs).slice(0, 48).filter((event) => {
       characters += JSON.stringify(event).length; return characters <= 16_000;

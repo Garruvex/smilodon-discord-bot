@@ -1,17 +1,11 @@
+import { authorizeConversationEffects } from "../../src/application/chat/conversation-effects.js";
 import { defaultSecurity } from "../../src/config/guild-configuration-schema.js";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
 import { ReactionReplyScheduler } from "../../src/infrastructure/discord/behaviors/reaction-reply-scheduler.js";
-import { ChatConversationService } from "../../src/application/chat/chat-conversation-service.js";
-import { DefaultMemoryEngine } from "../../src/application/memory/memory-engine.js";
-import { SqliteMemoryRepository } from "../../src/infrastructure/persistence/sqlite-memory-repository.js";
-import { createSqliteDatabaseConnection } from "../../src/infrastructure/database/sqlite-database.js";
+import { type ChatConversationService, type ChatConversationInput } from "../../src/application/chat/chat-conversation-service.js";
 import type { ChatProvider, ChatResponse } from "../../src/application/chat/chat-provider.js";
-import type { ChatStateStore } from "../../src/application/chat/chat-state-store.js";
 import type { MessageReactionWatch, MessageReactionWatchStore } from "../../src/application/chat/message-reaction-watch.js";
 import type { ApplicationConfiguration } from "../../src/config/configuration.js";
 import type { GuildConfiguration } from "../../src/config/guild-configuration.js";
@@ -104,24 +98,27 @@ function response(text: string, ambient: ChatResponse["ambientAction"] = "reply"
   };
 }
 
+// Scheduler unit tests use an explicit application-result stub. Actual source
+// ports, provenance, preflight and delivery are covered by chat-conversation-paths.
 function testConversationService(reply: ChatProvider["reply"]): ChatConversationService {
-  const directory = mkdtempSync(join(tmpdir(), "reaction-reply-scheduler-"));
-  const connection = createSqliteDatabaseConnection(directory);
-  const repository = new SqliteMemoryRepository(connection.database);
-  const engine = new DefaultMemoryEngine(repository);
-  const store: ChatStateStore = {
-    initialize: () => Promise.resolve(),
-    load: () => Promise.resolve({ exchanges: [], memories: [] }),
-    commitSuccessfulExchange: () => Promise.resolve({ droppedExchanges: [] }),
-    applyMemoryActions: () => Promise.resolve(),
-    forgetMemory: () => Promise.resolve(false),
-    forgetAllMemories: () => Promise.resolve(0),
-    getDmNotesEnabled: () => Promise.resolve(true),
-    setDmNotesEnabled: () => Promise.resolve(),
-    purgeUser: () => Promise.resolve(),
-  };
-  const provider: ChatProvider = { reply };
-  return new ChatConversationService(provider, store, engine);
+  return {
+    reserveReaction: () => () => {},
+    run: async (input: ChatConversationInput, deliver: (response: ChatResponse) => Promise<string>): Promise<ChatResponse> => {
+      const output = await reply({ ...input, recentHistory: [], memories: [], guildKnowledge: [], causalChains: [],
+        userCustomization: null, birthday: null, replyChainSummary: null, exampleExchanges: [], personaLore: [], enabledTools: [] });
+      const text = output.ambientAction !== "ignore" && !!output.text;
+      const reaction = !!output.reactionEmoji || output.historyReactions.length > 0;
+      output.conversationDecision = { status: "ready", recovery: "none", decision: {
+        decisionId: "scheduler-unit", action: text ? reaction ? "reply_and_react" : "reply" : reaction ? "react" : "silent",
+        intent: "social", responseToEventId: input.sourceMessageId ?? null, referentSourceIds: [], recipientIds: [],
+        reasonCode: "explicit_test_result", contextVersion: "test", policyVersion: "test", expiresAt: Infinity,
+      } };
+      authorizeConversationEffects(output, input.sourceMessageId ?? null);
+      if (text) await deliver(output);
+      await input.afterDecision?.(output);
+      return output;
+    },
+  } as unknown as ChatConversationService;
 }
 
 function fakeWatchStore(
@@ -161,6 +158,8 @@ function fakeMessage(reactorIds: readonly string[], overrides: {
     author: { id: botId, username: "Bot" },
     content: overrides.content ?? "hello!",
     channelId,
+    guildId,
+    channel: { nsfw: false },
     member: null,
     guild: {
       members: {
@@ -340,11 +339,10 @@ describe("ReactionReplyScheduler", () => {
     expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
   });
 
-  it("excludes a reactor without chatbot access from the threshold count and from mentionedUsers", async () => {
+  it("does not let reactions trigger the bot when no reactor has interaction access", async () => {
     const reply = vi.fn(() => Promise.resolve(response("That got a reaction!", "reply")));
     const conversation = testConversationService(reply);
-    // 2 raw reactors, but both lack the chatbot role — none are eligible,
-    // below the threshold of 1.
+    // Their reactions are readable context, but neither may trigger a turn.
     const message = fakeMessage(["r1", "r2"], { noAccessIds: ["r1", "r2"] });
     const { store, markDone } = fakeWatchStore([watch()]);
     const scheduler = new ReactionReplyScheduler(
@@ -358,10 +356,10 @@ describe("ReactionReplyScheduler", () => {
     expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
   });
 
-  it("still asks the model once enough reactors remain eligible after excluding access-denied ones", async () => {
+  it("includes readable reactions from non-triggering participants when an authorized reactor starts the turn", async () => {
     const reply = vi.fn(() => Promise.resolve(response("That got a reaction!", "reply")));
     const conversation = testConversationService(reply);
-    // 2 raw reactors, 1 lacks access — 1 remains, meeting the threshold.
+    // Both reactions are context; only r1 authorizes the turn.
     const message = fakeMessage(["r1", "r2"], { noAccessIds: ["r2"] });
     const { store, markDone } = fakeWatchStore([watch()]);
     const scheduler = new ReactionReplyScheduler(
@@ -372,10 +370,10 @@ describe("ReactionReplyScheduler", () => {
     await scheduler.checkNow(2_000);
 
     expect(reply).toHaveBeenCalledOnce();
-    // The model sees which emoji, and who used it — only the eligible reactor.
+    // Interaction restrictions do not hide readable channel context.
     const request = JSON.stringify((reply.mock.calls as unknown[][])[0]);
-    expect(request).toContain("reacted to your message \\\"hello!\\\": 😂 r1)");
-    expect(request).not.toContain("r2");
+    expect(request).toContain("r1");
+    expect(request).toContain("r2");
     expect(markDone).toHaveBeenCalledWith(messageId, 2_000);
   });
 

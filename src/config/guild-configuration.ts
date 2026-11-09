@@ -1,4 +1,5 @@
 import type { Language } from "../application/i18n/language.js";
+import type { CharacterSettings } from "../application/chat/character-settings.js";
 import type { ParticipationSettings } from "../application/chat/participation-policy.js";
 import type { LinkConfiguration, RaidConfiguration, SpamConfiguration } from "../domain/security/detection-policy.js";
 import type { TrapConfiguration } from "../domain/security/trap-policy.js";
@@ -78,6 +79,10 @@ export interface GuildChannelConfiguration {
 }
 
 export interface GuildChatConfiguration {
+  // Collection consent is independent of interaction roles. Explicit exclusions
+  // apply to every source, including derived memories and reaction actors.
+  contextOptOutUserIds?: readonly string[];
+  contextOptOutRoleIds?: readonly string[];
   participation?: ParticipationSettings;
   personalityFile: string | null;
   personalityAsset: string | null;
@@ -99,9 +104,8 @@ export interface GuildChatConfiguration {
   // judgment calls per channel, so a chatty channel that says the bot's
   // name often doesn't turn into a full-pipeline call on every message.
   ambientCooldownSeconds: number;
-  // How many recent channel messages to fetch as ambient context when
-  // features.channelHistory is on. A hard cap independent of the char
-  // budget in chatMemoryLimits.maxChannelHistoryChars.
+  // Retired: reading history is sized by character.context (messages, budget).
+  // Kept so existing configuration files still parse; nothing reads it.
   channelHistoryLimit: number;
   // How long after the first reaction on a watched reply the bot waits
   // before judging the reactions, so others have time to join in: a random
@@ -229,6 +233,7 @@ export interface GuildSecurityConfiguration {
 }
 
 export interface GuildConfiguration {
+  character?: CharacterSettings;
   schemaVersion: 1;
   guildId: string;
   guildName: string;

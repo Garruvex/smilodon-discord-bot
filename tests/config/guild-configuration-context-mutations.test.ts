@@ -20,6 +20,15 @@ function baseDocument(): ReturnType<typeof createGuildConfigurationDocument> {
 }
 
 describe("applyGuildConfigurationUpdate — channel-context operations", () => {
+  it("persists, deduplicates and clears collection exclusions independently of interaction grants", () => {
+    const before = baseDocument();
+    const next = applyGuildConfigurationUpdate(before, { contextOptOutUserIds: ["111111111111111111", "111111111111111111"], contextOptOutRoleIds: ["222222222222222222"] });
+    expect(next.chat.contextOptOutUserIds).toEqual(["111111111111111111"]);
+    expect(next.chat.contextOptOutRoleIds).toEqual(["222222222222222222"]);
+    expect(next.roles).toEqual(before.roles);
+    const cleared = applyGuildConfigurationUpdate(next, { contextOptOutUserIds: [], contextOptOutRoleIds: [] });
+    expect(cleared.chat.contextOptOutUserIds).toEqual([]); expect(cleared.chat.contextOptOutRoleIds).toEqual([]);
+  });
   it("contextScanAddChannelId adds once and is idempotent on repeat", () => {
     let document = baseDocument();
     document = applyGuildConfigurationUpdate(document, { contextScanAddChannelId: "111111111111111111" });

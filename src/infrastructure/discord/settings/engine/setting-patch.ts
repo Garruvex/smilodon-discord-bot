@@ -85,12 +85,15 @@ export async function buildSettingPatch(
 
 // Later options win, except that map fields (per-platform link-fix
 // overrides, per-channel memory modes) combine — several toggles can each
-// write their own key of the same map.
+// write their own key of the same map, including nested module and quota fields.
 export function mergePatch(base: Patch, next: Patch): Patch {
-  const merged: Record<string, unknown> = { ...base };
+  return mergeObjects(base, next);
+}
+function mergeObjects(base: Record<string, unknown>, next: Record<string, unknown>): Record<string, unknown> {
+  const merged = { ...base };
   for (const [key, value] of Object.entries(next)) {
     const previous = merged[key];
-    merged[key] = isPlainObject(previous) && isPlainObject(value) ? { ...previous, ...value } : value;
+    merged[key] = isPlainObject(previous) && isPlainObject(value) ? mergeObjects(previous, value) : value;
   }
   return merged;
 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { characterSettingsSchema } from "../application/chat/character-settings.js";
 
 import { defaultLanguage, languages } from "../application/i18n/language.js";
 import {
@@ -6,10 +7,11 @@ import {
   spamChannelLimits,
 } from "../domain/security/detection-policy.js";
 import { trapActions, trapDeleteWindows, trapTimeoutDurations } from "../domain/security/trap-policy.js";
-import { CHAT_LIMITS, MUSIC_LIMITS, PANEL_LIMITS } from "./guild-configuration-limits.js";
+import { CHAT_LIMITS, MUSIC_LIMITS, PANEL_LIMITS, PARTICIPATION_LIMITS } from "./guild-configuration-limits.js";
 
 const snowflake = z.string().regex(/^\d{17,20}$/);
 const snowflakeList = z.array(snowflake).default([]);
+const bounded = (limit: { min: number; max: number }): z.ZodNumber => z.number().int().min(limit.min).max(limit.max);
 
 export function isValidTimeZone(value: string): boolean {
   try {
@@ -101,24 +103,39 @@ const guildChatSchema = z.preprocess((value) => {
   return { ...rest, webSearchMode: webSearchEnabled ? "auto" : "off" };
 }, z.object({
   participation: z.object({
+    messagesPerDecision: bounded(PARTICIPATION_LIMITS.joinEveryMessages).optional(),
+    spontaneousThreshold: z.number().min(0).max(1).optional(),
+    continuationThreshold: z.number().min(0).max(1).optional(),
+    observationChannelIds: snowflakeList.optional(),
     continuationEnabled: z.boolean().default(false),
     spontaneousEnabled: z.boolean().default(false),
     spontaneousChannelIds: snowflakeList,
     barePingMode: z.enum(["acknowledge", "personality"]).default("acknowledge"),
     activity: z.enum(["quiet", "balanced", "lively"]).default("balanced"),
     shadowMode: z.boolean().default(false),
+    repliesEnabled: z.boolean().optional(),
+    reactionsEnabled: z.boolean().optional(),
+    joinConfirmation: z.boolean().optional(),
+    decisionContract: z.enum(["legacy", "simple"]).optional(),
+    simpleActionThresholds: z.object({ followup: z.number().min(0).max(1).optional(), joining: z.number().min(0).max(1).optional() }).optional(),
     channelOverrides: z.record(snowflake, z.object({
+      shadowMode: z.boolean().optional(),
+      decisionContract: z.enum(["legacy", "simple"]).optional(),
+      simpleActionThresholds: z.object({ followup: z.number().min(0).max(1).optional(), joining: z.number().min(0).max(1).optional() }).optional(),
       continuationEnabled: z.boolean().optional(), spontaneousEnabled: z.boolean().optional(),
-      reactionsEnabled: z.boolean().optional(), activity: z.enum(["quiet", "balanced", "lively"]).optional(),
+      repliesEnabled: z.boolean().optional(), reactionsEnabled: z.boolean().optional(), joinConfirmation: z.boolean().optional(), activity: z.enum(["quiet", "balanced", "lively"]).optional(),
     })).default({}),
     advanced: z.object({
-      concurrency: z.number().int().min(1).max(16).optional(),
-      optionalTurnsPer10Minutes: z.number().int().min(0).max(1000).optional(),
-      evaluationCooldownSeconds: z.number().int().min(20).max(600).optional(),
-      textCooldownSeconds: z.number().int().min(60).max(3600).optional(),
-      reactionCooldownSeconds: z.number().int().min(20).max(600).optional(),
-      textPer10Minutes: z.number().int().min(0).max(3).optional(),
-      reactionsPer10Minutes: z.number().int().min(0).max(5).optional(),
+      concurrency: bounded(PARTICIPATION_LIMITS.concurrency).optional(),
+      optionalTurnsPer10Minutes: bounded(PARTICIPATION_LIMITS.optionalTurnsPer10Minutes).optional(),
+      evaluationCooldownSeconds: bounded(PARTICIPATION_LIMITS.evaluationCooldownSeconds).optional(),
+      textCooldownSeconds: bounded(PARTICIPATION_LIMITS.textCooldownSeconds).optional(),
+      reactionCooldownSeconds: bounded(PARTICIPATION_LIMITS.reactionCooldownSeconds).optional(),
+      textPer10Minutes: bounded(PARTICIPATION_LIMITS.textPer10Minutes).optional(),
+      reactionsPer10Minutes: bounded(PARTICIPATION_LIMITS.reactionsPer10Minutes).optional(),
+      continuationIntervalSeconds: bounded(PARTICIPATION_LIMITS.followUpIntervalSeconds).optional(),
+      continuationPerExchange: bounded(PARTICIPATION_LIMITS.followUpsPerExchange).optional(),
+      continuationPer10Minutes: bounded(PARTICIPATION_LIMITS.followUpsPer10Minutes).optional(),
     }).default({}),
   }).default({}),
   personalityFile: z.string().trim().min(1).nullable().default(null),
@@ -150,6 +167,8 @@ const guildChatSchema = z.preprocess((value) => {
   // Unlisted channels default to "shared" — today's behavior, unchanged.
   channelMemoryModes: z.record(snowflake, z.enum(["shared", "isolated", "session_only", "disabled"])).default({}),
   sharedMemoryEnabled: z.boolean().default(false),
+  contextOptOutUserIds: snowflakeList,
+  contextOptOutRoleIds: snowflakeList,
   personaDriftEnabled: z.boolean().default(false),
   // Channel-context (Plan 2): contextScanChannelIds get one one-time
   // history scan; contextDailyChannelIds get an ongoing daily summary. A
@@ -191,6 +210,7 @@ export const guildConfigurationFileSchema = z
   .object({
     birthdayMessageTemplate: z.string().trim().min(1).max(1000).nullable().default(null),
     schemaVersion: z.literal(1),
+    character: characterSettingsSchema,
     guild: z.object({
       id: snowflake,
       name: z.string().trim().min(1),
@@ -425,6 +445,24 @@ export const guildConfigurationFileSchema = z
         path: ["channels", "linkFix"],
       });
     }
+  }).transform((configuration) => {
+    const policy = configuration.chat.participation;
+    if (policy.spontaneousThreshold === undefined) {
+      const character = configuration.character;
+      // The former active shadow-thought hook vetoed spontaneous replies.
+      // Removing that veto must not silently activate existing channels.
+      if (character.enabled && character.modules.thoughts.enabled && character.modules.thoughts.shadow && character.modules.addressing.enabled && configuration.features.channelHistory) {
+        for (const channelId of policy.spontaneousChannelIds) {
+          const scope = character.channelOverrides[channelId]; const override = policy.channelOverrides[channelId];
+          if (scope?.enabled !== false && scope?.contextEnabled !== false && scope?.modules.thoughts !== false && scope?.modules.addressing !== false &&
+              configuration.chat.channelMemoryModes[channelId] !== "disabled" && (override?.continuationEnabled ?? policy.continuationEnabled))
+            policy.channelOverrides[channelId] = { ...override, spontaneousEnabled: false };
+        }
+      }
+      policy.spontaneousThreshold = Math.max(0.75, character.enabled && character.modules.thoughts.enabled && !character.modules.thoughts.shadow ? character.modules.thoughts.threshold : 0);
+    }
+    policy.continuationThreshold ??= 0.5;
+    return configuration;
   });
 
 export type ParsedGuildConfigurationFile = z.infer<typeof guildConfigurationFileSchema>;

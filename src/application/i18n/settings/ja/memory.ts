@@ -8,12 +8,20 @@ const memoryModes = {
 };
 
 export const jaMemory: SettingsTextCatalog = {
-  "memory.sharing": { label: "個人情報の共有メモリ", description: "チャンネルのメモリ設定を確認してから有効にします。既存の非公開情報は変更しません。" },
-  "memory.sharing.enabled": { label: "個人情報の共有メモリ", description: "新しい個人情報を設定された範囲内で共有します。" },
+  "memory.context-opt-out": {"label": "コンテキストの除外", "description": "Discord チャンネルの閲覧権限でコンテキスト範囲を決定します。対話ロールは起動権限のみを制御します。"},
+  "memory.context-opt-out.roles": {"label": "除外ロール", "description": "これらのロールのメッセージとリアクション、および派生メモリーを除外します。"},
+  "memory.context-opt-out.users": {"label": "除外ユーザー ID", "description": "Discord ユーザー ID をカンマで区切ります。空欄で解除します。", "messages": {"invalid": "Discord ユーザー ID をカンマまたは空白で区切って入力してください。"}},
+  "memory.impressions": {
+    label: "印象と共有した出来事",
+    description: "出典を利用できる間は、根拠のある過去の記憶を保持します。",
+    messages: { behavior: "記憶の減衰を有効にすると、興味や口調についての古い印象を思い出す優先度が下がります。過去の出来事は、出典が有効で参照できる間は利用できます。昔の興味を現在の好みとして扱いません。印象を読み返したり整理し直したりしても、根拠が新しくなるわけではありません。出典が削除されたり期限切れになったりすると、その印象の根拠には使えなくなります。" },
+  },
+  "memory.advanced": { label: "記憶の詳細設定", description: "記憶の減衰と古い記録の整理を調整します。" },
+  "memory.advanced.half-life": { label: "減衰の半減期（日）", description: "減衰する記憶の重みが半分になる日数。記憶の減衰が有効な場合に適用します。" },
+  "memory.advanced.history": { label: "旧バージョンの保持日数", description: "使われなくなった記録を整理するまでの日数。使用中の記録には影響しません。" },
+  "memory.sharing": { label: "個人情報の共有メモリ", description: "各チャンネルの記憶モードに従い、新しい個人情報を共有します。" },
+  "memory.sharing.enabled": { label: "個人情報の共有メモリ", description: "既存の非公開の記憶は非公開のままです。" },
   "memory": { title: "記憶", description: "ボットが読み返し、覚えておくこと" },
-  "memory.channel-history": { label: "チャンネル履歴", description: "チャンネルの最近のメッセージを返信の文脈に使う" },
-  "memory.channel-history.enabled": { label: "チャンネル履歴", description: "チャンネル履歴をオンまたはオフにする" },
-  "memory.channel-history.limit": { label: "メッセージ数", description: "含める最近のメッセージの数" },
 
   "memory.memory-mode": {
     label: "チャンネルの記憶モード",

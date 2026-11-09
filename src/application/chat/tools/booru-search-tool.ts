@@ -1,5 +1,6 @@
 import { fetchBooruPost, type BooruSite } from "../../../infrastructure/booru/booru-client.js";
 import type { ChatTool, ChatToolContext, ChatToolResult } from "./chat-tool.js";
+import { SocialOutputSuppressed } from "../message-origin-store.js";
 
 interface BooruSearchToolArgs {
   query: string | null;
@@ -33,11 +34,15 @@ export class BooruSearchTool implements ChatTool<BooruSearchToolArgs> {
   };
 
   public async execute(args: BooruSearchToolArgs, ctx: ChatToolContext): Promise<ChatToolResult> {
+    await ctx.beforeModelAttempt?.(); ctx.signal?.throwIfAborted();
+    if (args.query !== null && (typeof args.query !== "string" || args.query.length > 1000) ||
+        args.order !== null && !(args.order in orderTags)) return { content: "Invalid image search query." };
     const site: BooruSite = ctx.channelIsNsfw ? "e621" : "e926";
     const orderTag = orderTags[args.order ?? "random"];
     const tags = [args.query, orderTag, "favcount:>100"].filter(Boolean).join(" ");
     try {
-      const post = await fetchBooruPost(site, tags);
+      const post = await fetchBooruPost(site, tags, ctx.signal);
+      await ctx.beforeModelAttempt?.(); ctx.signal?.throwIfAborted();
       if (!post) return { content: "No results found for that search." };
       return {
         content: JSON.stringify({
@@ -49,7 +54,8 @@ export class BooruSearchTool implements ChatTool<BooruSearchToolArgs> {
           species: post.tags.species,
         }),
       };
-    } catch {
+    } catch (error) {
+      if (error instanceof SocialOutputSuppressed || ctx.signal?.aborted) throw error;
       return { content: "The image search failed. Tell the user to try again in a moment." };
     }
   }

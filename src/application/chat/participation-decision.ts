@@ -7,6 +7,9 @@ export interface ParticipationDecision {
   expiresAt: number | null;
 }
 export function participationDecision(response: ChatResponse, targetMessageId: string | null, expiresAt: number | null): ParticipationDecision {
+  if (response.conversationDecision) return { action: response.conversationDecision.decision.action,
+    reason: response.conversationDecision.decision.reasonCode,
+    targetMessageId: response.replyTargetMessageId ?? targetMessageId, expiresAt };
   const reply = response.ambientAction === "reply";
   const react = response.reactionEmoji !== null || response.historyReactions.length > 0;
   return { action: reply ? react ? "reply_and_react" : "reply" : react ? "react" : "silent",

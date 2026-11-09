@@ -204,6 +204,19 @@ function createGatewayForEnqueue(channelPermissionBits: bigint | null): {
 }
 
 describe("LavalinkPlayerGateway.enqueue voice-channel access gate", () => {
+  it.each(["after_search", "before_fallback"] as const)("rechecks guarded actions after asynchronous search: %s", async (scenario) => {
+    const { gateway, stubPlayer } = createGateway("voice"); let eligible = true;
+    const search = vi.fn(() => {
+      eligible = false;
+      return scenario === "before_fallback" ? Promise.reject(new Error("search failed")) : Promise.resolve({ tracks: [{ title: "track" }] });
+    });
+    const add = vi.fn(); const player = { ...createFakePlayer("voice"), connect: vi.fn().mockResolvedValue(undefined), search, queue: { current: null, add, tracks: [] } };
+    stubPlayer(player);
+    (gateway as unknown as { manager: { createPlayer: () => typeof player } }).manager.createPlayer = (): typeof player => player;
+    await expect(gateway.enqueue({ guildId, voiceChannelId: "voice", textChannelId: "text", query: "song", requestedByUserId: "user",
+      beforeCommit: (): Promise<void> => { if (!eligible) throw new Error("source revoked"); return Promise.resolve(); } })).rejects.toThrow("source revoked");
+    expect(search).toHaveBeenCalledOnce(); expect(add).not.toHaveBeenCalled();
+  });
   // A fresh join (no existing player) is the only case that needs this —
   // assertSameVoiceChannel (PlaybackService) already guarantees the bot is
   // in an existing player's channel, so a repeat enqueue never hits it.

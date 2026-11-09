@@ -1,7 +1,7 @@
-import { CHAT_LIMITS } from "../../../../config/guild-configuration-limits.js";
-import { action, channelList, group, integer, report, toggle } from "../registry/builders.js";
+import { action, channelList, group, integer, report, roleList, text, toggle } from "../registry/builders.js";
 import type { NodeContext } from "../registry/types.js";
 import { chatSetting, pausedSuffix } from "./chat.js";
+import { characterSettings } from "../../../../application/chat/character-settings.js";
 import { renderContextStatus } from "./chat-context-status.js";
 
 // The chatbot's memory: what it reads back and what it keeps. Its own
@@ -12,19 +12,22 @@ const summarizationUnavailable = ({ deps, text, path }: NodeContext): string | n
   deps.channelSummaryProviderAvailable ? null : text.message(path, "unavailable");
 
 export const memory = group("memory", [
+  report("impressions", ({ text, path }) => Promise.resolve(text.message(path, "behavior"))),
+  chatSetting("advanced", {
+    "half-life": integer({ min: 1, max: 365, read: (p) => characterSettings(p).modules.fading.halfLifeDays,
+      write: (v) => ({ character: { modules: { fading: { halfLifeDays: v } } } }) }),
+    history: integer({ min: 1, max: 365, read: (p) => characterSettings(p).modules.canon.retentionDays,
+      write: (v) => ({ character: { modules: { canon: { retentionDays: v } } } }) }),
+  }),
   chatSetting("sharing", {
     enabled: toggle({ read: (p) => p.chat.sharedMemoryEnabled ?? false, write: (v) => ({ chatbotSharedMemoryEnabled: v }) }),
   }),
-  chatSetting("channel-history", {
-    enabled: toggle({ read: (p) => p.features.channelHistory, write: (v) => ({ channelHistory: v }) }),
-    limit: integer({
-      min: CHAT_LIMITS.channelHistoryLimit.min,
-      max: CHAT_LIMITS.channelHistoryLimit.max,
-      read: (p) => p.chat.channelHistoryLimit,
-      write: (v) => ({ channelHistoryLimit: v }),
-    }),
+  chatSetting("context-opt-out", {
+    roles: roleList({ read: (p) => p.chat.contextOptOutRoleIds ?? [], write: (ids) => ({ contextOptOutRoleIds: [...ids] }) }),
+    users: text({ maxLength: 4000, read: (p) => (p.chat.contextOptOutUserIds ?? []).join(", "),
+      validate: (value, context) => value.trim() && !value.trim().split(/[\s,]+/u).every((id) => /^\d{17,20}$/u.test(id)) ? context.error("invalid") : null,
+      write: (value) => ({ contextOptOutUserIds: value.trim() ? [...new Set(value.trim().split(/[\s,]+/u))] : [] }) }),
   }),
-
   // Whether a channel's memory can ever become guild-wide: the model's own
   // scoping is only advisory (see memory-channel-policy.ts).
   action("memory-mode", {

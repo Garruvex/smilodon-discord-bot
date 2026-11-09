@@ -1,7 +1,15 @@
+import { fadingWeight } from "./fading.js";
+import { retrievalProjection } from "../context/retrieval-query.js";
+import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
+import { requireApprovedMemoryIngest, requireApprovedRelationIngest } from "../context/approved-memory-ingest.js";
 import type { Logger } from "pino";
+import { safeFailure } from "../diagnostics/chat-diagnostics.js";
 
 import type { MemoryConflictClassifier } from "../chat/chat-provider.js";
 import type { EmbeddingsClient } from "../chat/embeddings-client.js";
+import { authorizeClassificationClaims, authorizeRelationMembers, checkMemoryContext, memoryModelOptions, observedNamesForContext } from "./memory-context-guard.js";
+import { memoryRelationPayload } from "./memory-relation-provenance.js";
+import { memoryClaimPayload } from "./memory-claim-provenance.js";
 import { allowsDurableWrites, resolveMemoryScope } from "./memory-channel-policy.js";
 import type { MemoryRelevanceTraceCollector } from "./memory-relevance-trace.js";
 import type {
@@ -20,7 +28,7 @@ import type {
   ProposedMemory,
   RelationCreateInput,
 } from "./memory.js";
-import { canRecall } from "./memory.js";
+import { canRecall, canRecallOrdinaryMemory } from "./memory.js";
 import { observedSubjectNames, groupObservedAliasRows } from "./observed-subject-names.js";
 import { memoryValidationLimits, validateProposal, type MemoryValidationLimits } from "./memory-validation.js";
 import {
@@ -156,7 +164,14 @@ function toScorable(memory: Memory): ScorableRecord {
 // Never sends the embedding vector itself to the model — same exclusion as
 // the legacy selectors' prompt projections.
 function memoryPromptProjection(memory: Memory): unknown {
-  const { embedding: _embedding, ...rest } = memory;
+  const { embedding: _embedding, moduleId: _moduleId, contextProvenance: _proof, ...rest } = memory;
+  if (rest.structuredValue && typeof rest.structuredValue === "object" && ("callback" in rest.structuredValue || "callbackDateUnresolved" in rest.structuredValue || "callbackDatePlanning" in rest.structuredValue)) {
+    const metadata: Record<string, unknown> = { ...rest.structuredValue };
+    delete metadata.callback;
+    delete metadata.callbackDateUnresolved;
+    delete metadata.callbackDatePlanning;
+    return { ...rest, structuredValue: Object.keys(metadata).length ? metadata : null };
+  }
   return rest;
 }
 
@@ -213,14 +228,23 @@ export class DefaultMemoryEngine implements MemoryEngine {
     private readonly relevanceTraceCollector: Pick<MemoryRelevanceTraceCollector, "record" | "includePrivate"> | null = null,
     private readonly isBotAsserter: ((userId: string) => Promise<boolean>) | null = null,
     private readonly sharedMemoryEnabled: (guildId: string) => boolean = () => false,
+    private readonly fadingHalfLifeDays: (guildId: string, channelId: string) => number | null = () => null,
+    private readonly now: () => number = () => Date.now(),
   ) {}
 
   public async recall(input: MemoryRecallInput): Promise<MemoryContext> {
+    await checkMemoryContext(input.context);
+    if (input.context) {
+      if (input.guildId !== input.context.scope.guildId || input.channelId !== input.context.scope.channelId ||
+        input.userId !== (input.context.scope.actorId ?? input.context.current.authorId)) throw new SocialOutputSuppressed();
+      input = { ...input, ...retrievalProjection(input.context, input.query) };
+    }
     if (input.channelMode === "disabled") return { memories: [], causalChains: [] };
-    const aliasCandidates = groupObservedAliasRows(await this.repository.findObservedAliases({
-      guildId: input.guildId, channelId: input.channelId, userId: input.userId, now: input.now, message: input.message,
-    }), input.message);
-    const resolvedAliasIds = aliasCandidates.filter((alias) => alias.subjectIds.length === 1).flatMap((alias) => alias.subjectIds);
+    const aliasQuery = { guildId: input.guildId, channelId: input.channelId, userId: input.userId, now: input.now, message: input.message };
+    const aliasObservation = input.context ? await input.context.aliases(await this.repository.findAliasSources?.(aliasQuery) ?? [], input.message, input.now)
+      : { rows: await this.repository.findObservedAliases(aliasQuery), incomplete: false };
+    const aliasCandidates = groupObservedAliasRows(aliasObservation.rows, input.message).map((alias) => ({ ...alias, ...(aliasObservation.incomplete ? { incomplete: true } : {}) }));
+    const resolvedAliasIds = aliasCandidates.filter((alias) => !alias.incomplete && alias.subjectIds.length === 1).flatMap((alias) => alias.subjectIds);
     // onlySelfPrivateMemories bypasses findRecallCandidates entirely rather
     // than filtering its output: that query mixes every audience together
     // (private-of-caller, channel, guild) under one shared
@@ -233,13 +257,13 @@ export class DefaultMemoryEngine implements MemoryEngine {
     // that user's own memory count, not the guild's. It doesn't filter
     // isolationChannelId/expiresAt/status itself (unlike
     // findRecallCandidates), so those are re-applied here in JS.
-    const candidates = input.onlySelfSubjectMemories
+    let candidates = input.onlySelfSubjectMemories
       ? { memories: (await this.repository.listBySubject(input.guildId, input.userId)).filter((memory) =>
-          canRecall(memory, { guildId: input.guildId, channelId: input.channelId, userId: input.userId }, input.now)) }
+          canRecallOrdinaryMemory(memory, { guildId: input.guildId, channelId: input.channelId, userId: input.userId }, input.now)) }
       : input.onlySelfPrivateMemories
       ? {
           memories: (await this.repository.listByUser(input.guildId, input.userId)).filter((memory) =>
-            memory.audience === "private" && memory.subjectId === input.userId && memory.status === "active" &&
+            memory.moduleId == null && memory.audience === "private" && memory.subjectId === input.userId && memory.status === "active" &&
             (memory.isolationChannelId === null || memory.isolationChannelId === input.channelId) &&
             (memory.expiresAt === null || memory.expiresAt > input.now)),
         }
@@ -252,11 +276,20 @@ export class DefaultMemoryEngine implements MemoryEngine {
           prioritySubjectIds: [...input.subjectIds, ...resolvedAliasIds],
           ...(input.filterSubjectIds?.length ? { subjectIds: input.filterSubjectIds } : {}),
         });
-    if (candidates.memories.length === 0) return { memories: [], causalChains: [] };
+    if (input.context) candidates = { memories: await input.context.memories(candidates.memories, false, input.now) };
+    if (candidates.memories.length === 0) return input.context ? { memories: [], ...(aliasCandidates.length ? { aliasCandidates } : {}),
+      ...("sources" in aliasObservation && aliasObservation.sources.length ? { aliasSources: aliasObservation.sources } : {}),
+      causalChains: (await this.expandRelatedSubjects({ ...input, subjectIds: [...input.subjectIds, ...resolvedAliasIds] })).causalChains } : { memories: [], causalChains: [] };
     const { boostBySubjectId, causalChains } = await this.expandRelatedSubjects({ ...input, subjectIds: [...input.subjectIds, ...resolvedAliasIds] });
     const subjectIds = new Set(input.subjectIds);
     const context = buildRelevanceContext({ message: input.message, recentHistory: input.recentHistory, subjectIds, now: input.now });
-    const scorableByMemory = new Map(candidates.memories.map((memory) => [memory, toScorable(memory)] as const));
+    const halfLife = this.fadingHalfLifeDays(input.guildId, input.channelId);
+    const scorableByMemory = new Map(candidates.memories.map((memory) => {
+      const scorable = toScorable(memory);
+      if (halfLife && memory.kind === "episode" && memory.importance <= 1 && memory.source !== "explicit")
+        scorable.importance = (scorable.importance ?? 1) * fadingWeight(input.now, memory.updatedAt, halfLife);
+      return [memory, scorable] as const;
+    }));
     const corpus = buildBm25Corpus([...scorableByMemory.values()]);
     const bm25ScoreByMemory = new Map(candidates.memories.map(
       (memory) => [memory, bm25Score(corpus, context, scorableByMemory.get(memory)!)] as const,
@@ -281,11 +314,10 @@ export class DefaultMemoryEngine implements MemoryEngine {
     // them RRF credit they didn't earn on relevance.
     let embeddingOrder: readonly Memory[] = [];
     const cosineByMemory = new Map<Memory, number>();
-    if (this.embeddingsClient) {
-      const queryText = buildEmbeddingQueryText({
-        message: input.message, recentHistory: input.recentHistory, replyToContent: input.replyToContent,
-      });
-      const queryEmbedding = await this.embeddingsClient.embed(queryText).catch(() => null);
+    const queryText = buildEmbeddingQueryText({ message: input.message, recentHistory: input.recentHistory, replyToContent: input.replyToContent });
+    if (this.embeddingsClient && queryText.trim()) {
+      await checkMemoryContext(input.context);
+      const queryEmbedding = await this.embeddingsClient.embed(queryText, memoryModelOptions(input.context, "recall_embedding", [queryText])).catch(() => null);
       if (queryEmbedding) {
         const withCosine = candidates.memories
           .filter((memory) => memory.embedding && memory.embedding.length === queryEmbedding.length)
@@ -350,10 +382,12 @@ export class DefaultMemoryEngine implements MemoryEngine {
         maxSerializedChars: this.limits.maxSelectedChars,
         requireTopicalMatch: input.requireTopicalMatch ?? false,
       }).catch((error: unknown) => {
-        this.logger?.warn({ error, guildId: input.guildId }, "Memory relevance trace collection failed");
+        this.logger?.warn({ ...safeFailure(error), guildId: input.guildId }, "Memory relevance trace collection failed");
       });
     }
-    return { memories: selected, causalChains, maxSerializedChars: this.limits.maxSelectedChars, ...(aliasCandidates.length ? { aliasCandidates } : {}) };
+    const verified = input.context ? await input.context.memories(selected, true, input.now) : selected;
+    return { memories: verified, causalChains, maxSerializedChars: this.limits.maxSelectedChars, ...(aliasCandidates.length ? { aliasCandidates } : {}),
+      ...("sources" in aliasObservation && aliasObservation.sources.length ? { aliasSources: aliasObservation.sources } : {}) };
   }
 
   // Bounded multi-hop expansion out from the turn's subjectIds — see
@@ -375,9 +409,10 @@ export class DefaultMemoryEngine implements MemoryEngine {
       related = await this.repository.findRelatedSubjects({
         guildId: input.guildId, channelId: input.channelId, subjectIds: input.subjectIds,
         maxHops: this.limits.maxRelationHops,
+        ...(input.context ? { context: input.context, now: input.now } : {}),
       });
     } catch (error) {
-      this.logger?.warn({ error, guildId: input.guildId }, "Related-subject lookup failed; recall proceeds without relational boost");
+      this.logger?.warn({ ...safeFailure(error), guildId: input.guildId }, "Related-subject lookup failed; recall proceeds without relational boost");
       return { boostBySubjectId, causalChains };
     }
     for (const subject of related) {
@@ -388,6 +423,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
         const found = { type: subject.subjectType, id: subject.subjectId };
         const [from, to] = subject.edgePointsToVia ? [found, via] : [via, found];
         causalChains.push({
+          ...(subject.sourceRelation ? { sourceRelation: subject.sourceRelation } : {}),
           fromSubjectType: from.type, fromSubjectId: from.id,
           predicate: subject.predicate,
           toSubjectType: to.type, toSubjectId: to.id,
@@ -412,6 +448,8 @@ export class DefaultMemoryEngine implements MemoryEngine {
   }
 
   public async ingest(input: MemoryIngestInput): Promise<MemoryIngestResult> {
+    requireApprovedMemoryIngest(input);
+    await checkMemoryContext(input.context);
     if (!allowsDurableWrites(input.channelMode) && input.proposals.every((proposal) => proposal.action === "upsert"))
       return { ingested: [], removed: 0, rejected: 0, failed: 0 };
     // Candidate TTL sweep, piggybacked on writes rather than a separate
@@ -419,13 +457,14 @@ export class DefaultMemoryEngine implements MemoryEngine {
     // active rows), so they only need to be gone before the next write that
     // might dedup or corroborate against them.
     await this.repository.deleteExpiredCandidates(input.guildId, input.now).catch((error: unknown) => {
-      this.logger?.warn({ error, guildId: input.guildId }, "Expired-candidate sweep failed");
+      this.logger?.warn({ ...safeFailure(error), guildId: input.guildId }, "Expired-candidate sweep failed");
     });
     const ingested: Memory[] = [];
     let removed = 0;
     let rejected = 0;
     let failed = 0;
     for (const proposal of input.proposals) {
+      if (proposal.subjectType === "persona") { rejected += 1; continue; }
       if (proposal.action === "upsert" && !allowsDurableWrites(input.channelMode)) continue;
       const effectiveAsserter = proposal.action === "upsert"
         ? proposal.assertedByUserId !== undefined ? proposal.assertedByUserId : input.assertedByUserId : null;
@@ -478,16 +517,30 @@ export class DefaultMemoryEngine implements MemoryEngine {
   // regular facts already go through, so a relation extracted from the same
   // consolidation batch as a fact gets the same isolation boundary.
   public async ingestRelations(input: MemoryRelationIngestInput): Promise<MemoryRelationIngestResult> {
+    requireApprovedRelationIngest(input);
+    await checkMemoryContext(input.context);
     if (!allowsDurableWrites(input.channelMode)) return { created: 0, rejected: input.proposals.length };
     const scope = resolveMemoryScope(input.channelMode, input.channelId, { audience: "guild", channelScoped: true });
     const valid: RelationCreateInput[] = [];
+    const memberIds = [...new Set(input.proposals.flatMap((proposal) => [
+      ...(proposal.fromSubjectType === "member" ? [proposal.fromSubjectId] : []), ...(proposal.toSubjectType === "member" ? [proposal.toSubjectId] : []),
+    ]))];
+    const allowedMembers = await authorizeRelationMembers(input.context, memberIds);
+    if (input.context && input.supportingMemoryId) {
+      const supporting = await this.repository.findById(input.guildId, input.supportingMemoryId);
+      if (!supporting || supporting.status !== "active" || !(await authorizeClassificationClaims(input.context, [supporting], input.now)).length)
+        return { created: 0, rejected: input.proposals.length };
+    }
     let rejected = 0;
     for (const proposal of input.proposals) {
       if (!proposal.fromSubjectId || !proposal.toSubjectId) { rejected += 1; continue; }
+      if (proposal.fromSubjectType === "member" && !allowedMembers.has(proposal.fromSubjectId) ||
+          proposal.toSubjectType === "member" && !allowedMembers.has(proposal.toSubjectId)) { rejected++; continue; }
       if (proposal.fromSubjectType === proposal.toSubjectType && proposal.fromSubjectId === proposal.toSubjectId) {
         rejected += 1; continue; // a relation to itself carries no information
       }
-      valid.push({
+      const relation: RelationCreateInput = {
+        ...(input.context ? { channelId: input.channelId } : {}),
         guildId: input.guildId,
         fromSubjectType: proposal.fromSubjectType,
         fromSubjectId: proposal.fromSubjectId,
@@ -498,16 +551,22 @@ export class DefaultMemoryEngine implements MemoryEngine {
         isolationChannelId: scope.isolationChannelId,
         supportingMemoryId: input.supportingMemoryId,
         now: input.now,
-      });
+      };
+      const payload = memoryRelationPayload(relation);
+      if (!payload) { rejected++; continue; }
+      const contextProvenance = input.context?.provenance(payload, "relation") ?? null;
+      if (input.context && !contextProvenance) { rejected++; continue; }
+      valid.push({ ...relation, contextProvenance });
     }
     if (valid.length === 0) return { created: 0, rejected };
     let created: number;
     try {
       // Already-known edges are skipped by the repository, so `created`
       // counts genuinely new ones only.
+      await checkMemoryContext(input.context);
       created = await this.repository.createRelations(valid);
     } catch (error) {
-      this.logger?.warn({ error, guildId: input.guildId }, "Relation ingest failed");
+      this.logger?.warn({ ...safeFailure(error), guildId: input.guildId }, "Relation ingest failed");
       return { created: 0, rejected: rejected + valid.length };
     }
     return { created, rejected };
@@ -531,9 +590,10 @@ export class DefaultMemoryEngine implements MemoryEngine {
       memory.subjectType === proposal.subjectType && memory.subjectId === proposal.subjectId &&
       memory.topic === topic && memory.slot === slot);
     let removed = 0;
-    for (const match of matches) removed += await this.forget({
-      guildId: input.guildId, memoryId: match.id, ownerUserId: proposal.ownerUserId, channelId: input.channelId,
-    });
+    for (const match of matches) {
+      await checkMemoryContext(input.context);
+      removed += await this.forget({ guildId: input.guildId, memoryId: match.id, ownerUserId: proposal.ownerUserId, channelId: input.channelId });
+    }
     return removed;
   }
 
@@ -555,7 +615,8 @@ export class DefaultMemoryEngine implements MemoryEngine {
     // variant for why: a consolidation batch has no single asserter, so
     // ChannelSummaryScheduler resolves one per fact from its evidence.
     const status = resolveInitialStatus(scope.audience, proposal.subjectType, proposal.subjectId, assertedByUserId, input.source);
-    const embedding = this.embeddingsClient ? await this.embeddingsClient.embed(statement).catch(() => null) : null;
+    await checkMemoryContext(input.context);
+    const embedding = this.embeddingsClient ? await this.embeddingsClient.embed(statement, memoryModelOptions(input.context, "claim_embedding", [statement])).catch(() => null) : null;
     const ownerUserId = scope.audience === "private" ? proposal.ownerUserId ?? proposal.subjectId : null;
     // Canonicalize BEFORE writing, not after: findActiveBySubject/embedding
     // are already being computed here for the write itself, so reusing them
@@ -568,6 +629,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
           guildId: input.guildId, subjectType: proposal.subjectType, subjectId: proposal.subjectId,
           audience: scope.audience, ownerUserId, channelId: scope.channelId, isolationChannelId: scope.isolationChannelId,
           embedding, topic, slot,
+          context: input.context, now: input.now,
         })
       : { topic, slot };
     let memory: Memory;
@@ -575,9 +637,18 @@ export class DefaultMemoryEngine implements MemoryEngine {
       const previous = (await this.repository.findActiveBySubject({ guildId: input.guildId, subjectType: proposal.subjectType,
         subjectId: proposal.subjectId, audience: scope.audience, ownerUserId, channelId: scope.channelId, isolationChannelId: scope.isolationChannelId }))
         .find((record) => record.topic === canonical.topic && record.slot === canonical.slot);
-      const names = new Map(observedSubjectNames(previous ?? { structuredValue: null }).map((name) => [name.value, name]));
-      for (const name of proposal.observedSubjectNames ?? []) if (name.trim()) names.set(name.slice(0, 100), { value: name.slice(0, 100), observedAt: input.now });
+      await checkMemoryContext(input.context);
+      const claim = { guildId: input.guildId, kind: proposal.kind, audience: scope.audience, ownerUserId,
+        channelId: scope.channelId, isolationChannelId: scope.isolationChannelId, subjectType: proposal.subjectType,
+        subjectId: proposal.subjectId, topic: canonical.topic, slot: canonical.slot, statement };
+      const newNames = await observedNamesForContext(input.context, claim, proposal.observedSubjectNames ?? [], input.now);
+      const names = new Map([...newNames, ...observedSubjectNames(previous ?? { structuredValue: null })].map((name) => [name.value.toLowerCase(), name]));
+      for (const name of newNames) names.set(name.value.toLowerCase(), name);
+      await checkMemoryContext(input.context);
+      const proof = input.context?.provenance(memoryClaimPayload(claim), "memory_claim") ?? null;
+      if (input.context && !proof) throw new Error("Memory context cannot issue complete provenance");
       memory = await this.repository.ingest({
+        contextProvenance: proof,
         guildId: input.guildId,
         kind: proposal.kind,
         audience: scope.audience,
@@ -612,14 +683,14 @@ export class DefaultMemoryEngine implements MemoryEngine {
         assertedByUserId,
       });
     } catch (error) {
-      this.logger?.warn({ error, guildId: input.guildId }, "Memory ingest failed for one proposal");
+      this.logger?.warn({ ...safeFailure(error), guildId: input.guildId }, "Memory ingest failed for one proposal");
       return null;
     }
     if (memory.status === "candidate") {
-      memory = (await this.corroborate(memory, assertedByUserId, input.now)) ?? memory;
+      memory = (await this.corroborate(memory, assertedByUserId, input.now, input.context)) ?? memory;
     }
     if (memory.status === "active" && memory.embedding) {
-      await this.checkForConflicts(memory, input.now);
+      await this.checkForConflicts(memory, input.now, input.context);
     }
     return memory;
   }
@@ -632,7 +703,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
   // check, and a looser bar would let "likes pizza" confirm "hates pizza"
   // (same topic, similar embedding). Returns the promoted memory, or null
   // when there's nothing to promote.
-  private async corroborate(memory: Memory, assertedByUserId: string | null, now: number): Promise<Memory | null> {
+  private async corroborate(memory: Memory, assertedByUserId: string | null, now: number, context?: MemoryIngestInput["context"]): Promise<Memory | null> {
     if (assertedByUserId === null) return null;
     let others: Awaited<ReturnType<MemoryRepository["findCandidatesByIdentity"]>>;
     try {
@@ -642,19 +713,25 @@ export class DefaultMemoryEngine implements MemoryEngine {
         topic: memory.topic, slot: memory.slot, excludeMemoryId: memory.id, now,
       });
     } catch (error) {
-      this.logger?.warn({ error, guildId: memory.guildId }, "Candidate corroboration lookup failed; leaving it a candidate");
+      this.logger?.warn({ ...safeFailure(error), guildId: memory.guildId }, "Candidate corroboration lookup failed; leaving it a candidate");
       return null;
     }
-    const corroborating = others.filter(({ memory: other, assertedByUserIds }) =>
+    const allowed = new Set((await authorizeClassificationClaims(context, [memory, ...others.map((entry) => entry.memory)], now)).map((record) => record.id));
+    if (!allowed.has(memory.id)) return null;
+    const corroborating = others.filter(({ memory: other, assertedByUserIds }) => allowed.has(other.id) &&
       assertedByUserIds.some((asserter) => asserter !== assertedByUserId) && this.isSameClaim(memory, other));
     if (corroborating.length === 0) return null;
     try {
+      await checkMemoryContext(context);
+      const contextProvenance = context?.provenance(memoryClaimPayload(memory), "memory_claim") ?? null;
+      if (context && !contextProvenance) return null;
       return await this.repository.promoteCandidate({
         guildId: memory.guildId, memoryId: memory.id,
         absorbedMemoryIds: corroborating.map(({ memory: other }) => other.id), now,
+        contextProvenance,
       });
     } catch (error) {
-      this.logger?.warn({ error, guildId: memory.guildId }, "Candidate promotion failed; leaving it a candidate");
+      this.logger?.warn({ ...safeFailure(error), guildId: memory.guildId }, "Candidate promotion failed; leaving it a candidate");
       return null;
     }
   }
@@ -690,6 +767,8 @@ export class DefaultMemoryEngine implements MemoryEngine {
     embedding: readonly number[];
     topic: string;
     slot: string;
+    context: MemoryIngestInput["context"];
+    now: number;
   }): Promise<{ topic: string; slot: string }> {
     const fallback = { topic: input.topic, slot: input.slot };
     let candidates: readonly Memory[];
@@ -700,11 +779,11 @@ export class DefaultMemoryEngine implements MemoryEngine {
         isolationChannelId: input.isolationChannelId,
       });
     } catch (error) {
-      this.logger?.warn({ error, guildId: input.guildId }, "Identity canonicalization lookup failed; proceeding with the model's own topic/slot");
+      this.logger?.warn({ ...safeFailure(error), guildId: input.guildId }, "Identity canonicalization lookup failed; proceeding with the model's own topic/slot");
       return fallback;
     }
     let best: { memory: Memory; similarity: number } | null = null;
-    for (const candidate of candidates) {
+    for (const candidate of await authorizeClassificationClaims(input.context, candidates, input.now)) {
       if (!candidate.embedding) continue;
       const similarity = cosineSimilarity(input.embedding, candidate.embedding);
       if (similarity < this.limits.identityCanonicalizationThreshold) continue;
@@ -718,7 +797,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
   // others under the same subject until someone confirms it, so it's never
   // compared here. See conflictDetection's threshold comment for what this
   // heuristic can and can't tell apart.
-  private async checkForConflicts(memory: Memory, now: number): Promise<void> {
+  private async checkForConflicts(memory: Memory, now: number, context?: MemoryIngestInput["context"]): Promise<void> {
     let related: readonly Memory[];
     try {
       related = await this.repository.findActiveBySubject({
@@ -728,9 +807,12 @@ export class DefaultMemoryEngine implements MemoryEngine {
         isolationChannelId: memory.isolationChannelId,
       });
     } catch (error) {
-      this.logger?.warn({ error, guildId: memory.guildId }, "Conflict lookup failed; leaving related memories as-is");
+      this.logger?.warn({ ...safeFailure(error), guildId: memory.guildId }, "Conflict lookup failed; leaving related memories as-is");
       return;
     }
+    const allowed = await authorizeClassificationClaims(context, [memory, ...related], now);
+    if (!allowed.some((record) => record.id === memory.id)) return;
+    related = allowed.filter((record) => record.id !== memory.id);
     const embedding = memory.embedding!;
     const aboveThreshold: { candidate: Memory; similarity: number }[] = [];
     for (const candidate of related) {
@@ -762,11 +844,12 @@ export class DefaultMemoryEngine implements MemoryEngine {
       ? aboveThreshold.slice(0, maxConflictClassificationsPerMemory)
       : aboveThreshold;
     for (const { candidate } of toEvaluate) {
-      if (!(await this.shouldSupersede(candidate, memory))) continue;
+      if (!(await this.shouldSupersede(candidate, memory, context))) continue;
       try {
+        await checkMemoryContext(context);
         await this.repository.supersede({ guildId: memory.guildId, memoryId: candidate.id, supersededById: memory.id, now });
       } catch (error) {
-        this.logger?.warn({ error, guildId: memory.guildId }, "Failed to supersede a conflicting memory");
+        this.logger?.warn({ ...safeFailure(error), guildId: memory.guildId }, "Failed to supersede a conflicting memory");
       }
     }
   }
@@ -781,12 +864,14 @@ export class DefaultMemoryEngine implements MemoryEngine {
   // toward NOT superseding — an uncertain guess shouldn't silently hide a
   // memory the classifier never actually confirmed was the same fact; the
   // worst case is two memories coexisting a bit longer, not one disappearing.
-  private async shouldSupersede(candidate: Memory, memory: Memory): Promise<boolean> {
+  private async shouldSupersede(candidate: Memory, memory: Memory, context?: MemoryIngestInput["context"]): Promise<boolean> {
     if (!this.conflictClassifier?.classifyMemoryConflict) return true;
     try {
-      return await this.conflictClassifier.classifyMemoryConflict(candidate.statement, memory.statement);
+      await checkMemoryContext(context);
+      const related = await this.conflictClassifier.classifyMemoryConflict(candidate.statement, memory.statement, memoryModelOptions(context, "conflict_classification", [candidate.statement, memory.statement]));
+      await checkMemoryContext(context); return related;
     } catch (error) {
-      this.logger?.warn({ error, guildId: memory.guildId }, "Conflict classification failed; leaving both memories active rather than guessing");
+      this.logger?.warn({ ...safeFailure(error), guildId: memory.guildId }, "Conflict classification failed; leaving both memories active rather than guessing");
       return false;
     }
   }
@@ -799,8 +884,13 @@ export class DefaultMemoryEngine implements MemoryEngine {
       (memory.audience !== "channel" || memory.channelId === channelId));
   }
 
-  public listSources(memoryId: string): Promise<readonly MemorySource[]> {
-    return this.repository.findSources(memoryId);
+  public async listSources(memoryId: string, memory?: Memory): Promise<readonly MemorySource[]> {
+    const direct = await this.repository.findSources(memoryId);
+    const metadata = memory?.structuredValue;
+    if (!memory?.moduleId || !metadata || typeof metadata !== "object" || !("dependencies" in metadata) || !Array.isArray(metadata.dependencies)) return direct;
+    const ids = metadata.dependencies.flatMap((dependency: unknown) => dependency && typeof dependency === "object" && "id" in dependency && typeof dependency.id === "string" ? [dependency.id] : []);
+    const sources = (await Promise.all(ids.map((id) => this.repository.findSources(id)))).flat();
+    return [...new Map([...direct, ...sources].map((source) => [source.id, source])).values()];
   }
   public listPromptSources(memoryIds: readonly string[]): Promise<readonly MemorySource[]> {
     return this.repository.findPromptSources?.(memoryIds) ?? Promise.resolve([]);
@@ -815,14 +905,14 @@ export class DefaultMemoryEngine implements MemoryEngine {
       const supportingSourceIds = sources.flatMap((source) => source.sourceMessageId ? [source.sourceMessageId] : []);
       for (const messageId of supportingSourceIds) await this.repository.recordForgetCutoff({
         guildId: input.guildId, subjectId: input.ownerUserId, topic: "*", slot: `source:${messageId}`,
-        scopeKey: "*", cutoff: Date.now(),
+        scopeKey: "*", cutoff: this.now(),
       });
       await this.repository.recordForgetCutoff({ guildId: input.guildId, subjectId: input.ownerUserId,
-        topic: memory.topic, slot: memory.slot, scopeKey: memory.isolationChannelId ?? memory.channelId ?? "*", cutoff: Date.now() });
+        topic: memory.topic, slot: memory.slot, scopeKey: memory.isolationChannelId ?? memory.channelId ?? "*", cutoff: this.now() });
       return this.repository.forget({ guildId: input.guildId, memoryId: memory.id, supportingSourceIds });
     }
     await this.repository.recordForgetCutoff({ guildId: input.guildId, subjectId: input.ownerUserId,
-      topic: "*", slot: "*", scopeKey: "*", cutoff: Date.now() });
+      topic: "*", slot: "*", scopeKey: "*", cutoff: this.now() });
     return this.repository.forget({
       guildId: input.guildId, ownerUserId: input.ownerUserId,
       ...(input.subjectId !== undefined ? { subjectId: input.subjectId } : {}),

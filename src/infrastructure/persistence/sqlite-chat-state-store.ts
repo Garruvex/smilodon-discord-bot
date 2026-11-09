@@ -1,18 +1,13 @@
 import { randomUUID } from "node:crypto";
 
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { z } from "zod";
+import { boundedDeliveryMessageIds, chatSessionExchangesSchema as exchangesSchema } from "../../application/chat/chat-session-schema.js";
+import { bindProvenanceOutput } from "../../application/chat/context-provenance.js";
 
 import { chatMemoryLimits } from "../../application/chat/chat-memory-policy.js";
 import { boundSessionExchanges, type ChatSessionExchange, type ChatStateSnapshot, type ChatStateStore } from "../../application/chat/chat-state-store.js";
 import * as schema from "../database/sqlite-schema.js";
-
-const exchangesSchema = z.array(z.object({
-  user: z.object({ content: z.string(), createdAt: z.number(), sourceMessageId: z.string().nullable().optional(),
-    channelMemoryMode: z.enum(["shared", "isolated", "session_only", "disabled"]).optional() }),
-  assistant: z.object({ content: z.string(), createdAt: z.number() }),
-}));
 
 // better-sqlite3 is a synchronous driver — drizzle's `.transaction()` for it
 // requires the callback to return synchronously (see drizzle-orm/sqlite-core's
@@ -82,6 +77,15 @@ export class SqliteChatStateStore implements ChatStateStore {
     });
     return Promise.resolve();
   }
+  public invalidateContextSubject(guildId: string, userId: string): Promise<void> {
+    this.database.run(sql`UPDATE ${schema.chatSessions} SET exchanges = (
+      SELECT json_group_array(json(exchange.value)) FROM json_each(${schema.chatSessions.exchanges}) AS exchange
+      WHERE NOT (coalesce(json_extract(exchange.value, '$.contextProvenance.audience.userId') = ${userId}, 0)
+        OR EXISTS (SELECT 1 FROM json_each(exchange.value, '$.contextProvenance.dependencies') AS dependency WHERE json_extract(dependency.value, '$.authorId') = ${userId})
+        OR EXISTS (SELECT 1 FROM json_each(exchange.value, '$.contextProvenance.actors') AS actor WHERE json_extract(actor.value, '$.userId') = ${userId}))
+      ) WHERE ${schema.chatSessions.guildId} = ${guildId}`);
+    return Promise.resolve();
+  }
   public clearRecentHistory(guildId: string, userId: string): Promise<void> {
     this.database.delete(schema.chatSessions).where(and(eq(schema.chatSessions.guildId, guildId), eq(schema.chatSessions.userId, userId))).run();
     return Promise.resolve();
@@ -120,7 +124,9 @@ export class SqliteChatStateStore implements ChatStateStore {
       user: { content: input.userMessage, createdAt: input.sourceTimestampMs ?? input.now,
         ...(input.sourceMessageId !== undefined ? { sourceMessageId: input.sourceMessageId } : {}),
         ...(input.channelMemoryMode !== undefined ? { channelMemoryMode: input.channelMemoryMode } : {}) },
-        assistant: { content: input.assistantMessage, createdAt: input.now },
+        assistant: { content: input.assistantMessage, createdAt: input.now,
+          ...(input.assistantMessageIds ? { messageIds: boundedDeliveryMessageIds(input.assistantMessageIds) } : {}) },
+        ...(input.contextProvenance !== undefined ? { contextProvenance: bindProvenanceOutput(input.contextProvenance, input.assistantMessage, { guildId: input.guildId, channelId: input.channelId, userId: input.userId }) } : {}),
       }]);
       transaction.insert(schema.chatSessions).values({
         guildId: input.guildId, userId: input.userId, channelId: input.channelId, exchanges: bounded.kept, updatedAt: new Date(input.now),

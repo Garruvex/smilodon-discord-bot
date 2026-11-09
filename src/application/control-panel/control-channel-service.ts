@@ -21,6 +21,7 @@ import type { Logger } from "pino";
 import { hasMusicDjPrivilege } from "../access/access-rules.js";
 import { KeyedSerialQueue } from "../concurrency/keyed-serial-queue.js";
 import { ChannelEditScheduler, type ChannelEditSlot, type ChannelEditWrite } from "../concurrency/channel-edit-scheduler.js";
+import { retryAfterMs } from "../concurrency/retry-after.js";
 import type { PlaybackService } from "../music/playback-service.js";
 import type { MusicEventBus } from "../music/music-event-bus.js";
 import { musicErrorText, MusicError } from "../music/music-errors.js";
@@ -741,6 +742,7 @@ export class ControlChannelService {
     if (existing) this.releaseEditSlots(guildId);
     const register = (name: PanelEditSlotName): ChannelEditSlot => this.editScheduler.register({
       channelId, key: `control-panel:${guildId}:${name}`, priority: panelEditPriority[name],
+      caller: name === "lyrics" ? "lyrics_panel" : name === "queue" ? "queue_panel" : name === "vote" ? "vote_panel" : "now_playing_panel",
     });
     const slots = {
       queue: register("queue"), lyrics: register("lyrics"), vote: register("vote"), nowPlaying: register("nowPlaying"),
@@ -759,7 +761,9 @@ export class ControlChannelService {
   private scheduleEdit(
     guildId: string, messages: PanelMessagePair, name: PanelEditSlotName, write: ChannelEditWrite,
   ): Promise<void> {
-    return this.editSlots(guildId, messages.channel.id)[name].schedule(write);
+    // Writers log their error, then let the scheduler observe retry metadata
+    // before preserving the panel's existing best-effort refresh contract.
+    return this.editSlots(guildId, messages.channel.id)[name].schedule(write).catch(() => undefined);
   }
 
   private writeNowPlayingMessage(
@@ -791,7 +795,7 @@ export class ControlChannelService {
         return true;
       } catch (error) {
         this.logger.error({ error, guildId }, "Unable to refresh the Now Playing panel message");
-        return true;
+        throw error;
       }
     });
   }
@@ -896,7 +900,7 @@ export class ControlChannelService {
         return true;
       } catch (error) {
         this.logger.error({ error, guildId }, "Unable to refresh the Lyrics panel message");
-        return true;
+        throw error;
       }
     });
   }
@@ -960,9 +964,11 @@ export class ControlChannelService {
         // It is deleted too, not just dropped: the edit may have failed for a
         // passing reason (a timeout, a Discord 5xx) with the message still
         // there, and once forgotten nothing else would ever clean it up.
-        this.forgetVoteMessage(guildId);
+        // A declared rate-limit wait keeps the message for a later edit;
+        // deleting/reposting would create extra requests during backoff.
+        if (retryAfterMs(error) === null) this.forgetVoteMessage(guildId);
         this.logger.error({ error, guildId }, "Unable to refresh the autoqueue vote message");
-        return true;
+        throw error;
       }
     });
   }
@@ -1068,7 +1074,7 @@ export class ControlChannelService {
         return true;
       } catch (error) {
         this.logger.error({ error, guildId }, "Unable to refresh the Queue panel message");
-        return true;
+        throw error;
       }
     });
   }

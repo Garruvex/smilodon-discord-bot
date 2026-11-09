@@ -288,6 +288,14 @@ Discord commands, and then starts. Add another bot by copying one short bot
 service entry and changing its env file and data paths; no generated Compose
 overlay is involved.
 
+`stack:up` stamps Git HEAD into the image's `BUILD_SHA` environment variable and
+OCI revision label before starting containers without rebuilding them. Diagnostics
+then report that revision as `buildVersion`. Use a clean checkout for releases:
+the revision identifies the base commit, not any uncommitted edits. If Git metadata
+is unavailable, the command warns and records `unknown`. For a manual Docker build,
+pass `--build-arg BUILD_SHA=<commit-sha>`; plain `docker compose up --build` does
+not discover Git HEAD automatically.
+
 Docker startup registers commands automatically. To register them again without
 restarting the running bots:
 
@@ -591,7 +599,9 @@ these values from the shared `.env`, allowing separate projects, keys, model
 choices, and usage accounting. API keys are secrets.
 
 To enable the behavior for a guild, turn on `/settings-chat replies
-mention-chat` and give members the Chatbot role (`/settings-access roles`) —
+mention-chat` and configure the AI chat roles (`/settings-access roles`). Select
+`@everyone` to allow all members, subject to interaction restrictions and the
+configured chatbot channels —
 see the [chat settings reference](docs/user-guide.md#chat) for every option
 (web search, image input/generation, tool calling, personality and
 example-exchange upload, and more). `/settings-chat persona template` sends a
@@ -603,6 +613,11 @@ directly in guild YAML; an uploaded personality takes precedence. See
 character personality file — and an optional example-exchanges file to teach
 its actual voice — that reads like a real chat participant instead of an
 assistant.
+
+Optional character modules add canon, impressions, natural recall, voice checks,
+timing and human review tools. They default off. See the
+[character pilot guide](docs/chat-believability-operations.md) for settings,
+decision-provider configuration, privacy boundaries and offline replay.
 
 Every provider call emits content-free usage logs. The start record includes
 the model, API mode, generation settings, Discord identifiers, image count, and
@@ -617,6 +632,85 @@ summary: instance name, environment, persistence driver, chat API mode, model,
 reasoning effort, verbosity, output limit, enabled guild features, and guild
 chat capabilities. API keys, personality contents, and conversation data are
 never included.
+
+### Conversation flow and context privacy
+
+Direct mentions, replies to the bot, bare pings, name addressing, implicit
+follow-ups, optional group participation, and reactions use the common guarded
+conversation flow. A bare ping can refer to an earlier untagged question;
+timestamps alone do not make older messages irrelevant. Optional participation
+can choose silence, an emoji, or a reply. Explicit requests retain an
+application-owned answer obligation, subject to access and delivery checks.
+
+Interaction access and context collection are separate:
+
+- AI chat and Restricted roles control who may initiate an interaction.
+- Discord channel visibility, history permissions, enabled context settings,
+  and channel/thread isolation define which messages can enter context.
+- Admins can exclude users or roles through `/settings-memory context-opt-out`
+  or **Memory → 上下文排除名單** in the settings panel. User IDs are separated
+  by commas or whitespace; an empty panel field clears the user list. Both
+  exclusion lists default to empty.
+- The same exclusions apply to channel history, reply chains, reaction actors,
+  summaries, and contributing sources of derived memories. An interaction
+  restriction alone does not exclude a person's messages from context.
+
+These are administrator-managed exclusions, not a personal self-service command.
+When role exclusions are configured and membership cannot be established, that
+author's content is excluded. Existing forgetting and retention rules remain
+in force; changing an exclusion list is not a bulk deletion operation.
+
+Each turn collects and filters a bounded snapshot, then reuses it for decision
+and reply. Gateway events recheck actual policy; an unrelated member update or
+persona/style change does not discard an authorized answer. Relevant access
+withdrawal, collection opt-outs, deletion, and forgetting still block delivery.
+An edited source triggers one fresh assembly and generation before sending,
+without replaying a tool effect or a started delivery. Effects refresh persistent
+forget checks and current channel/game scope. Adapters
+without snapshot notifications retain full validation. Reply-only semantic
+example/lore selection is skipped for silence and emoji decisions; required
+images, memory recall, and reply-chain compaction can still precede a decision.
+
+Request approval makes model input immutable; it does not grant role permissions.
+Music tools check current access through their policy interface at execution.
+Music authorization fields are still carried in the general request; removing
+them is remaining interface cleanup, not part of the cloning fix below.
+
+### Verification status (2026-10-22)
+
+Commit `4425dd74` fixes a locally reproduced `DataCloneError` when generation or
+repair reapproves immutable music role sets, including empty sets. This crash
+occurred before the reply model call and was previously logged as a generic
+`provider_error`; it now has the content-safe category `data_clone_error`.
+Earlier turn fixtures omitted these production fields. New regressions cover
+reapproval, repair, and direct reply delivery with role sets present.
+
+Verification at that checkpoint: **5,153 tests passed, 7 skipped**, with typecheck,
+full build, and changed-file lint passing. This does not establish production
+correctness. See the [current context plan](docs/channel-context-snapshot-plan-2026-10-22.md)
+and [implementation audit](docs/chat-context-final-audit-2026-10-22.md) for scope,
+evidence, and remaining acceptance work.
+
+A subsequent production trace confirms `4425dd74` reached a completed reply
+model call, then suppressed its result before delivery. The underlying
+invalidation is **unresolved**: that build did not record which eligibility
+check failed. New `chat.guard.rejected` and `chat.snapshot.invalidated` events
+identify the gate and observed Discord invalidation event without logging
+conversation text. Guard rejections are classified as `guard_rejected`, not
+provider failures. These diagnostic changes do not relax access checks or
+establish that the missing-reply issue is fixed.
+
+The subsequent [delivery policy revision](docs/chat-delivery-policy-plan-2026-10-22.md)
+implements the narrower rules above. It also stops conversation-window expiry,
+another person's new message, and unrelated forgetting from cancelling an
+already generated answer. Reactions still require at least one reactor with
+current interaction permission. Provider errors, transport/work limits, and
+unstable evidence remain possible failures. Local checks do not confirm a
+successful reply on the deployed server.
+
+This policy revision passes **5,184 tests with 7 skipped**, plus typecheck, full
+build, and changed-file lint. See the linked plan for the regression scope and
+the limits on automatic regeneration.
 
 ## Channel-context memory
 
