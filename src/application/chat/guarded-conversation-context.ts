@@ -146,7 +146,7 @@ export class GuardedConversationContext {
     let status: "completed" | "deadline" | "failed" = "failed";
     try {
       const result = await Promise.race([operation(), new Promise<never>((_resolve, reject) => {
-        cancel = () => { status = "deadline"; this.closed = true; controller.abort(); this.coverageReport.status = "deadline"; reject(new SocialOutputSuppressed()); };
+        cancel = (): void => { status = "deadline"; this.closed = true; controller.abort(); this.coverageReport.status = "deadline"; reject(new SocialOutputSuppressed()); };
         turn?.addEventListener("abort", cancel, { once: true });
       })]);
       status = "completed"; return result;
