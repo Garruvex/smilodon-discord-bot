@@ -51,7 +51,7 @@ describe("simple decision decoding", () => {
     expect(decodeSimpleDecision(native({ action: "reply", addressee: "open_question" }, { action: 0.8 }), true, all)).toMatchObject({ addressee: "open_question" });
     expect(decodeSimpleDecision({ action: "reply", emoji: "none", addressee: "someone_else" }, false, all)).toMatchObject({ addressee: "someone_else" });
     expect(decodeSimpleDecision({ action: "reply", emoji: "none", addressee: "everyone" }, false, all)).toMatchObject({ action: "reply", addressee: null });
-    expect(["bot", "open_question", "someone_else", "nobody", null].filter((value) => addresseeAllowsReply(value as Addressee | null))).toEqual(["bot", "open_question"]);
+    expect(["bot", "open_question", "someone_else", "nobody", null].filter((value) => addresseeAllowsReply(value as Addressee | null))).toEqual(["bot", "open_question", "nobody"]);
   });
 });
 
@@ -62,6 +62,12 @@ describe("simple decision prompt", () => {
     expect(prompt).toContain("chance to join in"); expect(prompt).toContain('"availableActions":["reply","ignore"]');
     expect(prompt).toContain("\\u003cb>can you help"); expect(prompt).not.toContain("<b>");
     expect(prompt).not.toMatch(/memor|lore|drift|alias|character:/iu);
+  });
+  it("makes doing nothing the normal outcome and ties reactions to the character's own taste", async () => {
+    const prompt = simplePrompt(await input(), "decision");
+    expect(prompt).toContain("Most messages get nothing"); expect(prompt).toContain("really finds the message funny");
+    expect(prompt).toContain("Persona, which decides what this character would and would not do here"); expect(prompt).not.toContain("style guidance only");
+    expect(prompt).not.toContain("use it freely");
   });
   it("names the follow-up basis and a still-authorized held thought", async () => {
     const base = await input({ kind: "followup", basis: "open_exchange", held: { sourceMessageId: "earlier", stance: "agree", length: "one_line" } });
@@ -90,7 +96,7 @@ describe("simple decision prompt", () => {
 describe("persona digest", () => {
   it("collapses whitespace, drops heading marks and caps the length", () => {
     expect(personaDigest("# Mochi\n\nA  calm cat.")).toBe("Mochi A calm cat.");
-    const long = personaDigest("word ".repeat(400));
+    const long = personaDigest("word ".repeat(1000));
     expect(long.length).toBe(personaDigestChars); expect(long.endsWith("…")).toBe(true);
   });
   it("reports how much of the recent conversation the bot wrote", async () => {

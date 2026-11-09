@@ -9,6 +9,7 @@ export interface ParticipationOverride {
   simpleActionThresholds?: SimpleActionThresholds | undefined;
   continuationEnabled?: boolean | undefined;
   spontaneousEnabled?: boolean | undefined;
+  repliesEnabled?: boolean | undefined;
   reactionsEnabled?: boolean | undefined;
   joinConfirmation?: boolean | undefined;
   activity?: "quiet" | "balanced" | "lively" | undefined;
@@ -24,6 +25,9 @@ export interface ParticipationSettings {
   barePingMode: "acknowledge" | "personality";
   activity: "quiet" | "balanced" | "lively";
   shadowMode: boolean;
+  // What optional turns may do, independently. On unless set; explicit requests are always answered.
+  repliesEnabled?: boolean | undefined;
+  reactionsEnabled?: boolean | undefined;
   // A second, stricter question before an unsolicited join counts (simple contract). Off unless set.
   joinConfirmation?: boolean | undefined;
   decisionContract?: DecisionContract | undefined;

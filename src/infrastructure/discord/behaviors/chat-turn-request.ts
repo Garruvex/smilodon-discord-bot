@@ -68,6 +68,7 @@ export function buildChatTurnInput(environment: ChatTurnEnvironment, profile: Gu
     message: parts.text, replyChain: [], channelHistory: [], images: [],
     channelHistoryEnabled: profile.features.channelHistory,
     historyReactionsEnabled: profile.features.historyReactions && profile.features.channelHistory,
+    optionalRepliesEnabled: participation.repliesEnabled !== false,
     imageInputEnabled: profile.chat.imageInputEnabled, maxImagesPerRequest: profile.chat.maxImagesPerRequest,
     webSearchMode: profile.chat.webSearchMode, includeSources: profile.chat.includeSources,
     imageGenerationEnabled: isExplicitInteraction(interaction) && !shadow && profile.chat.imageGenerationEnabled,

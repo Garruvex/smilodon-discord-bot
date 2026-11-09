@@ -1,3 +1,4 @@
+import { resolveParticipation } from "../../src/application/chat/participation-policy.js";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ChatToolRegistry } from "../../src/application/chat/tools/chat-tool-registry.js";
@@ -81,6 +82,18 @@ describe("settings registry", () => {
     expect(fixture.profiles.current().chat.participation?.channelOverrides[channelId]).toEqual({ simpleActionThresholds: { followup: 0 } });
     await fixture.run("participation.channel", slashValues({ channel: { id: channelId }, "joining-threshold": 40 }));
     expect(fixture.profiles.current().chat.participation?.channelOverrides[channelId]).toEqual({ simpleActionThresholds: { followup: 0, joining: 0.4 } });
+  });
+  it("switches optional replies and reactions independently, per server and per channel", async () => {
+    const fixture = engineFixture(); const channelId = "600000000000000005";
+    await fixture.run("participation.actions", slashValues({ reactions: false }));
+    expect(fixture.profiles.current().chat.participation).toMatchObject({ reactionsEnabled: false });
+    expect(fixture.profiles.current().chat.participation?.repliesEnabled).toBeUndefined();
+    expect(resolveParticipation(fixture.profiles.current().chat.participation, channelId)).toMatchObject({ reactionsEnabled: false });
+    await fixture.run("participation.actions", slashValues({ replies: false, reactions: true }));
+    expect(fixture.profiles.current().chat.participation).toMatchObject({ repliesEnabled: false, reactionsEnabled: true });
+    await fixture.run("participation.channel", slashValues({ channel: { id: channelId }, replies: true }));
+    expect(fixture.profiles.current().chat.participation?.channelOverrides[channelId]).toEqual({ repliesEnabled: true });
+    expect(resolveParticipation(fixture.profiles.current().chat.participation, channelId)).toMatchObject({ repliesEnabled: true, reactionsEnabled: true });
   });
   it("leaves preview off by default", () => {
     expect(engineFixture().profiles.current().chat.participation?.shadowMode).toBe(false);

@@ -64,8 +64,8 @@ const lengthText: Record<ThoughtLength, string> = { one_line: "a one-line reply,
 // memories, images and previews that decision did not, so it has the last word.
 const simpleDeclineText = 'If so, reply briefly and naturally to the current message. If not, stay silent: set ambientAction="ignore" and response="". Silence is a normal outcome, not a failure. Do not invent facts or promise actions.';
 const simpleReplyGuidance = {
-  joining: `A first check said this conversation may be open to you, but joining is still your call. No one asked you, so ask whether you have something of your own to add: a real opinion, a joke that lands, or a question you actually want answered. Repeating what was said, or an acknowledgment with nothing behind it, is not enough. ${simpleDeclineText}`,
-  followup: `You may still be talking with this person. Ask whether this message is really for you and whether anything needs saying; a short answer or acknowledgment is fine when it continues the exchange, but they may have turned to someone else or finished. ${simpleDeclineText}`,
+  joining: `A first check said this conversation may be open to you, but joining is still your call, and your persona decides it: would this character really speak up here? No one asked you, so ask whether you have something of your own to add. Repeating what was said, or an acknowledgment with nothing behind it, is not enough. ${simpleDeclineText}`,
+  followup: `You may still be talking with this person. Ask whether this message is really for you and whether this character, going by your persona, would say anything; a short answer or acknowledgment is fine when it continues the exchange, but they may have turned to someone else or finished. ${simpleDeclineText}`,
 } as const;
 
 export class CharacterRuntime {
@@ -468,8 +468,7 @@ export class CharacterRuntime {
       this.registry.reset(guildId); emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "privacy_changed" }); throw new SocialOutputSuppressed();
     }
     const threshold = resolveSimpleThreshold(profile.chat.participation, channelId, kind);
-    // Text only goes to someone speaking to the bot or an open question. A reply that came with
-    // an emoji keeps the emoji when the message turns out to be for someone else.
+    // Text never goes to a message for someone else. A reply that came with an emoji keeps the emoji.
     const notAddressed = outcome.action === "reply" && !addresseeAllowsReply(outcome.addressee);
     const proposed = notAddressed && actions.react && outcome.emojiChoice ? "react" : outcome.action;
     let admission = outcome.status !== "valid" ? outcome.failure ?? "decision_failed" : proposed === "ignore" ? "model_ignore" :

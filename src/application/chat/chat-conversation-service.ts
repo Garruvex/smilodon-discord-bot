@@ -368,14 +368,15 @@ export class ChatConversationService {
           this.trackBackground(work);
         });
       };
+      const repliesEnabled = input.optionalRepliesEnabled !== false;
       const contextualAvailability = isOptionalInteraction(input.interaction) ? {
-        continuation: { text: this.scheduler.outputAvailable(key, "text", { ...limits, continuation: true }), reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits) },
-        spontaneous: { text: this.scheduler.outputAvailable(key, "text", { ...limits, continuation: false }), reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits) },
+        continuation: { text: repliesEnabled && this.scheduler.outputAvailable(key, "text", { ...limits, continuation: true }), reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits) },
+        spontaneous: { text: repliesEnabled && this.scheduler.outputAvailable(key, "text", { ...limits, continuation: false }), reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits) },
       } : null;
       const response = await runTurn({ ...input,
         ...(contextualAvailability ? { contextualActionAvailability: contextualAvailability } : {}),
         ...(!isExplicitInteraction(input.interaction) ? { optionalActionsAvailable: {
-          text: contextualAvailability ? contextualAvailability.continuation.text || contextualAvailability.spontaneous.text : this.scheduler.outputAvailable(key, "text", limits),
+          text: contextualAvailability ? contextualAvailability.continuation.text || contextualAvailability.spontaneous.text : repliesEnabled && this.scheduler.outputAvailable(key, "text", limits),
           reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits),
         } } : {}),
         canExecute: async () => !input.canExecute || await input.canExecute(),

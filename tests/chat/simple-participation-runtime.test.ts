@@ -99,8 +99,8 @@ describe("simple participation", () => {
       expect(result.reactionEmoji).toBe("🎉"); expect(result.conversationDecision?.decision.action).toBe("reply_and_react");
     } finally { service.stopScheduling(); await service.drain(); }
   });
-  it("sends text only when the message speaks to the bot or asks an open question", async () => {
-    for (const [addressee, admission] of [["bot", "admitted"], ["open_question", "admitted"], ["someone_else", "not_addressed"], ["nobody", "not_addressed"], [undefined, "not_addressed"]] as const) {
+  it("never sends text to a message for someone else or with an unknown addressee", async () => {
+    for (const [addressee, admission] of [["bot", "admitted"], ["open_question", "admitted"], ["nobody", "admitted"], ["someone_else", "not_addressed"], [undefined, "not_addressed"]] as const) {
       const { profiles, reply, run, logger, service } = setup("simple", () => ({ action: "reply", emoji: "none", ...(addressee ? { addressee } : {}) }));
       await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
       try {
@@ -118,6 +118,29 @@ describe("simple participation", () => {
       await run({ interaction: "implicit_followup", current: message("current", 98_000, actorUserId, "I can't do anything about it"), history: [human, bot] });
       expect(decisions(logger)[0]).toMatchObject({ kind: "followup", admission: "not_addressed" }); expect(reply).not.toHaveBeenCalled();
     } finally { service.stopScheduling(); await service.drain(); }
+  });
+  it("treats optional replies and reactions as independent switches", async () => {
+    const replyOff = setup("simple", () => ({ action: "react", emoji: "😂" }));
+    await replyOff.profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    try {
+      const { result } = await replyOff.run({ current: message("current", 99_000, actorUserId, "my cat fell off the shelf"), historyReactionsEnabled: true, optionalRepliesEnabled: false });
+      expect(decisions(replyOff.logger)[0]).toMatchObject({ availableReply: false, availableReact: true, admission: "admitted" });
+      expect(replyOff.simpleCall.mock.calls[0]![0]).toContain('"availableActions":["react","ignore"]');
+      expect(replyOff.reply).not.toHaveBeenCalled(); expect(result.reactionEmoji).toBe("😂");
+    } finally { replyOff.service.stopScheduling(); await replyOff.service.drain(); }
+    const reactOff = setup();
+    await reactOff.profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId], reactionsEnabled: false } });
+    try {
+      await reactOff.run({ current: message("current", 99_000, actorUserId, "anyone know a good cat toy"), historyReactionsEnabled: true });
+      expect(decisions(reactOff.logger)[0]).toMatchObject({ availableReply: true, availableReact: false, admission: "admitted" });
+      expect(reactOff.reply).toHaveBeenCalledOnce();
+    } finally { reactOff.service.stopScheduling(); await reactOff.service.drain(); }
+    const bothOff = setup();
+    await bothOff.profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId], reactionsEnabled: false } });
+    try {
+      await bothOff.run({ current: message("current", 99_000, actorUserId, "anyone know a good cat toy"), historyReactionsEnabled: true, optionalRepliesEnabled: false });
+      expect(bothOff.simpleCall).not.toHaveBeenCalled(); expect(bothOff.reply).not.toHaveBeenCalled();
+    } finally { bothOff.service.stopScheduling(); await bothOff.service.drain(); }
   });
   it("keeps only the emoji when a reply with one was for someone else", async () => {
     const { profiles, reply, run, logger, service } = setup("simple", () => ({ action: "reply", emoji: "😂", addressee: "someone_else" }));

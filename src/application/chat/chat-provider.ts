@@ -23,6 +23,8 @@ export interface ChatRequest {
   characterEvaluation?: boolean;
   currentBurst?: readonly ChannelHistoryMessage[];
   optionalActionsAvailable?: { text: boolean; reaction: boolean };
+  // The participation switch for optional text. Unset means on; explicit requests ignore it.
+  optionalRepliesEnabled?: boolean;
   candidateId?: string;
   turnSignal?: AbortSignal;
   turnDeadlineAt?: number;
