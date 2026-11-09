@@ -113,7 +113,7 @@ export const enChat: SettingsTextCatalog = {
 
   "chat.replies.history-reactions": {
     label: "History reactions",
-    description: "React to other messages seen during a chat turn.",
+    description: "While answering a request, also react to other messages it sees.",
   },
   "chat.replies.history-reactions.enabled": { label: "History reactions", description: "On or off." },
 

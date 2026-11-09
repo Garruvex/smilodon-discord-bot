@@ -295,6 +295,16 @@ describe("production Discord adapter to effect paths", () => {
     expect(fixture.decision).toHaveBeenCalledOnce(); expect(fixture.reply).not.toHaveBeenCalled();
     expect(fixture.sent).toEqual([]); expect(fixture.reacted).toEqual([`${fixture.source.id}:👍`]);
   });
+  it("sends an optional reaction with the history reactions setting off, and none with the optional reactions switch off", async () => {
+    const allowed = await setup("followup", "react");
+    await allowed.profiles.update(guildId, { historyReactions: false });
+    await allowed.execute();
+    expect(allowed.reacted).toEqual([`${allowed.source.id}:👍`]);
+    const switchedOff = await setup("followup", "react");
+    await switchedOff.profiles.update(guildId, { chatParticipation: { reactionsEnabled: false } });
+    await switchedOff.execute();
+    expect(switchedOff.reacted).toEqual([]);
+  });
   it.each(["failed", "invalid_generation", "revoked", "shadow"] as const)("cannot bypass authorization/effect ownership on %s", async (behavior) => {
     const fixture = await setup("followup", behavior); await fixture.execute();
     expect(fixture.decision).toHaveBeenCalledOnce();

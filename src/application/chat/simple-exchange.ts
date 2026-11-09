@@ -3,10 +3,12 @@ import type { ChannelHistoryMessage } from "./chat-provider.js";
 
 export type SimpleKind = "followup" | "joining";
 export type FollowupBasis = "linked" | "open_exchange";
-export type SimpleExclusion = "recipient_correction" | "addressed_elsewhere";
+export type SimpleExclusion = "recipient_correction";
+// addressedElsewhere: the message is unambiguously for another person. It still gets a kind,
+// because the bot may react to it; the caller must not offer text.
 export type SimpleClassification =
-  | { kind: SimpleKind; basis: FollowupBasis | null; anchorMessageId: string | null; excluded?: undefined }
-  | { excluded: SimpleExclusion; kind?: undefined; basis?: undefined; anchorMessageId?: undefined };
+  | { kind: SimpleKind; basis: FollowupBasis | null; anchorMessageId: string | null; addressedElsewhere?: true; excluded?: undefined }
+  | { excluded: SimpleExclusion; kind?: undefined; basis?: undefined; anchorMessageId?: undefined; addressedElsewhere?: undefined };
 
 const maxChainDepth = 24;
 
@@ -21,9 +23,10 @@ export function classifySimpleTurn(input: { events: readonly ChannelHistoryMessa
   const byId = new Map(history.map((event) => [event.messageId, event]));
   const isBot = (event: ChannelHistoryMessage): boolean => event.authorId === botId;
 
-  // Rule 2: an explicit exclusion, checked before any follow-up basis.
+  // Rule 2: an explicit exclusion, checked before any follow-up basis. A message for someone
+  // else is not excluded: it continues through the rules below and is marked text-free.
   if (isRecipientCorrection(current.content)) return { excluded: "recipient_correction" };
-  if (elsewhere(current, history, byId, botId, aliases)) return { excluded: "addressed_elsewhere" };
+  const marked = elsewhere(current, history, byId, botId, aliases) ? { addressedElsewhere: true as const } : {};
 
   // Rule 3: an explicit reply chain into an exchange holding a confirmed bot reply to this author.
   const visited = new Set<string>(); let cursor = current.replyToMessageId ? byId.get(current.replyToMessageId) : undefined;
@@ -32,7 +35,7 @@ export function classifySimpleTurn(input: { events: readonly ChannelHistoryMessa
     const botReplyToAuthor = isBot(cursor) && cursor.replyToAuthorId === current.authorId;
     const ownMessageBotAnswered = !isBot(cursor) && cursor.authorId === current.authorId &&
       history.some((event) => isBot(event) && event.replyToMessageId === cursor!.messageId && event.replyToAuthorId === cursor!.authorId);
-    if (botReplyToAuthor || ownMessageBotAnswered) return { kind: "followup", basis: "linked", anchorMessageId: cursor.messageId };
+    if (botReplyToAuthor || ownMessageBotAnswered) return { kind: "followup", basis: "linked", anchorMessageId: cursor.messageId, ...marked };
     cursor = cursor.replyToMessageId ? byId.get(cursor.replyToMessageId) : undefined;
   }
 
@@ -44,9 +47,9 @@ export function classifySimpleTurn(input: { events: readonly ChannelHistoryMessa
   if (last && last.timestampMs >= startedAt &&
       !history.some((event) => event.timestampMs > last.timestampMs && event.authorId === current.authorId &&
         elsewhere(event, history.filter((candidate) => candidate.timestampMs < event.timestampMs), byId, botId, aliases))) {
-    return { kind: "followup", basis: "open_exchange", anchorMessageId: last.messageId };
+    return { kind: "followup", basis: "open_exchange", anchorMessageId: last.messageId, ...marked };
   }
-  return { kind: "joining", basis: null, anchorMessageId: null };
+  return { kind: "joining", basis: null, anchorMessageId: null, ...marked };
 }
 
 // An unambiguous address to another human. Replying to one's own message is not one.

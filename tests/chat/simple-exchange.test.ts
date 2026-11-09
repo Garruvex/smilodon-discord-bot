@@ -50,11 +50,16 @@ describe("simple participation classification", () => {
     const events = [...answered(start), message("aside", start - 500, "alice", "ok", { replyToMessageId: "bobmsg", replyToAuthorId: "bob" })];
     expect(classify(message("now", start, "alice", "so then?"), events)).toMatchObject({ kind: "joining" });
   });
-  it("excludes an explicit recipient correction and a reply to another human, even inside a bot exchange", () => {
+  it("excludes an explicit recipient correction, even inside a bot exchange", () => {
     const events = [...answered(start), message("bobmsg", start - 800, "bob", "hey alice")];
     expect(classify(message("now", start, "alice", "I'm not talking to you"), events)).toEqual({ excluded: "recipient_correction" });
-    expect(classify(message("now", start, "alice", "yes sure", { replyToMessageId: "bobmsg", replyToAuthorId: "bob" }), events)).toEqual({ excluded: "addressed_elsewhere" });
-    expect(classify(message("now", start, "alice", "<@123> check this"), events)).toEqual({ excluded: "addressed_elsewhere" });
+  });
+  it("marks a reply or mention to another human but keeps its kind, so it can still get a reaction", () => {
+    const events = [...answered(start), message("bobmsg", start - 800, "bob", "hey alice")];
+    expect(classify(message("now", start, "alice", "yes sure", { replyToMessageId: "bobmsg", replyToAuthorId: "bob" }), events)).toMatchObject({ kind: "followup", basis: "open_exchange", addressedElsewhere: true });
+    expect(classify(message("now", start, "alice", "<@123> check this"), events)).toMatchObject({ kind: "followup", basis: "open_exchange", addressedElsewhere: true });
+    expect(classify(message("now", start, "carol", "<@123> check this"), events)).toMatchObject({ kind: "joining", addressedElsewhere: true });
+    expect(classify(message("now", start, "alice", "so then?"), events)).not.toHaveProperty("addressedElsewhere");
   });
   it("treats a reply to the author's own message as no exclusion", () => {
     const events = answered(start - 4000);

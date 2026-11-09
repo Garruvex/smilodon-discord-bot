@@ -199,7 +199,7 @@ describe("simple participation", () => {
       const first = await run({ interaction: "implicit_followup", activityLimits, current: message("one", 98_000, actorUserId, "and the lint?"), history: [human, bot] });
       expect(first.deliver).toHaveBeenCalledOnce();
       setNow(130_000);
-      const second = await run({ interaction: "implicit_followup", activityLimits, current: message("two", 129_000, actorUserId, "and the tests?"), history: [human, bot, message("one", 98_000, actorUserId, "and the lint?")] });
+      const second = await run({ interaction: "implicit_followup", activityLimits, current: message("two", 129_000, actorUserId, "and the tests?"), history: [human, bot, message("one", 98_000, actorUserId, "and the lint?")], optionalReactionsEnabled: false });
       // The limit is known before any model call, so nothing is decided or generated.
       expect(second.deliver).not.toHaveBeenCalled();
       expect(reply).toHaveBeenCalledTimes(1); expect(simpleCall).toHaveBeenCalledTimes(1);
@@ -259,18 +259,45 @@ describe("simple participation", () => {
     quiet.runtime.bindEmojiSource(() => [{ id: "1", name: "blob_1", animated: false }]);
     await quiet.profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
     try {
-      await quiet.run({ current: message("current", 99_000, actorUserId, "anyone know a good dog toy"), historyReactionsEnabled: false });
+      await quiet.run({ current: message("current", 99_000, actorUserId, "anyone know a good dog toy"), optionalReactionsEnabled: false });
       expect(decisions(quiet.logger)[0]).toMatchObject({ emojiOptions: 0, availableReact: false });
       expect(quiet.simpleCall.mock.calls[0]![0]).not.toContain("blob_1");
     } finally { quiet.service.stopScheduling(); await quiet.service.drain(); }
   });
-  it("skips the model for a disabled kind and a reply to another human, and reports exclusions at debug level only", async () => {
+  it("offers a message for someone else a reaction but never text, inside a follow-up", async () => {
+    const human = message("ask", 90_000, actorUserId, "can you check the build"); const bot = message("answer", 95_000, "bot", "it passed", { replyToMessageId: "ask", replyToAuthorId: actorUserId });
+    const current = message("current", 98_000, actorUserId, "<@123> the bot says dinner is all you can eat");
+    const reacts = setup("simple", () => ({ action: "react", emoji: "😂" }));
+    await reacts.profiles.update(guildId, { chatParticipation: { continuationEnabled: true } });
+    try {
+      const { result, deliver } = await reacts.run({ interaction: "implicit_followup", current, history: [human, bot], historyReactionsEnabled: true });
+      expect(decisions(reacts.logger)[0]).toMatchObject({ kind: "followup", availableReply: false, availableReact: true, proposedAction: "react", admission: "admitted" });
+      expect(reacts.simpleCall.mock.calls[0]![0]).toContain('"availableActions":["react","ignore"]');
+      expect(reacts.reply).not.toHaveBeenCalled(); expect(deliver).not.toHaveBeenCalled(); expect(result.reactionEmoji).toBe("😂");
+    } finally { reacts.service.stopScheduling(); await reacts.service.drain(); }
+    const replies = setup("simple", () => ({ action: "reply", emoji: "none", addressee: "bot" }));
+    await replies.profiles.update(guildId, { chatParticipation: { continuationEnabled: true } });
+    try {
+      const { deliver } = await replies.run({ interaction: "implicit_followup", current, history: [human, bot], historyReactionsEnabled: true });
+      expect(decisions(replies.logger)[0]).toMatchObject({ availableReply: false, admission: "invalid_output" });
+      expect(replies.reply).not.toHaveBeenCalled(); expect(deliver).not.toHaveBeenCalled();
+    } finally { replies.service.stopScheduling(); await replies.service.drain(); }
+  });
+  it("offers optional reactions without the history reactions flag", async () => {
+    const { profiles, run, logger, service } = setup("simple", () => ({ action: "react", emoji: "😂" }));
+    await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    try {
+      const { result } = await run({ current: message("current", 99_000, actorUserId, "my cat fell off the shelf"), historyReactionsEnabled: false });
+      expect(decisions(logger)[0]).toMatchObject({ availableReact: true, admission: "admitted" }); expect(result.reactionEmoji).toBe("😂");
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+  it("skips the model for a disabled kind and for a reply to another human when no reaction is possible, and reports exclusions at debug level only", async () => {
     const { profiles, run, logger, simpleCall, service } = setup();
     await profiles.update(guildId, { chatParticipation: { continuationEnabled: true } });
     try {
       await run({ current: message("a", 99_000, actorUserId, "random chatter") });
       const bob = message("bob", 98_000, "bob", "hey alice");
-      await run({ interaction: "implicit_followup", current: message("b", 99_500, actorUserId, "yes sure", { replyToMessageId: "bob", replyToAuthorId: "bob" }), history: [bob] });
+      await run({ interaction: "implicit_followup", current: message("b", 99_500, actorUserId, "yes sure", { replyToMessageId: "bob", replyToAuthorId: "bob" }), history: [bob], optionalReactionsEnabled: false });
       expect(simpleCall).not.toHaveBeenCalled(); expect(decisions(logger)).toHaveLength(0);
       expect(exclusions(logger).map((entry) => entry.reason)).toEqual(["joining_disabled", "addressed_elsewhere"]);
       expect(fieldsOf(logger.info, "chat.simple_exclusion")).toHaveLength(0);

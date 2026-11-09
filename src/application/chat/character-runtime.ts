@@ -442,13 +442,16 @@ export class CharacterRuntime {
     const classification = classifySimpleTurn({ events, current, botId, aliases: request.aliasCandidates, startedAt: this.startedAt, recentMessages: settings.context.decisionMessages });
     if (classification.excluded) return exclude(classification.excluded);
     const { kind, basis } = classification;
+    const availability = request.contextualActionAvailability?.[kind === "followup" ? "continuation" : "spontaneous"] ?? request.optionalActionsAvailable ?? { text: true, reaction: true };
+    const canReact = availability.reaction && participation.reactionsEnabled !== false;
+    // A message for someone else never gets text, so without a possible reaction there is nothing to decide.
+    if (classification.addressedElsewhere && !canReact) return exclude("addressed_elsewhere");
     if (!(kind === "followup" ? participation.continuationEnabled : participation.spontaneousEnabled)) return exclude(kind === "followup" ? "followups_disabled" : "joining_disabled", { kind, basis });
     // A linked follow-up into an exchange from before this process started waits out one idle window,
     // because the in-memory exchange counters did not survive the restart.
     if (kind === "followup" && basis === "linked" && turn.now - this.startedAt <= exchangeIdleMs &&
         (events.find((item) => item.messageId === classification.anchorMessageId)?.timestampMs ?? Infinity) < this.startedAt) return exclude("exchange_restart_wait", { kind, basis });
-    const availability = request.contextualActionAvailability?.[kind === "followup" ? "continuation" : "spontaneous"] ?? request.optionalActionsAvailable ?? { text: true, reaction: true };
-    const actions = { reply: availability.text, react: availability.reaction && participation.reactionsEnabled !== false };
+    const actions = { reply: availability.text && !classification.addressedElsewhere, react: canReact };
     if (!actions.reply && !actions.react) return exclude("no_action_available", { kind, basis });
 
     const thoughtsModule = this.registry.get<ThoughtsModule>("thoughts");

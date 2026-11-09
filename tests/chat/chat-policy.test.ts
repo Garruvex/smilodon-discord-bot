@@ -41,6 +41,14 @@ describe("ChatPolicy.admit", () => {
     expect(policy.admit(p, channelId, "observation", human()).reasons).toEqual(["history_disabled", "memory_disabled"]);
   });
 
+  it("lets the participation switch alone govern optional reactions, leaving history reactions behind their feature", () => {
+    const p = profile(); p.features.historyReactions = false;
+    expect(policy.admit(p, channelId, "optional_reaction", human()).admitted).toBe(true);
+    expect(policy.admit(p, channelId, "history_reaction", human()).reasons).toEqual(["history_reactions_disabled"]);
+    p.features.historyReactions = true; p.chat.participation = { ...p.chat.participation!, reactionsEnabled: false };
+    expect(policy.admit(p, channelId, "optional_reaction", human()).reasons).toEqual(["optional_reactions_disabled"]);
+  });
+
   it("reports every disabled control and keeps group participation behind its channel list", () => {
     const p = profile(); p.features.ambientReplies = false; p.features.reactionReplies = false;
     p.chat.participation = { ...defaultParticipation, spontaneousEnabled: true, spontaneousChannelIds: [] };

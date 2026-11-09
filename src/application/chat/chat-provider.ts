@@ -25,6 +25,8 @@ export interface ChatRequest {
   optionalActionsAvailable?: { text: boolean; reaction: boolean };
   // The participation switch for optional text. Unset means on; explicit requests ignore it.
   optionalRepliesEnabled?: boolean;
+  // The same for optional reactions, independent of historyReactionsEnabled.
+  optionalReactionsEnabled?: boolean;
   candidateId?: string;
   turnSignal?: AbortSignal;
   turnDeadlineAt?: number;

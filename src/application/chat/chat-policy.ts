@@ -10,7 +10,7 @@ import { passiveChannelAllowed, resolveParticipation } from "./participation-pol
 export const chatInteractions = ["direct_mention", "explicit_reply", "bare_ping", "name_address", "implicit_followup", "group_conversation", "reaction"] as const;
 export type ChatInteraction = typeof chatInteractions[number];
 // Reading or reacting to a source without starting a turn. Not a trigger.
-export type ChatSourceUse = "observation" | "background_observation" | "history_reaction";
+export type ChatSourceUse = "observation" | "background_observation" | "history_reaction" | "optional_reaction";
 export type ChatPurpose = ChatInteraction | ChatSourceUse;
 
 export const isAddressedInteraction = (interaction: ChatInteraction): boolean =>
@@ -23,7 +23,7 @@ export const isOptionalInteraction = (interaction: ChatInteraction): interaction
 export type PassiveScopeReason = "observation_not_selected" | "history_disabled" | "memory_disabled" | "context_channel_disabled";
 export type ActorReason = "context_opt_out" | "member_unavailable" | "restricted_role" | "channel_denied" | "missing_chat_role";
 export type AdmissionReason = "chat_disabled" | PassiveScopeReason | ActorReason | "ambient_disabled" | "continuation_disabled" |
-  "spontaneous_disabled" | "spontaneous_not_selected" | "reaction_disabled" | "unknown_bot_output" | "history_reactions_disabled" | "background_scope_denied";
+  "spontaneous_disabled" | "spontaneous_not_selected" | "reaction_disabled" | "unknown_bot_output" | "history_reactions_disabled" | "optional_reactions_disabled" | "background_scope_denied";
 export type Admission = { admitted: true; reasons: readonly [] } | { admitted: false; reason: AdmissionReason; reasons: readonly AdmissionReason[] };
 
 // The event's author, resolved against guild roles by ChatPolicy.admit.
@@ -66,6 +66,8 @@ export function admitChat(profile: GuildConfiguration, channelId: string, purpos
   if (purpose === "reaction" && !profile.features.reactionReplies) reasons.push("reaction_disabled");
   if (purpose === "reaction" && actor && !actor.bot) reasons.push("unknown_bot_output");
   if (purpose === "history_reaction" && (!profile.features.historyReactions || participation.reactionsEnabled === false)) reasons.push("history_reactions_disabled");
+  // The reaction an optional turn decided on. History reactions are a separate extra on chat replies.
+  if (purpose === "optional_reaction" && participation.reactionsEnabled === false) reasons.push("optional_reactions_disabled");
   const channelSelected = profile.channels.chatbot.size === 0 || profile.channels.chatbot.has(channelId);
   // Bot-authored sources are reaction targets or verified chat output: their
   // author grants nothing, and explicit routing keeps the direct channel scope.

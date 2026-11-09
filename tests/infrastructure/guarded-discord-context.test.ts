@@ -9,6 +9,7 @@ import type { GuildConfigurationProvider } from "../../src/config/guild-configur
 import { SocialChatEligibility } from "../../src/infrastructure/discord/behaviors/social-chat-eligibility.js";
 import { ChatTurnSupport } from "../../src/infrastructure/discord/behaviors/chat-turn-support.js";
 import { GuardedConversationContext } from "../../src/application/chat/guarded-conversation-context.js";
+import { classifySimpleTurn } from "../../src/application/chat/simple-exchange.js";
 import { createSqliteDatabaseConnection } from "../../src/infrastructure/database/sqlite-database.js";
 import { SqliteMemoryRepository } from "../../src/infrastructure/persistence/sqlite-memory-repository.js";
 import { SqliteMessageOriginStore } from "../../src/infrastructure/persistence/sqlite-message-origin-store.js";
@@ -73,6 +74,18 @@ describe("Discord context guard", () => {
     await context.participants(["bob"]); await context.images(2); await context.sessions([]);
     for (let index = 0; index < 20; index++) expect(await context.validate()).toBe(true);
     expect(fetchMember).toHaveBeenCalledTimes(2);
+  });
+  it("recognises an open exchange after an optional reply sent without a Discord reply link", async () => {
+    const { support, current, old, profile, messages, origins } = fixture(true);
+    const prior = await GuardedConversationContext.open(support.createContextPort(current), { count: 40, budget: 12000, burstIds: [] });
+    const bot = { ...old, id: "answer", content: "sure", createdTimestamp: current.createdTimestamp + 50, author: { ...old.author, id: "bot", bot: true }, reference: null } as Message;
+    messages.set(bot.id, bot);
+    await origins.record({ guildId: profile.guildId, channelId: "channel", messageId: bot.id, origin: "chat", sourceMessageId: current.id,
+      contextProvenance: prior.provenance(bot.content), createdAt: bot.createdTimestamp });
+    const later = { ...current, id: "later", content: "and tomorrow?", createdTimestamp: current.createdTimestamp + 100 } as Message; messages.set(later.id, later);
+    const next = await GuardedConversationContext.open(support.createContextPort(later), { count: 40, budget: 12000, burstIds: [] });
+    expect(next.history.find((event) => event.messageId === bot.id)).toMatchObject({ replyToMessageId: current.id, replyToAuthorId: current.author.id });
+    expect(classifySimpleTurn({ events: next.history, current: next.current, botId: "bot", startedAt: 0, recentMessages: 10 })).toMatchObject({ kind: "followup", basis: "open_exchange", anchorMessageId: bot.id });
   });
   it.each(["user", "role"] as const)("excludes %s opt-outs from both literal messages and derived bot context", async (kind) => {
     const { support, current, old, profile, members, messages, origins } = fixture(true);

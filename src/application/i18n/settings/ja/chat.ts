@@ -89,7 +89,7 @@ export const jaChat: SettingsTextCatalog = {
   "chat.replies.reaction-replies.max-wait": { label: "最長待ち時間（分）", description: "最長の待ち時間。間のランダムな時間で判断" },
   "chat.replies.reaction-replies.min-reactions": { label: "最小リアクション数", description: "先に必要なリアクションの人数" },
 
-  "chat.replies.history-reactions": { label: "履歴リアクション", description: "会話中に見える他のメッセージにボットがリアクションする" },
+  "chat.replies.history-reactions": { label: "履歴リアクション", description: "依頼に答える間、見える他のメッセージにもリアクションする" },
   "chat.replies.history-reactions.enabled": { label: "履歴リアクション", description: "オンまたはオフ" },
 
   "chat.abilities": { title: "機能", description: "返信中にモデルができること" },

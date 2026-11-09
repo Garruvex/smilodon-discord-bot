@@ -369,15 +369,16 @@ export class ChatConversationService {
         });
       };
       const repliesEnabled = input.optionalRepliesEnabled !== false;
+      const reactionsAllowed = isOptionalInteraction(input.interaction) ? input.optionalReactionsEnabled !== false : input.historyReactionsEnabled === true;
       const contextualAvailability = isOptionalInteraction(input.interaction) ? {
-        continuation: { text: repliesEnabled && this.scheduler.outputAvailable(key, "text", { ...limits, continuation: true }), reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits) },
-        spontaneous: { text: repliesEnabled && this.scheduler.outputAvailable(key, "text", { ...limits, continuation: false }), reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits) },
+        continuation: { text: repliesEnabled && this.scheduler.outputAvailable(key, "text", { ...limits, continuation: true }), reaction: reactionsAllowed && this.scheduler.outputAvailable(key, "reaction", limits) },
+        spontaneous: { text: repliesEnabled && this.scheduler.outputAvailable(key, "text", { ...limits, continuation: false }), reaction: reactionsAllowed && this.scheduler.outputAvailable(key, "reaction", limits) },
       } : null;
       const response = await runTurn({ ...input,
         ...(contextualAvailability ? { contextualActionAvailability: contextualAvailability } : {}),
         ...(!isExplicitInteraction(input.interaction) ? { optionalActionsAvailable: {
           text: contextualAvailability ? contextualAvailability.continuation.text || contextualAvailability.spontaneous.text : repliesEnabled && this.scheduler.outputAvailable(key, "text", limits),
-          reaction: input.historyReactionsEnabled === true && this.scheduler.outputAvailable(key, "reaction", limits),
+          reaction: reactionsAllowed && this.scheduler.outputAvailable(key, "reaction", limits),
         } } : {}),
         canExecute: async () => !input.canExecute || await input.canExecute(),
       }, async (result) => {

@@ -82,7 +82,7 @@ Do not introduce automatic utility-model fallback in simple mode. Log effective 
 ## Processing flow
 
 1. Resolve the event and run existing mandatory access/eligibility checks. Explicit requests continue along their existing direct path.
-2. For optional turns, evaluate channel observation, participation settings, opt-outs, cooldowns, and action budgets before inference. Exclude unambiguous replies to another human and explicit recipient corrections. Preserve existing qualified handling of quotes, aliases, and mentions; do not turn every occurrence of another person's name into a hard exclusion.
+2. For optional turns, evaluate channel observation, participation settings, opt-outs, cooldowns, and action budgets before inference. Exclude explicit recipient corrections, and limit unambiguous replies to another human to a reaction. Preserve existing qualified handling of quotes, aliases, and mentions; do not turn every occurrence of another person's name into a hard exclusion.
 3. Classify the turn as a follow-up or joining using the rule below. Apply that kind's switch, channel scope, cooldowns and budgets. If the turn's kind has no available action, skip the call. The model does not select a participation mode or enable a disabled route.
 4. Bind the target to the current message, acquire the approved context lease, and construct the package below.
 5. Ask the selected provider one request with two questions: the action (only available actions plus `ignore`), and the emoji (the verified allowlist plus `none`). When `thoughts` is enabled and `reply` is available, send the inner-thought request concurrently (see Inner thoughts on the simple route); it never delays or alters the decision. If no active action is available, skip inference altogether. App-owned action availability is enforced again on return.
@@ -103,14 +103,16 @@ Use a new app-owned structural binding helper, not `exchangeBranch` as an eligib
 Apply these rules in order:
 
 1. Explicit requests, including a reply to a bot message, use the existing direct path.
-2. An unambiguous address to another human or an explicit exclusion such as “I wasn't talking to you” is denied. `isRecipientCorrection` identifies an exclusion; it must not establish follow-up eligibility. A complaint about the bot's behavior is not automatically the same kind of correction.
-3. Classify as **follow-up (linked)** when the current message has an explicit reply-chain connection, entirely within authorized context, to an exchange containing a confirmed bot reply to this author. Another human's exchange does not confer that binding. The exclusion in step 2 takes precedence even when an older ancestor is a bot exchange.
+2. An explicit exclusion such as “I wasn't talking to you” is denied. `isRecipientCorrection` identifies an exclusion; it must not establish follow-up eligibility. A complaint about the bot's behavior is not automatically the same kind of correction. An unambiguous address to another human continues through the rules below, but is reaction-only: text is not offered, and it is skipped before inference when no reaction is possible.
+3. Classify as **follow-up (linked)** when the current message has an explicit reply-chain connection, entirely within authorized context, to an exchange containing a confirmed bot reply to this author. Another human's exchange does not confer that binding. The reaction-only limit in step 2 still applies even when an older ancestor is a bot exchange.
 4. Otherwise classify as **follow-up (open exchange)** when all of these hold:
    - the bot's most recent message in this channel, within authorized context, was addressed to this author: a direct reply to them, or a delivered follow-up admitted for them;
    - that bot message is among the last `decisionMessages` messages before the current one, however long ago it was. People here rarely use Discord's reply, so no timer decides this; the model reads the elapsed time;
    - no message from this author between that bot message and the current one is an unambiguous address to another human;
    - the current message itself is not excluded by step 2.
 5. Otherwise classify as **joining**, with any recent-activity hints explicitly marked uncertain.
+
+Optional reactions are controlled by the `reactionsEnabled` participation switch alone. The separate `historyReactions` feature only covers extra reactions on other messages during an explicit request.
 
 Linked and open-exchange follow-ups are one kind for settings and budgets. The decision and exclusion log events carry the basis (`linked` or `open_exchange`) so the logs can tell them apart.
 

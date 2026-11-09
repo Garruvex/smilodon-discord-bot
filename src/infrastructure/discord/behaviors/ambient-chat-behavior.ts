@@ -4,6 +4,7 @@ import type { Logger } from "pino";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
 import { SocialOutputSuppressed, type MessageOriginStore } from "../../../application/chat/message-origin-store.js";
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
+import { isOptionalInteraction } from "../../../application/chat/chat-policy.js";
 import { resolveParticipation } from "../../../application/chat/participation-policy.js";
 import { conversationEffects } from "../../../application/chat/conversation-effects.js";
 
@@ -97,7 +98,7 @@ export class AmbientChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
             ? await message.channel.messages.fetch(effects.targetMessageId).catch(() => null) : message;
           const reserve = (): ((success: boolean) => void) | null => this.conversation!.reserveReaction(message.guildId, message.channelId,
             resolveParticipation(this.profiles.find(message.guildId)?.chat.participation, message.channelId).limits);
-          if (effects.reactionEmoji && reactionTarget && await this.turnSupport.isEligible(reactionTarget, "history_reaction")) {
+          if (effects.reactionEmoji && reactionTarget && await this.turnSupport.isEligible(reactionTarget, isOptionalInteraction(interaction) ? "optional_reaction" : "history_reaction")) {
             const release = reserve();
             if (release) { try { await withDiscordCaller("chat_reaction", () => reactionTarget.react(effects.reactionEmoji!)); release(true); } catch { release(false); } }
           }
