@@ -821,7 +821,7 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
     };
     let relationAttempts = 0;
     const flakyRelationsEngine: MemoryEngine = {
-      recall: (input) => engine.recall(input),
+      recall: (input) => engine.recall(input), recallAliases: (input) => engine.recallAliases(input),
       ingest: (input) => engine.ingest(input),
       ingestRelations: (input) => {
         relationAttempts += 1;
@@ -1017,7 +1017,7 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
     const started = new Promise<void>((resolve) => { ingestStarted = resolve; });
     const gate = new Promise<void>((resolve) => { releaseIngest = resolve; });
     const gatedEngine: MemoryEngine = {
-      recall: (input) => engine.recall(input),
+      recall: (input) => engine.recall(input), recallAliases: (input) => engine.recallAliases(input),
       ingest: async (input) => {
         ingestStarted();
         await gate;
@@ -1244,7 +1244,7 @@ describe("ChannelSummaryScheduler — strict ingestion for background jobs", () 
       statement: "organizes raids", evidenceMessageIds: ["m1"],
     }]);
     const failingEngine: MemoryEngine = {
-      recall: () => Promise.reject(new Error("not used")),
+      recall: () => Promise.reject(new Error("not used")), recallAliases: () => Promise.reject(new Error("not used")),
       ingest: () => Promise.resolve({ ingested: [], removed: 0, rejected: 0, failed: 1 }),
       ingestRelations: () => Promise.resolve({ created: 0, rejected: 0 }),
       listUserMemories: () => Promise.reject(new Error("not used")),

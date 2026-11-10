@@ -7,6 +7,8 @@ import { CharacterRuntime } from "../../src/application/chat/character-runtime.j
 import { AuthorizedConversationService as ChatConversationService } from "../helpers/authorized-conversation-service.js";
 import { SqliteChatStateStore } from "../../src/infrastructure/persistence/sqlite-chat-state-store.js";
 import { DefaultMemoryEngine } from "../../src/application/memory/memory-engine.js";
+// The production facade, so a method it fails to expose shows up here.
+import { createGuardedMemoryEngine } from "../../src/application/context/guarded-memory-gateway.js";
 import { createSqliteDatabaseConnection, type SqliteDatabaseConnection } from "../../src/infrastructure/database/sqlite-database.js";
 import { SqliteMemoryRepository } from "../../src/infrastructure/persistence/sqlite-memory-repository.js";
 import { SimpleParticipationService } from "../../src/application/chat/simple-decision.js";
@@ -47,7 +49,7 @@ function setup(instance: DecisionContract = "simple", decide: (prompt: string) =
   now = 100_000;
   const simpleCall = vi.fn((prompt: string) => Promise.resolve(decide(prompt)));
   runtime.bindSimpleDecision(new SimpleParticipationService({ provider: { generateCharacterData: simpleCall }, source: "reply", endpoint: "reply-provider", model: "decision-model", reasoningEffort: "low" }), instance);
-  const service = new ChatConversationService(provider, new SqliteChatStateStore(connection.database), new DefaultMemoryEngine(repository), undefined, undefined, undefined, null, null, null, null, null, null, null, null, runtime, () => now);
+  const service = new ChatConversationService(provider, new SqliteChatStateStore(connection.database), createGuardedMemoryEngine(repository), undefined, undefined, undefined, null, null, null, null, null, null, null, null, runtime, () => now);
   const run: Harness["run"] = async (overrides) => {
     const deliver = vi.fn(() => Promise.resolve("sent")); const { current, history = [], ...rest } = overrides;
     for (const event of history) service.observe(guildId, channelId, event);

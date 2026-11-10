@@ -11,18 +11,26 @@ import { immutableSnapshot } from "./immutable-snapshot.js";
 export function createGuardedMemoryEngine(...dependencies: ConstructorParameters<typeof DefaultMemoryEngine>): MemoryEngine {
   const core = new DefaultMemoryEngine(...dependencies);
   const now = dependencies[9] ?? ((): number => Date.now());
+  // Both recall paths take the same scope and durable-write checks before reaching the core.
+  const admit = async (input: MemoryRecallInput): Promise<MemoryRecallInput | null> => {
+    if (!isGuardedContext(input.context)) throw new SocialOutputSuppressed();
+    if (input.guildId !== input.context.scope.guildId || input.channelId !== input.context.scope.channelId ||
+      input.userId !== (input.context.scope.actorId ?? input.context.current.authorId)) throw new SocialOutputSuppressed();
+    if (!input.context.durableWritesAllowed) {
+      if (!await input.context.validate()) throw new SocialOutputSuppressed();
+      return null;
+    }
+    const { context, query, ...material } = input;
+    return { ...immutableSnapshot(material), context, ...(query ? { query } : {}), now: now() };
+  };
   const gateway: MemoryEngine = {
     recall: async (input) => {
-      if (!isGuardedContext(input.context)) throw new SocialOutputSuppressed();
-      if (input.guildId !== input.context.scope.guildId || input.channelId !== input.context.scope.channelId ||
-        input.userId !== (input.context.scope.actorId ?? input.context.current.authorId)) throw new SocialOutputSuppressed();
-      if (!input.context.durableWritesAllowed) {
-        if (!await input.context.validate()) throw new SocialOutputSuppressed();
-        return { memories: [], causalChains: [] };
-      }
-      const { context, query, ...material } = input;
-      const request: MemoryRecallInput = { ...immutableSnapshot(material), context, ...(query ? { query } : {}), now: now() };
-      return await core.recall(request);
+      const request = await admit(input);
+      return request ? await core.recall(request) : { memories: [], causalChains: [] };
+    },
+    recallAliases: async (input) => {
+      const request = await admit(input);
+      return request ? await core.recallAliases(request) : {};
     },
     ingest: async (input) => {
       if (!isGuardedContext(input.context) && !isBackgroundContext(input.context, "summary") && !isBackgroundContext(input.context, "memory_extraction")) throw new SocialOutputSuppressed();

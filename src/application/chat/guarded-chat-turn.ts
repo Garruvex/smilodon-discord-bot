@@ -105,7 +105,7 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
   // A simple-contract optional message is decided from recent messages and the names in it.
   // Memories, images, lore and the reply-chain summary load only once it chooses to reply, so an
   // ignore or a reaction never waits on an old memory source.
-  const decideFirst = isOptionalInteraction(input.interaction) && lease.currentEvent?.type === "message" && !!dependencies.memory.recallAliases &&
+  const decideFirst = isOptionalInteraction(input.interaction) && lease.currentEvent?.type === "message" &&
     dependencies.runtime?.decidesBeforeRecall(input.guildId, input.channelId) === true;
   const toAliasCandidates = (observation: { rows: readonly { alias: string; subjectId: string }[]; incomplete: boolean }): ChatRequest["aliasCandidates"] & object =>
     groupObservedAliasRows(observation.rows, lease.current.content).map((alias) => ({ ...alias, ...(observation.incomplete ? { incomplete: true } : {}) }));
@@ -125,7 +125,7 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
     });
   };
   const loadAliases = async (): Promise<ChatRequest["aliasCandidates"] & object> => {
-    const found = durableRecall ? await dependencies.memory.recallAliases!(recallInput).catch(recallFailed) : {};
+    const found = durableRecall ? await dependencies.memory.recallAliases(recallInput).catch(recallFailed) : {};
     return toAliasCandidates(await lease.aliases(found.aliasSources ?? [], lease.current.content, dependencies.now()));
   };
   const toCausalChains = (relations: readonly MemoryRelation[]): CausalChainLink[] => relations.filter((relation) => relation.kind === "consequence").map((relation) => ({
