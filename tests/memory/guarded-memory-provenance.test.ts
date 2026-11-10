@@ -77,6 +77,23 @@ describe("durable guarded memory claims", () => {
     expect(prepare).toHaveBeenCalledWith(["original"], expect.anything());
   });
 
+  it("leaves out memories it cannot confirm within a verification budget, and keeps the lease valid afterwards", async () => {
+    const { engine, context, fixture } = await setup(false);
+    const row = (await engine.ingest(fixtureMemoryIngest({ ...base, context }))).ingested[0]!;
+    fixture.port.audienceUserId = "alice";
+    let clock = 10_000; vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const read = fixture.port.read;
+    // Each source read waits on a rate limit long enough to spend the whole budget.
+    fixture.port.read = (id, signal): ReturnType<typeof read> => { if (id === "original") clock += 7_000; return read(id, signal); };
+    const unbounded = await GuardedConversationContext.open(fixture.port, { count: 0, budget: 12000, burstIds: [] });
+    expect(await unbounded.memories([row, { ...row, id: "copy" }])).toHaveLength(2);
+    expect(unbounded.verificationCutShort).toBe(false);
+    const bounded = await GuardedConversationContext.open(fixture.port, { count: 0, budget: 12000, burstIds: [] });
+    expect(await bounded.withVerificationBudget(6_000, () => bounded.memories([row, { ...row, id: "copy" }, { ...row, id: "third" }]))).toHaveLength(1);
+    expect(bounded.verificationCutShort).toBe(true);
+    expect(await bounded.validate()).toBe(true);
+  });
+
   it("never writes a claim from a revoked background snapshot", async () => {
     const { engine, context, deny } = await setup(); deny();
     await expect(engine.ingest(fixtureMemoryIngest({ ...base, context }))).rejects.toThrow();

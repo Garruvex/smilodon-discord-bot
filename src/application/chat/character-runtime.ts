@@ -121,6 +121,12 @@ export class CharacterRuntime {
       memorySharing: profile.chat.sharedMemoryEnabled === true, continuation: participation.continuationEnabled, spontaneous: participation.spontaneousEnabled,
       excluded: !profile.features.chatbot || resolveChannelMemoryMode(profile.chat.channelMemoryModes, channelId) === "disabled" };
   }
+  // Whether an optional guarded message turn here goes to the simple contract, whose decision
+  // reads only recent messages and names. Such a turn can decide before loading memories.
+  public decidesBeforeRecall(guildId: string, channelId: string): boolean {
+    const profile = this.profiles.find(guildId);
+    return !!profile && resolveDecisionContract(profile.chat.participation, channelId, this.instanceContract).contract === "simple";
+  }
   public contextAllowed(guildId: string, channelId: string): boolean {
     const profile = this.profiles.find(guildId); return !!profile && passiveChannelAllowed(profile, channelId) && this.capabilities(profile, channelId).context;
   }
@@ -513,7 +519,8 @@ export class CharacterRuntime {
     reportConversationDecision(this.logger, decision, "preflight", resolveConversationTrigger(request).interaction);
     // Character modules shape how the admitted reply sounds; they never took part in the decision.
     if (!request.characterEvaluation && !request.characterShadow) await this.registry.observe(current, turn);
-    const context = await this.registry.contribute(turn);
+    // A reaction sends no text, so it skips contributions; some read stored memory and would only delay it.
+    const context = proposed === "reply" ? await this.registry.contribute(turn) : [];
     const steering = proposed === "reply" && thought?.status === "valid" && !shadow && thought.stance && thought.stance !== "none" && thought.length ?
       [{ moduleId: "participation", text: `Planned approach: ${lengthText[thought.length]} ${stanceText[thought.stance]}. Stay natural and in character.` }] : [];
     request = { ...request, characterContext: [...(request.characterContext ?? []), ...context, ...steering,

@@ -634,6 +634,9 @@ export interface MemoryRelationIngestResult {
 
 export interface MemoryEngine {
   recall(input: MemoryRecallInput): Promise<MemoryContext>;
+  // Only the names in the message that match a remembered member alias, with no memory
+  // claims. A participation decision needs these to tell who a message is for.
+  recallAliases?(input: MemoryRecallInput): Promise<Pick<MemoryContext, "aliasCandidates" | "aliasSources">>;
   ingest(input: MemoryIngestInput): Promise<MemoryIngestResult>;
   ingestRelations(input: MemoryRelationIngestInput): Promise<MemoryRelationIngestResult>;
   listUserMemories(guildId: string, userId: string, channelId?: string): Promise<readonly Memory[]>;

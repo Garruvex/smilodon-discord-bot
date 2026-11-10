@@ -16,7 +16,7 @@ import { chatMemoryInstructions } from "./chat-memory-policy.js";
 import { guildKnowledgeInstructions } from "./guild-knowledge-policy.js";
 import { assertTurnActive } from "./turn-work-budget.js";
 import { effectiveChatCapabilities } from "./chat-capabilities.js";
-import type { MemoryEngine, MemoryContext } from "../memory/memory.js";
+import type { CausalChainLink, Memory, MemoryEngine, MemoryContext, MemoryRelation } from "../memory/memory.js";
 import { groupObservedAliasRows } from "../memory/observed-subject-names.js";
 import { guardedMemoryProposals } from "./guarded-memory-proposals.js";
 import { guardedTools, guardedToolResourcePort } from "./guarded-tool-gateway.js";
@@ -31,6 +31,10 @@ import type { PersonaDriftStore } from "./persona-drift-store.js";
 import { personaDriftPayload } from "./persona-drift-provenance.js";
 import { approveConversationRequest } from "../context/approved-conversation-request.js";
 import { approveMemoryIngest } from "../context/approved-memory-ingest.js";
+import { isOptionalInteraction } from "./chat-policy.js";
+
+// How long an optional turn may spend confirming memory sources before its decision.
+const optionalMemoryBudgetMs = 6_000;
 
 export async function runGuardedChatTurn(input: GuardedChatConversationInput, dependencies: Parameters<typeof runGuardedChatTurnAttempt>[1],
   deliver: (response: ChatResponse) => Promise<string>, observer?: ChatResponseObserver): Promise<ChatResponse> {
@@ -93,22 +97,43 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
   // prompt. Avoid re-fetching their complete provenance only to discard them.
   const sessions = await lease.sessions(state.exchanges.slice(-4).filter((exchange) => !known.has(exchange.user.sourceMessageId ?? "") ||
     !exchange.assistant.messageIds?.length || !exchange.assistant.messageIds.every((id) => known.has(id))));
-  const recalled: MemoryContext = mode === "disabled" || mode === "session_only" ? { memories: [], causalChains: [] } : await dependencies.memory.recall({
-    guildId: input.guildId, channelId: input.channelId, userId: lease.current.authorId, channelMode: mode, context: lease,
+  const durableRecall = mode !== "disabled" && mode !== "session_only";
+  const recallInput = { guildId: input.guildId, channelId: input.channelId, userId: lease.current.authorId, channelMode: mode, context: lease,
     message: lease.current.content, recentHistory: sessions.flatMap((exchange) => [exchange.user, exchange.assistant]),
-    subjectIds: [...new Set([lease.current.authorId, ...lease.replyChain.map((event) => event.authorId)])], now: dependencies.now(),
-  }).catch((error: unknown) => { if (error instanceof SocialOutputSuppressed) throw error; return { memories: [], causalChains: [] }; });
-  // The source authority owns admission even if a repository/engine adapter
-  // returns an unexpected row or unproven relationship metadata.
-  const memoryClaims = await lease.memories(recalled.memories, true, dependencies.now());
-  const aliasObservation = await lease.aliases(recalled.aliasSources ?? [], lease.current.content, dependencies.now());
-  const aliasCandidates = groupObservedAliasRows(aliasObservation.rows, lease.current.content).map((alias) => ({ ...alias, ...(aliasObservation.incomplete ? { incomplete: true } : {}) }));
-  const relationCandidates = recalled.causalChains.flatMap((chain) => chain.sourceRelation ? [chain.sourceRelation] : []);
-  const relations = await lease.relations(relationCandidates);
-  const causalChains = relations.filter((relation) => relation.kind === "consequence").map((relation) => ({
+    subjectIds: [...new Set([lease.current.authorId, ...lease.replyChain.map((event) => event.authorId)])], now: dependencies.now() };
+  const recallFailed = (error: unknown): never | Record<string, never> => { if (error instanceof SocialOutputSuppressed) throw error; return {}; };
+  // A simple-contract optional message is decided from recent messages and the names in it.
+  // Memories, images, lore and the reply-chain summary load only once it chooses to reply, so an
+  // ignore or a reaction never waits on an old memory source.
+  const decideFirst = isOptionalInteraction(input.interaction) && lease.currentEvent?.type === "message" && !!dependencies.memory.recallAliases &&
+    dependencies.runtime?.decidesBeforeRecall(input.guildId, input.channelId) === true;
+  const toAliasCandidates = (observation: { rows: readonly { alias: string; subjectId: string }[]; incomplete: boolean }): ChatRequest["aliasCandidates"] & object =>
+    groupObservedAliasRows(observation.rows, lease.current.content).map((alias) => ({ ...alias, ...(observation.incomplete ? { incomplete: true } : {}) }));
+  const loadMemory = async (): Promise<{ memoryClaims: Memory[]; aliasCandidates: ChatRequest["aliasCandidates"] & object; relations: MemoryRelation[] }> => {
+    const recalled: MemoryContext = durableRecall ? await dependencies.memory.recall(recallInput)
+      .catch((error: unknown) => ({ memories: [], causalChains: [], ...recallFailed(error) })) : { memories: [], causalChains: [] };
+    // The source authority owns admission even if a repository/engine adapter
+    // returns an unexpected row or unproven relationship metadata.
+    // An optional turn checks memory sources for a few seconds at most, so a slow, rate-limited
+    // check cannot use up the deadline its decision needs. Memories left unchecked are left out.
+    const verifyMemory = <T>(work: () => Promise<T>): Promise<T> => isOptionalInteraction(input.interaction) ? lease.withVerificationBudget(optionalMemoryBudgetMs, work) : work();
+    return verifyMemory(async () => {
+      const memoryClaims = await lease.memories(recalled.memories, true, dependencies.now());
+      const aliasObservation = await lease.aliases(recalled.aliasSources ?? [], lease.current.content, dependencies.now());
+      const relationCandidates = recalled.causalChains.flatMap((chain) => chain.sourceRelation ? [chain.sourceRelation] : []);
+      return { memoryClaims, aliasCandidates: toAliasCandidates(aliasObservation), relations: await lease.relations(relationCandidates) };
+    });
+  };
+  const loadAliases = async (): Promise<ChatRequest["aliasCandidates"] & object> => {
+    const found = durableRecall ? await dependencies.memory.recallAliases!(recallInput).catch(recallFailed) : {};
+    return toAliasCandidates(await lease.aliases(found.aliasSources ?? [], lease.current.content, dependencies.now()));
+  };
+  const toCausalChains = (relations: readonly MemoryRelation[]): CausalChainLink[] => relations.filter((relation) => relation.kind === "consequence").map((relation) => ({
     fromSubjectType: relation.fromSubjectType, fromSubjectId: relation.fromSubjectId, predicate: relation.predicate,
     toSubjectType: relation.toSubjectType, toSubjectId: relation.toSubjectId,
   }));
+  const { memoryClaims, aliasCandidates, relations } = decideFirst ? { memoryClaims: [] as Memory[], aliasCandidates: await loadAliases(), relations: [] as MemoryRelation[] } : await loadMemory();
+  const causalChains = toCausalChains(relations);
   let prepared: CharacterPreparedTurn | null = null;
   const access = async (): Promise<void> => {
     assertTurnActive(input.turnSignal);
@@ -138,38 +163,47 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
     applicationToolsSupported: dependencies.applicationToolsSupported === true,
     imageGenerationSupported: dependencies.imageGenerationSupported === true,
     shadow: input.shadowMode ?? false });
-  const images = capabilities.imageInputEnabled ? await lease.images(input.maxImagesPerRequest ?? 2) : [];
   if (!await lease.resource({ kind: "persona_configuration", id: "current" }) ||
       configuration.preferences && !await lease.resource({ kind: "user_preferences", id: currentUser.id })) throw new SocialOutputSuppressed();
   const recentHistory = new RecentPromptHistorySelector().select(sessions);
   const examplePool = configuration.persona.material.examples ?? []; const lorePool = configuration.persona.material.loreChunks ?? [];
-  // Preflight needs authored facts, but not a semantic retrieval model call.
-  // Reply examples and semantic lore enrichment are selected only after admission.
-  const selectedLore = await new RelevantPersonaLoreSelector().select({ chunks: lorePool, recentHistory,
-    message: lease.current.content, replyChain: lease.replyChain, now: dependencies.now(), context: lease });
-  const drift = input.personaDriftEnabled && allowsDurableWrites(mode) ? await dependencies.drift?.getScoped(input.guildId, input.channelId) : null;
   const personaHash = configuration.persona.material.personalitySourceHash ?? hashContent(configuration.persona.material.text);
-  const personaDrift = drift && drift.personalitySourceHash === personaHash && await lease.derived(drift.contextProvenance, personaDriftPayload(drift), "character_state") &&
-    await lease.resource({ kind: "persona_drift", id: drift.epoch }) === drift.epoch ? drift.text : null;
-  const replyChainSummary = await dependencies.compact(lease).catch((error: unknown) => {
-    if (error instanceof SocialOutputSuppressed || input.turnSignal?.aborted) throw error;
-    dependencies.logger?.warn({ failure: safeFailure(error) }, "Guarded reply overflow summary omitted"); return null;
-  });
-  emitChatDiagnostic(dependencies.logger, { event: "context.guard.sources", sessions: sessions.length, memories: memoryClaims.length,
-    relations: relations.length, actors: lease.admittedActorIds.length, images: images.length, configurations: configuration.preferences ? 2 : 1, unavailable: ["legacy_derived"] });
+  const loadReplyContext = async (): Promise<Pick<ChatRequest, "images" | "personaLore" | "personaDrift" | "replyChainSummary">> => {
+    const images = capabilities.imageInputEnabled ? await lease.images(input.maxImagesPerRequest ?? 2) : [];
+    // Preflight needs authored facts, but not a semantic retrieval model call.
+    // Reply examples and semantic lore enrichment are selected only after admission.
+    const selectedLore = await new RelevantPersonaLoreSelector().select({ chunks: lorePool, recentHistory,
+      message: lease.current.content, replyChain: lease.replyChain, now: dependencies.now(), context: lease });
+    const drift = input.personaDriftEnabled && allowsDurableWrites(mode) ? await dependencies.drift?.getScoped(input.guildId, input.channelId) : null;
+    const personaDrift = drift && drift.personalitySourceHash === personaHash && await lease.derived(drift.contextProvenance, personaDriftPayload(drift), "character_state") &&
+      await lease.resource({ kind: "persona_drift", id: drift.epoch }) === drift.epoch ? drift.text : null;
+    const replyChainSummary = await dependencies.compact(lease).catch((error: unknown) => {
+      if (error instanceof SocialOutputSuppressed || input.turnSignal?.aborted) throw error;
+      dependencies.logger?.warn({ failure: safeFailure(error) }, "Guarded reply overflow summary omitted"); return null;
+    });
+    return { images, personaLore: selectedLore.map(({ heading, text }) => ({ heading, text })), personaDrift, replyChainSummary };
+  };
+  const memoryFields = (claims: readonly Memory[], links: CausalChainLink[], aliases: ChatRequest["aliasCandidates"] & object): Pick<ChatRequest, "memories" | "guildKnowledge" | "causalChains" | "aliasCandidates"> => ({
+    memories: claims.filter((record) => record.audience === "private").map((record) => ({
+      id: record.id, assertedByUserId: record.ownerUserId!, subjectUserId: record.subjectId, topic: record.topic, slot: record.slot,
+      statement: record.statement, updatedAt: record.updatedAt, embedding: null,
+    })), guildKnowledge: claims.filter((record) => record.audience !== "private").map((record) => ({
+      id: record.id, subjectType: record.subjectType, subjectId: record.subjectId, topic: record.topic, slot: record.slot,
+      statement: record.statement, updatedAt: record.updatedAt, embedding: null, source: record.source === "administrator" ? "administrator" : record.source === "consolidation" ? "consolidation" : "community",
+    })), causalChains: links, ...(aliases.length ? { aliasCandidates: aliases } : {}) });
+  const reportSources = (claims: number, relationCount: number, imageCount: number): void => emitChatDiagnostic(dependencies.logger, { event: "context.guard.sources", sessions: sessions.length,
+    memories: claims, relations: relationCount, actors: lease.admittedActorIds.length, images: imageCount, configurations: configuration.preferences ? 2 : 1,
+    unavailable: ["legacy_derived", ...(lease.verificationCutShort ? ["memory_partial" as const] : [])] });
+  const replyContext = decideFirst ? { images: [], personaLore: [], personaDrift: null, replyChainSummary: null } : await loadReplyContext();
+  if (!decideFirst) reportSources(memoryClaims.length, relations.length, replyContext.images.length);
+  const { images, personaDrift, replyChainSummary } = replyContext;
   let request: ChatRequest = {
     turnPlan: input.turnPlan,
     guildId: input.guildId, channelId: input.channelId, configurationContext: configuration.persona, personality: configuration.persona.material.text,
-    characterPersonaHash: personaHash, personaLore: selectedLore.map(({ heading, text }) => ({ heading, text })), personaDrift,
+    characterPersonaHash: personaHash, personaLore: replyContext.personaLore, personaDrift,
     exampleExchanges: [], userCustomization: configuration.preferences?.material.text ?? null,
     currentUser, mentionedUsers: participants.filter((actor) => actor.id !== currentUser.id && actor.id !== input.botUserId && actor.kind !== "bot" && mentionedIds.has(actor.id)),
-    recentHistory, memories: memoryClaims.filter((record) => record.audience === "private").map((record) => ({
-      id: record.id, assertedByUserId: record.ownerUserId!, subjectUserId: record.subjectId, topic: record.topic, slot: record.slot,
-      statement: record.statement, updatedAt: record.updatedAt, embedding: null,
-    })), guildKnowledge: memoryClaims.filter((record) => record.audience !== "private").map((record) => ({
-      id: record.id, subjectType: record.subjectType, subjectId: record.subjectId, topic: record.topic, slot: record.slot,
-      statement: record.statement, updatedAt: record.updatedAt, embedding: null, source: record.source === "administrator" ? "administrator" : record.source === "consolidation" ? "consolidation" : "community",
-    })), causalChains, ...(aliasCandidates.length ? { aliasCandidates } : {}),
+    recentHistory, ...memoryFields(memoryClaims, causalChains, aliasCandidates),
     message: lease.currentEvent?.type === "reaction_snapshot" ? `Respond only if useful to this authorized reaction snapshot: ${JSON.stringify(lease.currentEvent)}` : lease.current.content,
     ...(lease.currentEvent?.type !== "reaction_snapshot" && lease.current.linkPreviews?.length ? { messageLinkPreviews: lease.current.linkPreviews } : {}),
     replyChain: lease.currentEvent?.type === "reaction_snapshot" ? [...lease.replyChain, lease.current] : lease.replyChain, replyChainSummary, channelHistory: lease.history, currentBurst: lease.burst,
@@ -207,6 +241,14 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
       return { ...silent(), reactionEmoji: prepared.participation?.reaction ?? null, conversationDecision: prepared.conversationDecision,
         contextLease: lease, replyTargetMessageId: prepared.targetMessageId ?? lease.current.messageId };
     }
+  }
+  if (decideFirst) {
+    // The decision chose to reply, so the reply now gets the memories and context it skipped.
+    // The names the decision saw stay as they were.
+    const enriched = await loadMemory();
+    const replyExtras = await loadReplyContext();
+    reportSources(enriched.memoryClaims.length, enriched.relations.length, replyExtras.images.length);
+    request = { ...request, ...memoryFields(enriched.memoryClaims, toCausalChains(enriched.relations), aliasCandidates), ...replyExtras };
   }
   const selectedExamples = (await dependencies.examples.select({ records: examplePool, currentUser, mentionedUsers: participants,
     recentHistory, message: lease.current.content, replyChain: lease.replyChain, now: dependencies.now(), context: lease }))

@@ -232,6 +232,28 @@ export class DefaultMemoryEngine implements MemoryEngine {
     private readonly now: () => number = () => Date.now(),
   ) {}
 
+  public async recallAliases(input: MemoryRecallInput): Promise<Pick<MemoryContext, "aliasCandidates" | "aliasSources">> {
+    await checkMemoryContext(input.context);
+    if (input.context) {
+      if (input.guildId !== input.context.scope.guildId || input.channelId !== input.context.scope.channelId ||
+        input.userId !== (input.context.scope.actorId ?? input.context.current.authorId)) throw new SocialOutputSuppressed();
+      input = { ...input, ...retrievalProjection(input.context, input.query) };
+    }
+    if (input.channelMode === "disabled" || input.channelMode === "session_only") return {};
+    const { aliasObservation, aliasCandidates } = await this.observeAliases(input);
+    return { ...(aliasCandidates.length ? { aliasCandidates } : {}),
+      ...("sources" in aliasObservation && aliasObservation.sources.length ? { aliasSources: aliasObservation.sources } : {}) };
+  }
+
+  private async observeAliases(input: MemoryRecallInput): Promise<{ aliasObservation: { rows: readonly { alias: string; subjectId: string }[]; incomplete: boolean; sources?: readonly Memory[] };
+    aliasCandidates: { alias: string; subjectIds: string[]; incomplete?: true }[] }> {
+    const aliasQuery = { guildId: input.guildId, channelId: input.channelId, userId: input.userId, now: input.now, message: input.message };
+    const aliasObservation = input.context ? await input.context.aliases(await this.repository.findAliasSources?.(aliasQuery) ?? [], input.message, input.now)
+      : { rows: await this.repository.findObservedAliases(aliasQuery), incomplete: false };
+    const aliasCandidates = groupObservedAliasRows(aliasObservation.rows, input.message).map((alias) => ({ ...alias, ...(aliasObservation.incomplete ? { incomplete: true as const } : {}) }));
+    return { aliasObservation, aliasCandidates };
+  }
+
   public async recall(input: MemoryRecallInput): Promise<MemoryContext> {
     await checkMemoryContext(input.context);
     if (input.context) {
@@ -240,10 +262,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
       input = { ...input, ...retrievalProjection(input.context, input.query) };
     }
     if (input.channelMode === "disabled") return { memories: [], causalChains: [] };
-    const aliasQuery = { guildId: input.guildId, channelId: input.channelId, userId: input.userId, now: input.now, message: input.message };
-    const aliasObservation = input.context ? await input.context.aliases(await this.repository.findAliasSources?.(aliasQuery) ?? [], input.message, input.now)
-      : { rows: await this.repository.findObservedAliases(aliasQuery), incomplete: false };
-    const aliasCandidates = groupObservedAliasRows(aliasObservation.rows, input.message).map((alias) => ({ ...alias, ...(aliasObservation.incomplete ? { incomplete: true } : {}) }));
+    const { aliasObservation, aliasCandidates } = await this.observeAliases(input);
     const resolvedAliasIds = aliasCandidates.filter((alias) => !alias.incomplete && alias.subjectIds.length === 1).flatMap((alias) => alias.subjectIds);
     // onlySelfPrivateMemories bypasses findRecallCandidates entirely rather
     // than filtering its output: that query mixes every audience together

@@ -4,7 +4,7 @@ import type { Language } from "./language.js";
 const copy = {
   en: {
     bookkeeping: "Delivery metadata could not be saved; affected output may be unavailable as future context.",
-    unavailable: "Excluded context", legacy_derived: "unverified legacy text", memory: "memory", summaries: "summaries", learned_character: "learned state", images: "images", context_tools: "tools", profile_fields: "profile fields",
+    unavailable: "Excluded context", legacy_derived: "unverified legacy text", memory: "memory", memory_partial: "memory not checked in time", summaries: "summaries", learned_character: "learned state", images: "images", context_tools: "tools", profile_fields: "profile fields",
     no_record: "No retained record for this message in this channel. Records expire after 24 hours or capacity eviction; this does not prove the bot never received it.",
     delivered: "A text reply was confirmed delivered.", delivery_observed: "At least one text part was delivered; completion is not established by the retained records.",
     partial_delivery: "Part of the text reply was delivered; the full reply was not confirmed.", delivered_unsaved: "The reply was delivered, but conversation state was not saved. Do not resend it automatically.",
@@ -18,7 +18,7 @@ const copy = {
   },
   "zh-TW": {
     bookkeeping: "無法儲存傳送中繼資料；受影響的回覆可能無法作為之後的上下文。",
-    unavailable: "排除的上下文", legacy_derived: "未驗證舊文字", memory: "記憶", summaries: "摘要", learned_character: "學習狀態", images: "圖片", context_tools: "工具", profile_fields: "個人資料",
+    unavailable: "排除的上下文", legacy_derived: "未驗證舊文字", memory: "記憶", memory_partial: "未及時確認的記憶", summaries: "摘要", learned_character: "學習狀態", images: "圖片", context_tools: "工具", profile_fields: "個人資料",
     no_record: "此頻道沒有保留這則訊息的紀錄。紀錄會在 24 小時後或容量不足時移除；這不代表機器人從未收到訊息。",
     delivered: "已確認送出文字回覆。", delivery_observed: "至少一段文字已送出；保留紀錄無法確認是否全部完成。",
     partial_delivery: "已送出部分文字；未確認完整回覆送達。", delivered_unsaved: "回覆已送出，但對話狀態未儲存；請勿自動重送。",
@@ -32,7 +32,7 @@ const copy = {
   },
   ja: {
     bookkeeping: "送信情報を保存できませんでした。該当する返信を今後の履歴に使えない場合があります。",
-    unavailable: "除外した履歴", legacy_derived: "未検証の過去の文字", memory: "記憶", summaries: "要約", learned_character: "学習状態", images: "画像", context_tools: "ツール", profile_fields: "プロフィール",
+    unavailable: "除外した履歴", legacy_derived: "未検証の過去の文字", memory: "記憶", memory_partial: "時間内に確認できなかった記憶", summaries: "要約", learned_character: "学習状態", images: "画像", context_tools: "ツール", profile_fields: "プロフィール",
     no_record: "このチャンネルには該当メッセージの保存記録がありません。記録は24時間後や容量超過時に削除されます。ボットが受信しなかった証拠ではありません。",
     delivered: "文字による返信の送信を確認しました。", delivery_observed: "少なくとも一部の文字は送信済みです。全体の完了は確認できません。",
     partial_delivery: "返信の一部を送信しました。全体の送信は未確認です。", delivered_unsaved: "返信は送信済みですが会話状態を保存できませんでした。自動で再送しないでください。",

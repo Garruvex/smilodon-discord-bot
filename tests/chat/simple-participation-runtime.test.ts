@@ -1,7 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { freshDocument, memoryProvider, guildId, actorUserId } from "../helpers/settings-fixtures.js";
 import { CharacterRuntime } from "../../src/application/chat/character-runtime.js";
 import { AuthorizedConversationService as ChatConversationService } from "../helpers/authorized-conversation-service.js";
@@ -395,5 +395,51 @@ describe("simple participation", () => {
       await shadow.run({ current: message("b", 129_500, actorUserId, "honestly cats win"), history: [message("a", 99_000, actorUserId, "cats are better than dogs")] });
       expect(shadow.simpleCall.mock.calls.some(([prompt]) => String(prompt).includes("held back from replying"))).toBe(false);
     } finally { shadow.service.stopScheduling(); await shadow.service.drain(); }
+  });
+});
+
+describe("simple participation decides before loading memory", () => {
+  // Spies call through to the real engine unless a test replaces the implementation.
+  const spyRecall = (): { recall: MockInstance<DefaultMemoryEngine["recall"]>; aliases: MockInstance<DefaultMemoryEngine["recallAliases"]> } =>
+    ({ recall: vi.spyOn(DefaultMemoryEngine.prototype, "recall"), aliases: vi.spyOn(DefaultMemoryEngine.prototype, "recallAliases") });
+  it.each([
+    ["an ignore", { action: "ignore", emoji: "none" }, false],
+    ["a reaction", { action: "react", emoji: "😂" }, false],
+    ["a preview", { action: "reply", emoji: "none", addressee: "bot" }, true],
+  ] as const)("never recalls memories for %s, and still looks up the names in the message", async (_label, decision, shadowMode) => {
+    const { recall, aliases } = spyRecall();
+    const { profiles, reply, run, runtime, service } = setup("simple", () => decision);
+    const contribute = vi.spyOn(runtime["registry"], "contribute");
+    await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId], shadowMode } });
+    try {
+      const { result } = await run({ current: message("current", 99_000, actorUserId, "my cat just fell off the shelf") });
+      expect(recall).not.toHaveBeenCalled(); expect(aliases).toHaveBeenCalledOnce();
+      expect(reply).not.toHaveBeenCalled(); expect(contribute).not.toHaveBeenCalled();
+      if (decision.action === "react") expect(result.reactionEmoji).toBe("😂");
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+  it("recalls memories only after the decision admits a reply, and generates with them", async () => {
+    const { recall } = spyRecall();
+    const { profiles, reply, run, simpleCall, service } = setup();
+    const calls: string[] = [];
+    simpleCall.mockImplementation(() => { calls.push("decide"); return Promise.resolve({ action: "reply", emoji: "none", addressee: "bot" }); });
+    recall.mockImplementation(() => { calls.push("recall"); return Promise.resolve({ memories: [], causalChains: [] }); });
+    await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+    try {
+      const { deliver } = await run({ current: message("current", 99_000, actorUserId, "anyone know a good cat toy") });
+      expect(calls).toEqual(["decide", "recall"]);
+      expect(reply).toHaveBeenCalledOnce(); expect(deliver).toHaveBeenCalledOnce();
+    } finally { service.stopScheduling(); await service.drain(); }
+  });
+  it("keeps recall before the decision for explicit requests and legacy channels", async () => {
+    for (const [instance, interaction] of [["simple", "direct_mention"], ["legacy", "group_conversation"]] as const) {
+      const { recall, aliases } = spyRecall();
+      const { profiles, run, service } = setup(instance);
+      await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] } });
+      try {
+        await run({ interaction, current: message("current", 99_000, actorUserId, interaction === "direct_mention" ? "<@bot> hello" : "anyone know a good cat toy") });
+        expect(recall).toHaveBeenCalledOnce(); expect(aliases).not.toHaveBeenCalled();
+      } finally { service.stopScheduling(); await service.drain(); vi.restoreAllMocks(); }
+    }
   });
 });

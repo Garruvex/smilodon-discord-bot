@@ -115,6 +115,9 @@ export class GuardedConversationContext {
   private reactionActors = new Map<string, ChatUser>();
   private readonly identityActors = new Set<string>();
   private aliasObservationIncomplete = false;
+  // An optional time budget for confirming memory sources. Unconfirmed memories are left out.
+  private verificationDeadline: number | null = null;
+  private verificationCut = false;
   private readonly port: Readonly<GuardedContextPort>;
   private constructor(port: GuardedContextPort) { this.port = Object.freeze({ ...port }); registered.add(this); Object.seal(this); }
   public get current(): ChannelHistoryMessage { return immutableSnapshot(this.sourceCurrent); }
@@ -373,6 +376,18 @@ export class GuardedConversationContext {
     }, "sessions");
   }
 
+  // Bounds memory source checks to budgetMs. Each check can wait on Discord's rate limit, and
+  // an optional turn that spends its whole deadline here never reaches its decision.
+  public async withVerificationBudget<T>(budgetMs: number, work: () => Promise<T>): Promise<T> {
+    this.verificationDeadline = Date.now() + budgetMs;
+    try { return await work(); } finally { this.verificationDeadline = null; }
+  }
+  public get verificationCutShort(): boolean { return this.verificationCut; }
+  private verificationOver(): boolean {
+    if (this.verificationDeadline === null || Date.now() < this.verificationDeadline) return false;
+    this.verificationCut = true; return true;
+  }
+
   public async memories(records: readonly Memory[], retain = false, now = Date.now()): Promise<Memory[]> {
     return this.claims(records, retain, now, false);
   }
@@ -395,7 +410,7 @@ export class GuardedConversationContext {
         .map((dependency) => dependency.messageId) ?? []);
       if (dependencyIds.length) await this.port.prepareValidation?.([...new Set(dependencyIds)], this.signal).catch(() => undefined);
       for (const record of records.slice(0, 128)) {
-        if (allowed.length === 20) break;
+        if (allowed.length === 20 || this.verificationOver()) break;
         if (record.statement.length > 1000 || chars + record.statement.length > 3000) continue;
         const proof = memoryClaimProof(record.contextProvenance, record);
         if (!proof || proof.audience.guildId !== this.port.guildId || proof.audience.channelId !== this.port.channelId ||
@@ -458,7 +473,7 @@ export class GuardedConversationContext {
       if (!actor || actor.id !== dependency.userId || actorSourceHash(actor, dependency.projection) !== dependency.representationHash) return false;
     }
     for (const dependency of proof.dependencies) {
-      if (dependency.guildId !== this.port.guildId || dependency.channelId !== this.port.channelId) return false;
+      if (dependency.guildId !== this.port.guildId || dependency.channelId !== this.port.channelId || this.verificationOver()) return false;
       const source = await this.read(dependency.messageId, path);
       if (dependency.projection?.kind === "human_text" && source?.origin !== "human") return false;
       if (!source || !dependencyMatchesSource(dependency, source.event, contextSourceHash(source.event)) ||
@@ -523,6 +538,7 @@ export class GuardedConversationContext {
       const tokens = new Set(aliasQueryTokens(message)); const admitted: { alias: string; subjectId: string }[] = []; const subjects = new Set<string>();
       let incomplete = this.aliasObservationIncomplete || records.length >= 128; const sources: Memory[] = [];
       for (const record of records.slice(0, 128)) {
+        if (this.verificationOver()) { incomplete = true; break; }
         if (record.moduleId || record.subjectType !== "member" || !canRecall(record, { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.actorId ?? "" }, now) ||
             record.audience === "private" && (record.ownerUserId !== this.port.audienceUserId || record.ownerUserId !== this.port.actorId)) continue;
         if (!subjects.has(record.subjectId) && subjects.size >= 32 || !this.canRetainActor(record.subjectId)) { incomplete = true; continue; }
@@ -561,6 +577,7 @@ export class GuardedConversationContext {
     return this.phase(async () => {
     const admitted: MemoryRelation[] = [];
     for (const record of records.slice(0, 128)) {
+      if (this.verificationOver()) break;
       if (record.guildId !== this.port.guildId || record.channelId !== this.port.channelId ||
           record.isolationChannelId !== null && record.isolationChannelId !== this.port.channelId) continue;
       const proof = memoryRelationProof(record.contextProvenance, record); const payload = memoryRelationPayload(record);
