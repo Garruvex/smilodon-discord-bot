@@ -6,7 +6,7 @@ import { ScheduledChatPreview } from "./scheduled-chat-preview.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from "discord.js";
 import type { Logger } from "pino";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
-import { emitChatDiagnostic } from "../../../application/diagnostics/chat-diagnostics.js";
+import { emitChatDiagnostic, safeFailure } from "../../../application/diagnostics/chat-diagnostics.js";
 import { mentionInteraction } from "../../../application/chat/conversation-trigger.js";
 import { conversationEffects } from "../../../application/chat/conversation-effects.js";
 import { MentionChatAccess } from "./mention-chat-access.js";
@@ -301,7 +301,9 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         ? error.code === "insufficient_quota" || error.code === "credit_balance_exhausted"
           ? "The premium brain's API quota is empty. Please let a bot administrator know."
           : "The premium brain is receiving too many requests. Please try again shortly."
-        : "The premium brain is temporarily buffering. Please try again later.";
+        : safeFailure(error).failure === "timeout"
+          ? "The premium brain took too long to answer. Please try again."
+          : "The premium brain is temporarily buffering. Please try again later.";
       // If an image-generation preview was already posted, replace it with the
       // error instead of leaving "Generating your image…" stuck forever while
       // also posting a separate error reply.

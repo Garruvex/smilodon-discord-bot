@@ -14,7 +14,7 @@ import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { ChatProviderError, chatSafetyGuard } from "./chat-provider.js";
 import { chatMemoryInstructions } from "./chat-memory-policy.js";
 import { guildKnowledgeInstructions } from "./guild-knowledge-policy.js";
-import { assertTurnActive } from "./turn-work-budget.js";
+import { assertTurnActive, memoryVerificationBudgetMs } from "./turn-work-budget.js";
 import { effectiveChatCapabilities } from "./chat-capabilities.js";
 import type { CausalChainLink, Memory, MemoryEngine, MemoryContext, MemoryRelation } from "../memory/memory.js";
 import { groupObservedAliasRows } from "../memory/observed-subject-names.js";
@@ -32,9 +32,6 @@ import { personaDriftPayload } from "./persona-drift-provenance.js";
 import { approveConversationRequest } from "../context/approved-conversation-request.js";
 import { approveMemoryIngest } from "../context/approved-memory-ingest.js";
 import { isOptionalInteraction } from "./chat-policy.js";
-
-// How long an optional turn may spend confirming memory sources before its decision.
-const optionalMemoryBudgetMs = 6_000;
 
 export async function runGuardedChatTurn(input: GuardedChatConversationInput, dependencies: Parameters<typeof runGuardedChatTurnAttempt>[1],
   deliver: (response: ChatResponse) => Promise<string>, observer?: ChatResponseObserver): Promise<ChatResponse> {
@@ -114,9 +111,10 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
       .catch((error: unknown) => ({ memories: [], causalChains: [], ...recallFailed(error) })) : { memories: [], causalChains: [] };
     // The source authority owns admission even if a repository/engine adapter
     // returns an unexpected row or unproven relationship metadata.
-    // An optional turn checks memory sources for a few seconds at most, so a slow, rate-limited
-    // check cannot use up the deadline its decision needs. Memories left unchecked are left out.
-    const verifyMemory = <T>(work: () => Promise<T>): Promise<T> => isOptionalInteraction(input.interaction) ? lease.withVerificationBudget(optionalMemoryBudgetMs, work) : work();
+    // Every turn checks memory sources for a bounded time, so a slow, rate-limited check cannot
+    // use up the deadline its decision or reply needs. Memories left unchecked are left out.
+    const verifyMemory = <T>(work: () => Promise<T>): Promise<T> =>
+      lease.withVerificationBudget(memoryVerificationBudgetMs(input.interaction, Date.now(), input.turnDeadlineAt), work);
     return verifyMemory(async () => {
       const memoryClaims = await lease.memories(recalled.memories, true, dependencies.now());
       const aliasObservation = await lease.aliases(recalled.aliasSources ?? [], lease.current.content, dependencies.now());
