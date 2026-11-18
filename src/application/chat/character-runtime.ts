@@ -509,8 +509,7 @@ export class CharacterRuntime {
     this.logger?.info({ ...log, sourceMessageId: current.messageId, kind, basis, status: outcome.status, proposedAction: proposed, addressee: outcome.addressee, emoji: outcome.emoji, admission,
       emojiOptions: actions.react ? emoji.length : 0, score: outcome.score, scoreKind: outcome.scoreKind, threshold: threshold.value, thresholdSource: threshold.source, availableReply: actions.reply, availableReact: actions.react,
       route: outcome.route, latencyMs: outcome.latencyMs, usage: outcome.usage, confirmation, preview: participation.shadowMode, trial: admission !== "admitted",
-      thought: thought ? { outcome: thoughtOutcome, stance: thought.stance, length: thought.length, want: thought.want, heldOffered: held !== null, failure: thought.failure ?? null,
-        latencyMs: thought.latencyMs, usage: thought.usage } : null }, "Simple participation decision");
+      thought: thought ? { outcome: thoughtOutcome, stance: thought.stance, length: thought.length, want: thought.want, heldOffered: held !== null, failure: thought.failure ?? null } : null }, "Simple participation decision");
     if (admission !== "admitted" || proposed === null || proposed === "ignore") return finish(outcome.status);
     // A reply may carry the decision's extra reaction; a react needs one.
     const reaction = outcome.emojiChoice ? emojiReactionIdentifier(outcome.emojiChoice) : null;

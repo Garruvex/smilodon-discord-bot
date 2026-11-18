@@ -57,39 +57,40 @@ describe("simple decision decoding", () => {
 
 describe("simple decision prompt", () => {
   it("carries the bounded package and nothing from memories, lore or modules", async () => {
-    const prompt = simplePrompt(await input({ actions: { reply: true, react: false } }), "decision");
+    const prompt = simplePrompt(await input({ actions: { reply: true, react: false } }));
     expect(prompt).toContain("A friendly cat second line"); expect(prompt).toContain('"shareOfRecentMessagesPercent":0');
     expect(prompt).toContain("chance to join in"); expect(prompt).toContain('"availableActions":["reply","ignore"]');
     expect(prompt).toContain("\\u003cb>can you help"); expect(prompt).not.toContain("<b>");
     expect(prompt).not.toMatch(/memor|lore|drift|alias|character:/iu);
   });
   it("makes doing nothing the normal outcome and ties reactions to the character's own taste", async () => {
-    const prompt = simplePrompt(await input(), "decision");
+    const prompt = simplePrompt(await input());
     expect(prompt).toContain("Most messages get nothing"); expect(prompt).toContain("really finds the message funny");
     expect(prompt).toContain("Persona, which decides what this character would and would not do here"); expect(prompt).not.toContain("style guidance only");
     expect(prompt).not.toContain("use it freely");
   });
   it("names the follow-up basis and a still-authorized held thought", async () => {
     const base = await input({ kind: "followup", basis: "open_exchange", held: { sourceMessageId: "earlier", stance: "agree", length: "one_line" } });
-    const prompt = simplePrompt(base, "decision");
+    const prompt = simplePrompt(base);
     expect(prompt).toContain("follow-up"); expect(prompt).toContain("might also have turned to something else");
     expect(prompt).toContain("held back from replying to m1"); expect(prompt).toContain("one-line agree reply");
-    expect(simplePrompt({ ...base, held: { sourceMessageId: "gone", stance: "agree", length: "short" } }, "decision")).not.toContain("held back");
+    expect(simplePrompt({ ...base, held: { sourceMessageId: "gone", stance: "agree", length: "short" } })).not.toContain("held back");
   });
-  it("tells both the decision and the thought step who a continuing message is for", async () => {
+  it("tells the decision who a continuing message is for, and asks the thought question only when on", async () => {
     const base = await input();
     const rule = "is for that person, even without a reply or mention";
-    expect(simplePrompt(base, "decision")).toContain(rule);
-    expect(simplePrompt(base, "thought")).toContain(rule);
-    expect(simplePrompt(base, "decision")).toContain("replyToRef null says nothing about who a message is for");
+    expect(simplePrompt(base)).toContain(rule);
+    expect(simplePrompt(base)).toContain("replyToRef null says nothing about who a message is for");
+    expect(simplePrompt(base)).not.toContain("imagine the bot does reply");
+    expect(simplePrompt(base, { thought: true })).toContain("imagine the bot does reply");
   });
   it("shows Discord's link preview so a bare link has something to judge", async () => {
     const base = await input();
     const current = { ...base.current, content: "https://example.com/cats",
       linkPreviews: [{ url: "https://example.com/cats", site: "Example", title: "Ten cats that \u003cb>dance", description: null }] };
-    const prompt = simplePrompt({ ...base, current }, "decision");
+    const prompt = simplePrompt({ ...base, current });
     expect(prompt).toContain('"linkPreview":"Example — Ten cats that '); expect(prompt).not.toContain("<b>dance");
-    expect(simplePrompt(base, "decision")).not.toContain('"linkPreview"');
+    expect(simplePrompt(base)).not.toContain('"linkPreview"');
   });
 });
 
@@ -101,7 +102,7 @@ describe("persona digest", () => {
   });
   it("reports how much of the recent conversation the bot wrote", async () => {
     const base = await input({ events: [event("a", 1000, "bot", "hi"), event("b", 2000, "bob", "yo"), event("c", 3000, "bob", "ok"), event("d", 3500, "bob", "sure")] });
-    expect(simplePrompt(base, "decision")).toContain('"shareOfRecentMessagesPercent":25');
+    expect(simplePrompt(base)).toContain('"shareOfRecentMessagesPercent":25');
   });
 });
 
@@ -113,22 +114,30 @@ describe("simple participation service", () => {
     expect(generate).toHaveBeenCalledOnce();
     expect((generate.mock.calls as unknown[][])[0]![2]).toMatchObject({ reasoningEffort: "low", maxAttempts: 1 });
   });
-  it("asks the thought question concurrently, only when reply is available, and a thought failure never changes the decision", async () => {
-    const generate = vi.fn((prompt: string) => prompt.includes("Imagine the bot replies") ? Promise.reject(new Error("boom")) : Promise.resolve({ action: "ignore", emoji: "none" }));
+  it("asks the thought inside the one decision request, only when reply is available, and a bad thought never changes the decision", async () => {
+    const generate = vi.fn((_prompt: string, _schema: Record<string, unknown>) => Promise.resolve({ action: "ignore", emoji: "none", stance: "rant", length: "short" }));
     const service = new SimpleParticipationService(route({ generateCharacterData: generate }));
     const failed = await service.decide(await input({ thoughts: true }));
-    expect(generate).toHaveBeenCalledTimes(2);
-    expect(failed).toMatchObject({ status: "valid", action: "ignore", thought: { status: "failed", stance: null } });
-    generate.mockClear();
-    await service.decide(await input({ thoughts: true, actions: { reply: false, react: true } }));
     expect(generate).toHaveBeenCalledOnce();
+    expect(generate.mock.calls[0]![1]).toMatchObject({ required: expect.arrayContaining(["stance", "length"]) as unknown });
+    expect(failed).toMatchObject({ status: "valid", action: "ignore", thought: { status: "failed", stance: null, failure: "invalid_output" } });
+    generate.mockClear();
+    const noReply = await service.decide(await input({ thoughts: true, actions: { reply: false, react: true } }));
+    expect(generate).toHaveBeenCalledOnce(); expect(noReply.thought).toBeNull();
+    expect(Object.keys((generate.mock.calls[0]![1] as { properties: object }).properties)).not.toContain("stance");
   });
-  it("decodes a valid thought and defaults a bad length", async () => {
-    const generate = vi.fn((prompt: string) => Promise.resolve(prompt.includes("Imagine the bot replies") ? { stance: "joke", length: "huge" } : { action: "reply", emoji: "none" }));
+  it("decodes a valid thought from the decision answer and defaults a bad length", async () => {
+    const generate = vi.fn(() => Promise.resolve({ action: "reply", emoji: "none", stance: "joke", length: "huge" }));
     const outcome = await new SimpleParticipationService(route({ generateCharacterData: generate })).decide(await input({ thoughts: true }));
-    expect(outcome.thought).toMatchObject({ status: "valid", stance: "joke", length: "short", want: null });
-    const failed = await new SimpleParticipationService(route({ generateCharacterData: () => Promise.resolve({ stance: "rant", length: "short" }) })).decide(await input({ thoughts: true }));
-    expect(failed.thought).toMatchObject({ status: "failed", failure: "invalid_output" });
+    expect(outcome).toMatchObject({ status: "valid", action: "reply", thought: { status: "valid", stance: "joke", length: "short", want: null } });
+    const nativeCall = vi.fn((_prompt: string, _schema: Record<string, unknown>) => Promise.resolve(native({ action: "reply", stance: "comfort", length: "one_line", wantsToSay: 0.6 }, { action: 0.8 })));
+    const nativeOutcome = await new SimpleParticipationService(route({ generateCharacterData: nativeCall }, "native", null)).decide(await input({ thoughts: true }));
+    expect(nativeOutcome.thought).toMatchObject({ status: "valid", stance: "comfort", length: "one_line", want: 0.6 });
+    expect(Object.keys((nativeCall.mock.calls[0]![1] as { properties: object }).properties)).toEqual(expect.arrayContaining(["action", "stance", "length", "wantsToSay"]));
+  });
+  it("marks the thought failed with the decision when the one request fails", async () => {
+    const outcome = await new SimpleParticipationService(route({ generateCharacterData: () => Promise.reject(new Error("down")) })).decide(await input({ thoughts: true }));
+    expect(outcome).toMatchObject({ status: "failed", action: null, thought: { status: "failed", stance: null } });
   });
   it("records a transport failure or an invalid action as a failure, never as a model ignore", async () => {
     const failing = await new SimpleParticipationService(route({ generateCharacterData: () => Promise.reject(Object.assign(new Error("slow"), { name: "TimeoutError" })) })).decide(await input());

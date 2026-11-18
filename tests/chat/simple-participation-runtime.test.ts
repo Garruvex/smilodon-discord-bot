@@ -350,8 +350,8 @@ describe("simple participation", () => {
     } finally { service.stopScheduling(); await service.drain(); }
   });
   it("steers an admitted reply with the held thought's stance and length, never with model-written text", async () => {
-    const answer = (prompt: string): unknown => prompt.includes("Imagine the bot replies") ? { stance: "joke", length: "one_line" } :
-      prompt.includes("This is a second look") ? { confirm: "yes" } : { action: "reply", emoji: "none", addressee: "bot" };
+    const answer = (prompt: string): unknown => prompt.includes("This is a second look") ? { confirm: "yes" } :
+      { action: "reply", emoji: "none", addressee: "bot", ...(prompt.includes("imagine the bot does reply") ? { stance: "joke", length: "one_line" } : {}) };
     const { profiles, reply, run, service } = setup("simple", answer);
     await profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] }, character: { enabled: true, modules: { thoughts: { enabled: true, shadow: false } } } });
     try {
@@ -377,7 +377,7 @@ describe("simple participation", () => {
   });
   it("holds an ignored thought, offers it to the next decision in the same scope and not when shadow is on", async () => {
     let held = false;
-    const answer = (prompt: string): unknown => prompt.includes("Imagine the bot replies") ? { stance: "agree", length: "one_line" } : { action: "ignore", emoji: "none" };
+    const answer = (prompt: string): unknown => ({ action: "ignore", emoji: "none", ...(prompt.includes("imagine the bot does reply") ? { stance: "agree", length: "one_line" } : {}) });
     const run1 = setup("simple", answer);
     await run1.profiles.update(guildId, { chatParticipation: { spontaneousEnabled: true, spontaneousChannelIds: [channelId] }, character: { enabled: true, modules: { thoughts: { enabled: true, shadow: false } } } });
     try {

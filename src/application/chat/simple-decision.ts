@@ -39,9 +39,10 @@ export interface SimpleDecisionInput {
   signal?: AbortSignal | undefined; deadlineAt?: number | undefined;
 }
 export interface CallUsage { inputTokens: number; outputTokens: number; reasoningTokens: number | null }
+// The inner thought is answered inside the decision request, so it has no latency or usage of its own.
 export interface SimpleThoughtOutcome {
   status: "valid" | "failed"; stance: ThoughtStance | null; length: ThoughtLength | null; want: number | null;
-  latencyMs: number; usage: CallUsage | null; failure?: FailureCategory | "invalid_output";
+  failure?: FailureCategory | "invalid_output";
 }
 export interface SimpleConfirmation { confirmed: boolean | null; latencyMs: number; usage: CallUsage | null; failure?: FailureCategory | "invalid_output" | "unavailable" }
 export interface SimpleDecisionOutcome {
@@ -62,7 +63,8 @@ export const personaDigest = (personality: string): string => {
 const attemptTimeoutMs = 12_000; const minimumAttemptMs = 1_000;
 const probability = z.number().finite().min(0).max(1);
 
-function actionSchema(route: SimpleRoute, actions: SimpleDecisionInput["actions"], choices: readonly string[]): { schema: Record<string, unknown>; allowed: readonly SimpleAction[] } {
+// With the inner thought on, the same request also asks what a reply would do and how long it would be.
+function actionSchema(route: SimpleRoute, actions: SimpleDecisionInput["actions"], choices: readonly string[], thought: boolean): { schema: Record<string, unknown>; allowed: readonly SimpleAction[] } {
   const allowed = simpleActions.filter((action) => action === "ignore" || actions[action]);
   const emoji = actions.react ? [...choices, "none"] : ["none"];
   if (route.source === "native") {
@@ -71,20 +73,18 @@ function actionSchema(route: SimpleRoute, actions: SimpleDecisionInput["actions"
       action: { type: "string", enum: allowed, description: "Should the bot reply with text, only react with an emoji, or ignore this message?" },
       ...(actions.reply ? { addressee: { type: "string", enum: addressees, description: addresseeQuestion } } : {}),
       ...(actions.react ? { emoji: { type: "string", enum: emoji, "x-optional": true, description: "Which emoji fits best? Required for react. With reply, pick one only if the bot would also react to the message; otherwise none." } } : {}),
+      ...(thought ? {
+        stance: { type: "string", enum: thoughtStances, description: "Whatever the action, if the bot replied, what would it do? Choose none if it has nothing worth saying." },
+        length: { type: "string", enum: thoughtLengths, "x-optional": true, description: "How long would a natural reply be?" },
+        wantsToSay: { type: "number", minimum: 0, maximum: 1, "x-optional": true, description: "Does the bot really want to say something here?" },
+      } : {}),
     };
     return { schema: { type: "object", "x-native-simple": true, properties }, allowed };
   }
-  return { allowed, schema: { type: "object", additionalProperties: false, required: ["action", "emoji", ...(actions.reply ? ["addressee"] : [])],
+  return { allowed, schema: { type: "object", additionalProperties: false, required: ["action", "emoji", ...(actions.reply ? ["addressee"] : []), ...(thought ? ["stance", "length"] : [])],
     properties: { action: { type: "string", enum: allowed }, emoji: { type: "string", enum: emoji },
-      ...(actions.reply ? { addressee: { type: "string", enum: addressees, description: addresseeQuestion } } : {}) } } };
-}
-function thoughtSchema(route: SimpleRoute): Record<string, unknown> {
-  if (route.source === "native") return { type: "object", "x-native-simple": true, properties: {
-    stance: { type: "string", enum: thoughtStances, description: "If the bot replied, what would it do? Choose none if it has nothing worth saying." },
-    length: { type: "string", enum: thoughtLengths, "x-optional": true, description: "How long would a natural reply be?" },
-    wantsToSay: { type: "number", minimum: 0, maximum: 1, "x-optional": true, description: "Does the bot really want to say something here?" } } };
-  return { type: "object", additionalProperties: false, required: ["stance", "length"], properties: {
-    stance: { type: "string", enum: thoughtStances }, length: { type: "string", enum: thoughtLengths } } };
+      ...(actions.reply ? { addressee: { type: "string", enum: addressees, description: addresseeQuestion } } : {}),
+      ...(thought ? { stance: { type: "string", enum: thoughtStances }, length: { type: "string", enum: thoughtLengths } } : {}) } } };
 }
 
 function confirmSchema(route: SimpleRoute): Record<string, unknown> {
@@ -95,7 +95,8 @@ function confirmSchema(route: SimpleRoute): Record<string, unknown> {
 
 
 const escape = (value: unknown): string => JSON.stringify(value).replaceAll("<", "\\u003c");
-export function simplePrompt(input: SimpleDecisionInput, purpose: "decision" | "thought", now = input.current.timestampMs): string {
+export function simplePrompt(input: SimpleDecisionInput, options: { thought?: boolean; now?: number } = {}): string {
+  const now = options.now ?? input.current.timestampMs;
   const messages = [...new Map([...input.events, input.current].map((event) => [event.messageId, event])).values()].sort((a, b) => a.timestampMs - b.timestampMs);
   const refs = new Map(messages.map((event, index) => [event.messageId, `m${index + 1}`]));
   const earlier = messages.filter((event) => event.messageId !== input.current.messageId);
@@ -115,21 +116,21 @@ Persona, which decides what this character would and would not do here: ${person
 People here rarely use Discord's reply, keeping it for messages far back, so replyToRef null says nothing about who a message is for; judge from the order and content. A message that answers or continues what a specific person just said is for that person, even without a reply or mention.
 If the bot wrote most of the recent messages, give others room; see bot.shareOfRecentMessagesPercent.
 The app has decided this is a ${input.kind === "followup" ? "follow-up" : "chance to join in"}: ${basis}.${held}`;
-  if (purpose === "thought") return `${common}
-Imagine the bot replies to the message marked currentRef. Say what it would do (stance) and how long a natural reply is (length). Choose stance none if it has nothing worth saying. A short reply is usually best.
-Data: ${escape(data)}`;
+  const thought = options.thought ? `
+Also, whatever you decide, imagine the bot does reply to the message marked currentRef: say what it would do (stance) and how long a natural reply is (length). Choose stance none if it has nothing worth saying. A short reply is usually best.` : "";
   return `${common}
 Decide what the bot should do about the message marked currentRef.
 Think like this character reading a group chat, going by the persona: how chatty, shy, sassy or aloof it is decides what it does. Real people skim most messages and do nothing, and cutting in on people talking to each other is rude, however good the line would be.
 - ignore: the normal outcome. Most messages get nothing.
 - react: this character really finds the message funny or feels something about it, whoever it is for. That a reaction would be harmless is not a reason.
 - reply: this character really would speak up. Never when the message is for someone else. A message speaking to the bot or an open question nobody has answered is the usual reason; a remark to the room only draws a reply if the persona would truly jump in on it.
-Choose only from availableActions. Also choose an emoji from the list, or none. For react it is required. For reply it is an optional extra reaction on the same message, the way people often react and answer; choose none unless it really fits. For ignore it is unused. Names in :colons: are this server's own custom emoji; prefer one that fits how this community talks.
+Choose only from availableActions. Also choose an emoji from the list, or none. For react it is required. For reply it is an optional extra reaction on the same message, the way people often react and answer; choose none unless it really fits. For ignore it is unused. Names in :colons: are this server's own custom emoji; prefer one that fits how this community talks.${thought}
 Data: ${escape(data)}`;
 }
 
 const nativeEnvelope = z.object({ values: z.record(z.unknown()), confidence: z.record(z.unknown()) }).strict();
-const llmEnvelope = z.object({ action: z.unknown(), emoji: z.unknown().optional(), addressee: z.unknown().optional() }).strict();
+const llmEnvelope = z.object({ action: z.unknown(), emoji: z.unknown().optional(), addressee: z.unknown().optional(),
+  stance: z.unknown().optional(), length: z.unknown().optional() }).strict();
 const llmConfirm = z.object({ confirm: z.unknown() }).strict();
 interface DecodedDecision { action: SimpleAction; emoji: string | null; reactionSelectionFailed: boolean; addressee: Addressee | null; score: number | null }
 // The action is validated first and alone. Emoji problems never void a valid reply or ignore.
@@ -166,7 +167,7 @@ function decodeThought(raw: unknown, native: boolean): { stance: ThoughtStance; 
 
 // With join confirmation on, the unsolicited first move gets a second look.
 export function confirmationPrompt(input: SimpleDecisionInput, proposed: SimpleAction, now = input.current.timestampMs): string {
-  return `${simplePrompt(input, "decision", now)}
+  return `${simplePrompt(input, { now })}
 
 A first check already suggested the bot should ${proposed === "react" ? "add an emoji reaction" : "reply"} to the message marked currentRef. This is a second look before it joins in unasked.
 Answer yes unless the message is clearly for someone else, the bot would interrupt a private back-and-forth, or the room has moved on.`;
@@ -209,31 +210,29 @@ export class SimpleParticipationService {
     }
   }
 
-  // One decision request, plus an independent inner-thought request run at the same time.
+  // One request answers the decision and, when on, the inner thought. A bad thought never voids the decision.
   public async decide(input: SimpleDecisionInput): Promise<SimpleDecisionOutcome> {
     const route = this.route; const started = performance.now();
     const base = { action: null, emoji: null, emojiChoice: null, reactionSelectionFailed: false, addressee: null, score: null, scoreKind: "unavailable" as const, thought: null };
     if (!route) return { ...base, status: "unavailable", route: null, latencyMs: 0, usage: null };
     const tokens = input.emoji.map((option) => option.token);
-    const { schema, allowed } = actionSchema(route, input.actions, tokens); const description = { source: route.source, endpoint: route.endpoint, model: route.model, reasoningEffort: route.reasoningEffort };
     const thought = input.thoughts && input.actions.reply;
-    const [decided, thinking] = await Promise.allSettled([
-      this.call(input, route, simplePrompt(input, "decision", this.now()), schema),
-      thought ? this.call(input, route, simplePrompt(input, "thought", this.now()), thoughtSchema(route)) : Promise.resolve(null),
-    ]);
-    for (const result of [decided, thinking]) if (result.status === "rejected" && result.reason instanceof SocialOutputSuppressed) throw result.reason;
+    const { schema, allowed } = actionSchema(route, input.actions, tokens, thought); const description = { source: route.source, endpoint: route.endpoint, model: route.model, reasoningEffort: route.reasoningEffort };
     const native = route.source === "native";
-    const thoughtOutcome: SimpleThoughtOutcome | null = !thought ? null : thinking.status === "rejected" ?
-      { status: "failed", stance: null, length: null, want: null, ...failureDetail(thinking.reason) } :
-      ((): SimpleThoughtOutcome => { const call = thinking.value!; const decoded = decodeThought(call.raw, native);
-        return decoded ? { status: "valid" as const, ...decoded, latencyMs: call.latencyMs, usage: call.usage } :
-          { status: "failed" as const, stance: null, length: null, want: null, latencyMs: call.latencyMs, usage: call.usage, failure: "invalid_output" as const }; })();
+    let call: { raw: unknown; latencyMs: number; usage: CallUsage | null };
+    try { call = await this.call(input, route, simplePrompt(input, { thought, now: this.now() }), schema); } catch (error) {
+      if (error instanceof SocialOutputSuppressed) throw error;
+      const failed = failureDetail(error, "usage");
+      return { ...base, status: "failed", route: description, latencyMs: Math.round(performance.now() - started), ...failed,
+        thought: thought ? { status: "failed", stance: null, length: null, want: null, failure: failed.failure } : null };
+    }
     const latencyMs = Math.round(performance.now() - started);
-    if (decided.status === "rejected") return { ...base, status: "failed", route: description, latencyMs, thought: thoughtOutcome, ...failureDetail(decided.reason, "usage") };
-    const decoded = decodeSimpleDecision(decided.value.raw, native, allowed, tokens);
-    if (!decoded) return { ...base, status: "failed", failure: "invalid_output", route: description, latencyMs, usage: decided.value.usage, thought: thoughtOutcome };
+    const thoughtOutcome: SimpleThoughtOutcome | null = !thought ? null : ((): SimpleThoughtOutcome => { const decodedThought = decodeThought(call.raw, native);
+      return decodedThought ? { status: "valid", ...decodedThought } : { status: "failed", stance: null, length: null, want: null, failure: "invalid_output" }; })();
+    const decoded = decodeSimpleDecision(call.raw, native, allowed, tokens);
+    if (!decoded) return { ...base, status: "failed", failure: "invalid_output", route: description, latencyMs, usage: call.usage, thought: thoughtOutcome };
     return { status: "valid", action: decoded.action, emoji: decoded.emoji, emojiChoice: input.emoji.find((option) => option.token === decoded.emoji) ?? null, reactionSelectionFailed: decoded.reactionSelectionFailed, addressee: decoded.addressee, score: decoded.score,
-      scoreKind: native ? "native_probability" : "unavailable", route: description, latencyMs, usage: decided.value.usage, thought: thoughtOutcome };
+      scoreKind: native ? "native_probability" : "unavailable", route: description, latencyMs, usage: call.usage, thought: thoughtOutcome };
   }
 }
 function failureDetail(error: unknown): { failure: FailureCategory; latencyMs: number; usage: CallUsage | null };
