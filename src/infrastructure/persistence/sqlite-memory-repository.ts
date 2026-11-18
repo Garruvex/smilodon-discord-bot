@@ -465,6 +465,18 @@ export class SqliteMemoryRepository implements MemoryRepository {
     return Promise.resolve(rows.map(toMemory));
   }
 
+  public forgetCitingMessages(input: { guildId: string; channelId: string; messageIds: readonly string[] }): Promise<number> {
+    const ids = [...new Set(input.messageIds)];
+    if (!ids.length) return Promise.resolve(0);
+    const cites = (column: typeof schema.memories.contextProvenance | typeof schema.memoryRelations.contextProvenance): ReturnType<typeof sql> =>
+      sql`exists (select 1 from json_each(case when json_type(${column}, '$.dependencies') = 'array' then json_extract(${column}, '$.dependencies') else '[]' end) as dependency
+        where json_extract(dependency.value, '$.channelId') = ${input.channelId} and json_extract(dependency.value, '$.messageId') in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
+        and coalesce(json_extract(dependency.value, '$.projection.kind'), '') <> 'background_text')`;
+    return Promise.resolve(this.database.transaction((transaction) =>
+      transaction.delete(schema.memories).where(and(eq(schema.memories.guildId, input.guildId), cites(schema.memories.contextProvenance))).run().changes +
+      transaction.delete(schema.memoryRelations).where(and(eq(schema.memoryRelations.guildId, input.guildId), cites(schema.memoryRelations.contextProvenance))).run().changes));
+  }
+
   // memory_sources rows go with their memory via ON DELETE CASCADE
   // (better-sqlite3 enables foreign keys by default).
   public forget(query: ForgetQuery): Promise<number> {

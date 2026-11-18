@@ -19,6 +19,8 @@ export const zhTWMemory: SettingsTextCatalog = {
   "memory.advanced": { label: "進階記憶設定", description: "調整記憶淡化速度與舊版紀錄的清理時間。" },
   "memory.advanced.half-life": { label: "淡化半衰期（天）", description: "淡化的回憶權重每隔幾天減半；僅在啟用記憶淡化時生效。" },
   "memory.advanced.history": { label: "舊版本保留天數", description: "不再使用的角色紀錄版本在幾天後清除；不影響使用中的紀錄。" },
+  "memory.deleted-messages": { label: "已刪除的訊息", description: "從被刪除訊息學到的記憶。/forget 與排除設定一律適用。" },
+  "memory.deleted-messages.honour": { label: "忘記已刪除的訊息", description: "開啟：忘記從已刪除訊息學到的內容。每日摘要會保留。" },
   "memory.sharing": { label: "共享個人記憶", description: "依各頻道的記憶模式，分享新的個人事實。" },
   "memory.sharing.enabled": { label: "共享個人記憶", description: "既有私人記憶不會因此公開。" },
   "memory": { title: "記憶", description: "機器人會回顧和記住的內容" },

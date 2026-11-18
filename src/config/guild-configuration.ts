@@ -119,6 +119,8 @@ export interface GuildChatConfiguration {
   // default to "shared".
   channelMemoryModes: Readonly<Record<string, "shared" | "isolated" | "session_only" | "disabled">>;
   sharedMemoryEnabled?: boolean;
+  // When a message is deleted, delete the memories learned from it (daily summaries are kept).
+  honourDeletedSources?: boolean;
   // Experimental, off by default — see persona-drift-store.ts. Toggling
   // this off only pauses evolution/injection; it never deletes the guild's
   // accumulated persona-drift.json (see PersonaDriftStore.reset for the

@@ -58,6 +58,7 @@ export interface UpdateGuildConfigurationInput {
   // never wholesale-replaced) — same "add" semantics as chatbotChannelIds.
   chatbotChannelMemoryModes?: Readonly<Record<string, "shared" | "isolated" | "session_only" | "disabled">>;
   chatbotSharedMemoryEnabled?: boolean;
+  chatbotHonourDeletedSources?: boolean;
   contextOptOutUserIds?: readonly string[];
   contextOptOutRoleIds?: readonly string[];
   chatbotPersonaDriftEnabled?: boolean;
@@ -335,6 +336,7 @@ export function applyGuildConfigurationUpdate(
     next.chat.channelMemoryModes = { ...next.chat.channelMemoryModes, ...input.chatbotChannelMemoryModes };
   }
   if (input.chatbotSharedMemoryEnabled !== undefined) next.chat.sharedMemoryEnabled = input.chatbotSharedMemoryEnabled;
+  if (input.chatbotHonourDeletedSources !== undefined) next.chat.honourDeletedSources = input.chatbotHonourDeletedSources;
   if (input.contextOptOutUserIds !== undefined) next.chat.contextOptOutUserIds = [...new Set(input.contextOptOutUserIds)];
   if (input.contextOptOutRoleIds !== undefined) next.chat.contextOptOutRoleIds = [...new Set(input.contextOptOutRoleIds)];
   if (input.chatbotDisabledToolNames !== undefined) next.chat.disabledTools = [...input.chatbotDisabledToolNames];

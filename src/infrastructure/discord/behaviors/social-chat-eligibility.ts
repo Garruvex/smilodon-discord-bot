@@ -8,6 +8,7 @@ import type { ApplicationConfiguration } from "../../../config/configuration.js"
 import type { GuildConfigurationProvider } from "../../../config/guild-configuration-provider.js";
 import { isInGameChannel, type IsGameChannel } from "./game-channel-guard.js";
 import { mapWithConcurrency } from "../../../application/concurrency/map-with-concurrency.js";
+import type { CitedSource } from "../../../application/chat/guarded-conversation-context.js";
 
 export interface SocialEligibility { eligible: boolean; reason: string }
 
@@ -19,8 +20,26 @@ export class SocialChatEligibility {
   public readonly policy: ChatPolicy;
   private forgottenSource: ((message: Message) => Promise<boolean>) | null = null;
   private forgottenSources: ((messages: readonly Message[]) => Promise<readonly boolean[]>) | null = null;
-  public bindGuardedForgetPolicy(check: (message: Message) => Promise<boolean>, batch?: (messages: readonly Message[]) => Promise<readonly boolean[]>): void {
-    this.forgottenSource = check; this.forgottenSources = batch ?? null;
+  private forgottenCitations: ((guildId: string, channelId: string, sources: readonly CitedSource[]) => Promise<readonly boolean[]>) | null = null;
+  public bindGuardedForgetPolicy(check: (message: Message) => Promise<boolean>, batch?: (messages: readonly Message[]) => Promise<readonly boolean[]>,
+    cited?: (guildId: string, channelId: string, sources: readonly CitedSource[]) => Promise<readonly boolean[]>): void {
+    this.forgottenSource = check; this.forgottenSources = batch ?? null; this.forgottenCitations = cited ?? null;
+  }
+  public get checksCitedSources(): boolean { return this.forgottenCitations !== null; }
+  // Forget tombstones for messages a stored proof cites, by ID, author and time, without the message.
+  // With no policy bound every source counts as forgotten.
+  public async citedSourcesForgotten(guildId: string, channelId: string, sources: readonly CitedSource[]): Promise<readonly boolean[]> {
+    if (!sources.length) return [];
+    if (!this.forgottenCitations) return sources.map(() => true);
+    const result: boolean[] = [];
+    for (let index = 0; index < sources.length; index += 500) result.push(...await this.forgottenCitations(guildId, channelId, sources.slice(index, index + 500)));
+    if (result.length !== sources.length || result.some((value) => typeof value !== "boolean")) throw new Error("Incomplete forget policy result.");
+    return result;
+  }
+  // The collection opt-out for a cited message's author, by user and current roles.
+  public canCollectAuthor(source: Message, userId: string, member: GuildMember | null): boolean {
+    const profile = source.guildId ? this.profiles.find(source.guildId) : null;
+    return !!profile && this.policy.canCollect(profile, { userId, member });
   }
   public async sourceForgotten(message: Message): Promise<boolean> { return !this.forgottenSource || await this.forgottenSource(message); }
   public async sourcesForgotten(messages: readonly Message[]): Promise<readonly boolean[]> {

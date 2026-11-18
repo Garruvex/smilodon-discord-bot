@@ -14,7 +14,15 @@ determine whose channel messages the bot may understand.
   Neither administrators nor bot owners bypass collection exclusions.
 - Apply the same exclusions to replies, reactions, identities, summaries,
   memories and every contributing source of derived records.
-- Preserve deleted/forgotten-source checks and origin/provenance verification.
+- Preserve forgotten-source checks and origin/provenance verification. Messages a
+  stored proof cites (memories, relations, aliases, earlier bot replies) are
+  checked against forget tombstones and opt-outs in persistence, never fetched
+  from Discord again; only the current conversation is read from Discord.
+- Deleted messages: with `chat.honourDeletedSources` on (the default, Memory
+  settings → Deleted messages), a delete event removes memories and relations
+  learned from that message in conversation. What a daily summary or history
+  scan built is kept. Deletions while the bot is offline are not seen. Edits
+  do not change stored memories.
 - A restricted interaction role stops triggering; it is not a collection opt-out.
 
 ## Execution

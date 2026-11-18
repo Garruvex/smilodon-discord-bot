@@ -372,6 +372,9 @@ export interface MemoryRepository {
   listByUser(guildId: string, userId: string): Promise<Memory[]>;
   listBySubject(guildId: string, userId: string): Promise<Memory[]>;
   forget(input: ForgetQuery): Promise<number>;
+  // Deletes memories and relations whose proof cites one of these messages, except where the
+  // citation came from a background summary or scan. Returns how many rows went.
+  forgetCitingMessages?(input: { guildId: string; channelId: string; messageIds: readonly string[] }): Promise<number>;
   // Provenance for one memory, oldest first — every ingest() call records a
   // row here (see RepositoryIngestInput's own sourceMessageId/sourceChannelId/
   // assertedByUserId), but until /memory list needed to render a "view

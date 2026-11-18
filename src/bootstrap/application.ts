@@ -119,6 +119,14 @@ export class Application {
     ]).finally(() => this.rateLimitDiagnostics.stop());
   }
 
+  private forgetDeletedMessages(guildId: string, channelId: string, messageIds: readonly string[]): void {
+    void this.dependencies.deletedMessageMemory?.handle(guildId, channelId, messageIds).then((removed) => {
+      if (removed) this.logger.info({ guildId, channelId, messages: messageIds.length, removed }, "Forgot memories learned from deleted messages");
+    }).catch((error: unknown) => {
+      this.logger.error({ error, guildId, channelId }, "Unable to forget memories learned from deleted messages");
+    });
+  }
+
   private registerDiscordEvents(): void {
     this.client.once(Events.ClientReady, (readyClient) => {
       this.logger.info(
@@ -345,11 +353,13 @@ export class Application {
       if (message.guildId) this.dependencies.chatConversationService?.excludeInteraction(message.guildId, message.channelId, message.id);
       this.adminPanelService.handleMessagesDeleted(message.guildId, message.channelId, [message.id]);
       if (message.guildId !== null) this.dependencies.campaign.handleMessagesDeleted(message.guildId, message.channelId, [message.id]);
+      if (message.guildId !== null) this.forgetDeletedMessages(message.guildId, message.channelId, [message.id]);
     });
     this.client.on(Events.MessageBulkDelete, (messages, channel) => {
       for (const id of messages.keys()) this.dependencies.chatConversationService?.excludeInteraction(channel.guildId, channel.id, id);
       this.adminPanelService.handleMessagesDeleted(channel.guildId, channel.id, [...messages.keys()]);
       this.dependencies.campaign.handleMessagesDeleted(channel.guildId, channel.id, [...messages.keys()]);
+      this.forgetDeletedMessages(channel.guildId, channel.id, [...messages.keys()]);
     });
     this.client.on(Events.ChannelDelete, (channel) => {
       if (channel.isDMBased()) return;

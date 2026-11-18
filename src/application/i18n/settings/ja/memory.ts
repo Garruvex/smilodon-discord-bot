@@ -19,6 +19,8 @@ export const jaMemory: SettingsTextCatalog = {
   "memory.advanced": { label: "記憶の詳細設定", description: "記憶の減衰と古い記録の整理を調整します。" },
   "memory.advanced.half-life": { label: "減衰の半減期（日）", description: "減衰する記憶の重みが半分になる日数。記憶の減衰が有効な場合に適用します。" },
   "memory.advanced.history": { label: "旧バージョンの保持日数", description: "使われなくなった記録を整理するまでの日数。使用中の記録には影響しません。" },
+  "memory.deleted-messages": { label: "削除されたメッセージ", description: "削除されたメッセージから得た記憶の扱い。/forget と除外設定は常に適用されます。" },
+  "memory.deleted-messages.honour": { label: "削除されたメッセージを忘れる", description: "オン：削除されたメッセージから得た記憶を消します。日次要約は残ります。" },
   "memory.sharing": { label: "個人情報の共有メモリ", description: "各チャンネルの記憶モードに従い、新しい個人情報を共有します。" },
   "memory.sharing.enabled": { label: "個人情報の共有メモリ", description: "既存の非公開の記憶は非公開のままです。" },
   "memory": { title: "記憶", description: "ボットが読み返し、覚えておくこと" },

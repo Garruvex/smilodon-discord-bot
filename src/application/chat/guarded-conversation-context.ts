@@ -51,8 +51,15 @@ export interface GuardedContextPort {
   // Fresh transport data for this validation phase only. Every subsequent read
   // still performs author, scope, forget and provenance checks.
   prepareValidation?: (messageIds: readonly string[], signal: AbortSignal) => Promise<void>;
+  // Checks messages a stored proof cites (a memory, or an earlier bot reply) against persistence
+  // and settings only: forget tombstones and collection opt-outs. With it, those messages are never
+  // fetched from Discord again; only the current conversation is. Without it, every cited message
+  // is re-read and compared.
+  sourcesAllowed?: (sources: readonly CitedSource[], signal: AbortSignal) => Promise<readonly boolean[]>;
   policyCurrent(): boolean;
 }
+export interface CitedSource { messageId: string; authorId: string; timestampMs: number }
+type ProofDependency = ContextProvenance["dependencies"][number];
 export type GuardedResourceKey = Pick<NonNullable<ContextProvenance["resources"]>[number], "kind" | "id">;
 export type GuardedContextPhase = "assembly" | "sessions" | "memory" | "assets" | "relations" | "identities" | "validation";
 export interface GuardedContextReport {
@@ -82,7 +89,7 @@ const compact = (event: ChannelHistoryMessage): ChannelHistoryMessage => ({ ...e
 // It is deliberately narrower than the separately planned universal gateway.
 export class GuardedConversationContext {
   public hasForgottenSource(cutoff: (userId: string) => number | undefined): boolean {
-    return [...this.evidence.values()].some((source) => source.timestampMs <= (cutoff(source.authorId) ?? -Infinity));
+    return [...this.evidence.values(), ...this.carried.values()].some((source) => source.timestampMs <= (cutoff(source.authorId) ?? -Infinity));
   }
   public get durableWritesAllowed(): boolean { return !this.closed && this.port.persist !== false && this.port.policyCurrent(); }
   public get sharedMemoryAllowed(): boolean { return this.durableWritesAllowed && this.port.shareMemory === true; }
@@ -97,6 +104,9 @@ export class GuardedConversationContext {
   private readonly evidence = new Map<string, ChannelHistoryMessage>();
   private readonly evidenceVersions = new Map<string, string>();
   private readonly evidenceAssets = new Map<string, readonly GuardedAssetDescriptor[]>();
+  // Older messages a used proof cites, taken from the proof itself rather than fetched. They pass
+  // into this turn's own provenance as they are. Only used when the port has sourcesAllowed.
+  private readonly carried = new Map<string, ProofDependency>();
   private publicWebUsed = false;
   private readonly publicWebCitations = new Set<string>();
   private readonly publicTools = new Map<string, { name: string; outputHash: string }>();
@@ -115,9 +125,6 @@ export class GuardedConversationContext {
   private reactionActors = new Map<string, ChatUser>();
   private readonly identityActors = new Set<string>();
   private aliasObservationIncomplete = false;
-  // An optional time budget for confirming memory sources. Unconfirmed memories are left out.
-  private verificationDeadline: number | null = null;
-  private verificationCut = false;
   private readonly port: Readonly<GuardedContextPort>;
   private constructor(port: GuardedContextPort) { this.port = Object.freeze({ ...port }); registered.add(this); Object.seal(this); }
   public get current(): ChannelHistoryMessage { return immutableSnapshot(this.sourceCurrent); }
@@ -177,7 +184,7 @@ export class GuardedConversationContext {
         if (!proof || proof.purpose && proof.purpose !== "reply" || proof.coverage !== "complete") { this.coverageReport.unverifiedBot++; return null; }
         if (proof.outputHash !== hashContent(source.event.content)) { this.coverageReport.invalidatedDerived++; return null; }
         if (proof.outputAssetsHash && proof.outputAssetsHash !== guardedAssetsHash(source.assets ?? [])) return null;
-        await this.port.prepareValidation?.(proof.dependencies.filter((dependency) => dependency.guildId === this.port.guildId && dependency.channelId === this.port.channelId).map((dependency) => dependency.messageId), this.signal).catch(() => undefined);
+        if (!this.port.sourcesAllowed) await this.port.prepareValidation?.(proof.dependencies.filter((dependency) => dependency.guildId === this.port.guildId && dependency.channelId === this.port.channelId).map((dependency) => dependency.messageId), this.signal).catch(() => undefined);
         if (!await this.proofSourcesCurrent(proof, next)) { this.coverageReport.invalidatedDerived++; return null; }
       }
       return source;
@@ -197,7 +204,8 @@ export class GuardedConversationContext {
       this.evidence.set(item.event.messageId, item.event);
       this.evidenceVersions.set(item.event.messageId, sourceVersion(item));
       this.evidenceAssets.set(item.event.messageId, immutableSnapshot(item.assets ?? []));
-      if (item.origin === "chat") for (const dependency of item.provenance!.dependencies) {
+      if (item.origin === "chat" && this.port.sourcesAllowed) { if (!this.carry(item.provenance!.dependencies)) return false; }
+      else if (item.origin === "chat") for (const dependency of item.provenance!.dependencies) {
         const original = await this.read(dependency.messageId); if (!original || !await add(original)) return false;
         if (dependency.assetsHash) this.assetDependencies.set(dependency.messageId, dependency.assetsHash);
       }
@@ -376,16 +384,18 @@ export class GuardedConversationContext {
     }, "sessions");
   }
 
-  // Bounds memory source checks to budgetMs. Each check can wait on Discord's rate limit, and
-  // an optional turn that spends its whole deadline here never reaches its decision.
-  public async withVerificationBudget<T>(budgetMs: number, work: () => Promise<T>): Promise<T> {
-    this.verificationDeadline = Date.now() + budgetMs;
-    try { return await work(); } finally { this.verificationDeadline = null; }
+  // Adds the messages a used proof cites, all or none, without fetching them.
+  private carry(dependencies: readonly ProofDependency[]): boolean {
+    const added = dependencies.filter((dependency) => !this.evidence.has(dependency.messageId) && !this.carried.has(dependency.messageId));
+    if (this.evidence.size + this.carried.size + new Set(added.map((dependency) => dependency.messageId)).size > guardedContextLimits.dependencies) return false;
+    for (const dependency of added) this.carried.set(dependency.messageId, dependency);
+    return true;
   }
-  public get verificationCutShort(): boolean { return this.verificationCut; }
-  private verificationOver(): boolean {
-    if (this.verificationDeadline === null || Date.now() < this.verificationDeadline) return false;
-    this.verificationCut = true; return true;
+  private async carriedAllowed(): Promise<boolean> {
+    const carried = [...this.carried.values()].filter((dependency) => !this.evidence.has(dependency.messageId));
+    if (!carried.length || !this.port.sourcesAllowed) return true;
+    const allowed = await this.port.sourcesAllowed(carried.map(({ messageId, authorId, timestampMs }) => ({ messageId, authorId, timestampMs })), this.signal);
+    return allowed.length === carried.length && allowed.every(Boolean);
   }
 
   public async memories(records: readonly Memory[], retain = false, now = Date.now()): Promise<Memory[]> {
@@ -408,9 +418,9 @@ export class GuardedConversationContext {
       const dependencyIds = records.slice(0, 128).flatMap((record) => memoryClaimProof(record.contextProvenance, record)?.dependencies
         .filter((dependency) => dependency.guildId === this.port.guildId && dependency.channelId === this.port.channelId)
         .map((dependency) => dependency.messageId) ?? []);
-      if (dependencyIds.length) await this.port.prepareValidation?.([...new Set(dependencyIds)], this.signal).catch(() => undefined);
+      if (dependencyIds.length && !this.port.sourcesAllowed) await this.port.prepareValidation?.([...new Set(dependencyIds)], this.signal).catch(() => undefined);
       for (const record of records.slice(0, 128)) {
-        if (allowed.length === 20 || this.verificationOver()) break;
+        if (allowed.length === 20) break;
         if (record.statement.length > 1000 || chars + record.statement.length > 3000) continue;
         const proof = memoryClaimProof(record.contextProvenance, record);
         if (!proof || proof.audience.guildId !== this.port.guildId || proof.audience.channelId !== this.port.channelId ||
@@ -426,10 +436,13 @@ export class GuardedConversationContext {
         if (retain) {
           if (!await this.retainActors(proof)) continue;
           for (const entry of proof.resources ?? []) this.resources.set(`${entry.kind}:${entry.id}`, entry);
-          const before = new Set(this.evidence.keys());
-          for (const dependency of proof.dependencies) if (!await this.retain(dependency.messageId)) valid = false;
-          if (!valid) { for (const id of this.evidence.keys()) if (!before.has(id)) { this.evidence.delete(id); this.evidenceVersions.delete(id); this.evidenceAssets.delete(id); } continue; }
-          for (const dependency of proof.dependencies) if (dependency.assetsHash) this.assetDependencies.set(dependency.messageId, dependency.assetsHash);
+          if (this.port.sourcesAllowed) { if (!this.carry(proof.dependencies)) continue; }
+          else {
+            const before = new Set(this.evidence.keys());
+            for (const dependency of proof.dependencies) if (!await this.retain(dependency.messageId)) valid = false;
+            if (!valid) { for (const id of this.evidence.keys()) if (!before.has(id)) { this.evidence.delete(id); this.evidenceVersions.delete(id); this.evidenceAssets.delete(id); } continue; }
+            for (const dependency of proof.dependencies) if (dependency.assetsHash) this.assetDependencies.set(dependency.messageId, dependency.assetsHash);
+          }
           if (subject && !this.retainActor(subject)) continue;
           this.inheritPublicTools(proof);
           if (proof.publicWeb) { this.publicWebUsed = true; for (const digest of proof.publicWeb.citationHashes) this.publicWebCitations.add(digest); }
@@ -472,8 +485,13 @@ export class GuardedConversationContext {
       const actor = await this.port.actor(dependency.userId, this.signal);
       if (!actor || actor.id !== dependency.userId || actorSourceHash(actor, dependency.projection) !== dependency.representationHash) return false;
     }
+    if (proof.dependencies.some((dependency) => dependency.guildId !== this.port.guildId || dependency.channelId !== this.port.channelId)) return false;
+    if (this.port.sourcesAllowed) {
+      // Cited messages are checked against forget tombstones and opt-outs, never fetched again.
+      const allowed = await this.port.sourcesAllowed(proof.dependencies.map(({ messageId, authorId, timestampMs }) => ({ messageId, authorId, timestampMs })), this.signal);
+      return allowed.length === proof.dependencies.length && allowed.every(Boolean);
+    }
     for (const dependency of proof.dependencies) {
-      if (dependency.guildId !== this.port.guildId || dependency.channelId !== this.port.channelId || this.verificationOver()) return false;
       const source = await this.read(dependency.messageId, path);
       if (dependency.projection?.kind === "human_text" && source?.origin !== "human") return false;
       if (!source || !dependencyMatchesSource(dependency, source.event, contextSourceHash(source.event)) ||
@@ -538,7 +556,6 @@ export class GuardedConversationContext {
       const tokens = new Set(aliasQueryTokens(message)); const admitted: { alias: string; subjectId: string }[] = []; const subjects = new Set<string>();
       let incomplete = this.aliasObservationIncomplete || records.length >= 128; const sources: Memory[] = [];
       for (const record of records.slice(0, 128)) {
-        if (this.verificationOver()) { incomplete = true; break; }
         if (record.moduleId || record.subjectType !== "member" || !canRecall(record, { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.actorId ?? "" }, now) ||
             record.audience === "private" && (record.ownerUserId !== this.port.audienceUserId || record.ownerUserId !== this.port.actorId)) continue;
         if (!subjects.has(record.subjectId) && subjects.size >= 32 || !this.canRetainActor(record.subjectId)) { incomplete = true; continue; }
@@ -577,7 +594,6 @@ export class GuardedConversationContext {
     return this.phase(async () => {
     const admitted: MemoryRelation[] = [];
     for (const record of records.slice(0, 128)) {
-      if (this.verificationOver()) break;
       if (record.guildId !== this.port.guildId || record.channelId !== this.port.channelId ||
           record.isolationChannelId !== null && record.isolationChannelId !== this.port.channelId) continue;
       const proof = memoryRelationProof(record.contextProvenance, record); const payload = memoryRelationPayload(record);
@@ -597,7 +613,8 @@ export class GuardedConversationContext {
   private async retainDerived(value: unknown, output: string, purpose: "character_state" | "relation" | "identity_alias"): Promise<boolean> {
       const proof = parseContextProvenance(value);
       if (!proof || proof.purpose !== purpose || proof.outputHash !== hashContent(output) || !await this.proofSourcesCurrent(proof)) return false;
-      for (const entry of proof.dependencies) {
+      if (this.port.sourcesAllowed) { if (!this.carry(proof.dependencies)) return false; }
+      else for (const entry of proof.dependencies) {
         if (!await this.retain(entry.messageId)) return false;
         if (entry.assetsHash) this.assetDependencies.set(entry.messageId, entry.assetsHash);
       }
@@ -693,7 +710,9 @@ export class GuardedConversationContext {
     if (!this.port.snapshotCurrent && ++this.passes > guardedContextLimits.maxValidationPasses) { this.closed = true; this.port.validation?.("bounded", this.reads, mode); return false; }
     try { const valid = await this.phase(async () => {
       if (this.port.snapshotCurrent) return await this.port.snapshotCurrent(freshness === "effect", this.signal, [...this.evidence.keys()]) &&
+        (freshness !== "effect" || await this.carriedAllowed()) &&
         await this.validateResources({ resources: [...this.resources.values()] }) && this.port.policyCurrent();
+      if (!await this.carriedAllowed()) return false;
       const entries = [...this.evidence];
       await this.port.prepareValidation?.(entries.map(([id]) => id), this.signal);
       for (let index = 0; index < entries.length; index += 4) {
@@ -737,11 +756,12 @@ export class GuardedConversationContext {
     return this.port.retention === "session" ? this.buildProvenance(output, "reply", true) : null;
   }
   private buildProvenance(output: string, purpose: "reply" | "memory_claim" | "character_state" | "relation" | "identity_alias", session: boolean): ContextProvenance | null {
-    if (this.port.persist === false && !session || this.closed || !this.port.policyCurrent() || !this.evidence.size || this.evidence.size > contextProvenanceLimits.dependencies) return null;
+    const carried = [...this.carried.values()].filter((dependency) => !this.evidence.has(dependency.messageId));
+    if (this.port.persist === false && !session || this.closed || !this.port.policyCurrent() || !this.evidence.size || this.evidence.size + carried.length > contextProvenanceLimits.dependencies) return null;
     return parseContextProvenance({ version: 1, ...(purpose !== "reply" ? { purpose } : {}), coverage: "complete", audience: { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.audienceUserId ?? null },
-      outputHash: hashContent(output), dependencies: [...this.evidence.values()].map((source) => ({ guildId: this.port.guildId,
+      outputHash: hashContent(output), dependencies: [...[...this.evidence.values()].map((source) => ({ guildId: this.port.guildId,
         channelId: this.port.channelId, messageId: source.messageId, authorId: source.authorId, timestampMs: source.timestampMs,
-        representationHash: contextSourceHash(source), ...(this.assetDependencies.has(source.messageId) ? { assetsHash: this.assetDependencies.get(source.messageId) } : {}) })), actors: [
+        representationHash: contextSourceHash(source), ...(this.assetDependencies.has(source.messageId) ? { assetsHash: this.assetDependencies.get(source.messageId) } : {}) })), ...carried], actors: [
           ...[...this.reactionActors.values()].map((actor) => ({ userId: actor.id, representationHash: actorSourceHash(actor) })),
           ...[...this.identityActors].filter((id) => !this.reactionActors.has(id)).map((id) => ({ userId: id, projection: "identity" as const, representationHash: hashContent(JSON.stringify({ id })) })),
         ],

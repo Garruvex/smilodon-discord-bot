@@ -244,6 +244,19 @@ export class ChatTurnSupport {
           pending = pending.filter((id) => id < oldest);
         }
       },
+      // Without a citation forget policy, cited messages fall back to being re-read from Discord.
+      ...(eligibility?.checksCitedSources ? { sourcesAllowed: async (cited: Parameters<NonNullable<GuardedContextPort["sourcesAllowed"]>>[0], signal: AbortSignal): Promise<readonly boolean[]> => {
+        const denied = cited.map(() => false);
+        if (!eligibility || signal.aborted || !cited.length || !policyCurrent() || !await scopeAllowed() || !await readable()) return denied;
+        const botId = source.client.user?.id;
+        // The bot's own replies carry their own proof; only people's messages have forget and opt-out rules.
+        const people = cited.filter((item) => item.authorId !== botId);
+        const forgotten = await eligibility.citedSourcesForgotten(source.guildId!, source.channelId, people).catch(() => people.map(() => true));
+        const blocked = new Set(people.filter((_item, index) => forgotten[index]).map((item) => item.messageId));
+        const allowed = await Promise.all(cited.map(async (item) => item.authorId === botId ||
+          !blocked.has(item.messageId) && eligibility.canCollectAuthor(source, item.authorId, await member(item.authorId, signal))));
+        return signal.aborted || !policyCurrent() ? denied : allowed;
+      } } : {}),
       read: async (id, signal): Promise<GuardedContextSource | null> => {
         const filtered = state(signal).filtered;
         if (filtered.has(id)) return filtered.get(id)!;

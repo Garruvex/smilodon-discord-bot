@@ -101,6 +101,32 @@ describe("Discord context guard", () => {
     expect(next.history.map((event) => event.messageId)).not.toContain("old");
     expect(next.history.map((event) => event.messageId)).not.toContain("derived");
   });
+  it("checks what an earlier bot reply cites against forget and opt-out records, without fetching those messages again", async () => {
+    const { support, current, old, policy, profile, repository, messages, origins } = fixture(true);
+    policy.bindGuardedForgetPolicy(() => Promise.resolve(false), undefined, (guildId, channelId, sources) => repository.sourcesForgotten(sources.map((item) => ({
+      guildId, subjectId: item.authorId, topic: "*", slot: `source:${item.messageId}`, channelId, sourceTimestampMs: item.timestampMs }))));
+    const prior = await GuardedConversationContext.open(support.createContextPort(current), { count: 40, budget: 12000, burstIds: [] });
+    const bot = { ...old, id: "derived", content: "DERIVED", createdTimestamp: 2000, author: { ...old.author, id: "bot", bot: true }, reference: null } as Message;
+    messages.set(bot.id, bot);
+    await origins.record({ guildId: profile.guildId, channelId: "channel", messageId: bot.id, origin: "chat", sourceMessageId: current.id,
+      contextProvenance: prior.provenance(bot.content), createdAt: bot.createdTimestamp });
+    expect(prior.provenance(bot.content)?.dependencies.map((dependency) => dependency.messageId)).toContain("old");
+    // The cited message is deleted from Discord; the reply that used it stays usable.
+    messages.delete("old");
+    const fetch = vi.mocked((current.channel as unknown as { messages: { fetch: (input: unknown) => unknown } }).messages).fetch; fetch.mockClear();
+    const next = await GuardedConversationContext.open(support.createContextPort(current), { count: 40, budget: 12000, burstIds: [] });
+    expect(next.history.map((event) => event.messageId)).toContain("derived");
+    expect(fetch).not.toHaveBeenCalledWith(expect.objectContaining({ message: "old" }));
+    expect(next.provenance("again")?.dependencies.map((dependency) => dependency.messageId)).toEqual(expect.arrayContaining(["derived", "old"]));
+    // Forgetting the cited message, or its author opting out, removes the reply from context.
+    await repository.recordForgetCutoff({ guildId: profile.guildId, subjectId: "bob", topic: "*", slot: "source:old", scopeKey: "*", cutoff: 5000 });
+    const forgotten = await GuardedConversationContext.open(support.createContextPort(current), { count: 40, budget: 12000, burstIds: [] });
+    expect(forgotten.history.map((event) => event.messageId)).not.toContain("derived");
+    await repository.recordForgetCutoff({ guildId: profile.guildId, subjectId: "bob", topic: "*", slot: "source:old", scopeKey: "*", cutoff: 0 });
+    profile.chat.contextOptOutUserIds = ["bob"];
+    const optedOut = await GuardedConversationContext.open(support.createContextPort(current), { count: 40, budget: 12000, burstIds: [] });
+    expect(optedOut.history.map((event) => event.messageId)).not.toContain("derived");
+  });
   it("links an optional bot reply sent without a Discord reference to the message it answered", async () => {
     const { support, current, old, profile, messages, origins } = fixture(true);
     const prior = await GuardedConversationContext.open(support.createContextPort(current), { count: 40, budget: 12000, burstIds: [] });

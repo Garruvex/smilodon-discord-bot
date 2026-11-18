@@ -19,6 +19,8 @@ export const enMemory: SettingsTextCatalog = {
   "memory.advanced": { label: "Advanced memory", description: "Adjust memory fading and cleanup of old record versions." },
   "memory.advanced.half-life": { label: "Fading half-life (days)", description: "Days for fading recall weight to halve. Applies only when memory fading is enabled." },
   "memory.advanced.history": { label: "Old version retention (days)", description: "Days before inactive character record versions are cleaned up; active notes are unaffected." },
+  "memory.deleted-messages": { label: "Deleted messages", description: "Memories from messages people delete. /forget and opt-outs always apply." },
+  "memory.deleted-messages.honour": { label: "Forget deleted messages", description: "On: forget what was learned from a deleted message. Daily summaries are kept." },
   "memory.sharing": { label: "Shared personal memory", description: "Share new personal facts according to each channel memory mode." },
   "memory.sharing.enabled": { label: "Shared personal memory", description: "Existing private memories stay private." },
   "memory": { title: "Memory", description: "What the bot reads back and remembers." },

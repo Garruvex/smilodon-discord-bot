@@ -22,6 +22,10 @@ export const memory = group("memory", [
   chatSetting("sharing", {
     enabled: toggle({ read: (p) => p.chat.sharedMemoryEnabled ?? false, write: (v) => ({ chatbotSharedMemoryEnabled: v }) }),
   }),
+  // Deleting a message removes what was learned from it, unless turned off. Daily summaries stay.
+  chatSetting("deleted-messages", {
+    honour: toggle({ read: (p) => p.chat.honourDeletedSources ?? true, write: (v) => ({ chatbotHonourDeletedSources: v }) }),
+  }),
   chatSetting("context-opt-out", {
     roles: roleList({ read: (p) => p.chat.contextOptOutRoleIds ?? [], write: (ids) => ({ contextOptOutRoleIds: [...ids] }) }),
     users: text({ maxLength: 4000, read: (p) => (p.chat.contextOptOutUserIds ?? []).join(", "),

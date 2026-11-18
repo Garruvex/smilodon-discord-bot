@@ -1,3 +1,4 @@
+import { DeletedMessageMemory } from "../application/memory/deleted-message-memory.js";
 import { GuardedEvaluationContext } from "../application/context/guarded-evaluation-context.js";
 import { guardModelTransport } from "../application/context/guarded-model-transport.js";
 import { guardEmbeddingTransport } from "../application/context/guarded-embedding-transport.js";
@@ -287,6 +288,8 @@ export interface ApplicationDependencies {
   reminderScheduler: ReminderScheduler;
   applicationEmojiCatalog: ApplicationEmojiCatalog;
   memoryEngine: MemoryEngine;
+  // Deletes what was learned from a deleted message, per the guild's setting.
+  deletedMessageMemory?: DeletedMessageMemory;
   // Null under the same condition as channelSummaryScheduler above — no
   // chat provider configured. Exposed so Application.stop() can drain its
   // fire-and-forget background writes (dedicated extraction, dropped-
@@ -650,7 +653,11 @@ export function createDependencies(
   socialEligibility.bindGuardedForgetPolicy((message) => memoryRepository.isSourceForgotten({ guildId: message.guildId!,
     subjectId: message.author.id, topic: "*", slot: `source:${message.id}`, channelId: message.channelId, sourceTimestampMs: message.createdTimestamp }),
   memoryRepository.sourcesForgotten ? (messages): Promise<readonly boolean[]> => memoryRepository.sourcesForgotten!(messages.map((message) => ({ guildId: message.guildId!,
-    subjectId: message.author.id, topic: "*", slot: `source:${message.id}`, channelId: message.channelId, sourceTimestampMs: message.createdTimestamp }))) : undefined);
+    subjectId: message.author.id, topic: "*", slot: `source:${message.id}`, channelId: message.channelId, sourceTimestampMs: message.createdTimestamp }))) : undefined,
+  (guildId, channelId, sources): Promise<readonly boolean[]> => {
+    const queries = sources.map((item) => ({ guildId, subjectId: item.authorId, topic: "*", slot: `source:${item.messageId}`, channelId, sourceTimestampMs: item.timestampMs }));
+    return memoryRepository.sourcesForgotten ? memoryRepository.sourcesForgotten(queries) : Promise.all(queries.map((query) => memoryRepository.isSourceForgotten(query)));
+  });
 
   // Prefers the cheaper utility model when configured, same preference as
   // ChatConversationService's own consolidation call. Null when no chat
@@ -923,6 +930,7 @@ export function createDependencies(
     reminderScheduler,
     applicationEmojiCatalog,
     memoryEngine,
+    deletedMessageMemory: new DeletedMessageMemory(memoryRepository, (guildId) => guildConfigurationProvider.find(guildId)?.chat.honourDeletedSources !== false),
     chatConversationService,
     raidService: new RaidService(guildConfigurationProvider, logger.child({ component: "raid-guard" })),
     linkGuardService,

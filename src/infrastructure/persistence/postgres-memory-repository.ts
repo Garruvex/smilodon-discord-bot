@@ -492,6 +492,20 @@ export class PostgresMemoryRepository implements MemoryRepository {
   // See SqliteMemoryRepository.forget — same semantics (memoryId removes the
   // whole supersede chain; bulk forget also clears relations about the
   // subject and the asserter's provenance).
+  public async forgetCitingMessages(input: { guildId: string; channelId: string; messageIds: readonly string[] }): Promise<number> {
+    const ids = [...new Set(input.messageIds)];
+    if (!ids.length) return 0;
+    const cites = (column: typeof schema.memories.contextProvenance | typeof schema.memoryRelations.contextProvenance): ReturnType<typeof sql> =>
+      sql`exists (select 1 from jsonb_array_elements(case when jsonb_typeof(${column}->'dependencies') = 'array' then ${column}->'dependencies' else '[]'::jsonb end) as dependency(value)
+        where dependency.value->>'channelId' = ${input.channelId} and dependency.value->>'messageId' in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
+        and coalesce(dependency.value->'projection'->>'kind', '') <> 'background_text')`;
+    return this.database.transaction(async (transaction) => {
+      const memories = await transaction.delete(schema.memories).where(and(eq(schema.memories.guildId, input.guildId), cites(schema.memories.contextProvenance))).returning({ id: schema.memories.id });
+      const relations = await transaction.delete(schema.memoryRelations).where(and(eq(schema.memoryRelations.guildId, input.guildId), cites(schema.memoryRelations.contextProvenance))).returning({ id: schema.memoryRelations.id });
+      return memories.length + relations.length;
+    });
+  }
+
   public async forget(query: ForgetQuery): Promise<number> {
     return this.database.transaction(async (transaction) => {
       if (query.memoryId) {

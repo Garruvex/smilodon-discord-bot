@@ -14,7 +14,7 @@ import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { ChatProviderError, chatSafetyGuard } from "./chat-provider.js";
 import { chatMemoryInstructions } from "./chat-memory-policy.js";
 import { guildKnowledgeInstructions } from "./guild-knowledge-policy.js";
-import { assertTurnActive, memoryVerificationBudgetMs } from "./turn-work-budget.js";
+import { assertTurnActive } from "./turn-work-budget.js";
 import { effectiveChatCapabilities } from "./chat-capabilities.js";
 import type { CausalChainLink, Memory, MemoryEngine, MemoryContext, MemoryRelation } from "../memory/memory.js";
 import { groupObservedAliasRows } from "../memory/observed-subject-names.js";
@@ -111,16 +111,11 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
       .catch((error: unknown) => ({ memories: [], causalChains: [], ...recallFailed(error) })) : { memories: [], causalChains: [] };
     // The source authority owns admission even if a repository/engine adapter
     // returns an unexpected row or unproven relationship metadata.
-    // Every turn checks memory sources for a bounded time, so a slow, rate-limited check cannot
-    // use up the deadline its decision or reply needs. Memories left unchecked are left out.
-    const verifyMemory = <T>(work: () => Promise<T>): Promise<T> =>
-      lease.withVerificationBudget(memoryVerificationBudgetMs(input.interaction, Date.now(), input.turnDeadlineAt), work);
-    return verifyMemory(async () => {
-      const memoryClaims = await lease.memories(recalled.memories, true, dependencies.now());
-      const aliasObservation = await lease.aliases(recalled.aliasSources ?? [], lease.current.content, dependencies.now());
-      const relationCandidates = recalled.causalChains.flatMap((chain) => chain.sourceRelation ? [chain.sourceRelation] : []);
-      return { memoryClaims, aliasCandidates: toAliasCandidates(aliasObservation), relations: await lease.relations(relationCandidates) };
-    });
+    // Their cited messages are checked against forget and opt-out records, not fetched from Discord.
+    const memoryClaims = await lease.memories(recalled.memories, true, dependencies.now());
+    const aliasObservation = await lease.aliases(recalled.aliasSources ?? [], lease.current.content, dependencies.now());
+    const relationCandidates = recalled.causalChains.flatMap((chain) => chain.sourceRelation ? [chain.sourceRelation] : []);
+    return { memoryClaims, aliasCandidates: toAliasCandidates(aliasObservation), relations: await lease.relations(relationCandidates) };
   };
   const loadAliases = async (): Promise<ChatRequest["aliasCandidates"] & object> => {
     const found = durableRecall ? await dependencies.memory.recallAliases(recallInput).catch(recallFailed) : {};
@@ -191,7 +186,7 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
     })), causalChains: links, ...(aliases.length ? { aliasCandidates: aliases } : {}) });
   const reportSources = (claims: number, relationCount: number, imageCount: number): void => emitChatDiagnostic(dependencies.logger, { event: "context.guard.sources", sessions: sessions.length,
     memories: claims, relations: relationCount, actors: lease.admittedActorIds.length, images: imageCount, configurations: configuration.preferences ? 2 : 1,
-    unavailable: ["legacy_derived", ...(lease.verificationCutShort ? ["memory_partial" as const] : [])] });
+    unavailable: ["legacy_derived"] });
   const replyContext = decideFirst ? { images: [], personaLore: [], personaDrift: null, replyChainSummary: null } : await loadReplyContext();
   if (!decideFirst) reportSources(memoryClaims.length, relations.length, replyContext.images.length);
   const { images, personaDrift, replyChainSummary } = replyContext;
