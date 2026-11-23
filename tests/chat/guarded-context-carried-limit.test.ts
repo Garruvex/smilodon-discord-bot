@@ -32,7 +32,16 @@ describe("guarded context carried-dependency limit", () => {
     }
 
     const lease = await GuardedConversationContext.open(fixture.port, policy);
-    expect(lease.history.some((event) => event.authorId === "bot")).toBe(true);
+    // Every person's message in the window survives; only bot replies give way to the limit.
+    const kept = lease.history.map((event) => event.messageId);
+    expect(kept.filter((id) => id.startsWith("human-"))).toHaveLength(30);
+    expect(kept.filter((id) => id.startsWith("bot-")).length).toBeGreaterThan(0);
+    expect(kept.filter((id) => id.startsWith("bot-")).length).toBeLessThan(4);
+    // Newer bot replies are kept before older ones.
+    expect(kept).toContain("bot-3");
+    expect(kept).not.toContain("bot-0");
+    // History stays in chronological order.
+    expect([...lease.history].sort((a, b) => a.timestampMs - b.timestampMs)).toEqual(lease.history);
     const proof = lease.provenance("answer");    expect(proof).not.toBeNull();
     expect(proof!.dependencies.length).toBeLessThanOrEqual(contextProvenanceLimits.dependencies);
     expect(lease.provenance("operation:recall_embedding", "memory_claim")).not.toBeNull();

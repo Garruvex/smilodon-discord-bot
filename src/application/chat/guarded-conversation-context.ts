@@ -307,8 +307,16 @@ export class GuardedConversationContext {
         terms.reduce((total, term) => total + Number(event.content.toLowerCase().includes(term)), 0) * 2 + Number(event.authorId === current.authorId) }))
         .filter((item) => item.score > 0).sort((a, b) => b.score - a.score).slice(0, guardedContextLimits.targetedMessages).map((item) => item.event) : [];
       const bounded = budgetEligibleHistory([...baseline, ...targeted], input.count + targeted.length, input.budget);
-      lease.coverageReport.truncated += bounded.truncated; lease.sourceHistory = [];
-      for (const event of bounded.messages) if (await lease.retain(event.messageId)) lease.sourceHistory.push(event);
+      lease.coverageReport.truncated += bounded.truncated;
+      // The window comes first: people's messages, newest first. Earlier bot replies come second and
+      // only take the proof space left for their citations; one whose citations do not fit is left out.
+      const newestFirst = [...bounded.messages].reverse(); const admitted = new Set<string>();
+      for (const pass of ["people", "bot_replies"] as const) for (const event of newestFirst) {
+        if (admitted.has(event.messageId)) continue;
+        if (((await lease.read(event.messageId))?.origin === "chat") !== (pass === "bot_replies")) continue;
+        if (await lease.retain(event.messageId)) admitted.add(event.messageId);
+      }
+      lease.sourceHistory = bounded.messages.filter((event) => admitted.has(event.messageId));
       lease.coverageReport.selected = lease.sourceHistory.length;
       lease.coverageReport.omitted += Math.max(0, candidates.length - lease.sourceHistory.length);
       lease.coverageReport.selectedIds = lease.sourceHistory.map((event) => event.messageId);
