@@ -106,7 +106,8 @@ const eventSchema = z.discriminatedUnion("event", [
   z.object({ event: z.literal("chat.candidate.changed"), candidateId: identifier, action: z.enum(["buffered", "coalesced", "scheduled", "submitted", "cancelled", "expired"]), reason: z.enum(["accepted", "cooldown", "ready", "changed", "capacity", "ineligible", "deadline"]), messages: count, delayMs: duration }),
   z.object({ event: z.literal("chat.admission.buffered"), interaction, reason: z.enum(["batch_threshold", "pause_or_cooldown", "continuation_candidate", "submitted", "invalidated"]), messages: count, delayMs: duration }),
   z.object({ event: z.literal("chat.turn.skipped"), reason: z.enum(["decision_unavailable", "duplicate_ping"]) }),
-  z.object({ event: z.literal("chat.output.suppressed"), reason: z.enum(["execution_ineligible", "privacy_changed", "shadow", "opportunity_expired", "context_changed", "delivery_cancelled", "output_capacity"]) }),
+  z.object({ event: z.literal("chat.output.suppressed"), reason: z.enum(["execution_ineligible", "privacy_changed", "shadow", "opportunity_expired", "context_changed", "delivery_cancelled", "output_capacity", "addressed_turn_suppressed"]),
+    site: z.string().regex(/^[\w.-]{1,80}:\d{1,6}$/u).optional() }),
   z.object({ event: z.literal("chat.queue.changed"), jobId: identifier, action: z.enum(["enqueued", "admitted", "skipped", "cancelled", "completed", "failed"]),
     reason: z.enum(["accepted", "scheduler_closed", "replaced_by_optional", "preempted_by_direct", "channel_queue_full", "global_queue_full", "evaluation_cooldown", "evaluation_budget", "expired", "shutdown", "executed", "operation_failed", "operation_suppressed"]),
     optional: z.boolean(), queueDepth: count, waitMs: duration, failure: failureCategory.optional() }),
@@ -194,6 +195,16 @@ export function bindDiagnosticTask<Args extends unknown[], T>(task: (...args: Ar
 
 export function diagnosticElapsed(start: number): number {
   return Math.max(0, performance.now() - start);
+}
+
+// The source file and line that threw a suppression, e.g. "memory-context-guard.ts:22".
+export function suppressionSite(error: unknown): string | undefined {
+  const stack = error instanceof Error ? error.stack ?? "" : "";
+  for (const line of stack.split("\n").slice(1)) {
+    const match = /[\\/]([\w.-]{1,80}\.[jt]s):(\d{1,6}):\d+\)?$/u.exec(line.trim());
+    if (match && match[1] !== "message-origin-store.js" && match[1] !== "message-origin-store.ts") return `${match[1]}:${match[2]}`;
+  }
+  return undefined;
 }
 
 export function emitChatDiagnostic(logger: DiagnosticLogger | null, event: ChatDiagnosticEvent): void {

@@ -6,7 +6,7 @@ import { ScheduledChatPreview } from "./scheduled-chat-preview.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from "discord.js";
 import type { Logger } from "pino";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
-import { emitChatDiagnostic, safeFailure } from "../../../application/diagnostics/chat-diagnostics.js";
+import { emitChatDiagnostic, safeFailure, suppressionSite } from "../../../application/diagnostics/chat-diagnostics.js";
 import { mentionInteraction } from "../../../application/chat/conversation-trigger.js";
 import { conversationEffects } from "../../../application/chat/conversation-effects.js";
 import { MentionChatAccess } from "./mention-chat-access.js";
@@ -285,7 +285,11 @@ export class MentionChatBehavior implements BotBehavior<BehaviorEvent.MessageCre
         currentMessageChars: response.contextUsage?.currentMessageChars,
       }, "Chat API request completed");
     } catch (error) {
-      if (error instanceof SocialOutputSuppressed) return BehaviorResult.StopPropagation;
+      if (error instanceof SocialOutputSuppressed) {
+        const site = suppressionSite(error);
+        emitChatDiagnostic(this.logger, { event: "chat.output.suppressed", reason: "addressed_turn_suppressed", ...(site ? { site } : {}) });
+        return BehaviorResult.StopPropagation;
+      }
       this.logger.error({ error, guildId: message.guildId, channelId: message.channelId, messageId: message.id, userId: message.author.id }, "Mention chat request failed");
       if (error instanceof ChatStateCommitError) {
         // The reply was already delivered before the commit failed, so tell the

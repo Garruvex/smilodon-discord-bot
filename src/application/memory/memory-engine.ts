@@ -336,7 +336,9 @@ export class DefaultMemoryEngine implements MemoryEngine {
     const queryText = buildEmbeddingQueryText({ message: input.message, recentHistory: input.recentHistory, replyToContent: input.replyToContent });
     if (this.embeddingsClient && queryText.trim()) {
       await checkMemoryContext(input.context);
-      const queryEmbedding = await this.embeddingsClient.embed(queryText, memoryModelOptions(input.context, "recall_embedding", [queryText])).catch(() => null);
+      // Approval is built inside the promise so a refused approval also falls back to lexical recall.
+      const embeddingsClient = this.embeddingsClient;
+      const queryEmbedding = await Promise.resolve().then(() => embeddingsClient.embed(queryText, memoryModelOptions(input.context, "recall_embedding", [queryText]))).catch(() => null);
       if (queryEmbedding) {
         const withCosine = candidates.memories
           .filter((memory) => memory.embedding && memory.embedding.length === queryEmbedding.length)

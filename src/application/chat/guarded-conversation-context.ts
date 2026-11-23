@@ -200,7 +200,8 @@ export class GuardedConversationContext {
         this.evidenceAssets.set(item.event.messageId, immutableSnapshot(item.assets ?? []));
         return true;
       }
-      if (!this.evidence.has(item.event.messageId) && this.evidence.size >= guardedContextLimits.dependencies) return false;
+      // Carried citations share the proof's dependency limit, so a message already carried costs nothing more.
+      if (!this.carried.has(item.event.messageId) && this.dependencyCount() >= guardedContextLimits.dependencies) return false;
       this.evidence.set(item.event.messageId, item.event);
       this.evidenceVersions.set(item.event.messageId, sourceVersion(item));
       this.evidenceAssets.set(item.event.messageId, immutableSnapshot(item.assets ?? []));
@@ -384,10 +385,16 @@ export class GuardedConversationContext {
     }, "sessions");
   }
 
+  // Distinct messages the reply's proof will list: evidence plus carried citations not also read as evidence.
+  private dependencyCount(): number {
+    let count = this.evidence.size;
+    for (const id of this.carried.keys()) if (!this.evidence.has(id)) count++;
+    return count;
+  }
   // Adds the messages a used proof cites, all or none, without fetching them.
   private carry(dependencies: readonly ProofDependency[]): boolean {
     const added = dependencies.filter((dependency) => !this.evidence.has(dependency.messageId) && !this.carried.has(dependency.messageId));
-    if (this.evidence.size + this.carried.size + new Set(added.map((dependency) => dependency.messageId)).size > guardedContextLimits.dependencies) return false;
+    if (this.dependencyCount() + new Set(added.map((dependency) => dependency.messageId)).size > guardedContextLimits.dependencies) return false;
     for (const dependency of added) this.carried.set(dependency.messageId, dependency);
     return true;
   }
