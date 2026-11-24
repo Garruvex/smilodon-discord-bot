@@ -76,6 +76,8 @@ const backgroundOnly = (dependency: ProofDependency): boolean => dependency.proj
 // How many stored claims one memory pass inspects, in the order given.
 export const maxClaimCandidates = 128;
 const artifactKey = (artifactId: string, outputHash: string): string => JSON.stringify([artifactId, outputHash]);
+// An artifact in the provenance graph and the reader kind that admits it.
+export interface GraphArtifactRef { kind: ProvenanceReaderKind; graphKind: ProvenanceArtifactKind; artifactId: string }
 const citedKey = (item: CitedSource): string => JSON.stringify([item.messageId, item.authorId, item.timestampMs]);
 // Keeps each batched check well inside SQL parameter limits.
 function chunk512<T>(items: readonly T[]): T[][] {
@@ -794,7 +796,8 @@ export class GuardedConversationContext {
         for (const name of observedSubjectNames(record)) {
           if (!tokens.has(name.value.toLowerCase())) continue;
           let proof = memoryAliasProof(name.contextProvenance, record, name.value);
-          if (!proof || !await this.retainDerived(proof, memoryAliasPayload(record, name.value), "identity_alias")) {
+          if (!proof || !await this.retainDerived(proof, memoryAliasPayload(record, name.value), "identity_alias",
+            { kind: "alias", graphKind: "alias", artifactId: `${record.id}/${name.value}` })) {
             proof = await this.currentProfileAlias(record, name.value, actor);
             if (!proof || !await this.retainDerived(proof, memoryAliasPayload(record, name.value), "identity_alias")) continue;
           }
@@ -836,19 +839,37 @@ export class GuardedConversationContext {
     }, "relations");
   }
 
-  public async derived(value: unknown, output: string, purpose: "character_state" | "relation" | "identity_alias"): Promise<boolean> {
-    return this.phase(() => this.retainDerived(value, output, purpose), "memory");
+  // graph names the artifact in the provenance graph, so its reader kind can switch to v2 on its own.
+  public async derived(value: unknown, output: string, purpose: "character_state" | "relation" | "identity_alias", graph?: GraphArtifactRef): Promise<boolean> {
+    return this.phase(() => this.retainDerived(value, output, purpose, graph), "memory");
   }
 
-  private async retainDerived(value: unknown, output: string, purpose: "character_state" | "relation" | "identity_alias"): Promise<boolean> {
+  private async retainDerived(value: unknown, output: string, purpose: "character_state" | "relation" | "identity_alias", graph?: GraphArtifactRef): Promise<boolean> {
+      const mode = graph && this.port.graph && this.port.sourcesAllowed ? this.port.graph.mode(graph.kind) : "v1";
       const proof = parseContextProvenance(value);
-      if (!proof || proof.purpose !== purpose || proof.outputHash !== hashContent(output) || !await this.proofSourcesCurrent(proof)) return false;
-      if (this.port.sourcesAllowed) { if (!this.carry(proof.dependencies, `derived:${purpose}`)) return false; }
+      if (!proof || proof.purpose !== purpose || proof.outputHash !== hashContent(output) ||
+          proof.coverage !== "complete" && !(mode === "v2" && graphAncestryOnly(proof))) return false;
+      const v1 = proof.coverage === "complete" && await this.proofSourcesCurrent(proof);
+      let viaGraph = false;
+      if (graph && mode !== "v1") {
+        // The graph decides a migrated artifact; the sources it reaches still face forget and opt-out.
+        const decision = (await this.decideArtifacts(graph.kind, graph.graphKind, [{ artifactId: graph.artifactId, outputHash: proof.outputHash, v1 }]))
+          .get(artifactKey(graph.artifactId, proof.outputHash));
+        if (!decision?.admitted) return false;
+        if (decision.source === "graph") {
+          if (!await this.citedAllowed(decision.messages)) return false;
+          viaGraph = true;
+          if (!await this.retainActors(proof)) return false;
+          this.useGraphArtifact(graph.kind, graph.graphKind, graph.artifactId, proof.outputHash, decision.messages);
+        }
+      } else if (!v1) return false;
+      if (viaGraph) { /* Its ancestry is a graph edge; nothing is carried. */ }
+      else if (this.port.sourcesAllowed) { if (!this.carry(proof.dependencies, `derived:${purpose}`)) return false; }
       else for (const entry of proof.dependencies) {
         if (!await this.retain(entry.messageId, [`derived:${purpose}`])) return false;
         if (entry.assetsHash) this.assetDependencies.set(entry.messageId, entry.assetsHash);
       }
-      if (!await this.retainActors(proof)) return false;
+      if (!viaGraph && !await this.retainActors(proof)) return false;
       for (const entry of proof.resources ?? []) this.resources.set(`${entry.kind}:${entry.id}`, entry);
       this.inheritPublicTools(proof);
       if (proof.publicWeb) { this.publicWebUsed = true; for (const digest of proof.publicWeb.citationHashes) this.publicWebCitations.add(digest); }
