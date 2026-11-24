@@ -11,6 +11,10 @@ export interface MemoryRelevanceTraceInput {
   selectedIds: readonly string[];
   maxSerializedChars: number;
   requireTopicalMatch: boolean;
+  // Lineage: the guild messages whose text the sample holds as conversation (the query, recent history
+  // and conversational sources of every candidate). A sample without complete lineage is not recorded,
+  // so a revoked message can always be traced to the samples that hold it.
+  sources?: readonly { channelId: string; messageId: string }[];
 }
 
 export interface MemoryRelevanceTrace extends MemoryRelevanceTraceInput {

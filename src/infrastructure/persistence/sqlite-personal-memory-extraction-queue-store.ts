@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lt, lte } from "drizzle-orm";
+import { and, asc, eq, inArray, lt, lte, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import type {
@@ -7,6 +7,7 @@ import type {
   PersonalMemoryExtractionQueueStore,
 } from "../../application/context/personal-memory-extraction-queue.js";
 import * as schema from "../database/sqlite-schema.js";
+import { chunked } from "../../application/chat/message-revocation-store.js";
 import { KeyedSerialQueue } from "../../application/concurrency/keyed-serial-queue.js";
 
 function toJob(row: typeof schema.personalMemoryExtractionJobs.$inferSelect): PersonalMemoryExtractionJob {
@@ -108,6 +109,18 @@ export class SqlitePersonalMemoryExtractionQueueStore implements PersonalMemoryE
       lt(schema.personalMemoryExtractionJobs.updatedAt, new Date(cutoff)),
     )).run();
     return Promise.resolve(result.changes);
+  }
+
+  public deleteCitingMessages(guildId: string, channelId: string, messageIds: readonly string[]): Promise<readonly string[]> {
+    const jobs = schema.personalMemoryExtractionJobs; const subjects = new Set<string>();
+    for (const ids of chunked([...new Set(messageIds)])) {
+      const cites = sql`exists (select 1 from json_each(${jobs.sourceMessages}) as source
+        where json_extract(source.value, '$.messageId') in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)}))`;
+      const rows = this.database.delete(jobs).where(and(eq(jobs.guildId, guildId), eq(jobs.channelId, channelId), cites))
+        .returning({ subjectId: jobs.subjectId }).all();
+      for (const row of rows) subjects.add(row.subjectId);
+    }
+    return Promise.resolve([...subjects]);
   }
 
   public deleteForSubject(guildId: string, subjectId: string): Promise<void> {

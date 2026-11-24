@@ -9,7 +9,8 @@ import type { MemoryConflictClassifier } from "../chat/chat-provider.js";
 import type { EmbeddingsClient } from "../chat/embeddings-client.js";
 import { authorizeClassificationClaims, authorizeRelationMembers, checkMemoryContext, memoryModelOptions, observedNamesForContext } from "./memory-context-guard.js";
 import { memoryRelationPayload } from "./memory-relation-provenance.js";
-import { memoryClaimPayload } from "./memory-claim-provenance.js";
+import { memoryClaimPayload, memoryClaimProof } from "./memory-claim-provenance.js";
+import { isGuardedContext } from "../chat/guarded-conversation-context.js";
 import { allowsDurableWrites, resolveMemoryScope } from "./memory-channel-policy.js";
 import type { MemoryRelevanceTraceCollector } from "./memory-relevance-trace.js";
 import type {
@@ -378,12 +379,22 @@ export class DefaultMemoryEngine implements MemoryEngine {
       this.limits.maxSelectedChars,
       memoryPromptProjection,
     );
-    if (this.relevanceTraceCollector) {
-      const traceableMemories = this.relevanceTraceCollector.includePrivate
-        ? candidates.memories
-        : candidates.memories.filter((memory) => memory.audience !== "private");
+    const traceableMemories = this.relevanceTraceCollector?.includePrivate
+      ? candidates.memories
+      : candidates.memories.filter((memory) => memory.audience !== "private");
+    // A sample is kept only with complete lineage: a guarded turn, and a claim proof on every candidate.
+    // Summary-only citations are left out, as the delete policy keeps what they built.
+    const traceSources = this.relevanceTraceCollector && input.context && isGuardedContext(input.context) &&
+      traceableMemories.every((memory) => memoryClaimProof(memory.contextProvenance, memory)) ? [...new Map([
+        ...input.context.lineageMessageIds.map((messageId) => ({ channelId: input.channelId, messageId })),
+        ...traceableMemories.flatMap((memory) => memoryClaimProof(memory.contextProvenance, memory)!.dependencies
+          .filter((dependency) => dependency.guildId === input.guildId && dependency.projection?.kind !== "background_text")
+          .map(({ channelId, messageId }) => ({ channelId, messageId }))),
+      ].map((source) => [`${source.channelId}/${source.messageId}`, source])).values()] : null;
+    if (this.relevanceTraceCollector && traceSources) {
       const traceableIds = new Set(traceableMemories.map((memory) => memory.id));
       await this.relevanceTraceCollector.record({
+        sources: traceSources,
         guildId: input.guildId,
         channelId: input.channelId,
         message: input.message,

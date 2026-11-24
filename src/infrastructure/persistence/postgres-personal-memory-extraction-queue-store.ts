@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lt, lte } from "drizzle-orm";
+import { and, asc, eq, inArray, lt, lte, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import type {
@@ -7,6 +7,7 @@ import type {
   PersonalMemoryExtractionQueueStore,
 } from "../../application/context/personal-memory-extraction-queue.js";
 import * as schema from "../database/schema.js";
+import { chunked } from "../../application/chat/message-revocation-store.js";
 import { KeyedSerialQueue } from "../../application/concurrency/keyed-serial-queue.js";
 
 function toJob(row: typeof schema.personalMemoryExtractionJobs.$inferSelect): PersonalMemoryExtractionJob {
@@ -103,6 +104,18 @@ export class PostgresPersonalMemoryExtractionQueueStore implements PersonalMemor
       lt(schema.personalMemoryExtractionJobs.updatedAt, new Date(cutoff)),
     )).returning({ guildId: schema.personalMemoryExtractionJobs.guildId });
     return deleted.length;
+  }
+
+  public async deleteCitingMessages(guildId: string, channelId: string, messageIds: readonly string[]): Promise<readonly string[]> {
+    const jobs = schema.personalMemoryExtractionJobs; const subjects = new Set<string>();
+    for (const ids of chunked([...new Set(messageIds)])) {
+      const cites = sql`exists (select 1 from jsonb_array_elements(${jobs.sourceMessages}) as source
+        where source->>'messageId' in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)}))`;
+      const rows = await this.database.delete(jobs).where(and(eq(jobs.guildId, guildId), eq(jobs.channelId, channelId), cites))
+        .returning({ subjectId: jobs.subjectId });
+      for (const row of rows) subjects.add(row.subjectId);
+    }
+    return [...subjects];
   }
 
   public async deleteForSubject(guildId: string, subjectId: string): Promise<void> {

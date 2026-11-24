@@ -20,6 +20,16 @@ export function messageRevocationStoreContract(label: string, createStore: () =>
         .toEqual([{ guildId: "guild", channelId: "channel", messageId: "m1", state: "pending", attempts: 0, nextAt: 1_000 }, null]);
     });
 
+    it("reports the guild's most recent revocation time", async () => {
+      const store = await createStore();
+      expect(await store.latestRevocationAt("guild")).toBeNull();
+      await store.revoke({ guildId: "guild", channelId: "a", messageIds: ["m1"], revokedAt: 1_000 });
+      await store.revoke({ guildId: "guild", channelId: "b", messageIds: ["m2"], revokedAt: 3_000 });
+      await store.revoke({ guildId: "other", channelId: "a", messageIds: ["m3"], revokedAt: 9_000 });
+      expect(await store.latestRevocationAt("guild")).toBe(3_000);
+      expect(await store.latestRevocationAt("other")).toBe(9_000);
+    });
+
     it("treats a repeated revocation as a no-op", async () => {
       const store = await createStore();
       await store.revoke({ guildId: "guild", channelId: "channel", messageIds: ["m1"], revokedAt: 1_000 });

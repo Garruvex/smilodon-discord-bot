@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, max, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import {
   chunked, groupRevocationKeys, revocationKey,
@@ -43,6 +43,12 @@ export class PostgresMessageRevocationStore implements MessageRevocationStore {
       for (const row of rows) found.add(revocationKey({ ...group, messageId: row.messageId }));
     }
     return keys.map((key) => found.has(revocationKey(key)));
+  }
+
+  public async latestRevocationAt(guildId: string): Promise<number | null> {
+    const [row] = await this.database.select({ latest: max(schema.messageRevocations.revokedAt) }).from(schema.messageRevocations)
+      .where(eq(schema.messageRevocations.guildId, guildId));
+    return row?.latest ? new Date(row.latest).getTime() : null;
   }
 
   public async revision(guildId: string, channelId: string): Promise<number> {

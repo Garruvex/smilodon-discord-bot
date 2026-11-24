@@ -142,6 +142,9 @@ export class GuardedConversationContext {
     for (const [id, event] of this.sessionQueries) messages.set(id, event);
     return immutableSnapshot([...messages.values()].sort((left, right) => left.timestampMs - right.timestampMs).slice(-2).map(({ content }) => ({ content })));
   }
+  // Every message in this channel the turn has read as conversation so far. Anything that stores text
+  // taken from this turn (a query, history, a model's tool arguments) records these as its lineage.
+  public get lineageMessageIds(): readonly string[] { return Object.freeze([...new Set(this.revocableIds())]); }
   public get burst(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceBurst); }
   public get currentEvent(): ConversationEvent | undefined { return this.sourceEvent ? immutableSnapshot(this.sourceEvent) : undefined; }
   public get report(): GuardedContextReport { return immutableSnapshot(this.coverageReport); }

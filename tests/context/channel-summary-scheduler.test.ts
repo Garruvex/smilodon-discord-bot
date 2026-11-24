@@ -903,6 +903,7 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
       deleteTerminalForBatch: (guildId, channelId, batchId) => realQueue.deleteTerminalForBatch(guildId, channelId, batchId),
       deleteTerminalOlderThan: (cutoff) => realQueue.deleteTerminalOlderThan(cutoff),
       deleteForSubject: (guildId, subjectId) => realQueue.deleteForSubject(guildId, subjectId),
+      deleteCitingMessages: (guildId, channelId, messageIds) => realQueue.deleteCitingMessages(guildId, channelId, messageIds),
     };
     const scheduler = new ChannelSummaryScheduler(
       historyReader, fakeProfileProvider([fakeProfile({ contextScanChannelIds: ["channel"] })]),
@@ -1047,6 +1048,40 @@ describe("ChannelSummaryScheduler — durable personal-memory extraction queue",
     await Promise.all([tick, cancellation]);
 
     await expect(engine.listUserMemories("guild", "alice")).resolves.toHaveLength(0);
+  });
+
+  // A5: a revoked source cancels its queued extraction job. Two orders: cleanup deletes the job while
+  // extraction is in flight, or the revocation commits before cleanup has run.
+  it.each(["cleanup ran", "revocation only"] as const)("does not publish an extraction whose source was revoked mid-flight (%s)", async (order) => {
+    const { engine, checkpointStore, extractionQueue } = testEngine();
+    const historyReader = fakeHistoryReader(fakeChannel([fakeMessage("m1", "alice", "I really like green apples", now - 1_000)]));
+    let extractionStarted!: () => void; let releaseExtraction!: () => void;
+    const started = new Promise<void>((resolve) => { extractionStarted = resolve; });
+    const gate = new Promise<void>((resolve) => { releaseExtraction = resolve; });
+    const summarizer: ChannelMessageSummarizer & Partial<PersonalMemoryExtractor> = {
+      summarizeChannelMessages: vi.fn(() => Promise.resolve({ facts: [], relations: [] })),
+      extractPersonalMemories: vi.fn(async () => {
+        extractionStarted(); await gate;
+        return [{ action: "upsert" as const, aboutSpeaker: true, importance: "medium" as const, sourceQuote: "I really like green apples",
+          topic: "preference", slot: "food.fruit", statement: "likes green apples" }];
+      }),
+    };
+    const scheduler = new ChannelSummaryScheduler(
+      historyReader, fakeProfileProvider([fakeProfile({ contextScanChannelIds: ["channel"] })]),
+      engine, checkpointStore, extractionQueue, summarizer, silentLogger,
+    );
+    const revoked = new Set<string>();
+    scheduler.bindRevocations((guildId, channelId, ids) => Promise.resolve(ids.some((id) => revoked.has(`${guildId}/${channelId}/${id}`))));
+    const tick = scheduler.checkNow(new Date(now));
+    await started;
+    revoked.add("guild/channel/m1");
+    if (order === "cleanup ran") expect(await extractionQueue.deleteCitingMessages("guild", "channel", ["m1"])).toEqual(["alice"]);
+    releaseExtraction();
+    await tick;
+    await expect(engine.listUserMemories("guild", "alice")).resolves.toHaveLength(0);
+    // Either way no job is left holding the text.
+    const left = await extractionQueue.dequeueDue(10, now + 365 * 24 * 60 * 60_000);
+    expect(left.filter((job) => job.content.includes("green apples"))).toEqual([]);
   });
 
   it("bounds concurrent per-author extraction calls instead of firing one provider call per author all at once", async () => {

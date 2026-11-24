@@ -327,6 +327,8 @@ export interface CommandRegistrationResult {
   // Both null when no chat provider is configured at all.
   chatProvider: ChatProvider | null;
   utilityProvider: ChatProvider | null;
+  // Null unless relevance sampling is configured.
+  relevanceTraceCollector: FileMemoryRelevanceTraceCollector | null;
 }
 
 // Constructs the CommandRegistry with every command (and the
@@ -584,6 +586,7 @@ export function registerCommands(
     embeddingsClient,
     chatProvider,
     utilityProvider,
+    relevanceTraceCollector,
   };
 }
 
@@ -627,6 +630,7 @@ export function createDependencies(
     embeddingsClient,
     chatProvider,
     utilityProvider,
+    relevanceTraceCollector,
   } = registerCommands(
     configuration, logger, musicPlayerGateway, guildConfigurationProvider, guildSetupService,
     discordClient, chatStateStore, userCustomizationStore, auditLogService, birthdayStore, boostHistoryStore,
@@ -923,7 +927,22 @@ export function createDependencies(
     ...(memoryRepository.forgetCitingMessages ? [{ name: "memories", run: (guildId: string, channelId: string, messageIds: readonly string[]): Promise<number> =>
       memoryRepository.forgetCitingMessages!({ guildId, channelId, messageIds }) }] : []),
     { name: "origins", run: (guildId, channelId, messageIds): Promise<number> => withSessionMessageOrigins(messageOriginStore).forgetCitingMessages({ guildId, channelId, messageIds }) },
+    // Deleting the job row stops a worker already holding it; waiting on each member's queue then
+    // makes sure no such worker is still running when this pass completes.
+    { name: "extraction jobs", run: async (guildId, channelId, messageIds): Promise<number> => {
+      const subjects = await personalMemoryExtractionQueueStore.deleteCitingMessages(guildId, channelId, messageIds);
+      for (const subjectId of subjects) await personalMemoryExtractionQueueStore.runForSubject(guildId, subjectId, () => Promise.resolve());
+      return subjects.length;
+    } },
+    { name: "persona drift", run: (guildId, channelId, messageIds): Promise<number> => personaDriftStore.forgetCitingMessages(guildId, channelId, messageIds) },
+    ...(relevanceTraceCollector ? [{ name: "relevance traces", run: (guildId: string, channelId: string, messageIds: readonly string[]): Promise<number> =>
+      relevanceTraceCollector.forgetCitingMessages(guildId, channelId, messageIds) }] : []),
   ];
+  if (messageRevocationStore) {
+    relevanceTraceCollector?.bindRevocations(messageRevocationStore);
+    channelSummaryScheduler?.bindRevocations(async (guildId, channelId, messageIds) =>
+      (await messageRevocationStore.revoked(messageIds.map((messageId) => ({ guildId, channelId, messageId })))).some(Boolean));
+  }
 
   return {
     campaign,

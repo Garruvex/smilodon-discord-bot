@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lte, or } from "drizzle-orm";
+import { and, asc, eq, inArray, lte, max, or } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import {
   chunked, groupRevocationKeys, revocationKey,
@@ -41,6 +41,12 @@ export class SqliteMessageRevocationStore implements MessageRevocationStore {
       for (const row of rows) found.add(revocationKey({ ...group, messageId: row.messageId }));
     }
     return Promise.resolve(keys.map((key) => found.has(revocationKey(key))));
+  }
+
+  public latestRevocationAt(guildId: string): Promise<number | null> {
+    const row = this.database.select({ latest: max(schema.messageRevocations.revokedAt) }).from(schema.messageRevocations)
+      .where(eq(schema.messageRevocations.guildId, guildId)).get();
+    return Promise.resolve(row?.latest ? row.latest.getTime() : null);
   }
 
   public revision(guildId: string, channelId: string): Promise<number> {

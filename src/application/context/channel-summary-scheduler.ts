@@ -173,6 +173,10 @@ function resolveEvidenceAsserter(
 
 export class ChannelSummaryScheduler {
   private readonly modelGateway: BackgroundModelGateway;
+  // Committed revocations (observed Discord deletes) for a channel's messages. A queued extraction job
+  // whose source was revoked is never published, even before revocation cleanup deletes the job.
+  private revocations: ((guildId: string, channelId: string, messageIds: readonly string[]) => Promise<boolean>) | null = null;
+  public bindRevocations(check: (guildId: string, channelId: string, messageIds: readonly string[]) => Promise<boolean>): void { this.revocations = check; }
   private characterConsolidation: ((context: GuardedBackgroundContext, subjectIds: readonly string[]) => Promise<void>) | null = null;
   public bindCharacterConsolidation(handler: (context: GuardedBackgroundContext, subjectIds: readonly string[]) => Promise<void>): void { this.characterConsolidation = handler; }
   private checkTimer: NodeJS.Timeout | null = null;
@@ -647,6 +651,16 @@ export class ChannelSummaryScheduler {
         // dequeueDue returns a snapshot. A forget/purge may delete the row
         // before this bounded-concurrency worker actually begins.
         if (!(await stillExists())) return;
+        // A revoked source cancels the job at once; dead-lettering clears its stored text. A failed check counts as revoked.
+        const sourceRevoked = async (): Promise<boolean> => !!this.revocations && await this.revocations(job.guildId, job.channelId,
+          (job.sourceMessages ?? []).map((source) => source.messageId)).catch(() => true);
+        const cancelRevoked = async (): Promise<boolean> => {
+          if (!await sourceRevoked()) return false;
+          await this.extractionQueue.markDeadLettered(job.guildId, job.channelId, job.batchId, job.subjectId, "A source message was deleted.");
+          return true;
+        };
+        if (await cancelRevoked()) return;
+        const current = async (): Promise<boolean> => await stillExists() && !await sourceRevoked();
         const fail = async (error: unknown, context: string): Promise<void> => {
           const attempts = job.attempts + 1;
           const message = error instanceof Error ? error.message : context;
@@ -671,7 +685,7 @@ export class ChannelSummaryScheduler {
           context = await this.openContext("memory_extraction", job.sourceMessages.map((source) => ({
             id: source.messageId, guildId: job.guildId, channelId: job.channelId, authorId: job.subjectId,
             authorDisplayName: job.displayName, content: source.content, createdAt: source.timestampMs,
-          })), stillExists);
+          })), current);
           actions = await this.modelGateway.extract(context, job.subjectId);
         } catch (error) {
           if (error instanceof SocialOutputSuppressed) {
@@ -683,8 +697,8 @@ export class ChannelSummaryScheduler {
           return;
         }
 
-        // Covers deletion while the provider call was in flight.
-        if (!(await stillExists())) return;
+        // Covers deletion or revocation while the provider call was in flight.
+        if (!(await stillExists()) || await cancelRevoked()) return;
 
         const proposals = buildPromotionProposals(job, actions);
         if (this.historyReader.canLearn && (!job.sourceMessages?.length ||

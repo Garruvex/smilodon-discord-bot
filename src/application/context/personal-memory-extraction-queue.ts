@@ -101,4 +101,8 @@ export interface PersonalMemoryExtractionQueueStore {
   // who asked to be forgotten. Guild-scoped to match MemberDataPurger and
   // MemoryEngine.forget's own scoping.
   deleteForSubject(guildId: string, subjectId: string): Promise<void>;
+  // Revocation cleanup: deletes every job in this channel whose source messages include one of these
+  // IDs, pending or waiting for a retry, and returns the subjects affected. Deleting the row is the
+  // cancellation barrier a worker already checks (exists). Terminal rows carry no source text.
+  deleteCitingMessages(guildId: string, channelId: string, messageIds: readonly string[]): Promise<readonly string[]>;
 }

@@ -48,6 +48,8 @@ export interface MessageRevocationStore {
   revoke(input: MessageRevocationInput): Promise<MessageRevocationResult>;
   /** For each key, in order, whether it has a committed revocation. */
   revoked(keys: readonly MessageRevocationKey[]): Promise<readonly boolean[]>;
+  /** When the guild's most recent revocation was committed, or null. Used to withhold legacy data without lineage. */
+  latestRevocationAt(guildId: string): Promise<number | null>;
   /** The channel's current revocation revision; 0 when nothing in it was revoked. */
   revision(guildId: string, channelId: string): Promise<number>;
   /** Cleanup work queued for these keys, for inspection. */

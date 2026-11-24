@@ -9,6 +9,9 @@ import { DefaultMemoryEngine } from "../../src/application/memory/memory-engine.
 import { createSqliteDatabaseConnection } from "../../src/infrastructure/database/sqlite-database.js";
 import { FileMemoryRelevanceTraceCollector } from "../../src/infrastructure/persistence/file-memory-relevance-trace-collector.js";
 import { SqliteMemoryRepository } from "../../src/infrastructure/persistence/sqlite-memory-repository.js";
+import { GuardedConversationContext } from "../../src/application/chat/guarded-conversation-context.js";
+import { fixtureMemoryIngest } from "../helpers/approved-memory-fixture.js";
+import { guardedEvent, guardedFixture } from "../helpers/guarded-context-fixture.js";
 
 function traceInput(message = "which fruit does alice like"): MemoryRelevanceTraceInput {
   return {
@@ -31,6 +34,7 @@ function traceInput(message = "which fruit does alice like"): MemoryRelevanceTra
     selectedIds: ["candidate-apples"],
     maxSerializedChars: 8_000,
     requireTopicalMatch: false,
+    sources: [{ channelId: "general", messageId: "query" }],
   };
 }
 
@@ -72,7 +76,35 @@ describe("FileMemoryRelevanceTraceCollector", () => {
 });
 
 describe("DefaultMemoryEngine relevance tracing", () => {
-  it("passes the authorized candidates and final selection to the optional collector", async () => {
+  // A trace holds message text, so it is sampled only from a guarded turn whose candidates all carry
+  // claim proofs; its lineage is what lets a later delete find and remove it.
+  it("records lineage from the guarded turn and the candidates' conversational sources", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "memory-relevance-lineage-"));
+    const connection = createSqliteDatabaseConnection(directory);
+    const record = vi.fn<(input: MemoryRelevanceTraceInput) => Promise<void>>().mockResolvedValue(undefined);
+    const engine = new DefaultMemoryEngine(new SqliteMemoryRepository(connection.database), null, null, undefined, null, { record, includePrivate: false }, null, () => true);
+    const learned = guardedFixture(guardedEvent("taught", 100, "I like green apples and I work as an engineer"));
+    const teach = await GuardedConversationContext.open(learned.port, { count: 0, budget: 12000, burstIds: [] });
+    for (const [slot, statement, audience] of [["food.fruit", "likes green apples", "guild"], ["job.role", "works as an engineer", "guild"],
+      ["private.note", "private medical detail", "private"]] as const) {
+      await engine.ingest(fixtureMemoryIngest({ guildId: "guild", channelId: "channel", channelMode: "shared", assertedByUserId: "alice", sourceMessageId: "taught",
+        source: "live", now: 150, context: teach, proposals: [{ action: "upsert", audience, kind: "fact", ownerUserId: audience === "private" ? "alice" : null,
+          subjectType: "member", subjectId: "alice", topic: "profile", slot, statement, channelScoped: true }] }));
+    }
+    const asking = guardedFixture(guardedEvent("question", 200, "what fruit does alice like"));
+    asking.add(guardedEvent("taught", 100, "I like green apples and I work as an engineer"));
+    asking.port.audienceUserId = "alice";
+    const lease = await GuardedConversationContext.open(asking.port, { count: 0, budget: 12000, burstIds: [] });
+    const result = await engine.recall({ guildId: "guild", channelId: "channel", userId: "alice", message: "what fruit does alice like", recentHistory: [], subjectIds: ["alice"], now: 300, context: lease });
+    expect(record).toHaveBeenCalledOnce();
+    const captured = record.mock.calls[0]![0];
+    expect(captured.sources).toEqual(expect.arrayContaining([{ channelId: "channel", messageId: "question" }, { channelId: "channel", messageId: "taught" }]));
+    // Private memories stay out of samples unless sampling is configured to include them.
+    expect(captured.candidates.map((candidate) => candidate.statement).sort()).toEqual(["likes green apples", "works as an engineer"]);
+    expect(captured.selectedIds.every((id) => result.memories.some((memory) => memory.id === id))).toBe(true);
+  });
+
+  it("samples nothing without a guarded turn, since the lineage would be incomplete", async () => {
     const directory = mkdtempSync(join(tmpdir(), "memory-relevance-engine-"));
     const connection = createSqliteDatabaseConnection(directory);
     const repository = new SqliteMemoryRepository(connection.database);
@@ -98,18 +130,7 @@ describe("DefaultMemoryEngine relevance tracing", () => {
       guildId: "guild", channelId: "general", channelMode: "shared", userId: "alice",
       message: "what fruit does alice like", recentHistory: [], subjectIds: ["alice"], now: 200,
     });
-
-    expect(record).toHaveBeenCalledOnce();
-    expect(record).toHaveBeenCalledWith(expect.objectContaining({
-      message: "what fruit does alice like",
-      candidates: expect.arrayContaining([
-        expect.objectContaining({ statement: "likes green apples" }),
-        expect.objectContaining({ statement: "works as an engineer" }),
-      ]) as unknown,
-    }));
-    const captured = record.mock.calls[0]![0];
-    expect(captured.candidates).toHaveLength(2);
-    expect(captured.candidates.some((candidate) => candidate.statement.includes("medical"))).toBe(false);
-    expect(captured.selectedIds.every((id) => result.memories.some((memory) => memory.id === id))).toBe(true);
+    expect(result.memories.length).toBeGreaterThan(0);
+    expect(record).not.toHaveBeenCalled();
   });
 });

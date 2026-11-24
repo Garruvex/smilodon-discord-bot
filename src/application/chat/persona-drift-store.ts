@@ -72,6 +72,20 @@ export class PersonaDriftStore {
     });
   }
 
+  // Revocation cleanup. Deletes the channel's drift only if the stored version cites a revoked message
+  // as conversation. It runs on the same per-guild queue as evolution, so the version checked is the
+  // version removed, and a replacement written first that does not cite it is kept. Returns files removed.
+  public async forgetCitingMessages(guildId: string, channelId: string, messageIds: readonly string[]): Promise<number> {
+    const ids = new Set(messageIds);
+    return this.queue.run(guildId, async () => {
+      const drift = await this.getScoped(guildId, channelId);
+      if (!drift?.contextProvenance.dependencies.some((source) => source.channelId === channelId && ids.has(source.messageId) &&
+        source.projection?.kind !== "background_text")) return 0;
+      await rm(this.scopedPath(guildId, channelId), { force: true });
+      return 1;
+    });
+  }
+
   // Explicit, admin-initiated "start the character over" — clears both the
   // current text and the audit history. Distinct from disabling the
   // guild's persona-drift toggle, which only pauses evolution/injection
