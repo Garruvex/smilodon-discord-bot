@@ -41,6 +41,13 @@ export interface ContinuityRunInput {
   providers: ContinuityProviders; personality: string; settings?: Partial<CharacterSettings>; logger: Logger;
 }
 
+function providerMembers(provider: object): string[] {
+  const names = new Set<string>();
+  for (let level: object | null = provider; level && level !== Object.prototype; level = Object.getPrototypeOf(level) as object | null)
+    for (const name of Object.getOwnPropertyNames(level)) if (name !== "constructor") names.add(name);
+  return [...names];
+}
+
 const silent = (text: string): ChatResponse => ({ text, ambientAction: "reply", reactionEmoji: null, historyReactions: [], userMemoryActions: [], guildKnowledgeCandidates: [],
   sources: [], usage: null, webSearchUsed: false, generatedImages: [] });
 
@@ -67,7 +74,10 @@ export async function runContinuityCase(input: ContinuityRunInput): Promise<Cont
     const settings = characterSettingsSchema.parse({ enabled: true, ...input.settings,
       context: { ...input.settings?.context, priorAnswerAnchor: setting.anchor } });
     let document = guildConfigurationFileSchema.parse({ schemaVersion: 1, guild: { id: continuityGuildId, name: "Continuity evaluation" },
-      features: { chatbot: true, channelHistory: true, ambientReplies: true }, chat: { sharedMemoryEnabled: true }, character: settings });
+      features: { chatbot: true, channelHistory: true, ambientReplies: true }, channels: { chatbot: [continuityChannelId] },
+      // Optional turns are decided by the model only where the channel is observed and joining is on.
+      chat: { sharedMemoryEnabled: true, participation: { observationChannelIds: [continuityChannelId], continuationEnabled: true, spontaneousEnabled: true,
+        spontaneousChannelIds: [continuityChannelId] } }, character: settings });
     const current = (): GuildConfiguration => toGuildConfiguration(document, "continuity");
     const profiles: GuildConfigurationProvider = { initialize: () => Promise.resolve(), find: (id) => id === continuityGuildId ? current() : null,
       require: (id) => { if (id !== continuityGuildId) throw new Error("Unknown evaluation guild"); return current(); }, getAll: () => [current()],
@@ -83,11 +93,12 @@ export async function runContinuityCase(input: ContinuityRunInput): Promise<Cont
     const runtime = new CharacterRuntime(profiles, repository, structured(providers.utility), providers.reply, structured(providers.utility), null, clock, logger,
       contextualDecisionProviders(null, structured(providers.reply), structured(providers.utility)));
     let request: ChatRequest | null = null;
-    const capturing: ChatProvider = new Proxy(providers.reply, { get: (target, property, receiver): unknown => {
-      if (property === "reply") return (next: ChatRequest, observer?: Parameters<ChatProvider["reply"]>[1]): Promise<ChatResponse> => { request = next; return target.reply(next, observer); };
-      const value = Reflect.get(target, property, receiver) as unknown;
-      return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
-    } });
+    // The configured providers are frozen, so the capture is a plain wrapper with every member bound.
+    const capturing = Object.fromEntries(providerMembers(providers.reply).map((name) => {
+      const value = (providers.reply as unknown as Record<string, unknown>)[name];
+      return [name, typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(providers.reply) : value];
+    })) as unknown as ChatProvider;
+    capturing.reply = (next: ChatRequest, observer?: Parameters<ChatProvider["reply"]>[1]): Promise<ChatResponse> => { request = next; return providers.reply.reply(next, observer); };
     const live = new ChatConversationService(capturing, state, liveMemory, undefined, undefined, undefined, null, null, null, logger, providers.utility, null, null, null, runtime, clock);
     services.push(seed, live);
 

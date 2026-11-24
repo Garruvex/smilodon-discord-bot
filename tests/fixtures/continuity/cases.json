@@ -1,7 +1,7 @@
 {
-  "version": 1,
+  "version": 2,
   "frozenAt": "2026-11-24",
-  "note": "Developer-authored synthetic multi-speaker exchanges for the Phase E continuity comparison. Labels are provisional until a person reviews them. Frozen: changing any case requires a new version and a new freeze hash.",
+  "note": "Developer-authored synthetic multi-speaker exchanges for the Phase E continuity comparison. Labels are provisional until a person reviews them. Frozen: changing any case requires a new version and a new freeze hash. Version 2 (before any variant comparison): the persona sometimes answers English in Chinese, so English cases also accept the Chinese wording of the required statement, and Chinese cases the English names.",
   "thresholds": {
     "anchor": {
       "followUpScenarios": [
@@ -183,7 +183,8 @@
         "required": {
           "line": "a",
           "any": [
-            "Ichiran"
+            "Ichiran",
+            "一蘭"
           ]
         }
       }
@@ -219,7 +220,9 @@
         "required": {
           "line": "a",
           "any": [
-            "Arrival"
+            "Arrival",
+            "異星入境",
+            "降臨"
           ]
         }
       }
@@ -255,7 +258,9 @@
         "required": {
           "line": "a",
           "any": [
-            "petty"
+            "petty",
+            "小刀",
+            "水果刀"
           ]
         }
       }
@@ -291,7 +296,8 @@
         "required": {
           "line": "a",
           "any": [
-            "Hualien"
+            "Hualien",
+            "花蓮"
           ]
         }
       }
@@ -329,7 +335,9 @@
           "any": [
             "six and a half",
             "6.5",
-            "6 and a half"
+            "6 and a half",
+            "六分半",
+            "6分半"
           ]
         }
       }
@@ -366,7 +374,9 @@
           "line": "a",
           "any": [
             "blue",
-            "stapler"
+            "stapler",
+            "藍",
+            "釘書機"
           ]
         }
       }
@@ -402,7 +412,8 @@
         "required": {
           "line": "a",
           "any": [
-            "piano"
+            "piano",
+            "鋼琴"
           ]
         }
       }
@@ -453,11 +464,15 @@
         "required": {
           "line": "a2",
           "any": [
-            "Monday"
+            "Monday",
+            "星期一",
+            "週一",
+            "禮拜一"
           ]
         },
         "forbidden": [
-          "Thursday"
+          "Thursday",
+          "星期四"
         ]
       }
     },
@@ -513,11 +528,13 @@
         "required": {
           "line": "x2",
           "any": [
-            "Fox Spirit"
+            "Fox Spirit",
+            "狐妖"
           ]
         },
         "forbidden": [
-          "night market"
+          "night market",
+          "夜市"
         ]
       }
     },
@@ -633,7 +650,8 @@
           "line": "a",
           "any": [
             "three",
-            "3"
+            "3",
+            "三"
           ]
         }
       }
@@ -670,7 +688,9 @@
           "line": "a",
           "any": [
             "five",
-            "5"
+            "5",
+            "五點",
+            "5點"
           ]
         }
       }
@@ -706,7 +726,8 @@
         "required": {
           "line": "a",
           "any": [
-            "Kumquat"
+            "Kumquat",
+            "金桔"
           ]
         }
       }
@@ -744,7 +765,9 @@
           "any": [
             "crash",
             "3am",
-            "3 am"
+            "3 am",
+            "三點",
+            "崩"
           ]
         }
       }
@@ -796,7 +819,9 @@
           "line": "a2",
           "any": [
             "korean",
-            "bbq"
+            "bbq",
+            "韓式",
+            "烤肉"
           ]
         },
         "forbidden": [
@@ -966,7 +991,8 @@
         "required": {
           "line": "a",
           "any": [
-            "花蓮"
+            "花蓮",
+            "Hualien"
           ]
         }
       }
@@ -1077,7 +1103,8 @@
         "required": {
           "line": "a",
           "any": [
-            "鋼琴"
+            "鋼琴",
+            "piano"
           ]
         }
       }
@@ -1385,7 +1412,8 @@
         "required": {
           "line": "a",
           "any": [
-            "金桔"
+            "金桔",
+            "Kumquat"
           ]
         }
       }
