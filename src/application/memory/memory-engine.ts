@@ -296,7 +296,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
           prioritySubjectIds: [...input.subjectIds, ...resolvedAliasIds],
           ...(input.filterSubjectIds?.length ? { subjectIds: input.filterSubjectIds } : {}),
         });
-    if (input.context) candidates = { memories: await input.context.memories(candidates.memories, false, input.now) };
+    if (input.context) candidates = { memories: await input.context.recallEligible(candidates.memories, input.now) };
     if (candidates.memories.length === 0) return input.context ? { memories: [], ...(aliasCandidates.length ? { aliasCandidates } : {}),
       ...("sources" in aliasObservation && aliasObservation.sources.length ? { aliasSources: aliasObservation.sources } : {}),
       causalChains: (await this.expandRelatedSubjects({ ...input, subjectIds: [...input.subjectIds, ...resolvedAliasIds] })).causalChains } : { memories: [], causalChains: [] };

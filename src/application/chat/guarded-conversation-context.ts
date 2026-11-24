@@ -464,7 +464,14 @@ export class GuardedConversationContext {
     return this.claims(records, true, now, false, true);
   }
 
-  private async claims(records: readonly Memory[], retain: boolean, now: number, character: boolean, classification = false): Promise<Memory[]> {
+  // Recall's eligibility pass, ahead of ranking. Same access, actor and proof checks and the same
+  // per-statement limit, but no count or character budget and nothing retained: those apply later,
+  // through memories(selected, true), to the ranked selection alone.
+  public async recallEligible(records: readonly Memory[], now = Date.now()): Promise<Memory[]> {
+    return this.claims(records, false, now, false, false, false);
+  }
+
+  private async claims(records: readonly Memory[], retain: boolean, now: number, character: boolean, classification = false, budget = true): Promise<Memory[]> {
     return this.phase(async () => {
       const allowed: Memory[] = []; let chars = 0;
       // Claim proofs usually depend on messages older than the history window.
@@ -474,8 +481,8 @@ export class GuardedConversationContext {
         .map((dependency) => dependency.messageId) ?? []);
       if (dependencyIds.length && !this.port.sourcesAllowed) await this.port.prepareValidation?.([...new Set(dependencyIds)], this.signal).catch(() => undefined);
       for (const record of records.slice(0, 128)) {
-        if (allowed.length === 20) break;
-        if (record.statement.length > 1000 || chars + record.statement.length > 3000) continue;
+        if (budget && allowed.length === 20) break;
+        if (record.statement.length > 1000 || budget && chars + record.statement.length > 3000) continue;
         const proof = memoryClaimProof(record.contextProvenance, record);
         if (!proof || proof.audience.guildId !== this.port.guildId || proof.audience.channelId !== this.port.channelId ||
             proof.audience.userId !== null && proof.audience.userId !== this.port.actorId ||
