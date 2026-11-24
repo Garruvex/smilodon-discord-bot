@@ -2,6 +2,7 @@ import type { ContextProvenance } from "../../application/chat/context-provenanc
 import { sql } from "drizzle-orm";
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import type { MessageOrigin } from "../../application/chat/message-origin-store.js";
+import type { MessageCleanupState } from "../../application/chat/message-revocation-store.js";
 import type { ChannelHistoryMessage } from "../../application/chat/chat-provider.js";
 
 export const memoryObservedAliases = sqliteTable("memory_observed_aliases", {
@@ -32,6 +33,28 @@ export const memoryForgetCutoffs = sqliteTable("memory_forget_cutoffs", {
   topic: text("topic").notNull(), slot: text("slot").notNull(), scopeKey: text("scope_key").notNull(),
   cutoff: integer("cutoff", { mode: "timestamp_ms" }).notNull(),
 }, (table) => [primaryKey({ columns: [table.guildId, table.subjectId, table.topic, table.slot, table.scopeKey] })]);
+
+// Discord deletes the guild honours, keyed without author so bot messages and author-less events are covered.
+// Each channel's revision only increases; revocations in one channel take its scope row lock in order.
+export const messageRevocations = sqliteTable("message_revocations", {
+  guildId: text("guild_id").notNull(), channelId: text("channel_id").notNull(), messageId: text("message_id").notNull(),
+  revokedAt: integer("revoked_at", { mode: "timestamp_ms" }).notNull(),
+  revision: integer("revision").notNull(),
+}, (table) => [primaryKey({ columns: [table.guildId, table.channelId, table.messageId] })]);
+
+export const messageRevocationScopes = sqliteTable("message_revocation_scopes", {
+  guildId: text("guild_id").notNull(), channelId: text("channel_id").notNull(),
+  revision: integer("revision").notNull(),
+}, (table) => [primaryKey({ columns: [table.guildId, table.channelId] })]);
+
+// Physical cleanup for a revocation, committed with it. state is pending, claimed or done; nextAt is when
+// pending work becomes due or when a claimed lease expires.
+export const messageCleanupWork = sqliteTable("message_cleanup_work", {
+  guildId: text("guild_id").notNull(), channelId: text("channel_id").notNull(), messageId: text("message_id").notNull(),
+  state: text("state").$type<MessageCleanupState>().notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  nextAt: integer("next_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [primaryKey({ columns: [table.guildId, table.channelId, table.messageId] }), index("message_cleanup_work_due_idx").on(table.state, table.nextAt)]);
 
 // Local (dev-only) backend equivalent of schema.ts's Postgres tables, for
 // exactly the two chat/knowledge stores that need it (SqliteChatStateStore/

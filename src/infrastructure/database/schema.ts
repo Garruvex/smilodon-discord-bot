@@ -2,6 +2,7 @@ import type { ContextProvenance } from "../../application/chat/context-provenanc
 import { sql } from "drizzle-orm";
 import { bigint, boolean, index, integer, json, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, vector } from "drizzle-orm/pg-core";
 import type { MessageOrigin } from "../../application/chat/message-origin-store.js";
+import type { MessageCleanupState } from "../../application/chat/message-revocation-store.js";
 import type { ChannelHistoryMessage } from "../../application/chat/chat-provider.js";
 
 export const memoryObservedAliases = pgTable("memory_observed_aliases", {
@@ -32,6 +33,28 @@ export const memoryForgetCutoffs = pgTable("memory_forget_cutoffs", {
   topic: text("topic").notNull(), slot: text("slot").notNull(), scopeKey: text("scope_key").notNull(),
   cutoff: timestamp("cutoff", { withTimezone: true }).notNull(),
 }, (table) => [primaryKey({ columns: [table.guildId, table.subjectId, table.topic, table.slot, table.scopeKey] })]);
+
+// Discord deletes the guild honours, keyed without author so bot messages and author-less events are covered.
+// Each channel's revision only increases; revocations in one channel take its scope row lock in order.
+export const messageRevocations = pgTable("message_revocations", {
+  guildId: text("guild_id").notNull(), channelId: text("channel_id").notNull(), messageId: text("message_id").notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }).notNull(),
+  revision: integer("revision").notNull(),
+}, (table) => [primaryKey({ columns: [table.guildId, table.channelId, table.messageId] })]);
+
+export const messageRevocationScopes = pgTable("message_revocation_scopes", {
+  guildId: text("guild_id").notNull(), channelId: text("channel_id").notNull(),
+  revision: integer("revision").notNull(),
+}, (table) => [primaryKey({ columns: [table.guildId, table.channelId] })]);
+
+// Physical cleanup for a revocation, committed with it. state is pending, claimed or done; nextAt is when
+// pending work becomes due or when a claimed lease expires.
+export const messageCleanupWork = pgTable("message_cleanup_work", {
+  guildId: text("guild_id").notNull(), channelId: text("channel_id").notNull(), messageId: text("message_id").notNull(),
+  state: text("state").$type<MessageCleanupState>().notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  nextAt: timestamp("next_at", { withTimezone: true }).notNull(),
+}, (table) => [primaryKey({ columns: [table.guildId, table.channelId, table.messageId] }), index("message_cleanup_work_due_idx").on(table.state, table.nextAt)]);
 
 // Fixed at schema-definition time — pgvector columns can't have a variable
 // dimension. Matches OpenAI's text-embedding-3-small, the default/most

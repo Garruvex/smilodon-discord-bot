@@ -120,6 +120,13 @@
       "when": 1792589539652,
       "tag": "0016_bitter_talon",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1795503568341,
+      "tag": "0017_classy_white_queen",
+      "breakpoints": true
     }
   ]
 }
