@@ -7,10 +7,10 @@ import { z } from "zod";
 import { chunked } from "../../application/chat/message-revocation-store.js";
 import {
   ProvenancePublicationRefused,
-  type ProvenanceGraphStore, type ProvenanceMessageSource, type ProvenanceParent, type ProvenancePublication, type ProvenancePublishResult, type ProvenanceRevisionKind,
+  type ProvenanceAdmission, type ProvenanceAncestryCheck, type ProvenanceGraphStore, type ProvenanceMessageSource, type ProvenanceParent, type ProvenancePublication, type ProvenancePublishResult, type ProvenanceRevisionKind,
 } from "../../application/provenance/provenance-graph.js";
 import * as schema from "../database/schema.js";
-import { ancestorCountQuery, ancestryProblemsQuery, checkAncestry, checkParents, newMessageRevisions, revisionValues, uniqueParents, type ParentRow } from "./provenance-graph-shared.js";
+import { ancestorCountQuery, ancestryCountsQuery, ancestryProblemsQuery, ancestryRevokedQuery, toAdmissions, checkAncestry, checkParents, newMessageRevisions, revisionValues, uniqueParents, type ParentRow } from "./provenance-graph-shared.js";
 
 const countRow = z.object({ visited: z.coerce.number() });
 const problemsRow = z.object({ unpublished: z.coerce.number(), revoked: z.coerce.number() });
@@ -101,6 +101,17 @@ export class PostgresProvenanceGraphStore implements ProvenanceGraphStore {
     const current = schema.provenanceCurrent;
     return (await this.database.delete(current).where(and(eq(current.guildId, guildId), eq(current.channelId, channelId), eq(current.kind, kind),
       eq(current.artifactId, artifactId), eq(current.revisionId, revisionId))).returning({ revisionId: current.revisionId })).length > 0;
+  }
+
+  public async checkAncestry(input: ProvenanceAncestryCheck): Promise<ReadonlyMap<string, ProvenanceAdmission>> {
+    const roots = [...new Set(input.revisionIds)];
+    const result = new Map<string, ProvenanceAdmission>();
+    for (const chunk of chunked(roots)) {
+      const counts = await this.database.execute(ancestryCountsQuery(input.guildId, input.channelId, chunk, input.audienceUserId));
+      const revoked = await this.database.execute(ancestryRevokedQuery(input.guildId, input.channelId, chunk));
+      for (const [root, admission] of toAdmissions(chunk, counts, revoked, input.budget)) result.set(root, admission);
+    }
+    return result;
   }
 
   public async current(guildId: string, channelId: string, kind: ProvenanceRevisionKind, artifactId: string): Promise<{ revisionId: string; version: number } | null> {

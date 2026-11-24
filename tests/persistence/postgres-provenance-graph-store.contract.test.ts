@@ -38,6 +38,13 @@ if (!databaseUrl) {
         const rows = await database.execute(sql`SELECT ordinal FROM message_revocation_scopes WHERE guild_id = ${guildId} AND channel_id = ${channelId}`);
         return rows[0] ? z.object({ ordinal: z.coerce.number() }).parse(rows[0]).ordinal : 0;
       },
+      // The foreign key refuses this, so the test skips its triggers for one transaction.
+      insertDanglingEdge: async (childId, parentId): Promise<void> => {
+        await database.transaction(async (transaction) => {
+          await transaction.execute(sql`SET LOCAL session_replication_role = replica`);
+          await transaction.insert(schema.provenanceEdges).values({ childId, parentId, projection: "full", representationHash: "c".repeat(64) });
+        });
+      },
       failPointerWrites: async (): Promise<void> => {
         await database.execute(sql`CREATE OR REPLACE FUNCTION fail_pointer_writes() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'interrupted'; END $$`);
         await database.execute(sql`CREATE TRIGGER fail_pointer_writes BEFORE INSERT OR UPDATE ON provenance_current FOR EACH ROW EXECUTE FUNCTION fail_pointer_writes()`);

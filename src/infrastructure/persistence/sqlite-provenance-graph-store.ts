@@ -6,10 +6,10 @@ import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { chunked } from "../../application/chat/message-revocation-store.js";
 import {
   ProvenancePublicationRefused,
-  type ProvenanceGraphStore, type ProvenanceMessageSource, type ProvenanceParent, type ProvenancePublication, type ProvenancePublishResult, type ProvenanceRevisionKind,
+  type ProvenanceAdmission, type ProvenanceAncestryCheck, type ProvenanceGraphStore, type ProvenanceMessageSource, type ProvenanceParent, type ProvenancePublication, type ProvenancePublishResult, type ProvenanceRevisionKind,
 } from "../../application/provenance/provenance-graph.js";
 import * as schema from "../database/sqlite-schema.js";
-import { ancestorCountQuery, ancestryProblemsQuery, checkAncestry, checkParents, newMessageRevisions, revisionValues, uniqueParents, type ParentRow } from "./provenance-graph-shared.js";
+import { ancestorCountQuery, ancestryCountsQuery, ancestryProblemsQuery, ancestryRevokedQuery, toAdmissions, checkAncestry, checkParents, newMessageRevisions, revisionValues, uniqueParents, type ParentRow } from "./provenance-graph-shared.js";
 
 export class SqliteProvenanceGraphStore implements ProvenanceGraphStore {
   public constructor(private readonly database: BetterSQLite3Database<typeof schema>) {}
@@ -94,6 +94,17 @@ export class SqliteProvenanceGraphStore implements ProvenanceGraphStore {
     const current = schema.provenanceCurrent;
     return Promise.resolve(this.database.delete(current).where(and(eq(current.guildId, guildId), eq(current.channelId, channelId), eq(current.kind, kind),
       eq(current.artifactId, artifactId), eq(current.revisionId, revisionId))).run().changes > 0);
+  }
+
+  public checkAncestry(input: ProvenanceAncestryCheck): Promise<ReadonlyMap<string, ProvenanceAdmission>> {
+    const roots = [...new Set(input.revisionIds)];
+    const result = new Map<string, ProvenanceAdmission>();
+    for (const chunk of chunked(roots)) {
+      const counts = this.database.all(ancestryCountsQuery(input.guildId, input.channelId, chunk, input.audienceUserId));
+      const revoked = this.database.all(ancestryRevokedQuery(input.guildId, input.channelId, chunk));
+      for (const [root, admission] of toAdmissions(chunk, counts, revoked, input.budget)) result.set(root, admission);
+    }
+    return Promise.resolve(result);
   }
 
   public current(guildId: string, channelId: string, kind: ProvenanceRevisionKind, artifactId: string): Promise<{ revisionId: string; version: number } | null> {

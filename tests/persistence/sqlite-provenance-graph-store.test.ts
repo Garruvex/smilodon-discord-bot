@@ -27,6 +27,13 @@ provenanceGraphStoreContract("sqlite", () => {
     edgeCount: () => Promise.resolve(count("provenance_edges")),
     scopeOrdinal: (guildId, channelId) => Promise.resolve(database.get<{ ordinal: number } | undefined>(
       sql`SELECT ordinal FROM message_revocation_scopes WHERE guild_id = ${guildId} AND channel_id = ${channelId}`)?.ordinal ?? 0),
+    // The foreign key refuses this, so enforcement is off for this one insert.
+    insertDanglingEdge: (childId, parentId) => {
+      database.run(sql`PRAGMA foreign_keys = OFF`);
+      try { database.insert(schema.provenanceEdges).values({ childId, parentId, projection: "full", representationHash: "c".repeat(64) }).run(); }
+      finally { database.run(sql`PRAGMA foreign_keys = ON`); }
+      return Promise.resolve();
+    },
     failPointerWrites: () => {
       for (const event of ["INSERT", "UPDATE"]) database.run(sql.raw(`CREATE TRIGGER fail_pointer_${event} BEFORE ${event} ON provenance_current BEGIN SELECT RAISE(ABORT, 'interrupted'); END`));
       return Promise.resolve();

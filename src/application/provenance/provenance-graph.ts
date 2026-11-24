@@ -75,7 +75,7 @@ export const maxProvenanceAncestors = 4096;
 // One that commits afterwards finds the new revision through the edges.
 export interface ProvenanceMessageSource { messageId: string; authorId: string; timestampMs: number }
 
-export interface ProvenanceGraphStore {
+export interface ProvenanceGraphStore extends ProvenanceGraphReader {
   publish(input: ProvenancePublication): Promise<ProvenancePublishResult>;
   // The current revision of each Discord message, publishing a first one where there is none, in one
   // transaction under the scope lock. A revoked message gets none and is left out of the result.
@@ -102,4 +102,40 @@ export interface ProvenanceInput {
   origin: "human" | "chat" | null;
   direct: boolean;
   carriers: readonly string[];
+}
+
+// Why a revision is not admissible through the graph. missing: it, or an ancestor, has no published row
+// in this scope. revoked: a Discord message it reaches as conversation was deleted. audience: an
+// ancestor was produced for one person and this read is for someone else or for the channel.
+// budget: its ancestry is larger than one read may traverse.
+export type ProvenanceRejection = "missing" | "unpublished" | "revoked" | "audience" | "budget";
+export type ProvenanceAdmission = { admitted: true } | { admitted: false; reasons: readonly ProvenanceRejection[] };
+
+export interface ProvenanceAncestryCheck {
+  guildId: string;
+  channelId: string;
+  revisionIds: readonly string[];
+  // The person this read is for; null for a channel-wide read.
+  audienceUserId: string | null;
+  // Most revisions one candidate may reach, itself included.
+  budget: number;
+}
+
+export interface ProvenanceGraphReader {
+  // Checks many candidates in one pass. Shared ancestors are visited once per candidate in the same query.
+  checkAncestry(input: ProvenanceAncestryCheck): Promise<ReadonlyMap<string, ProvenanceAdmission>>;
+}
+
+// Default traversal budget for one candidate.
+export const defaultProvenanceTraversalBudget = 1024;
+
+export function admissionFrom(counts: { visited: number; missing: number; unpublished: number; foreignScope: number; audience: number; revoked: number } | undefined, budget: number): ProvenanceAdmission {
+  if (!counts) return { admitted: false, reasons: ["missing"] };
+  const reasons: ProvenanceRejection[] = [];
+  if (counts.visited > budget) reasons.push("budget");
+  if (counts.missing > 0 || counts.foreignScope > 0) reasons.push("missing");
+  if (counts.revoked > 0) reasons.push("revoked");
+  if (counts.unpublished > 0) reasons.push("unpublished");
+  if (counts.audience > 0) reasons.push("audience");
+  return reasons.length ? { admitted: false, reasons } : { admitted: true };
 }

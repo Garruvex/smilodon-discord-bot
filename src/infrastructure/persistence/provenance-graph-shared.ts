@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import { sql, type SQL } from "drizzle-orm";
+import { z } from "zod";
 
 import {
+  admissionFrom, type ProvenanceAdmission,
   backgroundProjectionPrefix, maxProvenanceAncestors, ProvenancePublicationRefused,
   type ProvenanceMessageSource, type ProvenanceParent, type ProvenancePublication, type ProvenanceRevisionState,
 } from "../../application/provenance/provenance-graph.js";
@@ -79,4 +81,44 @@ export function newMessageRevisions(guildId: string, channelId: string, messages
       authorId: message.authorId, sourceTimestampMs: message.timestampMs, parents: [], publishedAt: at }, id, base + index + 1);
     return { revision, pointer: { guildId, channelId, kind: "message" as const, artifactId: message.messageId, revisionId: id, version: 1 } };
   });
+}
+
+// Every revision each root reaches, deduplicated per root, for a batched admission check.
+const reachFrom = (guildId: string, channelId: string, roots: readonly string[]): SQL => sql`WITH RECURSIVE reach(root, id) AS (
+  SELECT r.id, r.id FROM provenance_revisions r WHERE r.guild_id = ${guildId} AND r.channel_id = ${channelId} AND r.id IN (${sql.join(roots.map((root) => sql`${root}`), sql`, `)})
+  UNION SELECT reach.root, e.parent_id FROM provenance_edges e JOIN reach ON e.child_id = reach.id)`;
+
+// Per root: revisions reached, and how many are missing, unpublished, in another scope or produced for
+// another audience. An ancestor made for one person is admissible only in a read for that person.
+export const ancestryCountsQuery = (guildId: string, channelId: string, roots: readonly string[], audienceUserId: string | null): SQL =>
+  sql`${reachFrom(guildId, channelId, roots)} SELECT reach.root AS root, count(*) AS visited,
+    sum(CASE WHEN r.id IS NULL THEN 1 ELSE 0 END) AS missing,
+    sum(CASE WHEN r.state <> 'published' THEN 1 ELSE 0 END) AS unpublished,
+    sum(CASE WHEN r.guild_id <> ${guildId} OR r.channel_id <> ${channelId} THEN 1 ELSE 0 END) AS foreign_scope,
+    sum(CASE WHEN r.audience_user_id IS NOT NULL AND (CAST(${audienceUserId} AS text) IS NULL OR r.audience_user_id <> CAST(${audienceUserId} AS text)) THEN 1 ELSE 0 END) AS audience
+    FROM reach LEFT JOIN provenance_revisions r ON r.id = reach.id GROUP BY reach.root`;
+
+// Per root: revoked Discord messages reached as conversation, the root itself included.
+export const ancestryRevokedQuery = (guildId: string, channelId: string, roots: readonly string[]): SQL =>
+  sql`${reachFrom(guildId, channelId, roots)} SELECT root, sum(revoked) AS revoked FROM (
+    SELECT reach.root AS root, count(*) AS revoked FROM reach JOIN provenance_edges e ON e.child_id = reach.id JOIN provenance_revisions p ON p.id = e.parent_id
+      JOIN message_revocations m ON m.guild_id = p.guild_id AND m.channel_id = p.channel_id AND m.message_id = p.artifact_id
+      WHERE p.kind IN ${discordMessageKinds} AND e.projection NOT LIKE ${`${backgroundProjectionPrefix}%`} GROUP BY reach.root
+    UNION ALL
+    SELECT r.id AS root, count(*) AS revoked FROM provenance_revisions r JOIN message_revocations m ON m.guild_id = r.guild_id AND m.channel_id = r.channel_id AND m.message_id = r.artifact_id
+      WHERE r.id IN (${sql.join(roots.map((root) => sql`${root}`), sql`, `)}) AND r.kind IN ${discordMessageKinds} GROUP BY r.id
+  ) found GROUP BY root`;
+
+const countsRow = z.object({ root: z.string(), visited: z.coerce.number(), missing: z.coerce.number(), unpublished: z.coerce.number(),
+  foreign_scope: z.coerce.number(), audience: z.coerce.number() });
+const revokedRow = z.object({ root: z.string(), revoked: z.coerce.number() });
+
+export function toAdmissions(roots: readonly string[], counts: readonly unknown[], revoked: readonly unknown[], budget: number): Map<string, ProvenanceAdmission> {
+  const revokedBy = new Map(revoked.map((row) => revokedRow.parse(row)).map((row) => [row.root, row.revoked]));
+  const countsBy = new Map(counts.map((row) => countsRow.parse(row)).map((row) => [row.root, row]));
+  return new Map(roots.map((root) => {
+    const row = countsBy.get(root);
+    return [root, admissionFrom(row && { visited: row.visited, missing: row.missing, unpublished: row.unpublished, foreignScope: row.foreign_scope,
+      audience: row.audience, revoked: revokedBy.get(root) ?? 0 }, budget)];
+  }));
 }

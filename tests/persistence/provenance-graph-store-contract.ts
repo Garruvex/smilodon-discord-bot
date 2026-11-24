@@ -13,6 +13,8 @@ export interface ProvenanceGraphHarness {
   scopeOrdinal(guildId: string, channelId: string): Promise<number>;
   // Makes every later write to the current-version pointer fail, as an interrupted transaction would.
   failPointerWrites(): Promise<void>;
+  // An edge to a parent that has no row, as a lost or out-of-order write would leave.
+  insertDanglingEdge(childId: string, parentId: string): Promise<void>;
 }
 
 const hash = (letter: string): string => letter.repeat(64);
@@ -142,6 +144,54 @@ export function provenanceGraphStoreContract(label: string, create: () => Promis
       expect(await store.current("guild", "channel", "reply_part", "r")).toBeNull();
       // The revision stays, so what was built on it keeps its ancestry.
       expect(await store.parents(v2)).toEqual([{ ...full(m), assetsHash: null }]);
+    });
+
+    it("checks many candidates' ancestry at once and names why one is not admissible", async () => {
+      const harness = await create(); const { store, revocations } = harness;
+      const m = await published(store, message("m")); const q = await published(store, message("q")); const n = await published(store, message("n"));
+      const r1 = await published(store, reply("r1", [full(m)]));
+      const r2 = await published(store, reply("r2", [full(r1), full(q)]));
+      const r3 = await published(store, reply("r3", [full(r1)]));
+      const other = await published(store, reply("other", [full(n)]));
+      const check = (revisionIds: string[], audienceUserId: string | null = null, budget = 1_000): ReturnType<typeof store.checkAncestry> =>
+        store.checkAncestry({ guildId: "guild", channelId: "channel", revisionIds, audienceUserId, budget });
+      // Shared ancestors: r2 and r3 both reach r1 and m.
+      expect(await check([r2, r3, r2])).toEqual(new Map([[r2, { admitted: true }], [r3, { admitted: true }]]));
+      expect(await check(["unknown"])).toEqual(new Map([["unknown", { admitted: false, reasons: ["missing"] }]]));
+      // A private claim made for alice may feed a read for alice only.
+      const privateClaim = await published(store, reply("c", [full(n)], { kind: "claim", audienceUserId: "alice" }));
+      const fromPrivate = await published(store, reply("r4", [full(privateClaim)]));
+      expect((await check([fromPrivate], "alice")).get(fromPrivate)).toEqual({ admitted: true });
+      expect((await check([fromPrivate], null)).get(fromPrivate)).toEqual({ admitted: false, reasons: ["audience"] });
+      expect((await check([fromPrivate], "bob")).get(fromPrivate)).toEqual({ admitted: false, reasons: ["audience"] });
+      // A missing parent rejects only the candidate that reaches it.
+      const broken = await published(store, reply("r5", [full(q)]));
+      await harness.insertDanglingEdge(broken, "lost-parent");
+      const mixed = await check([broken, other]);
+      expect(mixed.get(broken)).toEqual({ admitted: false, reasons: ["missing"] });
+      expect(mixed.get(other)).toEqual({ admitted: true });
+      // A revoked ancestor two replies back rejects both descendants and nothing else.
+      await revocations.revoke({ guildId: "guild", channelId: "channel", messageIds: ["m"], revokedAt: 9_000 });
+      const after = await check([r2, r3, other]);
+      expect(after.get(r2)).toEqual({ admitted: false, reasons: ["revoked"] });
+      expect(after.get(r3)).toEqual({ admitted: false, reasons: ["revoked"] });
+      expect(after.get(other)).toEqual({ admitted: true });
+    });
+
+    it("rejects a candidate whose dense ancestry exceeds the traversal budget", async () => {
+      const { store } = await create();
+      const sources = await Promise.all(Array.from({ length: 30 }, (_value, index) => published(store, message(`m${index}`))));
+      let previous: string | null = null;
+      for (let index = 0; index < 8; index++) {
+        previous = await published(store, reply(`r${index}`, [...sources.map(full), ...(previous ? [full(previous)] : [])]));
+      }
+      const small = await published(store, reply("small", [full(sources[0]!)]));
+      const check = (budget: number): ReturnType<typeof store.checkAncestry> => store.checkAncestry({ guildId: "guild", channelId: "channel", revisionIds: [previous!, small], audienceUserId: null, budget });
+      // Every reply cites all 30 messages and the previous reply: 38 distinct revisions however many paths.
+      expect((await check(38)).get(previous!)).toEqual({ admitted: true });
+      const tight = await check(20);
+      expect(tight.get(previous!)).toEqual({ admitted: false, reasons: ["budget"] });
+      expect(tight.get(small)).toEqual({ admitted: true });
     });
 
     it("shares the scope row with revocation without either overwriting the other", async () => {
