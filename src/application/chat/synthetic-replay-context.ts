@@ -7,10 +7,11 @@ import type { ChannelHistoryMessage } from "./chat-provider.js";
 // Explicit consented/anonymized replay premises only. The source map retains
 // actual generated-reply proofs; this helper never fabricates bot evidence.
 // policy: the production citation hooks (forget and opt-out checks, revocations, the provenance graph) so
-// a replay reads earlier replies the way a live channel with a citation policy does.
+// a replay reads earlier replies the way a live channel with a citation policy does, and optionally the
+// snapshot validation a live Discord port uses.
 export function syntheticReplaySource(scope: Pick<GuardedContextPort, "guildId" | "channelId" | "sourceMessageId" | "actorId">,
   sources: ReadonlyMap<string, GuardedContextSource>, mode: "shared" | "isolated" | "session_only" | "disabled" = "shared",
-  policy: Pick<GuardedContextPort, "sourcesAllowed" | "revoked" | "graph" | "coverage"> = {}): GuardedContextPort {
+  policy: Pick<GuardedContextPort, "sourcesAllowed" | "revoked" | "graph" | "coverage" | "snapshotCurrent"> = {}): GuardedContextPort {
   const events = (): ChannelHistoryMessage[] => [...sources.values()].map((source) => source.event).filter((event) => event.channelId === scope.channelId);
   return registerConversationSource({ ...scope, ...policy, persist: mode === "shared" || mode === "isolated", shareMemory: mode === "shared",
     retention: mode === "disabled" ? "none" : mode === "session_only" ? "session" : "durable",

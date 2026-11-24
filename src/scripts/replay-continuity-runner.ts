@@ -115,6 +115,10 @@ export async function runContinuityCase(input: ContinuityRunInput): Promise<Cont
         revoked: (ids) => Promise.resolve(ids.map(() => false)),
         graph: { mode: (kind) => gate.mode(kind),
           decide: (kind, candidates, audienceUserId) => gate.decideDetailed(kind, { guildId: continuityGuildId, channelId: continuityChannelId, audienceUserId }, candidates) },
+        // Live Discord ports validate against a channel snapshot; the evaluation channel never changes
+        // mid-turn, so its snapshot stays current. Without this, every check would count against the
+        // full-validation pass limit, which production never uses.
+        snapshotCurrent: () => Promise.resolve(true),
         // The turn's own history read; later bookkeeping reads ask for no history.
         coverage: (report) => { if (sourceMessageId === expanded.final.messageId && report.requested > 0 && !coverage) coverage = report; },
       });
