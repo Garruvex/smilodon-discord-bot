@@ -190,6 +190,13 @@
       "when": 1795503570281,
       "tag": "0026_purple_rage",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1795507951064,
+      "tag": "0027_last_vin_gonzales",
+      "breakpoints": true
     }
   ]
 }

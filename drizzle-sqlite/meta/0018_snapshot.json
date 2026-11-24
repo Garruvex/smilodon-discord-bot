@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "1fa08bbf-5aa3-46d4-8db9-f9d18d594d86",
-  "prevId": "a42ab174-f17f-40f0-a24c-d4fc1f99732b",
+  "id": "0f6d8a2f-2c22-478d-bdb8-b0851b143282",
+  "prevId": "1fa08bbf-5aa3-46d4-8db9-f9d18d594d86",
   "tables": {
     "channel_summary_checkpoints": {
       "name": "channel_summary_checkpoints",
@@ -1323,6 +1323,14 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "ordinal": {
+          "name": "ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
         }
       },
       "indexes": {},
@@ -1521,6 +1529,382 @@
           "name": "personal_memory_extraction_jobs_guild_id_channel_id_batch_id_subject_id_pk"
         }
       },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "provenance_current": {
+      "name": "provenance_current",
+      "columns": {
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "channel_id": {
+          "name": "channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "artifact_id": {
+          "name": "artifact_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision_id": {
+          "name": "revision_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "provenance_current_revision_id_provenance_revisions_id_fk": {
+          "name": "provenance_current_revision_id_provenance_revisions_id_fk",
+          "tableFrom": "provenance_current",
+          "tableTo": "provenance_revisions",
+          "columnsFrom": [
+            "revision_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "provenance_current_guild_id_channel_id_kind_artifact_id_pk": {
+          "columns": [
+            "guild_id",
+            "channel_id",
+            "kind",
+            "artifact_id"
+          ],
+          "name": "provenance_current_guild_id_channel_id_kind_artifact_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "provenance_edges": {
+      "name": "provenance_edges",
+      "columns": {
+        "child_id": {
+          "name": "child_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "projection": {
+          "name": "projection",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "representation_hash": {
+          "name": "representation_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "assets_hash": {
+          "name": "assets_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "provenance_edges_parent_idx": {
+          "name": "provenance_edges_parent_idx",
+          "columns": [
+            "parent_id",
+            "child_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "provenance_edges_child_id_provenance_revisions_id_fk": {
+          "name": "provenance_edges_child_id_provenance_revisions_id_fk",
+          "tableFrom": "provenance_edges",
+          "tableTo": "provenance_revisions",
+          "columnsFrom": [
+            "child_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "provenance_edges_parent_id_provenance_revisions_id_fk": {
+          "name": "provenance_edges_parent_id_provenance_revisions_id_fk",
+          "tableFrom": "provenance_edges",
+          "tableTo": "provenance_revisions",
+          "columnsFrom": [
+            "parent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "provenance_edges_child_id_parent_id_projection_pk": {
+          "columns": [
+            "child_id",
+            "parent_id",
+            "projection"
+          ],
+          "name": "provenance_edges_child_id_parent_id_projection_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "provenance_revisions": {
+      "name": "provenance_revisions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "channel_id": {
+          "name": "channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "artifact_id": {
+          "name": "artifact_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ordinal": {
+          "name": "ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completeness": {
+          "name": "completeness",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "audience_user_id": {
+          "name": "audience_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "output_hash": {
+          "name": "output_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "attachment_hash": {
+          "name": "attachment_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "author_id": {
+          "name": "author_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_timestamp_ms": {
+          "name": "source_timestamp_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "representation_hash": {
+          "name": "representation_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "subject_id": {
+          "name": "subject_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "asserter_id": {
+          "name": "asserter_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lineage": {
+          "name": "lineage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "provenance_revisions_version_idx": {
+          "name": "provenance_revisions_version_idx",
+          "columns": [
+            "guild_id",
+            "channel_id",
+            "kind",
+            "artifact_id",
+            "version"
+          ],
+          "isUnique": true
+        },
+        "provenance_revisions_ordinal_idx": {
+          "name": "provenance_revisions_ordinal_idx",
+          "columns": [
+            "guild_id",
+            "channel_id",
+            "ordinal"
+          ],
+          "isUnique": true
+        },
+        "provenance_revisions_author_idx": {
+          "name": "provenance_revisions_author_idx",
+          "columns": [
+            "guild_id",
+            "author_id"
+          ],
+          "isUnique": false
+        },
+        "provenance_revisions_subject_idx": {
+          "name": "provenance_revisions_subject_idx",
+          "columns": [
+            "guild_id",
+            "subject_id"
+          ],
+          "isUnique": false
+        },
+        "provenance_revisions_owner_idx": {
+          "name": "provenance_revisions_owner_idx",
+          "columns": [
+            "guild_id",
+            "owner_id"
+          ],
+          "isUnique": false
+        },
+        "provenance_revisions_asserter_idx": {
+          "name": "provenance_revisions_asserter_idx",
+          "columns": [
+            "guild_id",
+            "asserter_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
     }

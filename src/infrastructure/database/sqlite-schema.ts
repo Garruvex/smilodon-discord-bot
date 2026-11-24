@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import type { MessageOrigin } from "../../application/chat/message-origin-store.js";
 import type { MessageCleanupState } from "../../application/chat/message-revocation-store.js";
+import type { ProvenanceCompleteness, ProvenanceLineage, ProvenanceRevisionKind, ProvenanceRevisionState } from "../../application/provenance/provenance-graph.js";
 import type { ChannelHistoryMessage } from "../../application/chat/chat-provider.js";
 
 export const memoryObservedAliases = sqliteTable("memory_observed_aliases", {
@@ -45,6 +46,8 @@ export const messageRevocations = sqliteTable("message_revocations", {
 export const messageRevocationScopes = sqliteTable("message_revocation_scopes", {
   guildId: text("guild_id").notNull(), channelId: text("channel_id").notNull(),
   revision: integer("revision").notNull(),
+  // Last provenance ordinal handed out in this scope; see provenanceRevisions.
+  ordinal: integer("ordinal").notNull().default(0),
 }, (table) => [primaryKey({ columns: [table.guildId, table.channelId] })]);
 
 // Physical cleanup for a revocation, committed with it. state is pending, claimed or done; nextAt is when
@@ -55,6 +58,51 @@ export const messageCleanupWork = sqliteTable("message_cleanup_work", {
   attempts: integer("attempts").notNull().default(0),
   nextAt: integer("next_at", { mode: "timestamp_ms" }).notNull(),
 }, (table) => [primaryKey({ columns: [table.guildId, table.channelId, table.messageId] }), index("message_cleanup_work_due_idx").on(table.state, table.nextAt)]);
+
+// Shadow provenance graph (see application/provenance/provenance-graph.ts). Revisions are immutable once
+// published. ordinal increases within a scope and every parent's is smaller than its child's, which keeps
+// the graph acyclic; it comes from message_revocation_scopes.ordinal, so publication takes the same
+// scope row as revocation. Roles (author, subject, owner, asserter) are indexed apart from each other.
+export const provenanceRevisions = sqliteTable("provenance_revisions", {
+  id: text("id").primaryKey(),
+  guildId: text("guild_id").notNull(), channelId: text("channel_id").notNull(),
+  kind: text("kind").$type<ProvenanceRevisionKind>().notNull(), artifactId: text("artifact_id").notNull(),
+  version: integer("version").notNull(), ordinal: integer("ordinal").notNull(),
+  state: text("state").$type<ProvenanceRevisionState>().notNull(),
+  completeness: text("completeness").$type<ProvenanceCompleteness>().notNull(),
+  purpose: text("purpose"), audienceUserId: text("audience_user_id"),
+  outputHash: text("output_hash"), attachmentHash: text("attachment_hash"),
+  // A message's Discord author and time and the hash of the representation this revision stands for.
+  authorId: text("author_id"), sourceTimestampMs: integer("source_timestamp_ms"), representationHash: text("representation_hash"),
+  subjectId: text("subject_id"), ownerId: text("owner_id"), asserterId: text("asserter_id"),
+  lineage: text("lineage", { mode: "json" }).$type<ProvenanceLineage>(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [
+  uniqueIndex("provenance_revisions_version_idx").on(table.guildId, table.channelId, table.kind, table.artifactId, table.version),
+  uniqueIndex("provenance_revisions_ordinal_idx").on(table.guildId, table.channelId, table.ordinal),
+  index("provenance_revisions_author_idx").on(table.guildId, table.authorId),
+  index("provenance_revisions_subject_idx").on(table.guildId, table.subjectId),
+  index("provenance_revisions_owner_idx").on(table.guildId, table.ownerId),
+  index("provenance_revisions_asserter_idx").on(table.guildId, table.asserterId),
+]);
+
+// Which revision of an artifact is current. Moves only forward, in the transaction that publishes it.
+export const provenanceCurrent = sqliteTable("provenance_current", {
+  guildId: text("guild_id").notNull(), channelId: text("channel_id").notNull(),
+  kind: text("kind").$type<ProvenanceRevisionKind>().notNull(), artifactId: text("artifact_id").notNull(),
+  revisionId: text("revision_id").notNull().references(() => provenanceRevisions.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+}, (table) => [primaryKey({ columns: [table.guildId, table.channelId, table.kind, table.artifactId] })]);
+
+// A parent revision supplied, in a pinned projection, when the child was produced. One row per
+// child, parent and projection; indexed both ways for forward reads and reverse cleanup.
+export const provenanceEdges = sqliteTable("provenance_edges", {
+  childId: text("child_id").notNull().references(() => provenanceRevisions.id, { onDelete: "cascade" }),
+  parentId: text("parent_id").notNull().references(() => provenanceRevisions.id, { onDelete: "cascade" }),
+  // kind plus character limit, e.g. "full" or "human_text:1000".
+  projection: text("projection").notNull(),
+  representationHash: text("representation_hash").notNull(), assetsHash: text("assets_hash"),
+}, (table) => [primaryKey({ columns: [table.childId, table.parentId, table.projection] }), index("provenance_edges_parent_idx").on(table.parentId, table.childId)]);
 
 // Local (dev-only) backend equivalent of schema.ts's Postgres tables, for
 // exactly the two chat/knowledge stores that need it (SqliteChatStateStore/

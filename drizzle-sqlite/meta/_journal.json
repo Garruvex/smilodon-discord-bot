@@ -127,6 +127,13 @@
       "when": 1795503568341,
       "tag": "0017_classy_white_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1795507949383,
+      "tag": "0018_typical_cloak",
+      "breakpoints": true
     }
   ]
 }
