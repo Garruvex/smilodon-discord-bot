@@ -102,13 +102,19 @@ export interface ProvenanceInput {
   origin: "human" | "chat" | null;
   direct: boolean;
   carriers: readonly string[];
+  // Set when the input is an earlier artifact admitted through the graph rather than a message. Its proof
+  // lists none of its sources, so the new revision must name its current revision as a parent.
+  // messageId is then "artifact:<kind>:<artifact ID>", which never matches a Discord message ID.
+  artifact?: { kind: ProvenanceArtifactKind; artifactId: string; outputHash: string };
 }
+export type ProvenanceArtifactKind = Exclude<ProvenanceRevisionKind, "message" | "reply_part">;
 
 // Why a revision is not admissible through the graph. missing: it, or an ancestor, has no published row
 // in this scope. revoked: a Discord message it reaches as conversation was deleted. audience: an
 // ancestor was produced for one person and this read is for someone else or for the channel.
 // budget: its ancestry is larger than one read may traverse.
-export type ProvenanceRejection = "missing" | "unpublished" | "revoked" | "audience" | "budget";
+// stale: the graph's current version of the artifact has a different output than the candidate.
+export type ProvenanceRejection = "missing" | "unpublished" | "revoked" | "audience" | "budget" | "stale";
 export type ProvenanceAdmission = { admitted: true } | { admitted: false; reasons: readonly ProvenanceRejection[] };
 
 export interface ProvenanceAncestryCheck {
@@ -126,6 +132,8 @@ export interface ProvenanceGraphReader {
   checkAncestry(input: ProvenanceAncestryCheck): Promise<ReadonlyMap<string, ProvenanceAdmission>>;
   // The Discord messages each root reaches, for the forget and opt-out checks v1 runs on citations.
   ancestorMessages(guildId: string, channelId: string, revisionIds: readonly string[]): Promise<ReadonlyMap<string, readonly ProvenanceMessageSource[]>>;
+  // The current revision of each artifact with the output it is bound to.
+  currentOutputs(guildId: string, channelId: string, kind: ProvenanceRevisionKind, artifactIds: readonly string[]): Promise<ReadonlyMap<string, { revisionId: string; outputHash: string | null }>>;
 }
 
 // Default traversal budget for one candidate.

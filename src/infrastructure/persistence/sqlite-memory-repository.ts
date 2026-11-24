@@ -45,7 +45,7 @@ const maxEligibleCandidates = 2_000;
 
 function toMemory(row: typeof schema.memories.$inferSelect): Memory {
   return {
-    ...(memoryClaimProof(row.contextProvenance, row) ? { contextProvenance: memoryClaimProof(row.contextProvenance, row) } : {}),
+    ...(memoryClaimProof(row.contextProvenance, row, "graph") ? { contextProvenance: memoryClaimProof(row.contextProvenance, row, "graph") } : {}),
     id: row.id,
     guildId: row.guildId,
     moduleId: row.moduleId,
@@ -232,7 +232,7 @@ export class SqliteMemoryRepository implements MemoryRepository {
       if (existing && !isRevision) {
         row = transaction.update(schema.memories).set({
           statement: input.statement,
-          contextProvenance: memoryClaimProof(input.contextProvenance, input) ?? memoryClaimProof(existing.contextProvenance, input),
+          contextProvenance: memoryClaimProof(input.contextProvenance, input, "graph") ?? memoryClaimProof(existing.contextProvenance, input, "graph"),
           structuredValue: retainCallbackMetadata(existing.structuredValue, input.structuredValue ?? null, false, input.now),
           // Never lowered by a restatement: most proposers don't rate
           // importance at all (an unrated proposal arrives as 1), so taking
@@ -270,7 +270,7 @@ export class SqliteMemoryRepository implements MemoryRepository {
           topic: input.topic,
           slot: input.slot,
           statement: input.statement,
-          contextProvenance: memoryClaimProof(input.contextProvenance, input),
+          contextProvenance: memoryClaimProof(input.contextProvenance, input, "graph"),
           structuredValue: retainCallbackMetadata(existing?.structuredValue, input.structuredValue ?? null, isRevision, input.now),
           status: input.status,
           source: input.source,
@@ -581,7 +581,7 @@ export class SqliteMemoryRepository implements MemoryRepository {
         eq(schema.memories.status, "candidate"),
       )).get();
       if (!target) return null;
-      const contextProvenance = memoryClaimProof(command.contextProvenance, target);
+      const contextProvenance = memoryClaimProof(command.contextProvenance, target, "graph");
       if (command.contextProvenance && !contextProvenance) return null;
       const identity = identityCondition(toMemory(target));
       const active = transaction.select({ id: schema.memories.id }).from(schema.memories)

@@ -67,6 +67,14 @@ export class ProvenanceShadowWriter {
       if (input?.carriers.some((carrier) => carrier.startsWith("reply:") && parentReplies.has(carrier.slice("reply:".length)))) continue;
       asMessages.push(dependency); completeness = "flattened";
     }
+    // Earlier artifacts admitted through the graph: the edge goes to the revision bound to the output used.
+    const artifactEdges: ProvenanceParent[] = [];
+    for (const input of artifact.inputs) {
+      if (!input.artifact) continue;
+      const current = (await this.graph.currentOutputs(guildId, channelId, input.artifact.kind, [input.artifact.artifactId])).get(input.artifact.artifactId);
+      if (!current || current.outputHash !== input.artifact.outputHash) return "refused";
+      artifactEdges.push({ revisionId: current.revisionId, projection: projectionKey(), representationHash: input.artifact.outputHash, assetsHash: null });
+    }
     const messages = await this.graph.ensureMessages(guildId, channelId,
       asMessages.map(({ messageId, authorId, timestampMs }) => ({ messageId, authorId, timestampMs })), artifact.at);
     // A revoked input means this artifact is not reusable; v1 admission refuses it for the same reason.
@@ -79,7 +87,7 @@ export class ProvenanceShadowWriter {
       lineage: { ...(proof.actors ? { actors: proof.actors } : {}), ...(proof.resources ? { resources: proof.resources } : {}),
         ...(proof.publicWeb ? { publicWeb: proof.publicWeb } : {}), ...(proof.publicTools ? { publicTools: proof.publicTools } : {}) },
       parents: [...viaReply.map((dependency) => edge(replies.get(dependency.messageId)!, dependency)),
-        ...asMessages.map((dependency) => edge(messages.get(dependency.messageId)!, dependency))],
+        ...asMessages.map((dependency) => edge(messages.get(dependency.messageId)!, dependency)), ...artifactEdges],
       publishedAt: artifact.at,
     });
     if (result.status === "published") return "published";

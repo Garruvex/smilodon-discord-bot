@@ -81,6 +81,16 @@ export class SqliteProvenanceGraphStore implements ProvenanceGraphStore {
     }));
   }
 
+  public currentOutputs(guildId: string, channelId: string, kind: ProvenanceRevisionKind, artifactIds: readonly string[]): Promise<ReadonlyMap<string, { revisionId: string; outputHash: string | null }>> {
+    const current = schema.provenanceCurrent; const revision = schema.provenanceRevisions; const found = new Map<string, { revisionId: string; outputHash: string | null }>();
+    for (const chunk of chunked([...new Set(artifactIds)])) {
+      for (const row of this.database.select({ artifactId: current.artifactId, revisionId: current.revisionId, outputHash: revision.outputHash }).from(current)
+        .innerJoin(revision, eq(revision.id, current.revisionId)).where(and(eq(current.guildId, guildId), eq(current.channelId, channelId), eq(current.kind, kind),
+          inArray(current.artifactId, chunk))).all()) found.set(row.artifactId, { revisionId: row.revisionId, outputHash: row.outputHash });
+    }
+    return Promise.resolve(found);
+  }
+
   public currentMany(guildId: string, channelId: string, kind: ProvenanceRevisionKind, artifactIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
     const current = schema.provenanceCurrent; const found = new Map<string, string>();
     for (const chunk of chunked([...new Set(artifactIds)])) {

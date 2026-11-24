@@ -1,6 +1,6 @@
 import {
   defaultProvenanceTraversalBudget,
-  type ProvenanceAdmission, type ProvenanceGraphReader, type ProvenanceGraphStore, type ProvenanceMessageSource, type ProvenanceRejection, type ProvenanceRevisionKind,
+  type ProvenanceAdmission, type ProvenanceGraphReader, type ProvenanceMessageSource, type ProvenanceRejection, type ProvenanceRevisionKind,
 } from "./provenance-graph.js";
 
 // Which reader decides provenance for one artifact kind.
@@ -19,6 +19,8 @@ export interface ProvenanceCandidate {
   artifactId: string;
   // The v1 reader's decision for the same candidate version, audience and policy.
   v1: boolean;
+  // The candidate's output. When given, only a current graph revision bound to this output admits it.
+  outputHash?: string;
 }
 
 // Counts only: never IDs or text.
@@ -41,7 +43,7 @@ export interface ProvenanceDecision { admitted: boolean; source: "v1" | "graph";
 
 export class ProvenanceAdmissionGate {
   public constructor(
-    private readonly graph: ProvenanceGraphReader & Pick<ProvenanceGraphStore, "currentMany">,
+    private readonly graph: ProvenanceGraphReader,
     private readonly modes: (kind: ProvenanceReaderKind) => ProvenanceReaderMode,
     private readonly report: (comparison: ProvenanceComparison) => void = () => undefined,
     private readonly budget = defaultProvenanceTraversalBudget,
@@ -62,17 +64,19 @@ export class ProvenanceAdmissionGate {
     let v2: (boolean | null)[]; const reasons = new Set<ProvenanceRejection>();
     const revisionOf: (string | undefined)[] = []; let ancestors: ReadonlyMap<string, readonly ProvenanceMessageSource[]> = new Map();
     try {
-      const revisions = new Map<string, string>();
+      const revisions = new Map<string, string>(); const outputs = new Map<string, string | null>();
       for (const graphKind of new Set(candidates.map((candidate) => candidate.graphKind))) {
-        const found = await this.graph.currentMany(scope.guildId, scope.channelId, graphKind,
+        const found = await this.graph.currentOutputs(scope.guildId, scope.channelId, graphKind,
           candidates.filter((candidate) => candidate.graphKind === graphKind).map((candidate) => candidate.artifactId));
-        for (const [artifactId, revisionId] of found) revisions.set(`${graphKind}:${artifactId}`, revisionId);
+        for (const [artifactId, current] of found) { revisions.set(`${graphKind}:${artifactId}`, current.revisionId); outputs.set(current.revisionId, current.outputHash); }
       }
       const admissions = revisions.size ? await this.graph.checkAncestry({ ...scope, revisionIds: [...revisions.values()], budget: this.budget }) : new Map<string, ProvenanceAdmission>();
       v2 = candidates.map((candidate, index) => {
         const revisionId = revisions.get(`${candidate.graphKind}:${candidate.artifactId}`);
         revisionOf[index] = revisionId;
         if (!revisionId) return null;
+        // A newer version superseded this output: the graph knows the artifact, and this copy is stale.
+        if (candidate.outputHash !== undefined && outputs.get(revisionId) !== candidate.outputHash) { reasons.add("stale"); return false; }
         const admission = admissions.get(revisionId);
         if (!admission?.admitted) for (const reason of admission?.reasons ?? ["missing"] as const) reasons.add(reason);
         return admission?.admitted === true;

@@ -577,7 +577,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
     }
     // A claim and each alias nested in it have their own proofs, so each is its own artifact.
     if (input.context) await this.observe(ingested.flatMap((memory) => {
-      const claim = memoryClaimProof(memory.contextProvenance, memory);
+      const claim = memoryClaimProof(memory.contextProvenance, memory, "graph");
       const aliases = observedSubjectNames(memory).flatMap((name) => {
         const proof = memoryAliasProof(name.contextProvenance, memory, name.value);
         return proof ? [{ kind: "alias" as const, artifactId: `${memory.id}/${name.value}`, proof, inputs: observedInputs(input.context) }] : [];

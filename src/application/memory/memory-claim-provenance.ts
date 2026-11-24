@@ -1,5 +1,5 @@
 import { hashContent } from "../assets/content-hash.js";
-import { parseContextProvenance, type ContextProvenance } from "../chat/context-provenance.js";
+import { graphAncestryOnly, parseContextProvenance, type ContextProvenance } from "../chat/context-provenance.js";
 import type { Memory } from "./memory.js";
 
 export type MemoryClaimIdentity = Pick<Memory, "guildId" | "kind" | "audience" | "ownerUserId" | "channelId" | "isolationChannelId" | "subjectType" | "subjectId" | "topic" | "slot" | "statement"> & { moduleId?: string | null; structuredValue?: unknown };
@@ -12,8 +12,10 @@ export function memoryClaimPayload(claim: StoredClaim): string {
     subjectType: claim.subjectType, subjectId: claim.subjectId, topic: claim.topic, slot: claim.slot, statement: claim.statement,
     ...(claim.moduleId ? { structuredValue: canonical(claim.structuredValue ?? null) } : {}) });
 }
-export function memoryClaimProof(value: unknown, claim: StoredClaim): ContextProvenance | null {
+// accept "graph" also takes a proof whose ancestry the provenance graph holds: storage keeps it, and only
+// a v2 graph reader admits it. Every other reader asks for "complete".
+export function memoryClaimProof(value: unknown, claim: StoredClaim, accept: "complete" | "graph" = "complete"): ContextProvenance | null {
   const proof = parseContextProvenance(value);
-  return proof?.purpose === "memory_claim" && proof.coverage === "complete" && proof.audience.guildId === claim.guildId &&
+  return proof?.purpose === "memory_claim" && (proof.coverage === "complete" || accept === "graph" && graphAncestryOnly(proof)) && proof.audience.guildId === claim.guildId &&
     proof.outputHash === hashContent(memoryClaimPayload(claim)) ? proof : null;
 }

@@ -193,6 +193,15 @@ export function provenanceGraphStoreContract(label: string, create: () => Promis
       expect((await store.ancestorMessages("guild", "elsewhere", [r2])).size).toBe(0);
     });
 
+    it("names each artifact's current revision with the output it is bound to", async () => {
+      const { store } = await create();
+      const m = await published(store, message("m"));
+      await published(store, reply("c", [full(m)], { kind: "claim", outputHash: hash("d") }));
+      const v2 = await published(store, reply("c", [full(m)], { kind: "claim", version: 2, outputHash: hash("e") }));
+      expect(await store.currentOutputs("guild", "channel", "claim", ["c", "absent"])).toEqual(new Map([["c", { revisionId: v2, outputHash: hash("e") }]]));
+      expect((await store.currentOutputs("guild", "channel", "reply_part", ["c"])).size).toBe(0);
+    });
+
     it("rejects a candidate whose dense ancestry exceeds the traversal budget", async () => {
       const { store } = await create();
       const sources = await Promise.all(Array.from({ length: 30 }, (_value, index) => published(store, message(`m${index}`))));

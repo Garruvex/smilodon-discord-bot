@@ -10,7 +10,7 @@ import type { ChatSessionExchange } from "./chat-state-store.js";
 import { budgetEligibleHistory } from "./eligible-channel-history.js";
 import { actorSourceHash, humanTextSourceHash, contextProvenanceLimits, dependencyMatchesSource, graphAncestryOnly, parseContextProvenance, parseScopedContextProvenance, type ContextProvenance } from "./context-provenance.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
-import type { ProvenanceInput } from "../provenance/provenance-graph.js";
+import type { ProvenanceArtifactKind, ProvenanceInput } from "../provenance/provenance-graph.js";
 import type { ProvenanceCandidate, ProvenanceDecision, ProvenanceReaderKind, ProvenanceReaderMode } from "../provenance/provenance-admission.js";
 import { immutableSnapshot } from "../context/immutable-snapshot.js";
 import { isConversationSource } from "../context/conversation-source-registry.js";
@@ -75,6 +75,7 @@ type ProofDependency = ContextProvenance["dependencies"][number];
 const backgroundOnly = (dependency: ProofDependency): boolean => dependency.projection?.kind === "background_text";
 // How many stored claims one memory pass inspects, in the order given.
 export const maxClaimCandidates = 128;
+const artifactKey = (artifactId: string, outputHash: string): string => JSON.stringify([artifactId, outputHash]);
 const citedKey = (item: CitedSource): string => JSON.stringify([item.messageId, item.authorId, item.timestampMs]);
 // Keeps each batched check well inside SQL parameter limits.
 function chunk512<T>(items: readonly T[]): T[][] {
@@ -142,6 +143,9 @@ export class GuardedConversationContext {
   // its ancestry stays in the graph instead of being carried into this turn's proof.
   private readonly graphReplies = new Map<string, { kind: ProvenanceReaderKind; messages: readonly CitedSource[] }>();
   private graphAncestry = false;
+  // Earlier artifacts (claims, aliases, relations, character state) admitted through the graph and used,
+  // keyed "<kind>:<artifact ID>". Each becomes a parent edge of what this turn builds.
+  private readonly graphArtifacts = new Map<string, { kind: ProvenanceReaderKind; graphKind: ProvenanceArtifactKind; artifactId: string; outputHash: string; messages: readonly CitedSource[] }>();
   private publicWebUsed = false;
   private readonly publicWebCitations = new Set<string>();
   private readonly publicTools = new Map<string, { name: string; outputHash: string }>();
@@ -173,7 +177,11 @@ export class GuardedConversationContext {
   }
   // Every message in this channel the turn has read as conversation so far. Anything that stores text
   // taken from this turn (a query, history, a model's tool arguments) records these as its lineage.
-  public get lineageMessageIds(): readonly string[] { return Object.freeze([...new Set(this.revocableIds())]); }
+  // Includes the messages graph-admitted inputs reach, so a trace tied to this lineage goes with any of them.
+  public get lineageMessageIds(): readonly string[] {
+    return Object.freeze([...new Set([...this.revocableIds(), ...[...this.graphReplies].filter(([id]) => this.evidence.has(id)).flatMap(([, entry]) => entry.messages.map((message) => message.messageId)),
+      ...[...this.graphArtifacts.values()].flatMap((entry) => entry.messages.map((message) => message.messageId))])]);
+  }
   public get burst(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceBurst); }
   public get currentEvent(): ConversationEvent | undefined { return this.sourceEvent ? immutableSnapshot(this.sourceEvent) : undefined; }
   public get report(): GuardedContextReport { return immutableSnapshot(this.coverageReport); }
@@ -538,6 +546,22 @@ export class GuardedConversationContext {
     }
     return cited.every((item) => this.citedAnswers.get(citedKey(item)) === true);
   }
+  // One batched graph decision per reader kind, keyed by artifactKey: two versions of one artifact are
+  // separate candidates, and only the one the graph holds as current can be admitted.
+  private async decideArtifacts(kind: ProvenanceReaderKind, graphKind: ProvenanceArtifactKind, items: readonly { artifactId: string; outputHash: string; v1: boolean }[]):
+    Promise<ReadonlyMap<string, ProvenanceDecision>> {
+    const decided = new Map<string, ProvenanceDecision>();
+    if (!this.port.graph || !items.length) return decided;
+    const unique = [...new Map(items.map((item) => [artifactKey(item.artifactId, item.outputHash), item])).values()];
+    const decisions = await this.port.graph.decide(kind, unique.map((item) => ({ graphKind, ...item })), this.port.audienceUserId ?? null, this.signal)
+      .catch(() => unique.map((): ProvenanceDecision => ({ admitted: false, source: "graph", messages: [] })));
+    unique.forEach((item, index) => decided.set(artifactKey(item.artifactId, item.outputHash), decisions[index] ?? { admitted: false, source: "graph", messages: [] }));
+    return decided;
+  }
+  private useGraphArtifact(kind: ProvenanceReaderKind, graphKind: ProvenanceArtifactKind, artifactId: string, outputHash: string, messages: readonly CitedSource[]): void {
+    this.graphArtifacts.set(`${graphKind}:${artifactId}`, { kind, graphKind, artifactId, outputHash, messages });
+    this.graphAncestry = true;
+  }
   // Delivered replies admitted together through the graph for one reader kind. "graph": every reply is
   // in the graph and admitted, and the messages they reach pass forget and opt-out. "v1": some reply has
   // no graph revision (or the kind is in shadow), so the caller keeps its v1 path. "rejected": the graph
@@ -555,14 +579,15 @@ export class GuardedConversationContext {
   // Graph-admitted replies are checked again on every use: a revocation committed since reaches them
   // through the graph. At an effect, the messages they reach face the forget and opt-out checks afresh.
   private async graphRepliesCurrent(effect: boolean): Promise<boolean> {
-    const used = [...this.graphReplies].filter(([id]) => this.evidence.has(id));
+    const used: { kind: ProvenanceReaderKind; candidate: ProvenanceCandidate }[] = [...this.graphReplies].filter(([id]) => this.evidence.has(id))
+      .map(([artifactId, entry]) => ({ kind: entry.kind, candidate: { graphKind: "reply_part", artifactId, v1: false } }));
+    for (const entry of this.graphArtifacts.values()) used.push({ kind: entry.kind, candidate: { graphKind: entry.graphKind, artifactId: entry.artifactId, v1: false, outputHash: entry.outputHash } });
     if (!used.length || !this.port.graph) return true;
     const decisions: ProvenanceDecision[] = [];
-    for (const kind of new Set(used.map(([, entry]) => entry.kind))) {
-      const ids = used.filter(([, entry]) => entry.kind === kind).map(([id]) => id);
-      const decided = await this.port.graph.decide(kind, ids.map((artifactId) => ({ graphKind: "reply_part" as const, artifactId, v1: false })),
-        this.port.audienceUserId ?? null, this.signal).catch(() => null);
-      if (!decided || decided.length !== ids.length) return false;
+    for (const kind of new Set(used.map((entry) => entry.kind))) {
+      const candidates = used.filter((entry) => entry.kind === kind).map((entry) => entry.candidate);
+      const decided = await this.port.graph.decide(kind, candidates, this.port.audienceUserId ?? null, this.signal).catch(() => null);
+      if (!decided || decided.length !== candidates.length) return false;
       decisions.push(...decided);
     }
     if (decisions.some((decision) => decision.source !== "graph" || !decision.admitted)) return false;
@@ -613,10 +638,16 @@ export class GuardedConversationContext {
         .map((dependency) => dependency.messageId) ?? []);
       if (dependencyIds.length && !this.port.sourcesAllowed) await this.port.prepareValidation?.([...new Set(dependencyIds)], this.signal).catch(() => undefined);
       await this.primeSourceChecks(records.slice(0, maxClaimCandidates).flatMap((record) => memoryClaimProof(record.contextProvenance, record) ?? []));
+      const graphMode = this.port.graph && this.port.sourcesAllowed ? this.port.graph.mode("claim") : "v1";
+      const accept = graphMode === "v2" ? "graph" : "complete";
+      const decisions = graphMode === "v1" ? null : await this.decideArtifacts("claim", "claim", await Promise.all(records.slice(0, maxClaimCandidates).flatMap((record) => {
+        const proof = memoryClaimProof(record.contextProvenance, record, accept);
+        return proof ? [(async (): Promise<{ artifactId: string; outputHash: string; v1: boolean }> => ({ artifactId: record.id, outputHash: proof.outputHash, v1: proof.coverage === "complete" && await this.proofSourcesCurrent(proof) }))()] : [];
+      })));
       for (const record of records.slice(0, maxClaimCandidates)) {
         if (budget && allowed.length === 20) break;
         if (record.statement.length > 1000 || budget && chars + record.statement.length > 3000) continue;
-        const proof = memoryClaimProof(record.contextProvenance, record);
+        const proof = memoryClaimProof(record.contextProvenance, record, accept);
         if (!proof || proof.audience.guildId !== this.port.guildId || proof.audience.channelId !== this.port.channelId ||
             proof.audience.userId !== null && proof.audience.userId !== this.port.actorId ||
             record.audience === "private" && (this.port.audienceUserId !== record.ownerUserId || this.port.actorId !== record.ownerUserId) ||
@@ -625,12 +656,17 @@ export class GuardedConversationContext {
                 { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.actorId ?? "" }, now))) continue;
         const subject = record.subjectType === "member" ? await this.port.actor(record.subjectId, this.signal) : null;
         if (record.subjectType === "member" && !subject) continue;
-        let valid = await this.proofSourcesCurrent(proof);
+        // The graph decides a migrated claim; its sources still face forget and opt-out. Otherwise v1 decides.
+        const decision = decisions?.get(artifactKey(record.id, proof.outputHash));
+        const viaGraph = decision?.source === "graph";
+        if (viaGraph && (!decision.admitted || !await this.citedAllowed(decision.messages))) continue;
+        let valid = viaGraph || (decision ? decision.admitted : await this.proofSourcesCurrent(proof));
         if (!valid) continue;
         if (retain) {
           if (!await this.retainActors(proof)) continue;
           for (const entry of proof.resources ?? []) this.resources.set(`${entry.kind}:${entry.id}`, entry);
-          if (this.port.sourcesAllowed) { if (!this.carry(proof.dependencies, `claim:${record.id}`)) continue; }
+          if (viaGraph) this.useGraphArtifact("claim", "claim", record.id, proof.outputHash, decision.messages);
+          else if (this.port.sourcesAllowed) { if (!this.carry(proof.dependencies, `claim:${record.id}`)) continue; }
           else {
             const before = new Set(this.evidence.keys());
             for (const dependency of proof.dependencies) if (!await this.retain(dependency.messageId, [`claim:${record.id}`])) valid = false;
@@ -949,8 +985,10 @@ export class GuardedConversationContext {
 
   // How each message this turn's proof lists reached it, for the provenance graph.
   public graphInputs(): ProvenanceInput[] {
-    return [...new Set([...this.evidence.keys(), ...this.carried.keys()])].map((messageId) => ({ messageId, origin: this.evidenceOrigins.get(messageId) ?? null,
-      direct: this.directIds.has(messageId), carriers: [...(this.carriers.get(messageId) ?? [])] }));
+    return [...[...new Set([...this.evidence.keys(), ...this.carried.keys()])].map((messageId) => ({ messageId, origin: this.evidenceOrigins.get(messageId) ?? null,
+      direct: this.directIds.has(messageId), carriers: [...(this.carriers.get(messageId) ?? [])] })),
+      ...[...this.graphArtifacts].map(([key, entry]) => ({ messageId: `artifact:${key}`, origin: null, direct: true, carriers: [],
+        artifact: { kind: entry.graphKind, artifactId: entry.artifactId, outputHash: entry.outputHash } }))];
   }
 
   public provenance(output: string, purpose: "reply" | "memory_claim" | "character_state" | "relation" | "identity_alias" = "reply"): ContextProvenance | null {

@@ -71,7 +71,7 @@ function identityLockKey(identity: MemoryIdentity): string {
 
 function toMemory(row: typeof schema.memories.$inferSelect): Memory {
   return {
-    ...(memoryClaimProof(row.contextProvenance, row) ? { contextProvenance: memoryClaimProof(row.contextProvenance, row) } : {}),
+    ...(memoryClaimProof(row.contextProvenance, row, "graph") ? { contextProvenance: memoryClaimProof(row.contextProvenance, row, "graph") } : {}),
     id: row.id,
     guildId: row.guildId,
     moduleId: row.moduleId,
@@ -253,7 +253,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
       if (existing && !isRevision) {
         const updated = await transaction.update(schema.memories).set({
           statement: input.statement,
-          contextProvenance: memoryClaimProof(input.contextProvenance, input) ?? memoryClaimProof(existing.contextProvenance, input),
+          contextProvenance: memoryClaimProof(input.contextProvenance, input, "graph") ?? memoryClaimProof(existing.contextProvenance, input, "graph"),
           structuredValue: retainCallbackMetadata(existing.structuredValue, input.structuredValue ?? null, false, input.now),
           // See SqliteMemoryRepository.ingest — a restatement never lowers
           // importance.
@@ -288,7 +288,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
           topic: input.topic,
           slot: input.slot,
           statement: input.statement,
-          contextProvenance: memoryClaimProof(input.contextProvenance, input),
+          contextProvenance: memoryClaimProof(input.contextProvenance, input, "graph"),
           structuredValue: retainCallbackMetadata(existing?.structuredValue, input.structuredValue ?? null, isRevision, input.now),
           status: input.status,
           source: input.source,
@@ -619,7 +619,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
       const stillCandidate = await transaction.select().from(schema.memories)
         .where(and(eq(schema.memories.id, target.id), eq(schema.memories.status, "candidate"))).limit(1);
       if (stillCandidate.length === 0) return null;
-      const contextProvenance = memoryClaimProof(command.contextProvenance, stillCandidate[0]!);
+      const contextProvenance = memoryClaimProof(command.contextProvenance, stillCandidate[0]!, "graph");
       if (command.contextProvenance && !contextProvenance) return null;
       const identity = identityCondition(targetMemory);
       const active = await transaction.select({ id: schema.memories.id }).from(schema.memories)
