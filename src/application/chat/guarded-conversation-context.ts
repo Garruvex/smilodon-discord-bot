@@ -829,10 +829,12 @@ export class GuardedConversationContext {
     for (const record of records.slice(0, 128)) {
       if (record.guildId !== this.port.guildId || record.channelId !== this.port.channelId ||
           record.isolationChannelId !== null && record.isolationChannelId !== this.port.channelId) continue;
-      const proof = memoryRelationProof(record.contextProvenance, record); const payload = memoryRelationPayload(record);
+      // The derived reader decides which coverage the relation's reader kind accepts.
+      const proof = memoryRelationProof(record.contextProvenance, record, "graph"); const payload = memoryRelationPayload(record);
       if (!proof || !payload) continue;
       const members = [...new Set([...(record.fromSubjectType === "member" ? [record.fromSubjectId] : []), ...(record.toSubjectType === "member" ? [record.toSubjectId] : [])])];
-      if ((await this.resolveParticipants(members)).length !== members.length || !await this.retainDerived(proof, payload, "relation")) continue;
+      if ((await this.resolveParticipants(members)).length !== members.length ||
+          !await this.retainDerived(proof, payload, "relation", { kind: "relation", graphKind: "relation", artifactId: hashContent(payload) })) continue;
       admitted.push(record);
     }
     return admitted;

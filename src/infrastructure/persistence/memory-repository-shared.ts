@@ -17,7 +17,7 @@ export interface StoredRelation {
   isolationChannelId: string | null; supportingMemoryId: string | null; createdAt: Date;
 }
 export function relationFromRow(row: StoredRelation): MemoryRelation {
-  return { id: row.id, guildId: row.guildId, channelId: row.channelId ?? null, contextProvenance: memoryRelationProof(row.contextProvenance, row),
+  return { id: row.id, guildId: row.guildId, channelId: row.channelId ?? null, contextProvenance: memoryRelationProof(row.contextProvenance, row, "graph"),
     fromSubjectType: row.fromSubjectType as MemorySubjectType, fromSubjectId: row.fromSubjectId,
     toSubjectType: row.toSubjectType as MemorySubjectType, toSubjectId: row.toSubjectId,
     predicate: row.predicate as MemoryRelationPredicate, kind: row.kind as MemoryRelationKind,

@@ -650,7 +650,7 @@ export class SqliteMemoryRepository implements MemoryRepository {
     inputs = inputs.filter((input) => input.supportingMemoryId === null || !blocked.has(input.supportingMemoryId));
     if (inputs.length === 0) return Promise.resolve(0);
     for (const input of inputs) {
-      const proof = memoryRelationProof(input.contextProvenance, input); if (!proof) continue;
+      const proof = memoryRelationProof(input.contextProvenance, input, "graph"); if (!proof) continue;
       this.database.update(schema.memoryRelations).set({ contextProvenance: proof, supportingMemoryId: input.supportingMemoryId }).where(and(
         eq(schema.memoryRelations.guildId, input.guildId), eq(schema.memoryRelations.fromSubjectType, input.fromSubjectType), eq(schema.memoryRelations.fromSubjectId, input.fromSubjectId),
         eq(schema.memoryRelations.toSubjectType, input.toSubjectType), eq(schema.memoryRelations.toSubjectId, input.toSubjectId),
@@ -662,7 +662,7 @@ export class SqliteMemoryRepository implements MemoryRepository {
     // ON CONFLICT DO NOTHING against memory_relations_identity — re-extracting
     // a known edge is a no-op, not a duplicate row.
     const result = this.database.insert(schema.memoryRelations).values(inputs.map((input) => ({
-      channelId: input.channelId ?? null, contextProvenance: memoryRelationProof(input.contextProvenance, input),
+      channelId: input.channelId ?? null, contextProvenance: memoryRelationProof(input.contextProvenance, input, "graph"),
       id: randomUUID(),
       guildId: input.guildId,
       fromSubjectType: input.fromSubjectType,

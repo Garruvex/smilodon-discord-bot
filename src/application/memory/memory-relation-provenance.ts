@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { hashContent } from "../assets/content-hash.js";
-import { parseContextProvenance, type ContextProvenance } from "../chat/context-provenance.js";
+import { graphAncestryOnly, parseContextProvenance, type ContextProvenance } from "../chat/context-provenance.js";
 
 const subject = z.enum(["member", "guild", "team", "project", "npc", "faction", "location"]);
 const identitySchema = z.object({ guildId: z.string().min(1).max(128), channelId: z.string().min(1).max(128).nullable().optional(),
@@ -16,7 +16,10 @@ export function memoryRelationPayload(value: unknown): string | null {
   if (channelId && (fromSubjectType === "guild" && fromSubjectId !== guildId || toSubjectType === "guild" && toSubjectId !== guildId)) return null;
   return JSON.stringify({ guildId, channelId: channelId ?? null, fromSubjectType, fromSubjectId, predicate, kind, toSubjectType, toSubjectId, isolationChannelId, supportingMemoryId });
 }
-export function memoryRelationProof(value: unknown, relation: unknown): ContextProvenance | null {
+// accept "graph" also takes a proof whose ancestry the provenance graph holds: storage keeps it, and only
+// a v2 graph reader admits it.
+export function memoryRelationProof(value: unknown, relation: unknown, accept: "complete" | "graph" = "complete"): ContextProvenance | null {
   const payload = memoryRelationPayload(relation); const proof = parseContextProvenance(value);
-  return payload && proof?.purpose === "relation" && proof.coverage === "complete" && proof.outputHash === hashContent(payload) ? proof : null;
+  return payload && proof?.purpose === "relation" && (proof.coverage === "complete" || accept === "graph" && graphAncestryOnly(proof)) &&
+    proof.outputHash === hashContent(payload) ? proof : null;
 }
