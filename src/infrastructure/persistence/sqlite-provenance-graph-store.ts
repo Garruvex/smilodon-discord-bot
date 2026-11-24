@@ -9,7 +9,7 @@ import {
   type ProvenanceAdmission, type ProvenanceAncestryCheck, type ProvenanceGraphStore, type ProvenanceMessageSource, type ProvenanceParent, type ProvenancePublication, type ProvenancePublishResult, type ProvenanceRevisionKind,
 } from "../../application/provenance/provenance-graph.js";
 import * as schema from "../database/sqlite-schema.js";
-import { ancestorCountQuery, ancestryCountsQuery, ancestryProblemsQuery, ancestryRevokedQuery, toAdmissions, checkAncestry, checkParents, newMessageRevisions, revisionValues, uniqueParents, type ParentRow } from "./provenance-graph-shared.js";
+import { ancestorCountQuery, ancestorMessagesQuery, toAncestorMessages, ancestryCountsQuery, ancestryProblemsQuery, ancestryRevokedQuery, toAdmissions, checkAncestry, checkParents, newMessageRevisions, revisionValues, uniqueParents, type ParentRow } from "./provenance-graph-shared.js";
 
 export class SqliteProvenanceGraphStore implements ProvenanceGraphStore {
   public constructor(private readonly database: BetterSQLite3Database<typeof schema>) {}
@@ -104,6 +104,12 @@ export class SqliteProvenanceGraphStore implements ProvenanceGraphStore {
       const revoked = this.database.all(ancestryRevokedQuery(input.guildId, input.channelId, chunk));
       for (const [root, admission] of toAdmissions(chunk, counts, revoked, input.budget)) result.set(root, admission);
     }
+    return Promise.resolve(result);
+  }
+
+  public ancestorMessages(guildId: string, channelId: string, revisionIds: readonly string[]): Promise<ReadonlyMap<string, readonly ProvenanceMessageSource[]>> {
+    const result = new Map<string, ProvenanceMessageSource[]>();
+    for (const chunk of chunked([...new Set(revisionIds)])) toAncestorMessages(this.database.all(ancestorMessagesQuery(guildId, channelId, chunk)), result);
     return Promise.resolve(result);
   }
 

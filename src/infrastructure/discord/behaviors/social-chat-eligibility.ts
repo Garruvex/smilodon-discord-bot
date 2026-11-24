@@ -10,6 +10,7 @@ import { isInGameChannel, type IsGameChannel } from "./game-channel-guard.js";
 import { mapWithConcurrency } from "../../../application/concurrency/map-with-concurrency.js";
 import type { CitedSource } from "../../../application/chat/guarded-conversation-context.js";
 import type { MessageRevocationStore } from "../../../application/chat/message-revocation-store.js";
+import type { ProvenanceAdmissionGate } from "../../../application/provenance/provenance-admission.js";
 
 export interface SocialEligibility { eligible: boolean; reason: string }
 
@@ -30,6 +31,10 @@ export class SocialChatEligibility {
   private revocationStore: MessageRevocationStore | null = null;
   public bindRevocations(store: MessageRevocationStore): void { this.revocationStore = store; }
   public get checksRevocations(): boolean { return this.revocationStore !== null; }
+  // The graph admission gate for artifact readers; without it every reader stays on v1 proofs.
+  private gate: ProvenanceAdmissionGate | null = null;
+  public bindProvenanceGate(gate: ProvenanceAdmissionGate): void { this.gate = gate; }
+  public get provenanceGate(): ProvenanceAdmissionGate | null { return this.gate; }
   // Committed revocations by message ID in one channel. Throws when the store fails; callers fail closed.
   public async revokedMessages(guildId: string, channelId: string, messageIds: readonly string[]): Promise<readonly boolean[]> {
     if (!this.revocationStore || !messageIds.length) return messageIds.map(() => false);

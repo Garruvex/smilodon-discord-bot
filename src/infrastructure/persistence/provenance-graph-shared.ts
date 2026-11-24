@@ -122,3 +122,17 @@ export function toAdmissions(roots: readonly string[], counts: readonly unknown[
       audience: row.audience, revoked: revokedBy.get(root) ?? 0 }, budget)];
   }));
 }
+
+// Per root: the person's messages it reaches, with author and time, for forget and opt-out checks.
+export const ancestorMessagesQuery = (guildId: string, channelId: string, roots: readonly string[]): SQL =>
+  sql`${reachFrom(guildId, channelId, roots)} SELECT reach.root AS root, r.artifact_id AS message_id, r.author_id AS author_id, r.source_timestamp_ms AS timestamp_ms
+    FROM reach JOIN provenance_revisions r ON r.id = reach.id WHERE r.kind = 'message'`;
+
+const messageRow = z.object({ root: z.string(), message_id: z.string(), author_id: z.string().nullable(), timestamp_ms: z.coerce.number().nullable() });
+export function toAncestorMessages(rows: readonly unknown[], into: Map<string, ProvenanceMessageSource[]>): void {
+  for (const row of rows.map((value) => messageRow.parse(value))) {
+    // A message revision always carries its author and time; one without them cannot be checked.
+    const entry = { messageId: row.message_id, authorId: row.author_id ?? "", timestampMs: row.timestamp_ms ?? -1 };
+    const list = into.get(row.root); if (list) list.push(entry); else into.set(row.root, [entry]);
+  }
+}

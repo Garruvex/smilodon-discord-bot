@@ -124,6 +124,8 @@ export interface ProvenanceAncestryCheck {
 export interface ProvenanceGraphReader {
   // Checks many candidates in one pass. Shared ancestors are visited once per candidate in the same query.
   checkAncestry(input: ProvenanceAncestryCheck): Promise<ReadonlyMap<string, ProvenanceAdmission>>;
+  // The Discord messages each root reaches, for the forget and opt-out checks v1 runs on citations.
+  ancestorMessages(guildId: string, channelId: string, revisionIds: readonly string[]): Promise<ReadonlyMap<string, readonly ProvenanceMessageSource[]>>;
 }
 
 // Default traversal budget for one candidate.

@@ -167,6 +167,8 @@ const environmentSchema = z.object({
   // actually gates and the reasoning behind the defaults — the similarity
   // threshold in particular is model-dependent and should be recalibrated
   // if EMBEDDING_MODEL/EMBEDDING_PROVIDER isn't OpenAI text-embedding-3-small.
+  // Which reader admits each artifact kind: "reply_part=v2,claim=shadow". Unnamed kinds stay v1.
+  PROVENANCE_READERS: optionalNonEmptyString,
   MEMORY_MAX_SELECTED_CHARS: z.coerce.number().int().min(500).max(50_000)
     .default(defaultMemoryEngineLimits.maxSelectedChars),
   MEMORY_MAX_STATEMENT_CHARS: z.coerce.number().int().min(20).max(2_000)
@@ -310,6 +312,7 @@ export function loadConfiguration(
       baseUrl: parsed.data.DECISION_BASE_URL ?? parsed.data.OPENAI_BASE_URL } : null,
     campaign: buildCampaignConfiguration(parsed.data),
     campaignNarrationAudit: parsed.data.CAMPAIGN_NARRATION_AUDIT === "on",
+    ...(parsed.data.PROVENANCE_READERS ? { provenanceReaders: parsed.data.PROVENANCE_READERS } : {}),
     campaignImages: buildCampaignImages(parsed.data),
     portraitGenerationLimit: { maxPerWindow: parsed.data.CAMPAIGN_PORTRAIT_MAX_PER_WINDOW, windowMinutes: parsed.data.CAMPAIGN_PORTRAIT_WINDOW_MINUTES },
     chatDelivery: {

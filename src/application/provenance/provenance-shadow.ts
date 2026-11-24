@@ -1,4 +1,4 @@
-import type { ContextProvenance } from "../chat/context-provenance.js";
+import { graphAncestryOnly, type ContextProvenance } from "../chat/context-provenance.js";
 import type { MessageOriginRecord, MessageOriginStore } from "../chat/message-origin-store.js";
 import { projectionKey, type ProvenanceCompleteness, type ProvenanceGraphStore, type ProvenanceInput, type ProvenanceParent, type ProvenanceRevisionKind } from "./provenance-graph.js";
 
@@ -19,7 +19,7 @@ export class ProvenanceShadowWriter {
   // flattened, since its immediate parent is not known.
   public async recordReplyPart(record: MessageOriginRecord, inputs: readonly ProvenanceInput[]): Promise<ProvenanceShadowOutcome> {
     const proof = record.contextProvenance;
-    if (record.origin !== "chat" || !proof || proof.coverage !== "complete" || proof.purpose && proof.purpose !== "reply" ||
+    if (record.origin !== "chat" || !proof || proof.coverage !== "complete" && !graphAncestryOnly(proof) || proof.purpose && proof.purpose !== "reply" ||
         proof.audience.guildId !== record.guildId || proof.audience.channelId !== record.channelId) return "skipped";
     // A part is delivered once; a second record of it changes nothing.
     const result = await this.publish({ kind: "reply_part", artifactId: record.messageId, proof, inputs, at: record.createdAt, version: () => Promise.resolve(1) });
@@ -32,7 +32,7 @@ export class ProvenanceShadowWriter {
   public async recordArtifact(artifact: { kind: Exclude<ProvenanceRevisionKind, "message" | "reply_part">; artifactId: string; proof: ContextProvenance;
     inputs: readonly ProvenanceInput[] | "background"; at: number }): Promise<ProvenanceShadowOutcome> {
     const { proof } = artifact;
-    if (proof.coverage !== "complete") return "skipped";
+    if (proof.coverage !== "complete" && !graphAncestryOnly(proof)) return "skipped";
     const inputs = artifact.inputs === "background"
       ? proof.dependencies.map((dependency) => ({ messageId: dependency.messageId, origin: "human" as const, direct: true, carriers: [] }))
       : artifact.inputs;
@@ -57,7 +57,11 @@ export class ProvenanceShadowWriter {
       const input = byId.get(dependency.messageId);
       if (input?.direct) {
         if (parentReplies.has(dependency.messageId)) viaReply.push(dependency);
-        else { asMessages.push(dependency); if (input.origin === "chat") completeness = "flattened"; }
+        else {
+          // A proof that leaves its ancestry to the graph needs every earlier reply it used in the graph.
+          if (input.origin === "chat" && graphAncestryOnly(proof)) return "refused";
+          asMessages.push(dependency); if (input.origin === "chat") completeness = "flattened";
+        }
         continue;
       }
       if (input?.carriers.some((carrier) => carrier.startsWith("reply:") && parentReplies.has(carrier.slice("reply:".length)))) continue;

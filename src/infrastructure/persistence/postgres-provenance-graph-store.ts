@@ -10,7 +10,7 @@ import {
   type ProvenanceAdmission, type ProvenanceAncestryCheck, type ProvenanceGraphStore, type ProvenanceMessageSource, type ProvenanceParent, type ProvenancePublication, type ProvenancePublishResult, type ProvenanceRevisionKind,
 } from "../../application/provenance/provenance-graph.js";
 import * as schema from "../database/schema.js";
-import { ancestorCountQuery, ancestryCountsQuery, ancestryProblemsQuery, ancestryRevokedQuery, toAdmissions, checkAncestry, checkParents, newMessageRevisions, revisionValues, uniqueParents, type ParentRow } from "./provenance-graph-shared.js";
+import { ancestorCountQuery, ancestorMessagesQuery, toAncestorMessages, ancestryCountsQuery, ancestryProblemsQuery, ancestryRevokedQuery, toAdmissions, checkAncestry, checkParents, newMessageRevisions, revisionValues, uniqueParents, type ParentRow } from "./provenance-graph-shared.js";
 
 const countRow = z.object({ visited: z.coerce.number() });
 const problemsRow = z.object({ unpublished: z.coerce.number(), revoked: z.coerce.number() });
@@ -111,6 +111,12 @@ export class PostgresProvenanceGraphStore implements ProvenanceGraphStore {
       const revoked = await this.database.execute(ancestryRevokedQuery(input.guildId, input.channelId, chunk));
       for (const [root, admission] of toAdmissions(chunk, counts, revoked, input.budget)) result.set(root, admission);
     }
+    return result;
+  }
+
+  public async ancestorMessages(guildId: string, channelId: string, revisionIds: readonly string[]): Promise<ReadonlyMap<string, readonly ProvenanceMessageSource[]>> {
+    const result = new Map<string, ProvenanceMessageSource[]>();
+    for (const chunk of chunked([...new Set(revisionIds)])) toAncestorMessages(await this.database.execute(ancestorMessagesQuery(guildId, channelId, chunk)), result);
     return result;
   }
 

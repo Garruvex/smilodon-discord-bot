@@ -178,6 +178,21 @@ export function provenanceGraphStoreContract(label: string, create: () => Promis
       expect(after.get(other)).toEqual({ admitted: true });
     });
 
+    it("lists the Discord messages each root reaches, with author and time, once per root", async () => {
+      const { store } = await create();
+      const m = await published(store, message("m")); const q = await published(store, message("q", { authorId: "bob", sourceTimestampMs: 2_000 }));
+      const r1 = await published(store, reply("r1", [full(m)]));
+      const r2 = await published(store, reply("r2", [full(r1), full(q), full(m)]));
+      const lone = await published(store, reply("lone", [full(q)]));
+      const reached = await store.ancestorMessages("guild", "channel", [r2, lone, r2, "unknown"]);
+      const sorted = (root: string): unknown => [...(reached.get(root) ?? [])].sort((a, b) => a.messageId.localeCompare(b.messageId));
+      expect(sorted(r2)).toEqual([{ messageId: "m", authorId: "alice", timestampMs: 1_000 }, { messageId: "q", authorId: "bob", timestampMs: 2_000 }]);
+      expect(sorted(lone)).toEqual([{ messageId: "q", authorId: "bob", timestampMs: 2_000 }]);
+      expect(reached.has("unknown")).toBe(false);
+      // Another channel's roots reach nothing here.
+      expect((await store.ancestorMessages("guild", "elsewhere", [r2])).size).toBe(0);
+    });
+
     it("rejects a candidate whose dense ancestry exceeds the traversal budget", async () => {
       const { store } = await create();
       const sources = await Promise.all(Array.from({ length: 30 }, (_value, index) => published(store, message(`m${index}`))));

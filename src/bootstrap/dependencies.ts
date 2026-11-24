@@ -15,6 +15,7 @@ import type { MessageOriginStore } from "../application/chat/message-origin-stor
 import type { MessageRevocationStore } from "../application/chat/message-revocation-store.js";
 import type { ProvenanceGraphStore } from "../application/provenance/provenance-graph.js";
 import { ProvenanceShadowWriter, withProvenanceShadow } from "../application/provenance/provenance-shadow.js";
+import { ProvenanceAdmissionGate, parseProvenanceReaderModes } from "../application/provenance/provenance-admission.js";
 import { emitChatDiagnostic, safeFailure } from "../application/diagnostics/chat-diagnostics.js";
 import type { ConversationEpisodeStore } from "../application/chat/conversation-episode-store.js";
 import { SocialChatEligibility } from "../infrastructure/discord/behaviors/social-chat-eligibility.js";
@@ -677,6 +678,10 @@ export function createDependencies(
   const isGameChannel = (guildId: string, channelIds: readonly string[]): Promise<boolean> => campaign.isGameChannel(guildId, channelIds);
   const socialEligibility = new SocialChatEligibility(configuration, guildConfigurationProvider, messageOriginStore, isGameChannel);
   if (messageRevocationStore) socialEligibility.bindRevocations(messageRevocationStore);
+  // Readers switch to the graph per kind; every kind stays on v1 proofs until PROVENANCE_READERS names it.
+  const provenanceGate = provenanceGraphStore ? new ProvenanceAdmissionGate(provenanceGraphStore, parseProvenanceReaderModes(configuration.provenanceReaders),
+    ({ mode, reasons, ...counts }) => { if (mode !== "v1") emitChatDiagnostic(graphLogger, { event: "provenance.admission.compared", mode, reasons: [...reasons], ...counts }); }) : null;
+  if (provenanceGate) socialEligibility.bindProvenanceGate(provenanceGate);
   socialEligibility.bindGuardedForgetPolicy((message) => memoryRepository.isSourceForgotten({ guildId: message.guildId!,
     subjectId: message.author.id, topic: "*", slot: `source:${message.id}`, channelId: message.channelId, sourceTimestampMs: message.createdTimestamp }),
   memoryRepository.sourcesForgotten ? (messages): Promise<readonly boolean[]> => memoryRepository.sourcesForgotten!(messages.map((message) => ({ guildId: message.guildId!,

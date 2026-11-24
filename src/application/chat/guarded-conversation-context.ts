@@ -8,9 +8,10 @@ import { explicitSelfAlias, memoryAliasPayload, memoryAliasProof, type AliasScop
 import { aliasQueryTokens, observedSubjectNames, type ObservedSubjectName } from "../memory/observed-subject-names.js";
 import type { ChatSessionExchange } from "./chat-state-store.js";
 import { budgetEligibleHistory } from "./eligible-channel-history.js";
-import { actorSourceHash, humanTextSourceHash, contextProvenanceLimits, dependencyMatchesSource, parseContextProvenance, parseScopedContextProvenance, type ContextProvenance } from "./context-provenance.js";
+import { actorSourceHash, humanTextSourceHash, contextProvenanceLimits, dependencyMatchesSource, graphAncestryOnly, parseContextProvenance, parseScopedContextProvenance, type ContextProvenance } from "./context-provenance.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
 import type { ProvenanceInput } from "../provenance/provenance-graph.js";
+import type { ProvenanceCandidate, ProvenanceDecision, ProvenanceReaderKind, ProvenanceReaderMode } from "../provenance/provenance-admission.js";
 import { immutableSnapshot } from "../context/immutable-snapshot.js";
 import { isConversationSource } from "../context/conversation-source-registry.js";
 
@@ -60,9 +61,16 @@ export interface GuardedContextPort {
   // Committed revocations (observed Discord deletes) for messages in this channel, by ID only, so it
   // covers bot-authored messages too. Consulted before any author rule; a failed check counts as revoked.
   revoked?: (messageIds: readonly string[], signal: AbortSignal) => Promise<readonly boolean[]>;
+  // The provenance graph's per-kind admission gate. Used only together with sourcesAllowed, so the
+  // messages a graph-admitted artifact reaches still pass the same forget and opt-out checks.
+  graph?: GuardedGraphPort;
   policyCurrent(): boolean;
 }
 export interface CitedSource { messageId: string; authorId: string; timestampMs: number }
+export interface GuardedGraphPort {
+  mode(kind: ProvenanceReaderKind): ProvenanceReaderMode;
+  decide(kind: ProvenanceReaderKind, candidates: readonly ProvenanceCandidate[], audienceUserId: string | null, signal: AbortSignal): Promise<readonly ProvenanceDecision[]>;
+}
 type ProofDependency = ContextProvenance["dependencies"][number];
 const backgroundOnly = (dependency: ProofDependency): boolean => dependency.projection?.kind === "background_text";
 // How many stored claims one memory pass inspects, in the order given.
@@ -130,6 +138,10 @@ export class GuardedConversationContext {
   private readonly directIds = new Set<string>();
   private readonly carriers = new Map<string, Set<string>>();
   private readonly evidenceOrigins = new Map<string, "human" | "chat">();
+  // Earlier replies admitted through the graph, with the messages they reach. Each is one direct input;
+  // its ancestry stays in the graph instead of being carried into this turn's proof.
+  private readonly graphReplies = new Map<string, readonly CitedSource[]>();
+  private graphAncestry = false;
   private publicWebUsed = false;
   private readonly publicWebCitations = new Set<string>();
   private readonly publicTools = new Map<string, { name: string; outputHash: string }>();
@@ -214,11 +226,24 @@ export class GuardedConversationContext {
       if (source.origin === "chat") {
         const proof = parseScopedContextProvenance(source.provenance, { guildId: this.port.guildId, channelId: this.port.channelId,
           ...(this.port.actorId ? { userId: this.port.actorId } : {}) });
-        if (!proof || proof.purpose && proof.purpose !== "reply" || proof.coverage !== "complete") { this.coverageReport.unverifiedBot++; return null; }
+        const graph = this.port.graph && this.port.sourcesAllowed ? this.port.graph : null;
+        const mode = graph?.mode("reply_part") ?? "v1";
+        // A reply built on graph ancestry has a v1 proof that is not complete on its own; only v2 reads it.
+        if (!proof || proof.purpose && proof.purpose !== "reply" || proof.coverage !== "complete" && !(mode === "v2" && graphAncestryOnly(proof))) { this.coverageReport.unverifiedBot++; return null; }
         if (proof.outputHash !== hashContent(source.event.content)) { this.coverageReport.invalidatedDerived++; return null; }
         if (proof.outputAssetsHash && proof.outputAssetsHash !== guardedAssetsHash(source.assets ?? [])) return null;
         if (!this.port.sourcesAllowed) await this.port.prepareValidation?.(proof.dependencies.filter((dependency) => dependency.guildId === this.port.guildId && dependency.channelId === this.port.channelId).map((dependency) => dependency.messageId), this.signal).catch(() => undefined);
-        if (!await this.proofSourcesCurrent(proof, next)) { this.coverageReport.invalidatedDerived++; return null; }
+        const v1 = proof.coverage === "complete" && await this.proofSourcesCurrent(proof, next);
+        if (graph && mode !== "v1") {
+          const [decision] = await graph.decide("reply_part", [{ graphKind: "reply_part", artifactId: id, v1 }], this.port.audienceUserId ?? null, this.signal);
+          if (decision?.source === "graph") {
+            // The graph decided: the messages it reaches still face v1's forget and opt-out checks.
+            if (!decision.admitted || !await this.citedAllowed(decision.messages)) { this.coverageReport.invalidatedDerived++; return null; }
+            this.graphReplies.set(id, decision.messages);
+            return source;
+          }
+          if (!decision?.admitted) { this.coverageReport.invalidatedDerived++; return null; }
+        } else if (!v1) { this.coverageReport.invalidatedDerived++; return null; }
       }
       return source;
     })();
@@ -241,7 +266,8 @@ export class GuardedConversationContext {
       this.evidence.set(item.event.messageId, item.event);
       this.evidenceVersions.set(item.event.messageId, sourceVersion(item));
       this.evidenceAssets.set(item.event.messageId, immutableSnapshot(item.assets ?? []));
-      if (item.origin === "chat" && this.port.sourcesAllowed) { if (!this.carry(item.provenance!.dependencies, `reply:${item.event.messageId}`)) return false; }
+      if (item.origin === "chat" && this.graphReplies.has(item.event.messageId)) this.graphAncestry = true;
+      else if (item.origin === "chat" && this.port.sourcesAllowed) { if (!this.carry(item.provenance!.dependencies, `reply:${item.event.messageId}`)) return false; }
       else if (item.origin === "chat") for (const dependency of item.provenance!.dependencies) {
         const original = await this.read(dependency.messageId); if (!original || !await add(original, [`reply:${item.event.messageId}`])) return false;
         if (dependency.assetsHash) this.assetDependencies.set(dependency.messageId, dependency.assetsHash);
@@ -502,6 +528,20 @@ export class GuardedConversationContext {
       pending.forEach(([key], index) => this.citedAnswers.set(key, answers[index] === true));
     }
     return cited.every((item) => this.citedAnswers.get(citedKey(item)) === true);
+  }
+  // Graph-admitted replies are checked again on every use: a revocation committed since reaches them
+  // through the graph. At an effect, the messages they reach face the forget and opt-out checks afresh.
+  private async graphRepliesCurrent(effect: boolean): Promise<boolean> {
+    const used = [...this.graphReplies.keys()].filter((id) => this.evidence.has(id));
+    if (!used.length || !this.port.graph) return true;
+    const decisions = await this.port.graph.decide("reply_part", used.map((artifactId) => ({ graphKind: "reply_part" as const, artifactId, v1: false })),
+      this.port.audienceUserId ?? null, this.signal).catch(() => null);
+    if (!decisions || decisions.length !== used.length || decisions.some((decision) => decision.source !== "graph" || !decision.admitted)) return false;
+    if (!effect || !this.port.sourcesAllowed) return true;
+    const messages = [...new Map(decisions.flatMap((decision) => decision.messages).map((message) => [message.messageId, message])).values()];
+    if (!messages.length) return true;
+    const allowed = await this.port.sourcesAllowed(messages, this.signal);
+    return allowed.length === messages.length && allowed.every(Boolean);
   }
   // Messages this turn depends on as conversation. Data built only from daily-summary or history-scan
   // text keeps the guild's existing retention policy and is not revoked by an observed delete.
@@ -837,6 +877,7 @@ export class GuardedConversationContext {
       // Every provider attempt and effect validates, so a revocation committed after collection stops
       // the next one even when the snapshot below answers from its cache.
       if (await this.anyRevoked(this.revocableIds(), true)) return false;
+      if (!await this.graphRepliesCurrent(freshness === "effect")) return false;
       if (this.port.snapshotCurrent) return await this.port.snapshotCurrent(freshness === "effect", this.signal, [...this.evidence.keys()]) &&
         (freshness !== "effect" || await this.carriedAllowed()) &&
         await this.validateResources({ resources: [...this.resources.values()] }) && this.port.policyCurrent();
@@ -892,7 +933,8 @@ export class GuardedConversationContext {
   private buildProvenance(output: string, purpose: "reply" | "memory_claim" | "character_state" | "relation" | "identity_alias", session: boolean): ContextProvenance | null {
     const carried = [...this.carried.values()].filter((dependency) => !this.evidence.has(dependency.messageId));
     if (this.port.persist === false && !session || this.closed || !this.port.policyCurrent() || !this.evidence.size || this.evidence.size + carried.length > contextProvenanceLimits.dependencies) return null;
-    return parseContextProvenance({ version: 1, ...(purpose !== "reply" ? { purpose } : {}), coverage: "complete", audience: { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.audienceUserId ?? null },
+    // With graph ancestry the listed dependencies are not complete on their own: a v1 reader rejects it.
+    return parseContextProvenance({ version: 1, ...(purpose !== "reply" ? { purpose } : {}), coverage: this.graphAncestry ? "partial" : "complete", audience: { guildId: this.port.guildId, channelId: this.port.channelId, userId: this.port.audienceUserId ?? null },
       outputHash: hashContent(output), dependencies: [...[...this.evidence.values()].map((source) => ({ guildId: this.port.guildId,
         channelId: this.port.channelId, messageId: source.messageId, authorId: source.authorId, timestampMs: source.timestampMs,
         representationHash: contextSourceHash(source), ...(this.assetDependencies.has(source.messageId) ? { assetsHash: this.assetDependencies.get(source.messageId) } : {}) })), ...carried], actors: [
@@ -901,7 +943,7 @@ export class GuardedConversationContext {
         ],
       ...(this.publicTools.size ? { publicTools: [...this.publicTools.values()] } : {}),
       ...(this.resources.size ? { resources: [...this.resources.values()] } : {}),
-      ...(this.publicWebUsed ? { publicWeb: { citationHashes: [...this.publicWebCitations].sort() } } : {}), unresolved: [] });
+      ...(this.publicWebUsed ? { publicWeb: { citationHashes: [...this.publicWebCitations].sort() } } : {}), unresolved: this.graphAncestry ? ["graph_ancestry"] : [] });
   }
 }
 

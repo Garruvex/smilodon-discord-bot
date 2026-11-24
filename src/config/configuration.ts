@@ -138,6 +138,8 @@ export interface ApplicationConfiguration {
   campaign: CampaignModelConfiguration | null;
   // Whether each narration is read against the adventure by a second model call (CAMPAIGN_NARRATION_AUDIT, on by default).
   campaignNarrationAudit?: boolean;
+  // Per-kind provenance reader modes (PROVENANCE_READERS); every kind reads v1 when unset.
+  provenanceReaders?: string;
   campaignImages?: CampaignImageConfiguration | null;
   portraitGenerationLimit?: { readonly maxPerWindow: number; readonly windowMinutes: number };
   // Independent of chat/utility generation: either vendor can provide

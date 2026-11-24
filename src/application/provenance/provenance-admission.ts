@@ -1,6 +1,6 @@
 import {
   defaultProvenanceTraversalBudget,
-  type ProvenanceAdmission, type ProvenanceGraphReader, type ProvenanceGraphStore, type ProvenanceRejection, type ProvenanceRevisionKind,
+  type ProvenanceAdmission, type ProvenanceGraphReader, type ProvenanceGraphStore, type ProvenanceMessageSource, type ProvenanceRejection, type ProvenanceRevisionKind,
 } from "./provenance-graph.js";
 
 // Which reader decides provenance for one artifact kind.
@@ -35,6 +35,10 @@ export interface ProvenanceComparison {
 
 export interface ProvenanceAdmissionScope { guildId: string; channelId: string; audienceUserId: string | null }
 
+// source "graph": the graph decided, and messages lists the Discord messages the candidate reaches.
+// source "v1": the v1 decision stands (v1 or shadow mode, or an item the graph does not have).
+export interface ProvenanceDecision { admitted: boolean; source: "v1" | "graph"; messages: readonly ProvenanceMessageSource[] }
+
 export class ProvenanceAdmissionGate {
   public constructor(
     private readonly graph: ProvenanceGraphReader & Pick<ProvenanceGraphStore, "currentMany">,
@@ -48,9 +52,15 @@ export class ProvenanceAdmissionGate {
   // The admission decision for each candidate, in input order. A failed graph check fails closed in v2
   // and leaves v1's decision in shadow mode.
   public async decide(kind: ProvenanceReaderKind, scope: ProvenanceAdmissionScope, candidates: readonly ProvenanceCandidate[]): Promise<boolean[]> {
+    return (await this.decideDetailed(kind, scope, candidates)).map((decision) => decision.admitted);
+  }
+
+  public async decideDetailed(kind: ProvenanceReaderKind, scope: ProvenanceAdmissionScope, candidates: readonly ProvenanceCandidate[]): Promise<ProvenanceDecision[]> {
     const mode = this.modes(kind);
-    if (mode === "v1" || !candidates.length) return candidates.map((candidate) => candidate.v1);
+    const fromV1 = (): ProvenanceDecision[] => candidates.map((candidate) => ({ admitted: candidate.v1, source: "v1", messages: [] }));
+    if (mode === "v1" || !candidates.length) return fromV1();
     let v2: (boolean | null)[]; const reasons = new Set<ProvenanceRejection>();
+    const revisionOf: (string | undefined)[] = []; let ancestors: ReadonlyMap<string, readonly ProvenanceMessageSource[]> = new Map();
     try {
       const revisions = new Map<string, string>();
       for (const graphKind of new Set(candidates.map((candidate) => candidate.graphKind))) {
@@ -59,16 +69,21 @@ export class ProvenanceAdmissionGate {
         for (const [artifactId, revisionId] of found) revisions.set(`${graphKind}:${artifactId}`, revisionId);
       }
       const admissions = revisions.size ? await this.graph.checkAncestry({ ...scope, revisionIds: [...revisions.values()], budget: this.budget }) : new Map<string, ProvenanceAdmission>();
-      v2 = candidates.map((candidate) => {
+      v2 = candidates.map((candidate, index) => {
         const revisionId = revisions.get(`${candidate.graphKind}:${candidate.artifactId}`);
+        revisionOf[index] = revisionId;
         if (!revisionId) return null;
         const admission = admissions.get(revisionId);
         if (!admission?.admitted) for (const reason of admission?.reasons ?? ["missing"] as const) reasons.add(reason);
         return admission?.admitted === true;
       });
+      if (mode === "v2") {
+        const admitted = revisionOf.filter((revisionId, index): revisionId is string => !!revisionId && v2[index] === true);
+        if (admitted.length) ancestors = await this.graph.ancestorMessages(scope.guildId, scope.channelId, admitted);
+      }
     } catch {
-      if (mode === "v2") return candidates.map(() => false);
-      return candidates.map((candidate) => candidate.v1);
+      if (mode === "v2") return candidates.map(() => ({ admitted: false, source: "graph", messages: [] }));
+      return fromV1();
     }
     const comparison: ProvenanceComparison = { kind, mode, candidates: candidates.length, agreed: 0, newlyAdmitted: 0, newlyRejected: 0, unmigrated: 0, reasons: [...reasons].sort() };
     candidates.forEach((candidate, index) => {
@@ -79,7 +94,11 @@ export class ProvenanceAdmissionGate {
       else comparison.newlyRejected++;
     });
     this.report(comparison);
-    return candidates.map((candidate, index) => mode === "shadow" ? candidate.v1 : v2[index] ?? candidate.v1);
+    return candidates.map((candidate, index): ProvenanceDecision => {
+      const graph = v2[index];
+      if (mode === "shadow" || graph === null || graph === undefined) return { admitted: candidate.v1, source: "v1", messages: [] };
+      return { admitted: graph, source: "graph", messages: graph ? ancestors.get(revisionOf[index]!) ?? [] : [] };
+    });
   }
 }
 

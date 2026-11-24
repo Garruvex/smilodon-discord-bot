@@ -28,7 +28,7 @@ export const contextProvenanceSchema = z.object({
   publicTools: z.array(z.object({ name: z.string().regex(/^[a-z_]{1,64}$/), outputHash: digest }).strict()).max(128).optional(),
   resources: z.array(z.object({ kind: z.enum(["birthday", "server_metadata", "server_events", "self_reference_image", "music_queue", "persona_configuration", "user_preferences", "persona_drift", "character_configuration"]), id,
     representationHash: digest }).strict()).max(32).optional(),
-  unresolved: z.array(z.enum(["unguarded_prompt_sources", "missing_current_event", "missing_source_scope", "conflicting_source", "dependency_cap"])).max(5),
+  unresolved: z.array(z.enum(["unguarded_prompt_sources", "missing_current_event", "missing_source_scope", "conflicting_source", "dependency_cap", "graph_ancestry"])).max(6),
 }).strict().superRefine((value, context) => {
   const authoredConfiguration = value.purpose === "memory_claim" && value.resources?.some((resource) => resource.kind === "character_configuration");
   if (value.coverage === "complete" && (value.unresolved.length > 0 || value.dependencies.length === 0 && !authoredConfiguration))
@@ -61,6 +61,12 @@ export function dependencyMatchesSource(dependency: ContextProvenance["dependenc
 
 // Invalid/legacy provenance cannot break loading other records or become a
 // reusable proof. No raw prompt text belongs in this persisted metadata.
+// A proof whose ancestry is held by the provenance graph: its listed dependencies stop at earlier
+// graph-admitted artifacts. Only a v2 graph reader may admit it; to a v1 reader it is incomplete.
+export function graphAncestryOnly(proof: ContextProvenance): boolean {
+  return proof.coverage === "partial" && proof.unresolved.length > 0 && proof.unresolved.every((entry) => entry === "graph_ancestry");
+}
+
 export function parseContextProvenance(value: unknown): ContextProvenance | null {
   try {
     if (JSON.stringify(value)?.length > contextProvenanceLimits.serializedChars) return null;
@@ -81,8 +87,9 @@ export function bindProvenanceOutput(value: unknown, output: string, destination
   if (!provenance) return null;
   const outputHash = hashContent(output);
   // Rebinding an incomplete capture to the actual delivered representation
-  // does not issue authority to rewrite a future complete proof.
-  if (provenance.coverage === "complete" && provenance.outputHash !== outputHash) return null;
+  // does not issue authority to rewrite a future complete proof, nor one a
+  // v2 graph reader admits.
+  if ((provenance.coverage === "complete" || graphAncestryOnly(provenance)) && provenance.outputHash !== outputHash) return null;
   return { ...provenance, outputHash };
 }
 

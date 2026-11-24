@@ -13,6 +13,7 @@ import type { Logger } from "pino";
 import { withDiscordCaller } from "../../../application/diagnostics/discord-diagnostics.js";
 import { eligibilityReason, emitChatDiagnostic, safeFailure } from "../../../application/diagnostics/chat-diagnostics.js";
 import type { SocialChatEligibility } from "./social-chat-eligibility.js";
+import type { ProvenanceCandidate, ProvenanceDecision, ProvenanceReaderKind, ProvenanceReaderMode } from "../../../application/provenance/provenance-admission.js";
 import type { ChatPurpose } from "../../../application/chat/chat-policy.js";
 import { SocialOutputSuppressed, type MessageOriginStore, type MessageOrigin, type MessageOriginRecord } from "../../../application/chat/message-origin-store.js";
 
@@ -247,6 +248,12 @@ export class ChatTurnSupport {
       // Revocations are keyed by message alone, so they also cover the bot's own replies.
       ...(eligibility?.checksRevocations ? { revoked: (ids: readonly string[], signal: AbortSignal): Promise<readonly boolean[]> =>
         signal.aborted ? Promise.reject(new Error("aborted")) : eligibility.revokedMessages(source.guildId!, source.channelId, ids) } : {}),
+      // The graph gate decides earlier replies' ancestry once a kind reads v2; it runs only beside sourcesAllowed.
+      ...(eligibility?.provenanceGate && eligibility.checksCitedSources ? { graph: {
+        mode: (kind: ProvenanceReaderKind): ProvenanceReaderMode => eligibility.provenanceGate!.mode(kind),
+        decide: (kind: ProvenanceReaderKind, candidates: readonly ProvenanceCandidate[], audienceUserId: string | null, signal: AbortSignal): Promise<readonly ProvenanceDecision[]> =>
+          signal.aborted ? Promise.reject(new Error("aborted")) : eligibility.provenanceGate!.decideDetailed(kind, { guildId: source.guildId!, channelId: source.channelId, audienceUserId }, candidates),
+      } } : {}),
       // Without a citation forget policy, cited messages fall back to being re-read from Discord.
       ...(eligibility?.checksCitedSources ? { sourcesAllowed: async (cited: Parameters<NonNullable<GuardedContextPort["sourcesAllowed"]>>[0], signal: AbortSignal): Promise<readonly boolean[]> => {
         const denied = cited.map(() => false);
