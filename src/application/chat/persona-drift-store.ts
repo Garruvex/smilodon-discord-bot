@@ -12,6 +12,7 @@ import { personaDriftPayload, type ScopedPersonaDrift } from "./persona-drift-pr
 import type { ConversationModelGateway } from "../context/conversation-model-gateway.js";
 import type { ChatSessionExchange } from "./chat-state-store.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
+import type { ProvenanceArtifactShadow } from "../provenance/provenance-shadow.js";
 
 const scopedDriftSchema = z.object({ guildId: z.string().min(1).max(128), channelId: z.string().min(1).max(128), epoch: z.string().uuid(), personalitySourceHash: z.string().regex(/^[a-f0-9]{64}$/u),
   text: z.string().max(1000), updatedAt: z.number().finite().nonnegative(), contextProvenance: contextProvenanceSchema }).strict();
@@ -20,6 +21,9 @@ const scopedDriftSchema = z.object({ guildId: z.string().min(1).max(128), channe
 // also erases legacy global files without promoting them into context.
 export class PersonaDriftStore {
   private readonly queue = new KeyedSerialQueue();
+  private shadow: ProvenanceArtifactShadow | null = null;
+  // With the graph bound, a replacement is exposed only after its revision is published as current.
+  public bindProvenanceShadow(shadow: ProvenanceArtifactShadow): void { this.shadow = shadow; }
 
   public constructor(
     private readonly runtimeDataDirectory: string,
@@ -68,6 +72,9 @@ export class PersonaDriftStore {
       await mkdir(resolve(target, ".."), { recursive: true });
       await writeFile(temporary, JSON.stringify(next), "utf8");
       if (!await context.validate()) { await rm(temporary, { force: true }); return; }
+      // The graph's current pointer moves first. A refused or failed publication keeps the old drift.
+      if (this.shadow && await this.shadow({ kind: "drift", artifactId: `persona-drift:${epoch}`, proof: next.contextProvenance, inputs: context.graphInputs(), at: now })
+        .catch(() => "refused" as const) !== "published") { await rm(temporary, { force: true }); return; }
       await rename(temporary, target);
     });
   }

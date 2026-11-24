@@ -1,4 +1,5 @@
 import { ConfigurationModelGateway } from "../context/configuration-model-gateway.js";
+import type { ProvenanceArtifactShadow } from "../provenance/provenance-shadow.js";
 import { isEvaluationContext, type GuardedEvaluationContext } from "../context/guarded-evaluation-context.js";
 import { isConfigurationContext, type GuardedConfigurationContext } from "../context/guarded-configuration-context.js";
 import { GuardedConversationContext, isGuardedContext, projectDecisionContext, type GuardedContextPort } from "./guarded-conversation-context.js";
@@ -114,6 +115,7 @@ export class CharacterRuntime {
   // The simple participation route is optional; guilds and channels select it through the contract setting.
   // The guild's own custom emoji, read from cache; a bounded random sample joins the Unicode set per decision.
   public bindEmojiSource(source: (guildId: string) => readonly ServerEmoji[]): void { this.serverEmoji = source; }
+  public bindProvenanceShadow(shadow: ProvenanceArtifactShadow): void { this.callbacks.bindProvenanceShadow(shadow); }
   public bindSimpleDecision(service: SimpleParticipationService, instanceContract: DecisionContract): void { this.simple = service; this.instanceContract = instanceContract; }
   public capabilities(profile: GuildConfiguration, channelId: string): CharacterCapabilities {
     const participation = resolveParticipation(profile.chat.participation, channelId);

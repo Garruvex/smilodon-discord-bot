@@ -10,6 +10,10 @@ import type { EmbeddingsClient } from "../chat/embeddings-client.js";
 import { authorizeClassificationClaims, authorizeRelationMembers, checkMemoryContext, memoryModelOptions, observedNamesForContext } from "./memory-context-guard.js";
 import { memoryRelationPayload } from "./memory-relation-provenance.js";
 import { memoryClaimPayload, memoryClaimProof } from "./memory-claim-provenance.js";
+import { memoryAliasProof } from "./memory-alias-provenance.js";
+import { hashContent } from "../assets/content-hash.js";
+import type { ContextProvenance } from "../chat/context-provenance.js";
+import type { ProvenanceInput } from "../provenance/provenance-graph.js";
 import { isGuardedContext, maxClaimCandidates } from "../chat/guarded-conversation-context.js";
 import { allowsDurableWrites, resolveMemoryScope } from "./memory-channel-policy.js";
 import type { MemoryRelevanceTraceCollector } from "./memory-relevance-trace.js";
@@ -212,7 +216,26 @@ function resolveInitialStatus(
   return "candidate";
 }
 
+// A durable artifact the engine just committed with a complete v1 proof, for the provenance graph. It
+// carries data only: how each input reached the turn, never the context that admitted it.
+export interface ObservedMemoryArtifact {
+  kind: "claim" | "alias" | "relation";
+  artifactId: string;
+  proof: ContextProvenance;
+  inputs: readonly ProvenanceInput[] | "background";
+}
+const observedInputs = (context: MemoryIngestInput["context"]): readonly ProvenanceInput[] | "background" =>
+  isGuardedContext(context) ? context.graphInputs() : "background";
+
 export class DefaultMemoryEngine implements MemoryEngine {
+  private artifactObserver: ((artifact: ObservedMemoryArtifact) => Promise<void>) | null = null;
+  public observeArtifacts(observer: (artifact: ObservedMemoryArtifact) => Promise<void>): void { this.artifactObserver = observer; }
+  // Observers only shadow what was committed; their failure is logged and never undoes or fails the write.
+  private async observe(artifacts: readonly ObservedMemoryArtifact[], guildId: string): Promise<void> {
+    if (!this.artifactObserver) return;
+    for (const artifact of artifacts) await this.artifactObserver(artifact).catch((error: unknown) =>
+      this.logger?.warn({ ...safeFailure(error), guildId }, "Provenance graph shadow write failed"));
+  }
   public constructor(
     private readonly repository: MemoryRepository,
     private readonly embeddingsClient: EmbeddingsClient | null = null,
@@ -552,6 +575,15 @@ export class DefaultMemoryEngine implements MemoryEngine {
       if (memory) ingested.push(memory);
       else failed += 1;
     }
+    // A claim and each alias nested in it have their own proofs, so each is its own artifact.
+    if (input.context) await this.observe(ingested.flatMap((memory) => {
+      const claim = memoryClaimProof(memory.contextProvenance, memory);
+      const aliases = observedSubjectNames(memory).flatMap((name) => {
+        const proof = memoryAliasProof(name.contextProvenance, memory, name.value);
+        return proof ? [{ kind: "alias" as const, artifactId: `${memory.id}/${name.value}`, proof, inputs: observedInputs(input.context) }] : [];
+      });
+      return [...(claim ? [{ kind: "claim" as const, artifactId: memory.id, proof: claim, inputs: observedInputs(input.context) }] : []), ...aliases];
+    }), input.guildId);
     return { ingested, removed, rejected, failed };
   }
 
@@ -614,6 +646,11 @@ export class DefaultMemoryEngine implements MemoryEngine {
       this.logger?.warn({ ...safeFailure(error), guildId: input.guildId }, "Relation ingest failed");
       return { created: 0, rejected: rejected + valid.length };
     }
+    // A relation has no ID before it is stored; its payload identifies it.
+    if (input.context) await this.observe(valid.flatMap((relation) => {
+      const payload = memoryRelationPayload(relation);
+      return relation.contextProvenance && payload ? [{ kind: "relation" as const, artifactId: hashContent(payload), proof: relation.contextProvenance, inputs: observedInputs(input.context) }] : [];
+    }), input.guildId);
     return { created, rejected };
   }
 

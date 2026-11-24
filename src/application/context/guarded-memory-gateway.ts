@@ -1,4 +1,4 @@
-import { DefaultMemoryEngine } from "../memory/memory-engine.js";
+import { DefaultMemoryEngine, type ObservedMemoryArtifact } from "../memory/memory-engine.js";
 import type { MemoryEngine, MemoryRecallInput } from "../memory/memory.js";
 import { isGuardedContext } from "../chat/guarded-conversation-context.js";
 import { isBackgroundContext } from "./guarded-background-context.js";
@@ -8,6 +8,12 @@ import { immutableSnapshot } from "./immutable-snapshot.js";
 
 // The core retains context-free domain behavior for repository/algorithm tests.
 // Composition exposes only this facade: no live read/write can select it.
+const cores = new WeakMap<MemoryEngine, DefaultMemoryEngine>();
+// Lets the provenance graph shadow what the engine commits, without exposing the core.
+export function observeMemoryArtifacts(engine: MemoryEngine, observer: (artifact: ObservedMemoryArtifact) => Promise<void>): void {
+  cores.get(engine)?.observeArtifacts(observer);
+}
+
 export function createGuardedMemoryEngine(...dependencies: ConstructorParameters<typeof DefaultMemoryEngine>): MemoryEngine {
   const core = new DefaultMemoryEngine(...dependencies);
   const now = dependencies[9] ?? ((): number => Date.now());
@@ -47,5 +53,6 @@ export function createGuardedMemoryEngine(...dependencies: ConstructorParameters
     listUserMemories: core.listUserMemories.bind(core), forget: core.forget.bind(core),
     listSources: core.listSources.bind(core), listPromptSources: core.listPromptSources.bind(core),
   };
-  return Object.freeze(gateway);
+  const frozen = Object.freeze(gateway); cores.set(frozen, core);
+  return frozen;
 }

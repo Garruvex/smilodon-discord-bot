@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { ProvenanceArtifactShadow } from "../provenance/provenance-shadow.js";
 import { z } from "zod";
 import type { Memory, MemoryRepository } from "../memory/memory.js";
 import { contextProvenanceSchema } from "./context-provenance.js";
@@ -36,7 +37,9 @@ export function callbackState(memory: Memory): CharacterCallbackState | null {
   return parsed.success ? parsed.data : null;
 }
 export class CharacterCallbacks {
+  private shadow: ProvenanceArtifactShadow | null = null;
   public constructor(private readonly repository: MemoryRepository) {}
+  public bindProvenanceShadow(shadow: ProvenanceArtifactShadow): void { this.shadow = shadow; }
   public async beginDatePlanning(memory: Memory, now: number): Promise<Memory | null> {
     if (callbackDateUnresolved(memory) || callbackDateDeferred(memory, now)) return null;
     const metadata = memory.structuredValue && typeof memory.structuredValue === "object" ? memory.structuredValue : {};
@@ -72,7 +75,12 @@ export class CharacterCallbacks {
       const proof = context.provenance(callbackProofPayload(memory, state), "character_state");
       if (!proof) throw new SocialOutputSuppressed(); state.contextProvenance = proof;
     }
-    return this.update(memory, state);
+    const planned = await this.update(memory, state);
+    // The callback is bound to the memory version it was planned from. The graph only shadows it.
+    if (planned && context && state.contextProvenance && this.shadow) {
+      await this.shadow({ kind: "callback", artifactId: memory.id, proof: state.contextProvenance, inputs: context.graphInputs(), at: memory.updatedAt }).catch(() => "refused");
+    }
+    return planned;
   }
   public async claim(memory: Memory, now: number, maxPerDay = 1, dayStart = Math.floor(now / 86_400_000) * 86_400_000): Promise<Memory | null> {
     const callback = callbackState(memory);

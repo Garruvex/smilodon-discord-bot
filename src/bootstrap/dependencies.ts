@@ -154,7 +154,7 @@ import { RelevantPersonaLoreSelector } from "../application/chat/persona-lore-se
 import { PersonaBundleCompiler } from "../application/chat/persona-bundle-compiler.js";
 import { PersonaDriftStore } from "../application/chat/persona-drift-store.js";
 import type { MemoryRepository } from "../application/memory/memory.js";
-import { createGuardedMemoryEngine } from "../application/context/guarded-memory-gateway.js";
+import { createGuardedMemoryEngine, observeMemoryArtifacts } from "../application/context/guarded-memory-gateway.js";
 import type { MemoryEngine } from "../application/memory/memory.js";
 import type { ChannelSummaryCheckpointStore } from "../application/context/channel-summary-checkpoint-store.js";
 import { ChannelSummaryScheduler } from "../application/context/channel-summary-scheduler.js";
@@ -616,12 +616,12 @@ export function createDependencies(
   messageRevocationStore?: MessageRevocationStore,
   provenanceGraphStore?: ProvenanceGraphStore,
 ): ApplicationDependencies {
-  // The provenance graph shadows durable reply proofs; v1 stays authoritative and a graph failure is only logged.
-  if (provenanceGraphStore) {
-    const graphLogger = logger.child({ component: "provenance-graph" });
-    messageOriginStore = withProvenanceShadow(messageOriginStore, new ProvenanceShadowWriter(provenanceGraphStore), (error) =>
-      emitChatDiagnostic(graphLogger, { event: "chat.delivery.bookkeeping_failed", stage: "graph", ...safeFailure(error, "operation_error") }));
-  }
+  // The provenance graph shadows durable proofs; v1 stays authoritative and a graph failure is only logged.
+  const provenanceWriter = provenanceGraphStore ? new ProvenanceShadowWriter(provenanceGraphStore) : null;
+  const graphLogger = logger.child({ component: "provenance-graph" });
+  const graphFailed = (error: unknown): void =>
+    emitChatDiagnostic(graphLogger, { event: "chat.delivery.bookkeeping_failed", stage: "graph", ...safeFailure(error, "operation_error") });
+  if (provenanceWriter) messageOriginStore = withProvenanceShadow(messageOriginStore, provenanceWriter, graphFailed);
   messageOriginStore = withSessionMessageOrigins(messageOriginStore);
   const {
     campaign,
@@ -646,6 +646,13 @@ export function createDependencies(
     discordClient, chatStateStore, userCustomizationStore, auditLogService, birthdayStore, boostHistoryStore,
     memoryRepository, channelSummaryCheckpointStore, personalMemoryExtractionQueueStore, reminderStore, roleMenuStore,
   );
+
+  if (provenanceWriter) {
+    observeMemoryArtifacts(memoryEngine, async (artifact) => {
+      await provenanceWriter.recordArtifact({ ...artifact, at: Date.now() });
+    });
+    personaDriftStore.bindProvenanceShadow((artifact) => provenanceWriter.recordArtifact(artifact).catch((error: unknown) => { graphFailed(error); return "refused" as const; }));
+  }
 
   const reminderScheduler = new ReminderScheduler(
     discordClient, reminderStore, logger.child({ component: "reminders" }), guildConfigurationProvider,
@@ -744,6 +751,7 @@ export function createDependencies(
   const characterRuntime = chatProvider ? new CharacterRuntime(guildConfigurationProvider, memoryRepository,
     structuredUtility,
     chatProvider, dedicatedDecision ?? structuredUtility, personalMemoryExtractionQueueStore, undefined, logger.child({ component: "character" }), contextualProviders) : null;
+  if (characterRuntime && provenanceWriter) characterRuntime.bindProvenanceShadow((artifact) => provenanceWriter.recordArtifact(artifact).catch((error: unknown) => { graphFailed(error); return "refused" as const; }));
   if (characterRuntime) settingsEngine.bindCharacterRuntime(characterRuntime);
   const simpleRoute = selectSimpleRoute({ native: nativeDecision, dedicated: dedicatedDecision, reply: structuredReply },
     { decisionModel: configuration.decision?.model ?? null, replyModel: configuration.chat?.summaryModels[0] ?? null,
