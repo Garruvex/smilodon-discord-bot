@@ -140,7 +140,7 @@ export class GuardedConversationContext {
   private readonly evidenceOrigins = new Map<string, "human" | "chat">();
   // Earlier replies admitted through the graph, with the messages they reach. Each is one direct input;
   // its ancestry stays in the graph instead of being carried into this turn's proof.
-  private readonly graphReplies = new Map<string, readonly CitedSource[]>();
+  private readonly graphReplies = new Map<string, { kind: ProvenanceReaderKind; messages: readonly CitedSource[] }>();
   private graphAncestry = false;
   private publicWebUsed = false;
   private readonly publicWebCitations = new Set<string>();
@@ -229,17 +229,19 @@ export class GuardedConversationContext {
         const graph = this.port.graph && this.port.sourcesAllowed ? this.port.graph : null;
         const mode = graph?.mode("reply_part") ?? "v1";
         // A reply built on graph ancestry has a v1 proof that is not complete on its own; only v2 reads it.
-        if (!proof || proof.purpose && proof.purpose !== "reply" || proof.coverage !== "complete" && !(mode === "v2" && graphAncestryOnly(proof))) { this.coverageReport.unverifiedBot++; return null; }
+        const preAdmitted = this.graphReplies.has(id);
+        if (!proof || proof.purpose && proof.purpose !== "reply" || proof.coverage !== "complete" && !((mode === "v2" || preAdmitted) && graphAncestryOnly(proof))) { this.coverageReport.unverifiedBot++; return null; }
         if (proof.outputHash !== hashContent(source.event.content)) { this.coverageReport.invalidatedDerived++; return null; }
         if (proof.outputAssetsHash && proof.outputAssetsHash !== guardedAssetsHash(source.assets ?? [])) return null;
         if (!this.port.sourcesAllowed) await this.port.prepareValidation?.(proof.dependencies.filter((dependency) => dependency.guildId === this.port.guildId && dependency.channelId === this.port.channelId).map((dependency) => dependency.messageId), this.signal).catch(() => undefined);
+        if (preAdmitted) return source;
         const v1 = proof.coverage === "complete" && await this.proofSourcesCurrent(proof, next);
         if (graph && mode !== "v1") {
           const [decision] = await graph.decide("reply_part", [{ graphKind: "reply_part", artifactId: id, v1 }], this.port.audienceUserId ?? null, this.signal);
           if (decision?.source === "graph") {
             // The graph decided: the messages it reaches still face v1's forget and opt-out checks.
             if (!decision.admitted || !await this.citedAllowed(decision.messages)) { this.coverageReport.invalidatedDerived++; return null; }
-            this.graphReplies.set(id, decision.messages);
+            this.graphReplies.set(id, { kind: "reply_part", messages: decision.messages });
             return source;
           }
           if (!decision?.admitted) { this.coverageReport.invalidatedDerived++; return null; }
@@ -414,10 +416,12 @@ export class GuardedConversationContext {
       const selected: ChatSessionExchange[] = [];
       if (!this.port.actorId || this.sourceEvent?.type === "reaction_snapshot") return selected;
       const actorId = this.port.actorId;
+      const graphMode = this.port.graph && this.port.sourcesAllowed ? this.port.graph.mode("session") : "v1";
       const candidates = exchanges.slice(-4).flatMap((exchange) => {
         const proof = parseScopedContextProvenance(exchange.contextProvenance, { guildId: this.port.guildId, channelId: this.port.channelId, userId: actorId });
         const sourceId = exchange.user.sourceMessageId; const deliveryIds = exchange.assistant.messageIds;
-        if (proof ? proof.purpose && proof.purpose !== "reply" || proof.coverage !== "complete" || proof.outputHash !== hashContent(exchange.assistant.content)
+        if (proof ? proof.purpose && proof.purpose !== "reply" || proof.coverage !== "complete" && !(graphMode === "v2" && graphAncestryOnly(proof)) ||
+            proof.outputHash !== hashContent(exchange.assistant.content)
           : exchange.contextProvenance != null || this.port.retention !== "session") return [];
         if (!sourceId || !deliveryIds?.length || deliveryIds.length > 32 || new Set(deliveryIds).size !== deliveryIds.length ||
             exchange.user.content.length > 1000 || exchange.assistant.content.length > 2000) return [];
@@ -429,7 +433,12 @@ export class GuardedConversationContext {
       for (const { exchange, proof, sourceId, deliveryIds } of candidates) {
         const human = await this.read(sourceId);
         if (!human || human.origin !== "human" || human.event.authorId !== this.port.actorId || !human.event.content.startsWith(exchange.user.content)) continue;
-        let valid = proof ? await this.proofSourcesCurrent(proof) : true;
+        // v1 checks the proof's flattened sources. Once the graph decides, the delivered parts carry the
+        // exchange's ancestry instead: each part is one input, checked through its own graph revision.
+        const v1 = proof ? proof.coverage === "complete" && await this.proofSourcesCurrent(proof) : true;
+        const route = proof && graphMode !== "v1" ? await this.admitThroughGraph("session", deliveryIds, v1) : "v1";
+        if (route === "rejected") continue;
+        let valid = route === "graph" || v1;
         let delivered = "";
         let lastTime = -Infinity;
         for (const id of deliveryIds) {
@@ -441,7 +450,7 @@ export class GuardedConversationContext {
         const normalized = (value: string): string => value.replace(/\s+/gu, "");
         if (!valid || !normalized(delivered).includes(normalized(exchange.assistant.content))) continue;
         const deliveryCarriers = deliveryIds.map((id) => `reply:${id}`);
-        for (const id of proof?.dependencies.map((source) => source.messageId) ?? []) if (!await this.retain(id, deliveryCarriers)) valid = false;
+        if (route === "v1") for (const id of proof?.dependencies.map((source) => source.messageId) ?? []) if (!await this.retain(id, deliveryCarriers)) valid = false;
         for (const id of [...deliveryIds, sourceId]) if (!await this.retain(id)) valid = false;
         if (valid) {
           if (proof && !await this.retainActors(proof)) continue;
@@ -529,14 +538,34 @@ export class GuardedConversationContext {
     }
     return cited.every((item) => this.citedAnswers.get(citedKey(item)) === true);
   }
+  // Delivered replies admitted together through the graph for one reader kind. "graph": every reply is
+  // in the graph and admitted, and the messages they reach pass forget and opt-out. "v1": some reply has
+  // no graph revision (or the kind is in shadow), so the caller keeps its v1 path. "rejected": the graph
+  // refused one of them.
+  private async admitThroughGraph(kind: ProvenanceReaderKind, ids: readonly string[], v1: boolean): Promise<"graph" | "v1" | "rejected"> {
+    if (!this.port.graph || !this.port.sourcesAllowed || !ids.length) return "v1";
+    const decisions = await this.port.graph.decide(kind, ids.map((artifactId) => ({ graphKind: "reply_part" as const, artifactId, v1 })),
+      this.port.audienceUserId ?? null, this.signal).catch(() => null);
+    if (!decisions || decisions.length !== ids.length) return "rejected";
+    if (decisions.some((decision) => decision.source === "v1")) return "v1";
+    if (decisions.some((decision) => !decision.admitted) || !await this.citedAllowed(decisions.flatMap((decision) => decision.messages))) return "rejected";
+    ids.forEach((id, index) => { if (!this.graphReplies.has(id)) this.graphReplies.set(id, { kind, messages: decisions[index]!.messages }); });
+    return "graph";
+  }
   // Graph-admitted replies are checked again on every use: a revocation committed since reaches them
   // through the graph. At an effect, the messages they reach face the forget and opt-out checks afresh.
   private async graphRepliesCurrent(effect: boolean): Promise<boolean> {
-    const used = [...this.graphReplies.keys()].filter((id) => this.evidence.has(id));
+    const used = [...this.graphReplies].filter(([id]) => this.evidence.has(id));
     if (!used.length || !this.port.graph) return true;
-    const decisions = await this.port.graph.decide("reply_part", used.map((artifactId) => ({ graphKind: "reply_part" as const, artifactId, v1: false })),
-      this.port.audienceUserId ?? null, this.signal).catch(() => null);
-    if (!decisions || decisions.length !== used.length || decisions.some((decision) => decision.source !== "graph" || !decision.admitted)) return false;
+    const decisions: ProvenanceDecision[] = [];
+    for (const kind of new Set(used.map(([, entry]) => entry.kind))) {
+      const ids = used.filter(([, entry]) => entry.kind === kind).map(([id]) => id);
+      const decided = await this.port.graph.decide(kind, ids.map((artifactId) => ({ graphKind: "reply_part" as const, artifactId, v1: false })),
+        this.port.audienceUserId ?? null, this.signal).catch(() => null);
+      if (!decided || decided.length !== ids.length) return false;
+      decisions.push(...decided);
+    }
+    if (decisions.some((decision) => decision.source !== "graph" || !decision.admitted)) return false;
     if (!effect || !this.port.sourcesAllowed) return true;
     const messages = [...new Map(decisions.flatMap((decision) => decision.messages).map((message) => [message.messageId, message])).values()];
     if (!messages.length) return true;
