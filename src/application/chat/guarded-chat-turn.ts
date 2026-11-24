@@ -84,12 +84,15 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
   const lease = await GuardedConversationContext.open(port, { count: input.guardedContextPolicy?.count ?? 40,
     collectOverflow: dependencies.canCompact,
     budget: input.guardedContextPolicy?.budget ?? 12000, minReactors: input.guardedContextPolicy?.minReactors ?? 1, burstIds: (input.currentBurst ?? []).map((event) => event.messageId),
+    priorAnswerAnchor: input.guardedContextPolicy?.priorAnswerAnchor ?? "off",
     ...(input.currentEvent ? { event: input.currentEvent } : {}) });
+  // An anchored earlier answer reads as the oldest part of the channel history.
+  const channelHistory = [...lease.anchor, ...lease.history];
   emitChatDiagnostic(dependencies.logger, { event: "context.guard.coverage", ...lease.report });
   const mode = input.resolveMemoryMode?.() ?? input.channelMemoryModes?.[input.channelId] ?? "shared";
   const state = input.interaction === "reaction" ? { exchanges: [] }
     : await dependencies.state.load(input.guildId, input.currentUser.id, input.channelId, dependencies.now());
-  const known = new Set([...lease.history, ...lease.replyChain].map((event) => event.messageId));
+  const known = new Set([...channelHistory, ...lease.replyChain].map((event) => event.messageId));
   // Saved copies already represented by fresh guarded history never enter the
   // prompt. Avoid re-fetching their complete provenance only to discard them.
   const sessions = await lease.sessions(state.exchanges.slice(-4).filter((exchange) => !known.has(exchange.user.sourceMessageId ?? "") ||
@@ -148,7 +151,7 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
     }
   };
   const currentUser = lease.current.author ?? { id: lease.current.authorId, displayName: lease.current.authorDisplayName, roleNames: [] };
-  const historyParticipants = [...lease.replyChain, ...lease.history, ...lease.burst].filter((event) => event.author).map((event) => event.author!);
+  const historyParticipants = [...lease.replyChain, ...channelHistory, ...lease.burst].filter((event) => event.author).map((event) => event.author!);
   const mentionedIds = new Set(lease.currentEvent?.type === "message" ? lease.currentEvent.mentionedUserIds :
     lease.currentEvent?.type === "reaction_snapshot" ? lease.currentEvent.reactions.flatMap((reaction) => reaction.actorIds) : []);
   const participants = [...new Map([...historyParticipants, ...await lease.participants([...mentionedIds])].map((actor) => [actor.id, actor])).values()];
@@ -200,7 +203,7 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
     recentHistory, ...memoryFields(memoryClaims, causalChains, aliasCandidates),
     message: lease.currentEvent?.type === "reaction_snapshot" ? `Respond only if useful to this authorized reaction snapshot: ${JSON.stringify(lease.currentEvent)}` : lease.current.content,
     ...(lease.currentEvent?.type !== "reaction_snapshot" && lease.current.linkPreviews?.length ? { messageLinkPreviews: lease.current.linkPreviews } : {}),
-    replyChain: lease.currentEvent?.type === "reaction_snapshot" ? [...lease.replyChain, lease.current] : lease.replyChain, replyChainSummary, channelHistory: lease.history, currentBurst: lease.burst,
+    replyChain: lease.currentEvent?.type === "reaction_snapshot" ? [...lease.replyChain, lease.current] : lease.replyChain, replyChainSummary, channelHistory, currentBurst: lease.burst,
     ...(lease.currentEvent ? { currentEvent: lease.currentEvent } : {}),
     birthday: null, images, imageInputEnabled: capabilities.imageInputEnabled, webSearchMode: capabilities.webSearchMode, imageGenerationEnabled: capabilities.imageGenerationEnabled, includeSources: input.includeSources,
     interaction: input.interaction, botUserId: input.botUserId ?? null,

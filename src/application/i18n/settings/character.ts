@@ -14,6 +14,7 @@ const fields: Record<string, readonly [string, string, string]> = {
   hold: ["Hold seconds", "暫存秒數", "保留する秒数"], "max-per-day": ["Maximum per day", "每日上限", "一日の上限"], "min-delay": ["Delay after event (minutes)", "事件後等待分鐘", "イベント後の待機分数"],
   "half-life": ["Half-life days", "半衰期天數", "半減期の日数"], strictness: ["Repair mode", "修正方式", "修正方法"], "max-messages": ["Maximum messages", "訊息數上限", "メッセージ数の上限"], "max-delay": ["Total delay (milliseconds)", "總延遲毫秒", "遅延の合計（ミリ秒）"],
   "include-others": ["Include other participants", "包含其他參與者", "他の参加者を含む"], messages: ["Messages to read", "讀取訊息數", "読むメッセージ数"], "decision-context": ["Messages for join decisions", "接話判斷參考訊息數", "参加判断に使うメッセージ数"],
+  "prior-answer": ["Earlier-answer anchor", "前次回答錨點", "以前の回答アンカー"],
   channel: ["Channel", "頻道", "チャンネル"], module: ["Module", "模組", "モジュール"], reset: ["Reset override", "重設覆寫", "上書きをリセット"], operation: ["Action", "操作", "操作"], id: ["Record ID", "紀錄 ID", "記録 ID"], statement: ["Updated statement", "修改內容", "更新した内容"],
 };
 type LocalizedText = readonly [string, string, string];
@@ -55,6 +56,9 @@ const fieldDescriptions: Record<string, LocalizedText> = {
   "include-others": ["Include other recent participants.", "也判斷其他近期參與者的訊息是否在對機器人說話。", "他の最近の参加者の呼びかけも判断します。"],
   messages: ["Recent messages a reply reads (8-48).", "回覆時讀取的最近訊息數（8-48）。", "返信時に読む最近のメッセージ数（8-48）。"],
   "decision-context": ["Recent messages read when deciding whether to speak (5-20).", "判斷是否開口時讀取的最近訊息數（5-20）。", "発言するか判断するときに読む最近のメッセージ数（5-20）。"],
+  "prior-answer": ["Re-add an earlier answer a follow-up refers to after it scrolled out. Shadow only logs.",
+    "後續訊息提到已超出範圍的先前回答時補回該回答。影子模式只記錄。",
+    "範囲外になった以前の回答を続きの発言が指すとき補います。シャドーは記録のみ。"],
   probes: ["Schedule private interview questions.", "定期生成私下的角色訪談回答，供管理員檢查。", "非公開の質問に定期的に回答します。"],
   channel: ["Channel to inspect or configure.", "要查看或設定的頻道。", "確認・設定するチャンネル。"],
   module: ["Feature or record category.", "要設定的功能或紀錄類別。", "設定する機能または記録の種類。"],
@@ -94,10 +98,11 @@ export function characterSettingsText(language: Language): SettingsTextCatalog {
     catalog[`character.${node}`] = { label, description: nodeDescriptions[node]![column], messages };
     const extras: Record<string, readonly string[]> = { canon: ["freeze"], relationships: ["interval"], thoughts: ["shadow", "hold"],
       callbacks: ["max-per-day", "min-delay"], voice: ["strictness"], "message-shape": ["max-messages", "max-delay"], mood: ["interval"], evaluation: ["probes", "interval"] };
-    const options = index >= 0 ? ["enabled", ...(["canon", "relationships", "recall-style", "mood", "group", "daily-sketch"].includes(node) ? ["budget"] : []), ...(extras[node] ?? [])] : ({ master: ["enabled"], context: ["enabled", "messages", "budget", "decision-context"],
+    const options = index >= 0 ? ["enabled", ...(["canon", "relationships", "recall-style", "mood", "group", "daily-sketch"].includes(node) ? ["budget"] : []), ...(extras[node] ?? [])] : ({ master: ["enabled"], context: ["enabled", "messages", "budget", "decision-context", "prior-answer"],
       channel: ["channel", "module", "enabled", "reset"], ledger: ["operation", "module", "channel", "id", "statement"], status: ["channel"] } as Record<string, string[]>)[node]!;
     for (const field of options) { const labels = fields[field]!; catalog[`character.${node}.${field}`] = { label: labels[column], description: (optionDescriptions[`${node}.${field}`] ?? fieldDescriptions[field])![column],
       ...(field === "strictness" ? { choices: { trim: ["Trim safe phrases", "移除安全套語", "定型表現を除去"][column]!, regenerate: ["Regenerate once", "重新生成一次", "一度だけ再生成"][column]! } } : {}),
+      ...(field === "prior-answer" ? { choices: { off: ["Off", "關閉", "オフ"][column]!, shadow: ["Shadow (log only)", "影子模式（只記錄）", "シャドー（記録のみ）"][column]!, on: ["On", "開啟", "オン"][column]! } } : {}),
       ...(field === "module" ? { choices: node === "ledger" ? Object.fromEntries(["canon", "mood", "daily-sketch"].map((id) => [id, moduleLabels[language][characterModuleIds.indexOf(id as typeof characterModuleIds[number])]!]))
         : { ...Object.fromEntries(activeCharacterModuleIds.map((id) => [id, moduleLabels[language][characterModuleIds.indexOf(id)]!])), master: ["Master switch", "總開關", "全体の設定"][column]!, context: ["Conversation context", "對話上下文", "会話の文脈"][column]! } } : {}),
       ...(field === "operation" ? { choices: { list: ["List", "列出", "一覧"][column]!, edit: ["Edit", "修改", "編集"][column]!, delete: ["Delete", "刪除", "削除"][column]!, clear: ["Clear this category", "清空這類紀錄", "この種類を全消去"][column]! } } : {}),

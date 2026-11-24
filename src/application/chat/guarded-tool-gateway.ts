@@ -31,9 +31,9 @@ export function guardedTools(registry: ChatToolRegistry | null, lease: GuardedCo
   const boundAuthority = Object.freeze({ ...authority, music: authority.music ? Object.freeze({ ...authority.music,
     actor: immutableSnapshot(authority.music.actor), musicControllerRoleIds: new Set(authority.music.musicControllerRoleIds),
     botAdministratorRoleIds: new Set(authority.music.botAdministratorRoleIds) }) : null });
-  const subjects = [...new Set([lease.current.authorId, ...lease.history.map((event) => event.authorId),
+  const subjects = [...new Set([lease.current.authorId, ...lease.anchor.map((event) => event.authorId), ...lease.history.map((event) => event.authorId),
     ...lease.replyChain.map((event) => event.authorId), ...lease.replyOverflow.map((event) => event.authorId), ...lease.burst.map((event) => event.authorId)])];
-  const texts = [lease.current, ...lease.history, ...lease.replyChain, ...lease.replyOverflow, ...lease.burst].map((event) => event.content);
+  const texts = [lease.current, ...lease.anchor, ...lease.history, ...lease.replyChain, ...lease.replyOverflow, ...lease.burst].map((event) => event.content);
   return registry.list().filter((tool) => !scope.disabled?.has(tool.name) && (!scope.allowed || scope.allowed.has(tool.name)) &&
     (tool instanceof DiceRollTool || tool instanceof EightBallTool || tool instanceof MemoryLookupTool || tool instanceof ReadLinkTool ||
       tool instanceof BirthdayLookupTool || tool instanceof BirthdaySetTool || tool instanceof BirthdayMemberSetTool || tool instanceof BooruSearchTool ||

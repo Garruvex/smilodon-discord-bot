@@ -12,6 +12,15 @@ describe("one conversation plan", () => {
   });
   it("ignores retired flow and time-window fields in stored configuration", () => {
     const parsed = characterSettingsSchema.parse({ context: { retrievalMode: "legacy", windowMinutes: 5, segmentGapMinutes: 3, summary: true, shadow: false, enabled: true, maxMessages: 24 } });
-    expect(parsed.context).toEqual({ maxMessages: 24, budget: 12000, decisionMessages: 10 });
+    expect(parsed.context).toEqual({ maxMessages: 24, budget: 12000, decisionMessages: 10, priorAnswerAnchor: "off" });
+  });
+
+  it("passes the prior-answer anchor mode into the context policy only when it is not off", () => {
+    expect(characterSettingsSchema.parse({}).context.priorAnswerAnchor).toBe("off");
+    expect(characterSettingsSchema.parse({ context: { priorAnswerAnchor: "shadow" } }).context.priorAnswerAnchor).toBe("shadow");
+    expect(() => characterSettingsSchema.parse({ context: { priorAnswerAnchor: "loud" } })).toThrow();
+    const profile = freshProfile();
+    profile.character = { ...characterSettings(profile), context: { ...characterSettings(profile).context, priorAnswerAnchor: "shadow" } };
+    expect(resolveConversationTurnPlan(profile, "channel").contextPolicy).toEqual({ count: 40, budget: 12000, priorAnswerAnchor: "shadow" });
   });
 });

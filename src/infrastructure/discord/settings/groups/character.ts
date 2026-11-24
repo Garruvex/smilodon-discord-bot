@@ -1,4 +1,5 @@
 import { CHARACTER_CONTEXT_LIMITS as contextLimits } from "../../../../config/guild-configuration-limits.js";
+import { priorAnswerAnchorModes } from "../../../../application/chat/prior-answer-anchor.js";
 import { action, choice, group, integer, report, setting, toggle } from "../registry/builders.js";
 import { activeCharacterModuleIds, characterSettings, type CharacterModuleId } from "../../../../application/chat/character-settings.js";
 import type { SettingNode, SettingOption } from "../registry/types.js";
@@ -43,6 +44,8 @@ export const character = group("character", [
     messages: integer({ min: contextLimits.messages.min, max: contextLimits.messages.max, read: (p) => characterSettings(p).context.maxMessages, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, maxMessages: v } } }) }),
     budget: integer({ min: contextLimits.budget.min, max: contextLimits.budget.max, read: (p) => characterSettings(p).context.budget, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, budget: v } } }) }),
     "decision-context": integer({ min: contextLimits.decisionMessages.min, max: contextLimits.decisionMessages.max, read: (p) => characterSettings(p).context.decisionMessages, write: (v, p) => ({ character: { context: { ...characterSettings(p).context, decisionMessages: v } } }) }),
+    "prior-answer": choice({ choices: priorAnswerAnchorModes, read: (p) => characterSettings(p).context.priorAnswerAnchor,
+      write: (v, p) => ({ character: { context: { ...characterSettings(p).context, priorAnswerAnchor: v } } }) }),
   }),
   ...activeCharacterModuleIds.map(moduleSetting),
   action("channel", { params: { channel: { kind: "channel", textOnly: true, required: true }, module: { kind: "choice", choices: ["master", "context", ...activeCharacterModuleIds], required: true }, enabled: { kind: "toggle", required: true }, reset: { kind: "toggle" } },

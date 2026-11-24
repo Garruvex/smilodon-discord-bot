@@ -8,6 +8,8 @@ import { explicitSelfAlias, memoryAliasPayload, memoryAliasProof, type AliasScop
 import { aliasQueryTokens, observedSubjectNames, type ObservedSubjectName } from "../memory/observed-subject-names.js";
 import type { ChatSessionExchange } from "./chat-state-store.js";
 import { budgetEligibleHistory } from "./eligible-channel-history.js";
+import { continuityScore, continuityTerms, continuityThreshold, followUpShaped, type PriorAnswerAnchorMode } from "./prior-answer-anchor.js";
+export type { PriorAnswerAnchorMode } from "./prior-answer-anchor.js";
 import { actorSourceHash, humanTextSourceHash, contextProvenanceLimits, dependencyMatchesSource, graphAncestryOnly, parseContextProvenance, parseScopedContextProvenance, type ContextProvenance } from "./context-provenance.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
 import type { ProvenanceArtifactKind, ProvenanceInput } from "../provenance/provenance-graph.js";
@@ -16,7 +18,7 @@ import { immutableSnapshot } from "../context/immutable-snapshot.js";
 import { isConversationSource } from "../context/conversation-source-registry.js";
 
 export const guardedContextLimits = { pageSize: 100, pages: 3, targetedPages: 5, replyDepth: 20, overflowDepth: 40, overflowChars: 12000, messageChars: 4000, replyChars: 6000, burstMessages: 16, burstChars: 6000, targetedMessages: 8,
-  dependencies: 128, sourceReads: 4096, maxValidationPasses: 64 } as const;
+  anchorCandidates: 8, anchorChars: 2400, dependencies: 128, sourceReads: 4096, maxValidationPasses: 64 } as const;
 export interface GuardedContextSource {
   sourceMessageId?: string | null;
   assets?: readonly GuardedAssetDescriptor[];
@@ -93,6 +95,9 @@ export interface GuardedContextReport {
   selectedIds: string[]; oldestTimestampMs: number | null; newestTimestampMs: number | null;
   eligible: number; selected: number; pages: number; targetedPages: number;
   omitted: number; truncated: number; sourceReads: number;
+  // Prior-answer anchor: messages it added, and where the best-matching earlier answer was
+  // (left out while the anchor is off).
+  anchor: number; anchorMatch?: "none" | "window" | "beyond";
   status: "filled" | "end" | "scan_cap" | "deadline" | "fetch_failed" | "source_ineligible" | "ineligible_reaction" | "no_progress";
 }
 const registered = new WeakSet<object>();
@@ -155,11 +160,12 @@ export class GuardedConversationContext {
   private readonly assetDependencies = new Map<string, string>();
   private phaseQueue: Promise<void> = Promise.resolve();
   private readonly coverageReport: GuardedContextReport = { replyChain: 0, replyOverflow: 0, replyBounded: false, burst: 0, eligibleReactors: 0, omittedReactors: 0, requested: 40, fetched: 0, examined: 0, duplicates: 0, unverifiedBot: 0, invalidatedDerived: 0, selectedIds: [], oldestTimestampMs: null, newestTimestampMs: null, eligible: 0, selected: 0, pages: 0, targetedPages: 0,
-    omitted: 0, truncated: 0, sourceReads: 0, status: "end" };
+    omitted: 0, truncated: 0, sourceReads: 0, anchor: 0, status: "end" };
   private sourceCurrent!: ChannelHistoryMessage;
   private sourceHistory: ChannelHistoryMessage[] = [];
   private sourceReplyChain: ChannelHistoryMessage[] = [];
   private sourceReplyOverflow: ChannelHistoryMessage[] = [];
+  private sourceAnchor: ChannelHistoryMessage[] = [];
   private readonly sessionQueries = new Map<string, { content: string; timestampMs: number }>();
   private sourceBurst: ChannelHistoryMessage[] = [];
   private sourceEvent: ConversationEvent | undefined;
@@ -172,6 +178,9 @@ export class GuardedConversationContext {
   public get history(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceHistory); }
   public get replyChain(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceReplyChain); }
   public get replyOverflow(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceReplyOverflow); }
+  // An earlier bot answer (and the question it answered) that the current message follows up on
+  // but that fell outside the history window. Oldest first; empty unless the anchor is on.
+  public get anchor(): ChannelHistoryMessage[] { return immutableSnapshot(this.sourceAnchor); }
   public get retrievalHistory(): readonly { content: string }[] {
     const messages = new Map(this.sourceHistory.map((event) => [event.messageId, { content: event.content, timestampMs: event.timestampMs }]));
     for (const [id, event] of this.sessionQueries) messages.set(id, event);
@@ -307,7 +316,8 @@ export class GuardedConversationContext {
     return compact(source.event);
   }
 
-  public static async open(port: GuardedContextPort, input: { count: number; budget: number; minReactors?: number; burstIds: readonly string[]; event?: ConversationEvent; collectOverflow?: boolean }): Promise<GuardedConversationContext> {
+  public static async open(port: GuardedContextPort, input: { count: number; budget: number; minReactors?: number; burstIds: readonly string[]; event?: ConversationEvent; collectOverflow?: boolean;
+    priorAnswerAnchor?: PriorAnswerAnchorMode }): Promise<GuardedConversationContext> {
     if (!isConversationSource(port)) throw new SocialOutputSuppressed();
     const lease = new GuardedConversationContext(port); port = lease.port;
     input = immutableSnapshot(input); lease.coverageReport.requested = input.count;
@@ -354,6 +364,12 @@ export class GuardedConversationContext {
       const candidates: ChannelHistoryMessage[] = []; let cursor: string | null = lease.sourceEvent.type === "reaction_snapshot" ? null : current.messageId;
       const backward = /\b(?:earlier|previous|above|before)\b|之前|前面|上面|剛剛|さっき|前の/iu.test(current.content);
       const maxPages = guardedContextLimits.pages + (backward ? guardedContextLimits.targetedPages : 0);
+      // The anchor reads a little past the window for earlier bot answers, within the ordinary page
+      // limit. An explicit Discord reply already brings its own chain.
+      const anchoring = (input.priorAnswerAnchor ?? "off") !== "off" && lease.sourceEvent.type === "message" && !lease.sourceReplyChain.length;
+      const answers = new Set<string>();
+      const filled = (): boolean => candidates.length >= input.count && !backward &&
+        (!anchoring || candidates.slice(input.count).filter((event) => answers.has(event.messageId)).length >= guardedContextLimits.anchorCandidates);
       for (let page = 0; input.count > 0 && page < maxPages; page++) {
         let ids: readonly string[];
         try { ids = (await port.page(cursor, lease.signal)).slice(0, guardedContextLimits.pageSize); }
@@ -365,10 +381,11 @@ export class GuardedConversationContext {
           if (exclude.has(id) || candidates.some((event) => event.messageId === id)) { lease.coverageReport.duplicates++; continue; }
           const source = await lease.read(id); if (!source) { lease.coverageReport.omitted++; continue; }
           lease.coverageReport.eligible++; candidates.push(compact(source.event));
-          if (candidates.length >= input.count && !backward) break;
+          if (source.origin === "chat") answers.add(id);
+          if (filled()) break;
         }
         const next = ids.at(-1);
-        if (candidates.length >= input.count && !backward) { lease.coverageReport.status = "filled"; break; }
+        if (filled()) { lease.coverageReport.status = "filled"; break; }
         if (ids.length < guardedContextLimits.pageSize || !next) { lease.coverageReport.status = "end"; break; }
         if (next === cursor) { lease.coverageReport.status = "no_progress"; break; }
         cursor = next; lease.coverageReport.status = "scan_cap";
@@ -392,10 +409,12 @@ export class GuardedConversationContext {
       }
       lease.sourceHistory = bounded.messages.filter((event) => admitted.has(event.messageId));
       lease.coverageReport.selected = lease.sourceHistory.length;
-      lease.coverageReport.omitted += Math.max(0, candidates.length - lease.sourceHistory.length);
+      // Messages read only as anchor candidates were never part of the window.
+      lease.coverageReport.omitted += Math.max(0, (anchoring && !backward ? Math.min(candidates.length, input.count) : candidates.length) - lease.sourceHistory.length);
       lease.coverageReport.selectedIds = lease.sourceHistory.map((event) => event.messageId);
       lease.coverageReport.oldestTimestampMs = lease.sourceHistory[0]?.timestampMs ?? null;
       lease.coverageReport.newestTimestampMs = lease.sourceHistory.at(-1)?.timestampMs ?? null;
+      if (anchoring) await lease.priorAnswer(candidates.filter((event) => answers.has(event.messageId)), admitted, input.priorAnswerAnchor === "on");
       if (lease.sourceEvent.type === "reaction_snapshot") {
         const reactions = [];
         for (const reaction of lease.sourceEvent.reactions.slice(0, 20)) {
@@ -411,7 +430,7 @@ export class GuardedConversationContext {
         if (lease.reactionActors.size < (input.minReactors ?? 1)) { lease.coverageReport.status = "ineligible_reaction"; throw new SocialOutputSuppressed(); }
         lease.sourceEvent = { ...lease.sourceEvent, reactions };
       }
-      const selected = new Map([current, ...lease.sourceReplyChain, ...lease.sourceHistory, ...lease.sourceBurst].map((event) => [event.messageId, event]));
+      const selected = new Map([current, ...lease.sourceReplyChain, ...lease.sourceAnchor, ...lease.sourceHistory, ...lease.sourceBurst].map((event) => [event.messageId, event]));
       for (const event of selected.values()) {
         const target = event.replyToMessageId ? selected.get(event.replyToMessageId) : null;
         event.replyToAuthorId = target?.authorId ?? null;
@@ -419,6 +438,39 @@ export class GuardedConversationContext {
       }
     }); } finally { port.coverage?.({ ...lease.coverageReport }); }
     return lease;
+  }
+
+  // Picks the earlier bot answer the current message most likely follows up on: the best match on
+  // shared distinctive terms or, for a short follow-up-shaped message ("what about the second one?"),
+  // the newest answer. When that answer is outside the window and admit is set, it and the question
+  // it answered are retained like any other input. Shadow mode only reports where the match was.
+  private async priorAnswer(answers: readonly ChannelHistoryMessage[], inWindow: ReadonlySet<string>, admit: boolean): Promise<void> {
+    const current = this.sourceCurrent; const terms = continuityTerms(current.content);
+    const newestFirst = [...answers].sort((left, right) => right.timestampMs - left.timestampMs);
+    const asked = new Map<string, ChannelHistoryMessage | null>();
+    let best: { answer: ChannelHistoryMessage; score: number } | null = null;
+    for (const answer of newestFirst) {
+      const questionId = (await this.read(answer.messageId))?.sourceMessageId ?? answer.replyToMessageId ?? null;
+      const question = questionId && questionId !== current.messageId ? (await this.read(questionId))?.event ?? null : null;
+      asked.set(answer.messageId, question ? compact(question) : null);
+      const score = continuityScore(terms, continuityTerms(`${answer.content}\n${question?.content ?? ""}`), current.content,
+        question && question.authorId !== current.authorId ? question.author?.displayName ?? question.authorDisplayName : null);
+      if (score > (best?.score ?? 0)) best = { answer, score };
+    }
+    const newest = newestFirst[0];
+    const pick = best && best.score >= continuityThreshold ? best.answer : newest && followUpShaped(current.content) ? newest : null;
+    this.coverageReport.anchorMatch = !pick ? "none" : inWindow.has(pick.messageId) ? "window" : "beyond";
+    if (!pick || !admit || this.coverageReport.anchorMatch !== "beyond") return;
+    const question = asked.get(pick.messageId);
+    const bounded = budgetEligibleHistory([pick, ...(question && !inWindow.has(question.messageId) ? [question] : [])], 2, guardedContextLimits.anchorChars);
+    this.coverageReport.truncated += bounded.truncated;
+    // The answer is retained first: the question alone carries nothing to continue.
+    const answer = bounded.messages.find((event) => event.messageId === pick.messageId);
+    if (!answer || !await this.retain(answer.messageId)) return;
+    const kept = [answer];
+    for (const event of bounded.messages) if (event !== answer && await this.retain(event.messageId)) kept.push(event);
+    this.sourceAnchor = kept.sort((left, right) => left.timestampMs - right.timestampMs);
+    this.coverageReport.anchor = this.sourceAnchor.length;
   }
 
   public async sessions(exchanges: readonly ChatSessionExchange[]): Promise<ChatSessionExchange[]> {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { priorAnswerAnchorModes } from "./prior-answer-anchor.js";
 import type { GuildConfiguration } from "../../config/guild-configuration.js";
 import { CHARACTER_CONTEXT_LIMITS as contextLimits } from "../../config/guild-configuration-limits.js";
 
@@ -38,6 +39,8 @@ export const characterSettingsSchema = z.object({
     maxMessages: z.number().int().min(contextLimits.messages.min).max(contextLimits.messages.max).default(contextLimits.messages.default),
     budget: z.number().int().min(contextLimits.budget.min).max(contextLimits.budget.max).default(contextLimits.budget.default),
     decisionMessages: z.number().int().min(contextLimits.decisionMessages.min).max(contextLimits.decisionMessages.max).default(contextLimits.decisionMessages.default),
+    // Adds an earlier answer a follow-up refers to once it has left the window; shadow only logs it.
+    priorAnswerAnchor: z.enum(priorAnswerAnchorModes).default("off"),
   }).default({}),
 }).default({});
 export type CharacterSettings = z.infer<typeof characterSettingsSchema>;

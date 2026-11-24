@@ -33,12 +33,15 @@ describe("settings registry", () => {
     await fixture.run("memory.context-opt-out", panelValues({ lists: { roles: ["333333333333333333"] } }));
     expect(fixture.profiles.current().chat.contextOptOutRoleIds).toEqual(["333333333333333333"]);
   });
-  it("exposes only the history switch and sizes for conversation context", async () => {
+  it("exposes only the history switch, sizes and the prior-answer anchor for conversation context", async () => {
     const fixture = engineFixture(); const setting = fixture.engine.find("character.context")!;
-    expect(Object.keys((setting.node as { options: object }).options).sort()).toEqual(["budget", "decision-context", "enabled", "messages"]);
+    expect(Object.keys((setting.node as { options: object }).options).sort()).toEqual(["budget", "decision-context", "enabled", "messages", "prior-answer"]);
     const result = await fixture.engine.run(setting, { guildId, guild: null, actorUserId, language: "en", values: slashValues({ messages: 24 }) }, { kind: "panel" });
     expect(result.kind).toBe("updated");
-    expect(fixture.profiles.current().character?.context).toMatchObject({ maxMessages: 24, budget: 12000 });
+    expect(fixture.profiles.current().character?.context).toMatchObject({ maxMessages: 24, budget: 12000, priorAnswerAnchor: "off" });
+    // Switching the anchor to shadow keeps the sizes already set.
+    expect((await fixture.engine.run(setting, { guildId, guild: null, actorUserId, language: "en", values: slashValues({ "prior-answer": "shadow" }) }, { kind: "panel" })).kind).toBe("updated");
+    expect(fixture.profiles.current().character?.context).toMatchObject({ maxMessages: 24, priorAnswerAnchor: "shadow" });
   });
   it("requires an observed thread before joining and keeps scope selection separate from global enablement", async () => {
     const fixture = engineFixture(); const threadId = "600000000000000001";

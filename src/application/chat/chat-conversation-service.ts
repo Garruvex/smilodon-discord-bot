@@ -5,7 +5,7 @@ import { repairConversationRequest } from "../context/approved-conversation-requ
 import { authorizeConversationEffects } from "./conversation-effects.js";
 import type { ConversationTurnPlan } from "./conversation-turn-plan.js";
 import { assertTurnActive, withTurnAbort } from "./turn-work-budget.js";
-import type { GuardedContextPort } from "./guarded-conversation-context.js";
+import type { GuardedContextPort, PriorAnswerAnchorMode } from "./guarded-conversation-context.js";
 import type { Logger } from "pino";
 import { performance } from "node:perf_hooks";
 import { currentDiagnosticTraceSequence, diagnosticElapsed, diagnosticStore, emitChatDiagnostic, safeFailure, withDiagnosticScope } from "../diagnostics/chat-diagnostics.js";
@@ -52,7 +52,7 @@ export interface ChatConversationInput
   resolveMemoryMode?: () => ChannelMemoryMode;
   shouldDeliver?: () => boolean;
   guardedContextPort?: GuardedContextPort;
-  guardedContextPolicy?: { count: number; budget: number; minReactors?: number };
+  guardedContextPolicy?: { count: number; budget: number; minReactors?: number; priorAnswerAnchor?: PriorAnswerAnchorMode };
   afterDecision?: (response: ChatResponse) => Promise<void>;
   shadowMode?: boolean;
   // Per-guild opt-in (profile.chat.toolCallingEnabled) — whether the
@@ -275,7 +275,8 @@ export class ChatConversationService {
         }, plan.deadlineMs);
         const planned: PlannedChatConversationInput = { ...input, turnPlan: plan,
           ...(plan.context === "guarded_text" ? { guardedContextPolicy: { ...plan.contextPolicy,
-            ...(input.guardedContextPolicy?.minReactors === undefined ? {} : { minReactors: input.guardedContextPolicy.minReactors }) } } : {}) };
+            ...(input.guardedContextPolicy?.minReactors === undefined ? {} : { minReactors: input.guardedContextPolicy.minReactors }),
+            ...(input.guardedContextPolicy?.priorAnswerAnchor === undefined ? {} : { priorAnswerAnchor: input.guardedContextPolicy.priorAnswerAnchor }) } } : {}) };
         const activeInput: PlannedChatConversationInput = { ...planned, turnSignal: controller.signal, turnDeadlineAt: Date.now() + plan.deadlineMs,
           canExecute: async (): Promise<boolean> => { assertTurnActive(controller.signal); const allowed = await withTurnAbort(controller.signal, () => input.canExecute?.() ?? Promise.resolve(true)); assertTurnActive(controller.signal); return allowed; },
           shouldDeliver: (): boolean => !controller.signal.aborted && (!input.shouldDeliver || input.shouldDeliver()) };
