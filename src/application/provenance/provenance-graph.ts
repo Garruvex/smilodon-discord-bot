@@ -84,6 +84,9 @@ export interface ProvenanceGraphStore {
   currentMany(guildId: string, channelId: string, kind: ProvenanceRevisionKind, artifactIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
   current(guildId: string, channelId: string, kind: ProvenanceRevisionKind, artifactId: string): Promise<{ revisionId: string; version: number } | null>;
   parents(revisionId: string): Promise<ProvenanceParent[]>;
+  // Removes the current pointer if it still names this revision. The revision itself stays, immutable,
+  // so descendants keep their ancestry; the artifact just has no usable version until a new one.
+  retract(guildId: string, channelId: string, kind: ProvenanceRevisionKind, artifactId: string, revisionId: string): Promise<boolean>;
 }
 
 export class ProvenancePublicationRefused extends Error {

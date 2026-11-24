@@ -1,5 +1,5 @@
 import { parseScopedContextProvenance } from "../../application/chat/context-provenance.js";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { chunked } from "../../application/chat/message-revocation-store.js";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type { MessageOriginRecord, MessageOriginStore } from "../../application/chat/message-origin-store.js";
@@ -30,6 +30,15 @@ export class SqliteMessageOriginStore implements MessageOriginStore {
         and coalesce(json_extract(dependency.value, '$.projection.kind'), '') <> 'background_text')`)).run().changes);
     return Promise.resolve(changed);
   }
+  // Durable chat origins with a stored proof, in (createdAt, messageId) order, after a cursor.
+  public pageReplyProofs(after: { createdAt: number; messageId: string } | null, limit: number): Promise<MessageOriginRecord[]> {
+    const origins = schema.messageOrigins;
+    const rows = this.database.select().from(origins).where(and(eq(origins.origin, "chat"), isNotNull(origins.contextProvenance),
+      after ? or(gt(origins.createdAt, new Date(after.createdAt)), and(eq(origins.createdAt, new Date(after.createdAt)), gt(origins.messageId, after.messageId))) : undefined))
+      .orderBy(asc(origins.createdAt), asc(origins.messageId)).limit(limit).all();
+    return Promise.resolve(rows.map((row) => ({ ...row, createdAt: row.createdAt.getTime() })));
+  }
+
   public find(guildId: string, channelId: string, messageId: string): Promise<MessageOriginRecord | null> {
     const row = this.database.select().from(schema.messageOrigins).where(and(
       eq(schema.messageOrigins.guildId, guildId), eq(schema.messageOrigins.channelId, channelId),

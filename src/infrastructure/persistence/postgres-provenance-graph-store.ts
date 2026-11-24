@@ -97,6 +97,12 @@ export class PostgresProvenanceGraphStore implements ProvenanceGraphStore {
     return found;
   }
 
+  public async retract(guildId: string, channelId: string, kind: ProvenanceRevisionKind, artifactId: string, revisionId: string): Promise<boolean> {
+    const current = schema.provenanceCurrent;
+    return (await this.database.delete(current).where(and(eq(current.guildId, guildId), eq(current.channelId, channelId), eq(current.kind, kind),
+      eq(current.artifactId, artifactId), eq(current.revisionId, revisionId))).returning({ revisionId: current.revisionId })).length > 0;
+  }
+
   public async current(guildId: string, channelId: string, kind: ProvenanceRevisionKind, artifactId: string): Promise<{ revisionId: string; version: number } | null> {
     return await this.currentRow(this.database, guildId, channelId, kind, artifactId) ?? null;
   }

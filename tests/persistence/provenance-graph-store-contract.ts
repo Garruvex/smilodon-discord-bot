@@ -131,6 +131,19 @@ export function provenanceGraphStoreContract(label: string, create: () => Promis
       expect(await store.currentMany("guild", "channel", "reply_part", ["r", "absent"])).toEqual(new Map([["r", expect.any(String)]]));
     });
 
+    it("retracts the current pointer only while it still names the given revision", async () => {
+      const { store } = await create();
+      const m = await published(store, message("m"));
+      const v1 = await published(store, reply("r", [full(m)]));
+      const v2 = await published(store, reply("r", [full(m)], { version: 2 }));
+      expect(await store.retract("guild", "channel", "reply_part", "r", v1)).toBe(false);
+      expect(await store.current("guild", "channel", "reply_part", "r")).toEqual({ revisionId: v2, version: 2 });
+      expect(await store.retract("guild", "channel", "reply_part", "r", v2)).toBe(true);
+      expect(await store.current("guild", "channel", "reply_part", "r")).toBeNull();
+      // The revision stays, so what was built on it keeps its ancestry.
+      expect(await store.parents(v2)).toEqual([{ ...full(m), assetsHash: null }]);
+    });
+
     it("shares the scope row with revocation without either overwriting the other", async () => {
       const harness = await create(); const { store, revocations } = harness;
       const m = await published(store, message("m"));

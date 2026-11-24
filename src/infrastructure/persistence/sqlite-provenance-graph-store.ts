@@ -90,6 +90,12 @@ export class SqliteProvenanceGraphStore implements ProvenanceGraphStore {
     return Promise.resolve(found);
   }
 
+  public retract(guildId: string, channelId: string, kind: ProvenanceRevisionKind, artifactId: string, revisionId: string): Promise<boolean> {
+    const current = schema.provenanceCurrent;
+    return Promise.resolve(this.database.delete(current).where(and(eq(current.guildId, guildId), eq(current.channelId, channelId), eq(current.kind, kind),
+      eq(current.artifactId, artifactId), eq(current.revisionId, revisionId))).run().changes > 0);
+  }
+
   public current(guildId: string, channelId: string, kind: ProvenanceRevisionKind, artifactId: string): Promise<{ revisionId: string; version: number } | null> {
     return Promise.resolve(this.currentRow(this.database, guildId, channelId, kind, artifactId) ?? null);
   }

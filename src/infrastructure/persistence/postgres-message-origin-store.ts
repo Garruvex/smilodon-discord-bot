@@ -1,5 +1,5 @@
 import { parseScopedContextProvenance } from "../../application/chat/context-provenance.js";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { chunked } from "../../application/chat/message-revocation-store.js";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { MessageOriginRecord, MessageOriginStore } from "../../application/chat/message-origin-store.js";
@@ -30,6 +30,15 @@ export class PostgresMessageOriginStore implements MessageOriginStore {
     });
     return changed;
   }
+  // Durable chat origins with a stored proof, in (createdAt, messageId) order, after a cursor.
+  public async pageReplyProofs(after: { createdAt: number; messageId: string } | null, limit: number): Promise<MessageOriginRecord[]> {
+    const origins = schema.messageOrigins;
+    const rows = await this.database.select().from(origins).where(and(eq(origins.origin, "chat"), isNotNull(origins.contextProvenance),
+      after ? or(gt(origins.createdAt, new Date(after.createdAt)), and(eq(origins.createdAt, new Date(after.createdAt)), gt(origins.messageId, after.messageId))) : undefined))
+      .orderBy(asc(origins.createdAt), asc(origins.messageId)).limit(limit);
+    return rows.map((row) => ({ ...row, createdAt: new Date(row.createdAt).getTime() }));
+  }
+
   public async find(guildId: string, channelId: string, messageId: string): Promise<MessageOriginRecord | null> {
     const [row] = await this.database.select().from(schema.messageOrigins).where(and(
       eq(schema.messageOrigins.guildId, guildId), eq(schema.messageOrigins.channelId, channelId),

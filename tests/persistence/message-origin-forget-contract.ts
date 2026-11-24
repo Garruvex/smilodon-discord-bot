@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { LegacyReplyProofSource } from "../../src/application/provenance/provenance-backfill.js";
 import type { MessageOriginStore } from "../../src/application/chat/message-origin-store.js";
 import type { ContextProvenance } from "../../src/application/chat/context-provenance.js";
 import { hashContent } from "../../src/application/assets/content-hash.js";
@@ -11,8 +12,23 @@ const dependency = (messageId: string, channelId = "channel", background = false
 
 // A4 cleanup step: a revoked message loses its own origin row, and replies citing it as conversation
 // lose their proof. Summary-only citations, other channels and other guilds are untouched.
-export function messageOriginForgetContract(label: string, createStore: () => Promise<Required<Pick<MessageOriginStore, "forgetCitingMessages">> & MessageOriginStore>): void {
+type ContractStore = Required<Pick<MessageOriginStore, "forgetCitingMessages">> & MessageOriginStore & Pick<LegacyReplyProofSource, "pageReplyProofs">;
+export function messageOriginForgetContract(label: string, createStore: () => Promise<ContractStore>): void {
   describe(`MessageOriginStore forgetCitingMessages (${label})`, () => {
+    it("pages durable reply proofs in creation order for the graph backfill", async () => {
+      const store = await createStore();
+      const proof = { version: 1 as const, coverage: "complete" as const, audience: { guildId: "guild", channelId: "channel", userId: null }, outputHash: "a".repeat(64),
+        dependencies: [{ guildId: "guild", channelId: "channel", messageId: "q", authorId: "alice", timestampMs: 1, representationHash: "b".repeat(64) }], unresolved: [] };
+      for (const [messageId, createdAt, withProof] of [["p-b", 2_000, true], ["p-a", 2_000, true], ["p-c", 1_000, true], ["p-none", 1_500, false]] as const) {
+        await store.record({ guildId: "guild", channelId: "channel", messageId, origin: "chat", sourceMessageId: "q", createdAt, contextProvenance: withProof ? proof : null });
+      }
+      const first = await store.pageReplyProofs(null, 2);
+      expect(first.map((record) => record.messageId)).toEqual(["p-c", "p-a"]);
+      expect(first[0]!.createdAt).toBe(1_000);
+      const rest = await store.pageReplyProofs({ createdAt: first[1]!.createdAt, messageId: first[1]!.messageId }, 10);
+      expect(rest.map((record) => record.messageId)).toEqual(["p-b"]);
+    });
+
     it("removes revoked origins and clears proofs that cite them as conversation", async () => {
       const store = await createStore();
       const record = (messageId: string, dependencies: ContextProvenance["dependencies"], guildId = "guild", channelId = "channel"): Promise<void> =>
