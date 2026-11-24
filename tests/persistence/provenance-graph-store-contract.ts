@@ -81,6 +81,19 @@ export function provenanceGraphStoreContract(label: string, create: () => Promis
       expect(await store.publish(reply("r5", [{ revisionId: scan, projection: "human_text:500", representationHash: hash("c") }]))).toEqual({ status: "refused", reason: "revoked_ancestry" });
     });
 
+    it("treats a deleted bot reply as revoked, like any other Discord message", async () => {
+      const { store, revocations } = await create();
+      const m = await published(store, message("m"));
+      const r1 = await published(store, reply("r1", [full(m)]));
+      await revocations.revoke({ guildId: "guild", channelId: "channel", messageIds: ["r1"], revokedAt: 3_000 });
+      expect(await store.publish(reply("r2", [full(r1)]))).toEqual({ status: "refused", reason: "revoked_ancestry" });
+      expect(await store.publish(reply("r1", [full(m)], { version: 2 }))).toEqual({ status: "refused", reason: "revoked_ancestry" });
+      // A claim is not a Discord message; a revocation keyed by its ID means nothing for it.
+      const claim = await published(store, reply("c1", [full(m)], { kind: "claim" }));
+      await revocations.revoke({ guildId: "guild", channelId: "channel", messageIds: ["c1"], revokedAt: 4_000 });
+      expect((await store.publish(reply("r3", [full(claim)]))).status).toBe("published");
+    });
+
     it("refuses a stale or repeated version without moving the pointer", async () => {
       const { store } = await create();
       const m = await published(store, message("m"));
@@ -99,6 +112,23 @@ export function provenanceGraphStoreContract(label: string, create: () => Promis
       await expect(store.publish(reply("r", [full(m), full(r1)], { version: 2 }))).rejects.toThrow();
       expect({ revisions: await harness.revisionCount(), edges: await harness.edgeCount(), ordinal: await harness.scopeOrdinal("guild", "channel") }).toEqual(before);
       expect(await store.current("guild", "channel", "reply_part", "r")).toEqual({ revisionId: r1, version: 1 });
+    });
+
+    it("gives each Discord message one revision, reused afterwards, and none once revoked", async () => {
+      const harness = await create(); const { store, revocations } = harness;
+      await revocations.revoke({ guildId: "guild", channelId: "channel", messageIds: ["gone"], revokedAt: 500 });
+      const sources = [{ messageId: "a", authorId: "alice", timestampMs: 1 }, { messageId: "b", authorId: "bob", timestampMs: 2 }, { messageId: "gone", authorId: "alice", timestampMs: 3 }];
+      const first = await store.ensureMessages("guild", "channel", [...sources, sources[0]!], 1_000);
+      expect([...first.keys()].sort()).toEqual(["a", "b"]);
+      expect(await harness.scopeOrdinal("guild", "channel")).toBe(2);
+      const again = await store.ensureMessages("guild", "channel", sources, 2_000);
+      expect(again).toEqual(first);
+      expect(await harness.revisionCount()).toBe(2);
+      // Reused revisions are valid parents, and a later revocation still reaches them.
+      expect((await store.publish(reply("r", [full(first.get("a")!), full(first.get("b")!)]))).status).toBe("published");
+      await revocations.revoke({ guildId: "guild", channelId: "channel", messageIds: ["a"], revokedAt: 3_000 });
+      expect([...(await store.ensureMessages("guild", "channel", sources, 4_000)).keys()]).toEqual(["b"]);
+      expect(await store.currentMany("guild", "channel", "reply_part", ["r", "absent"])).toEqual(new Map([["r", expect.any(String)]]));
     });
 
     it("shares the scope row with revocation without either overwriting the other", async () => {

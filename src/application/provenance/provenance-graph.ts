@@ -73,12 +73,30 @@ export const maxProvenanceAncestors = 4096;
 // Publishes a revision, its full parent set and the current pointer in one transaction, holding the
 // scope row that revocation also takes. A revocation committed first is seen and refuses publication.
 // One that commits afterwards finds the new revision through the edges.
+export interface ProvenanceMessageSource { messageId: string; authorId: string; timestampMs: number }
+
 export interface ProvenanceGraphStore {
   publish(input: ProvenancePublication): Promise<ProvenancePublishResult>;
+  // The current revision of each Discord message, publishing a first one where there is none, in one
+  // transaction under the scope lock. A revoked message gets none and is left out of the result.
+  ensureMessages(guildId: string, channelId: string, messages: readonly ProvenanceMessageSource[], at: number): Promise<ReadonlyMap<string, string>>;
+  // Current revisions of these artifacts, by artifact ID; absent ones are left out.
+  currentMany(guildId: string, channelId: string, kind: ProvenanceRevisionKind, artifactIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
   current(guildId: string, channelId: string, kind: ProvenanceRevisionKind, artifactId: string): Promise<{ revisionId: string; version: number } | null>;
   parents(revisionId: string): Promise<ProvenanceParent[]>;
 }
 
 export class ProvenancePublicationRefused extends Error {
   public constructor(public readonly reason: ProvenanceRefusal) { super(`Provenance publication refused: ${reason}`); }
+}
+
+// How each message in a reply's v1 proof reached the turn. direct: read as an input this turn. carriers:
+// the earlier artifacts whose proofs brought it in, as "reply:<message ID>", "claim:<memory ID>" or
+// "derived:<purpose>". A message reached only through a reply already in the graph needs no edge of its
+// own; its ancestry already covers it.
+export interface ProvenanceInput {
+  messageId: string;
+  origin: "human" | "chat" | null;
+  direct: boolean;
+  carriers: readonly string[];
 }

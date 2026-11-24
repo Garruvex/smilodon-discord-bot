@@ -10,6 +10,7 @@ import type { ChatSessionExchange } from "./chat-state-store.js";
 import { budgetEligibleHistory } from "./eligible-channel-history.js";
 import { actorSourceHash, humanTextSourceHash, contextProvenanceLimits, dependencyMatchesSource, parseContextProvenance, parseScopedContextProvenance, type ContextProvenance } from "./context-provenance.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
+import type { ProvenanceInput } from "../provenance/provenance-graph.js";
 import { immutableSnapshot } from "../context/immutable-snapshot.js";
 import { isConversationSource } from "../context/conversation-source-registry.js";
 
@@ -124,6 +125,11 @@ export class GuardedConversationContext {
   // Older messages a used proof cites, taken from the proof itself rather than fetched. They pass
   // into this turn's own provenance as they are. Only used when the port has sourcesAllowed.
   private readonly carried = new Map<string, ProofDependency>();
+  // How each message reached this turn, for the provenance graph: read as an input of its own, or
+  // brought in by an earlier artifact's proof ("reply:<id>", "claim:<id>", "derived:<purpose>").
+  private readonly directIds = new Set<string>();
+  private readonly carriers = new Map<string, Set<string>>();
+  private readonly evidenceOrigins = new Map<string, "human" | "chat">();
   private publicWebUsed = false;
   private readonly publicWebCitations = new Set<string>();
   private readonly publicTools = new Map<string, { name: string; outputHash: string }>();
@@ -219,9 +225,12 @@ export class GuardedConversationContext {
     this.cache.set(id, pending); return pending;
   }
 
-  private async retain(id: string): Promise<ChannelHistoryMessage | null> {
+  // carriers: the earlier artifacts whose proofs supply this message; none when it is an input itself.
+  private async retain(id: string, carriers: readonly string[] = []): Promise<ChannelHistoryMessage | null> {
     const source = await this.read(id); if (!source) { this.coverageReport.omitted++; return null; }
-    const add = async (item: GuardedContextSource): Promise<boolean> => {
+    const add = async (item: GuardedContextSource, via: readonly string[]): Promise<boolean> => {
+      this.evidenceOrigins.set(item.event.messageId, item.origin === "chat" ? "chat" : "human");
+      if (via.length) for (const carrier of via) this.addCarrier(item.event.messageId, carrier); else this.directIds.add(item.event.messageId);
       if (this.evidence.has(item.event.messageId)) {
         if (this.evidenceVersions.get(item.event.messageId) !== sourceVersion(item)) throw new SocialOutputSuppressed();
         this.evidenceAssets.set(item.event.messageId, immutableSnapshot(item.assets ?? []));
@@ -232,9 +241,9 @@ export class GuardedConversationContext {
       this.evidence.set(item.event.messageId, item.event);
       this.evidenceVersions.set(item.event.messageId, sourceVersion(item));
       this.evidenceAssets.set(item.event.messageId, immutableSnapshot(item.assets ?? []));
-      if (item.origin === "chat" && this.port.sourcesAllowed) { if (!this.carry(item.provenance!.dependencies)) return false; }
+      if (item.origin === "chat" && this.port.sourcesAllowed) { if (!this.carry(item.provenance!.dependencies, `reply:${item.event.messageId}`)) return false; }
       else if (item.origin === "chat") for (const dependency of item.provenance!.dependencies) {
-        const original = await this.read(dependency.messageId); if (!original || !await add(original)) return false;
+        const original = await this.read(dependency.messageId); if (!original || !await add(original, [`reply:${item.event.messageId}`])) return false;
         if (dependency.assetsHash) this.assetDependencies.set(dependency.messageId, dependency.assetsHash);
       }
       if (item.provenance && !await this.retainActors(item.provenance)) return false;
@@ -242,7 +251,7 @@ export class GuardedConversationContext {
       return true;
     };
     const before = new Set(this.evidence.keys());
-    if (!await add(source)) {
+    if (!await add(source, carriers)) {
       for (const key of this.evidence.keys()) if (!before.has(key)) { this.evidence.delete(key); this.evidenceVersions.delete(key); this.evidenceAssets.delete(key); }
       this.coverageReport.omitted++; return null;
     }
@@ -405,7 +414,9 @@ export class GuardedConversationContext {
         }
         const normalized = (value: string): string => value.replace(/\s+/gu, "");
         if (!valid || !normalized(delivered).includes(normalized(exchange.assistant.content))) continue;
-        for (const id of [...(proof?.dependencies.map((source) => source.messageId) ?? []), ...deliveryIds, sourceId]) if (!await this.retain(id)) valid = false;
+        const deliveryCarriers = deliveryIds.map((id) => `reply:${id}`);
+        for (const id of proof?.dependencies.map((source) => source.messageId) ?? []) if (!await this.retain(id, deliveryCarriers)) valid = false;
+        for (const id of [...deliveryIds, sourceId]) if (!await this.retain(id)) valid = false;
         if (valid) {
           if (proof && !await this.retainActors(proof)) continue;
           for (const entry of proof?.resources ?? []) this.resources.set(`${entry.kind}:${entry.id}`, entry);
@@ -426,11 +437,16 @@ export class GuardedConversationContext {
     for (const id of this.carried.keys()) if (!this.evidence.has(id)) count++;
     return count;
   }
-  // Adds the messages a used proof cites, all or none, without fetching them.
-  private carry(dependencies: readonly ProofDependency[]): boolean {
+  private addCarrier(messageId: string, carrier: string): void {
+    const known = this.carriers.get(messageId);
+    if (known) known.add(carrier); else this.carriers.set(messageId, new Set([carrier]));
+  }
+  // Adds the messages a used proof cites, all or none, without fetching them. carrier names that proof.
+  private carry(dependencies: readonly ProofDependency[], carrier: string): boolean {
     const added = dependencies.filter((dependency) => !this.evidence.has(dependency.messageId) && !this.carried.has(dependency.messageId));
     if (this.dependencyCount() + new Set(added.map((dependency) => dependency.messageId)).size > guardedContextLimits.dependencies) return false;
     for (const dependency of added) this.carried.set(dependency.messageId, dependency);
+    for (const dependency of dependencies) this.addCarrier(dependency.messageId, carrier);
     // A message carried only as summary text and now also used as conversation keeps the conversational
     // entry, so a Discord delete still reaches this turn and everything derived from it.
     for (const dependency of dependencies) {
@@ -545,10 +561,10 @@ export class GuardedConversationContext {
         if (retain) {
           if (!await this.retainActors(proof)) continue;
           for (const entry of proof.resources ?? []) this.resources.set(`${entry.kind}:${entry.id}`, entry);
-          if (this.port.sourcesAllowed) { if (!this.carry(proof.dependencies)) continue; }
+          if (this.port.sourcesAllowed) { if (!this.carry(proof.dependencies, `claim:${record.id}`)) continue; }
           else {
             const before = new Set(this.evidence.keys());
-            for (const dependency of proof.dependencies) if (!await this.retain(dependency.messageId)) valid = false;
+            for (const dependency of proof.dependencies) if (!await this.retain(dependency.messageId, [`claim:${record.id}`])) valid = false;
             if (!valid) { for (const id of this.evidence.keys()) if (!before.has(id)) { this.evidence.delete(id); this.evidenceVersions.delete(id); this.evidenceAssets.delete(id); } continue; }
             for (const dependency of proof.dependencies) if (dependency.assetsHash) this.assetDependencies.set(dependency.messageId, dependency.assetsHash);
           }
@@ -722,9 +738,9 @@ export class GuardedConversationContext {
   private async retainDerived(value: unknown, output: string, purpose: "character_state" | "relation" | "identity_alias"): Promise<boolean> {
       const proof = parseContextProvenance(value);
       if (!proof || proof.purpose !== purpose || proof.outputHash !== hashContent(output) || !await this.proofSourcesCurrent(proof)) return false;
-      if (this.port.sourcesAllowed) { if (!this.carry(proof.dependencies)) return false; }
+      if (this.port.sourcesAllowed) { if (!this.carry(proof.dependencies, `derived:${purpose}`)) return false; }
       else for (const entry of proof.dependencies) {
-        if (!await this.retain(entry.messageId)) return false;
+        if (!await this.retain(entry.messageId, [`derived:${purpose}`])) return false;
         if (entry.assetsHash) this.assetDependencies.set(entry.messageId, entry.assetsHash);
       }
       if (!await this.retainActors(proof)) return false;
@@ -859,6 +875,12 @@ export class GuardedConversationContext {
     const selected = publicWebSources(sources);
     for (const source of selected) this.publicWebCitations.add(hashContent(source.url));
     return selected;
+  }
+
+  // How each message this turn's proof lists reached it, for the provenance graph.
+  public graphInputs(): ProvenanceInput[] {
+    return [...new Set([...this.evidence.keys(), ...this.carried.keys()])].map((messageId) => ({ messageId, origin: this.evidenceOrigins.get(messageId) ?? null,
+      direct: this.directIds.has(messageId), carriers: [...(this.carriers.get(messageId) ?? [])] }));
   }
 
   public provenance(output: string, purpose: "reply" | "memory_claim" | "character_state" | "relation" | "identity_alias" = "reply"): ContextProvenance | null {

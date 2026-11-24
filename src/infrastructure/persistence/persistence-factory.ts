@@ -61,6 +61,9 @@ import { PostgresMessageOriginStore } from "./postgres-message-origin-store.js";
 import type { MessageRevocationStore } from "../../application/chat/message-revocation-store.js";
 import { SqliteMessageRevocationStore } from "./sqlite-message-revocation-store.js";
 import { PostgresMessageRevocationStore } from "./postgres-message-revocation-store.js";
+import type { ProvenanceGraphStore } from "../../application/provenance/provenance-graph.js";
+import { SqliteProvenanceGraphStore } from "./sqlite-provenance-graph-store.js";
+import { PostgresProvenanceGraphStore } from "./postgres-provenance-graph-store.js";
 import type { ConversationEpisodeStore } from "../../application/chat/conversation-episode-store.js";
 import { SqliteConversationEpisodeStore } from "./sqlite-conversation-episode-store.js";
 import { PostgresConversationEpisodeStore } from "./postgres-conversation-episode-store.js";
@@ -69,6 +72,7 @@ export interface PersistenceServices {
   conversationEpisodeStore: ConversationEpisodeStore;
   messageOriginStore: MessageOriginStore;
   messageRevocationStore: MessageRevocationStore;
+  provenanceGraphStore: ProvenanceGraphStore;
   guildConfigurationProvider: GuildConfigurationProvider;
   controlPanelStateStore: ControlPanelStateStore;
   adminPanelStateStore: AdminPanelStateStore;
@@ -108,6 +112,7 @@ export async function createPersistenceServices(
   let messageReactionWatchStore: MessageReactionWatchStore;
   let messageOriginStore: MessageOriginStore;
   let messageRevocationStore: MessageRevocationStore;
+  let provenanceGraphStore: ProvenanceGraphStore;
   let conversationEpisodeStore: ConversationEpisodeStore;
   let birthdayStore: BirthdayStore;
   let boostHistoryStore: BoostHistoryStore;
@@ -138,6 +143,7 @@ export async function createPersistenceServices(
     messageReactionWatchStore = new PostgresMessageReactionWatchStore(connection.database);
     messageOriginStore = new PostgresMessageOriginStore(connection.database);
     messageRevocationStore = new PostgresMessageRevocationStore(connection.database);
+    provenanceGraphStore = new PostgresProvenanceGraphStore(connection.database);
     conversationEpisodeStore = new PostgresConversationEpisodeStore(connection.database);
     birthdayStore = new PostgresBirthdayStore(connection.database, guildMemberRegistry);
     boostHistoryStore = new PostgresBoostHistoryStore(connection.database, guildMemberRegistry);
@@ -166,6 +172,7 @@ export async function createPersistenceServices(
     messageReactionWatchStore = new SqliteMessageReactionWatchStore(sqliteConnection.database);
     messageOriginStore = new SqliteMessageOriginStore(sqliteConnection.database);
     messageRevocationStore = new SqliteMessageRevocationStore(sqliteConnection.database);
+    provenanceGraphStore = new SqliteProvenanceGraphStore(sqliteConnection.database);
     conversationEpisodeStore = new SqliteConversationEpisodeStore(sqliteConnection.database);
     birthdayStore = new LocalBirthdayStore(configuration.runtimeDataDirectory);
     boostHistoryStore = new LocalBoostHistoryStore(configuration.runtimeDataDirectory);
@@ -202,6 +209,7 @@ export async function createPersistenceServices(
     conversationEpisodeStore,
     messageOriginStore,
     messageRevocationStore,
+    provenanceGraphStore,
     guildConfigurationProvider,
     controlPanelStateStore,
     adminPanelStateStore,

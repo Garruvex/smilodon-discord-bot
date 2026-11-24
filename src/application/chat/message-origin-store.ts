@@ -1,3 +1,4 @@
+import type { ProvenanceInput } from "../provenance/provenance-graph.js";
 import type { ContextProvenance } from "./context-provenance.js";
 
 export type MessageOrigin = "chat" | "link_fix" | "tool" | "system" | "game";
@@ -19,7 +20,9 @@ export interface MessageOriginStore {
    * reply that cites one of them as conversation. Summary-only citations are kept. Returns rows changed.
    */
   forgetCitingMessages?(input: { guildId: string; channelId: string; messageIds: readonly string[] }): Promise<number>;
-  record(input: MessageOriginRecord): Promise<void>;
+  // provenanceInputs: how each message in a durable reply proof reached the turn, for the provenance
+  // graph's dual-write. Stores that do not shadow the graph ignore it.
+  record(input: MessageOriginRecord, provenanceInputs?: readonly ProvenanceInput[]): Promise<void>;
   find(guildId: string, channelId: string, messageId: string): Promise<MessageOriginRecord | null>;
 }
 

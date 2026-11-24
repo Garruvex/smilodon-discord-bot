@@ -649,7 +649,9 @@ export class ChatTurnSupport {
           origin: params.origin ?? "chat", sourceMessageId: params.sourceMessage.id, createdAt: Date.now(),
           contextProvenance: (params.origin ?? "chat") === "chat" ? proof && assets.length ? { ...proof, outputAssetsHash: guardedAssetsHash(assets) } : proof : null,
           };
-          if (sessionProof && record.origin === "chat") await this.origins.recordSession(record); else await this.origins.record(record);
+          // A durable reply proof also goes to the provenance graph, with how each input reached the turn.
+          if (sessionProof && record.origin === "chat") await this.origins.recordSession(record);
+          else await this.origins.record(record, durableProof && params.contextLease && record.contextProvenance ? params.contextLease.graphInputs() : undefined);
         } catch (error) { emitChatDiagnostic(this.logger, { event: "chat.delivery.bookkeeping_failed", stage: "origin", ...safeFailure(error, "operation_error") }); }
       }
       return sent;

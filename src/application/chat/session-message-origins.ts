@@ -1,3 +1,4 @@
+import type { ProvenanceInput } from "../provenance/provenance-graph.js";
 import type { MessageOriginRecord, MessageOriginStore } from "./message-origin-store.js";
 import { SocialOutputSuppressed } from "./message-origin-store.js";
 import { parseScopedContextProvenance } from "./context-provenance.js";
@@ -23,8 +24,8 @@ export class SessionMessageOriginStore implements MessageOriginStore {
       if (entry.expiresAt <= now) this.remove(key); else this.nextSweep = Math.min(this.nextSweep, entry.expiresAt);
     }
   }
-  public record(input: MessageOriginRecord): Promise<void> {
-    this.remove(keyFor(input.guildId, input.channelId, input.messageId)); return this.backend.record(input);
+  public record(input: MessageOriginRecord, provenanceInputs?: readonly ProvenanceInput[]): Promise<void> {
+    this.remove(keyFor(input.guildId, input.channelId, input.messageId)); return this.backend.record(input, provenanceInputs);
   }
   public recordSession(input: MessageOriginRecord): Promise<void> {
     this.prune(); const key = keyFor(input.guildId, input.channelId, input.messageId); this.remove(key);

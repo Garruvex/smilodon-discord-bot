@@ -13,6 +13,9 @@ import { catalogIssues } from "../application/i18n/texts.js";
 import type { Logger } from "pino";
 import type { MessageOriginStore } from "../application/chat/message-origin-store.js";
 import type { MessageRevocationStore } from "../application/chat/message-revocation-store.js";
+import type { ProvenanceGraphStore } from "../application/provenance/provenance-graph.js";
+import { ProvenanceShadowWriter, withProvenanceShadow } from "../application/provenance/provenance-shadow.js";
+import { emitChatDiagnostic, safeFailure } from "../application/diagnostics/chat-diagnostics.js";
 import type { ConversationEpisodeStore } from "../application/chat/conversation-episode-store.js";
 import { SocialChatEligibility } from "../infrastructure/discord/behaviors/social-chat-eligibility.js";
 import { ChatTurnSupport } from "../infrastructure/discord/behaviors/chat-turn-support.js";
@@ -611,7 +614,14 @@ export function createDependencies(
   messageOriginStore: MessageOriginStore,
   conversationEpisodeStore: ConversationEpisodeStore,
   messageRevocationStore?: MessageRevocationStore,
+  provenanceGraphStore?: ProvenanceGraphStore,
 ): ApplicationDependencies {
+  // The provenance graph shadows durable reply proofs; v1 stays authoritative and a graph failure is only logged.
+  if (provenanceGraphStore) {
+    const graphLogger = logger.child({ component: "provenance-graph" });
+    messageOriginStore = withProvenanceShadow(messageOriginStore, new ProvenanceShadowWriter(provenanceGraphStore), (error) =>
+      emitChatDiagnostic(graphLogger, { event: "chat.delivery.bookkeeping_failed", stage: "graph", ...safeFailure(error, "operation_error") }));
+  }
   messageOriginStore = withSessionMessageOrigins(messageOriginStore);
   const {
     campaign,

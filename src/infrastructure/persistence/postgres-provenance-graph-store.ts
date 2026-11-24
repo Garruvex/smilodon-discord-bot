@@ -7,10 +7,10 @@ import { z } from "zod";
 import { chunked } from "../../application/chat/message-revocation-store.js";
 import {
   ProvenancePublicationRefused,
-  type ProvenanceGraphStore, type ProvenanceParent, type ProvenancePublication, type ProvenancePublishResult, type ProvenanceRevisionKind,
+  type ProvenanceGraphStore, type ProvenanceMessageSource, type ProvenanceParent, type ProvenancePublication, type ProvenancePublishResult, type ProvenanceRevisionKind,
 } from "../../application/provenance/provenance-graph.js";
 import * as schema from "../database/schema.js";
-import { ancestorCountQuery, ancestryProblemsQuery, checkAncestry, checkParents, revisionValues, uniqueParents, type ParentRow } from "./provenance-graph-shared.js";
+import { ancestorCountQuery, ancestryProblemsQuery, checkAncestry, checkParents, newMessageRevisions, revisionValues, uniqueParents, type ParentRow } from "./provenance-graph-shared.js";
 
 const countRow = z.object({ visited: z.coerce.number() });
 const problemsRow = z.object({ unpublished: z.coerce.number(), revoked: z.coerce.number() });
@@ -59,6 +59,42 @@ export class PostgresProvenanceGraphStore implements ProvenanceGraphStore {
       if (error instanceof ProvenancePublicationRefused) return { status: "refused", reason: error.reason };
       throw error;
     }
+  }
+
+  public async ensureMessages(guildId: string, channelId: string, messages: readonly ProvenanceMessageSource[], at: number): Promise<ReadonlyMap<string, string>> {
+    const unique = [...new Map(messages.map((message) => [message.messageId, message])).values()];
+    const scopes = schema.messageRevocationScopes; const current = schema.provenanceCurrent;
+    return this.database.transaction(async (transaction) => {
+      // Locks the scope row first, as publish and revoke do.
+      const [scope] = await transaction.insert(scopes).values({ guildId, channelId, revision: 0, ordinal: 0 })
+        .onConflictDoUpdate({ target: [scopes.guildId, scopes.channelId], set: { ordinal: sql`${scopes.ordinal}` } }).returning({ ordinal: scopes.ordinal });
+      const base = scope!.ordinal;
+      const found = new Map<string, string>(); const revoked = new Set<string>();
+      for (const chunk of chunked(unique.map((message) => message.messageId))) {
+        for (const row of await transaction.select({ artifactId: current.artifactId, revisionId: current.revisionId }).from(current).where(and(eq(current.guildId, guildId),
+          eq(current.channelId, channelId), eq(current.kind, "message"), inArray(current.artifactId, chunk)))) found.set(row.artifactId, row.revisionId);
+        for (const row of await transaction.select({ messageId: schema.messageRevocations.messageId }).from(schema.messageRevocations).where(and(eq(schema.messageRevocations.guildId, guildId),
+          eq(schema.messageRevocations.channelId, channelId), inArray(schema.messageRevocations.messageId, chunk)))) revoked.add(row.messageId);
+      }
+      const created = newMessageRevisions(guildId, channelId, unique.filter((message) => !found.has(message.messageId) && !revoked.has(message.messageId)), base, at);
+      for (const chunk of chunked(created)) {
+        await transaction.insert(schema.provenanceRevisions).values(chunk.map((entry) => entry.revision));
+        await transaction.insert(current).values(chunk.map((entry) => entry.pointer));
+      }
+      if (created.length) await transaction.update(scopes).set({ ordinal: base + created.length }).where(and(eq(scopes.guildId, guildId), eq(scopes.channelId, channelId)));
+      for (const entry of created) found.set(entry.pointer.artifactId, entry.revision.id);
+      for (const id of revoked) found.delete(id);
+      return found;
+    });
+  }
+
+  public async currentMany(guildId: string, channelId: string, kind: ProvenanceRevisionKind, artifactIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
+    const current = schema.provenanceCurrent; const found = new Map<string, string>();
+    for (const chunk of chunked([...new Set(artifactIds)])) {
+      for (const row of await this.database.select({ artifactId: current.artifactId, revisionId: current.revisionId }).from(current).where(and(eq(current.guildId, guildId),
+        eq(current.channelId, channelId), eq(current.kind, kind), inArray(current.artifactId, chunk)))) found.set(row.artifactId, row.revisionId);
+    }
+    return found;
   }
 
   public async current(guildId: string, channelId: string, kind: ProvenanceRevisionKind, artifactId: string): Promise<{ revisionId: string; version: number } | null> {

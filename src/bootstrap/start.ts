@@ -67,6 +67,7 @@ const dependencies = createDependencies(
   persistence.messageOriginStore,
   persistence.conversationEpisodeStore,
   persistence.messageRevocationStore,
+  persistence.provenanceGraphStore,
 );
 const activityConfiguration = configuration.activity;
 activityServer = activityConfiguration?.enabled === true
