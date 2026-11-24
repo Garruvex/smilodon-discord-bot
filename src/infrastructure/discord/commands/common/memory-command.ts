@@ -6,6 +6,8 @@ import type { ChatStateStore } from "../../../../application/chat/chat-state-sto
 import type { MemberProfileService } from "../../../../application/members/member-profile-service.js";
 import type { Memory, MemoryEngine, MemorySource } from "../../../../application/memory/memory.js";
 import type { PersonalMemoryExtractionQueueStore } from "../../../../application/context/personal-memory-extraction-queue.js";
+import { parseContextProvenance } from "../../../../application/chat/context-provenance.js";
+import { revocationKey, type MessageRevocationKey, type MessageRevocationStore } from "../../../../application/chat/message-revocation-store.js";
 
 const monthNames = [
   "January", "February", "March", "April", "May", "June",
@@ -66,6 +68,28 @@ export class MemoryCommand implements BotCommand {
   ) {}
   public bindConversationForget(callback: (guildId: string, userId: string) => Promise<void>): void {
     this.forgetConversation = callback;
+  }
+  private revocations: MessageRevocationStore | null = null;
+  public bindRevocations(store: MessageRevocationStore): void { this.revocations = store; }
+
+  // While cleanup of a deleted message is pending, hide what was learned from it in conversation and
+  // drop links to it. Summary-only dependencies keep the guild's retention policy, as cleanup does.
+  // A failed check hides everything it would have checked.
+  private async withoutRevoked(guildId: string, memories: readonly Memory[], sources: ReadonlyMap<string, readonly MemorySource[]>): Promise<{ memories: Memory[]; sources: Map<string, MemorySource[]> }> {
+    const conversational = (memory: Memory): MessageRevocationKey[] => (parseContextProvenance(memory.contextProvenance)?.dependencies ?? [])
+      .filter((dependency) => dependency.guildId === guildId && dependency.projection?.kind !== "background_text")
+      .map(({ channelId, messageId }) => ({ guildId, channelId, messageId }));
+    const linked = (source: MemorySource): MessageRevocationKey | null => source.sourceMessageId && source.sourceChannelId
+      ? { guildId, channelId: source.sourceChannelId, messageId: source.sourceMessageId } : null;
+    const keys = [...memories.flatMap(conversational), ...[...sources.values()].flat().map(linked).filter((key): key is MessageRevocationKey => key !== null)];
+    if (!this.revocations || !keys.length) return { memories: [...memories], sources: new Map([...sources].map(([id, list]) => [id, [...list]])) };
+    const answers = await this.revocations.revoked(keys).catch(() => null);
+    const revoked = new Set(keys.filter((_key, index) => answers?.[index] !== false).map(revocationKey));
+    const hit = (key: MessageRevocationKey | null): boolean => key !== null && revoked.has(revocationKey(key));
+    return {
+      memories: memories.filter((memory) => !conversational(memory).some(hit)),
+      sources: new Map([...sources].map(([id, list]) => [id, list.filter((source) => !hit(linked(source)))])),
+    };
   }
 
   public async execute(context: CommandContext): Promise<void> {
@@ -149,11 +173,12 @@ export class MemoryCommand implements BotCommand {
       profileLines.push("- [customization] set — manage with `/customize`");
     }
 
-    const shown = profile.memories.slice(0, maxMemoriesRendered);
-    const omittedCount = profile.memories.length - shown.length;
-    const sourcesByMemoryId = new Map(await Promise.all(
-      shown.map(async (memory) => [memory.id, await this.memoryEngine.listSources(memory.id, memory.moduleId ? memory : undefined)] as const),
+    const candidates = profile.memories.slice(0, maxMemoriesRendered);
+    const listed = new Map(await Promise.all(
+      candidates.map(async (memory) => [memory.id, await this.memoryEngine.listSources(memory.id, memory.moduleId ? memory : undefined)] as const),
     ));
+    const { memories: shown, sources: sourcesByMemoryId } = await this.withoutRevoked(guildId, candidates, listed);
+    const omittedCount = profile.memories.length - candidates.length;
     const fields = shown.map((memory) =>
       this.buildMemoryField(memory, this.buildSourceLine(guildId, sourcesByMemoryId.get(memory.id) ?? [])));
 

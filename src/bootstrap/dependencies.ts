@@ -11,6 +11,7 @@ import { diagnosticPipelineStatus } from "../application/diagnostics/chat-diagno
 import { catalogIssues } from "../application/i18n/texts.js";
 import type { Logger } from "pino";
 import type { MessageOriginStore } from "../application/chat/message-origin-store.js";
+import type { MessageRevocationStore } from "../application/chat/message-revocation-store.js";
 import type { ConversationEpisodeStore } from "../application/chat/conversation-episode-store.js";
 import { SocialChatEligibility } from "../infrastructure/discord/behaviors/social-chat-eligibility.js";
 import { ChatTurnSupport } from "../infrastructure/discord/behaviors/chat-turn-support.js";
@@ -603,6 +604,7 @@ export function createDependencies(
   messageReactionWatchStore: MessageReactionWatchStore,
   messageOriginStore: MessageOriginStore,
   conversationEpisodeStore: ConversationEpisodeStore,
+  messageRevocationStore?: MessageRevocationStore,
 ): ApplicationDependencies {
   messageOriginStore = withSessionMessageOrigins(messageOriginStore);
   const {
@@ -650,6 +652,7 @@ export function createDependencies(
   const channelEditScheduler = new ChannelEditScheduler();
   const isGameChannel = (guildId: string, channelIds: readonly string[]): Promise<boolean> => campaign.isGameChannel(guildId, channelIds);
   const socialEligibility = new SocialChatEligibility(configuration, guildConfigurationProvider, messageOriginStore, isGameChannel);
+  if (messageRevocationStore) socialEligibility.bindRevocations(messageRevocationStore);
   socialEligibility.bindGuardedForgetPolicy((message) => memoryRepository.isSourceForgotten({ guildId: message.guildId!,
     subjectId: message.author.id, topic: "*", slot: `source:${message.id}`, channelId: message.channelId, sourceTimestampMs: message.createdTimestamp }),
   memoryRepository.sourcesForgotten ? (messages): Promise<readonly boolean[]> => memoryRepository.sourcesForgotten!(messages.map((message) => ({ guildId: message.guildId!,
@@ -803,6 +806,7 @@ export function createDependencies(
     channelSummaryScheduler?.bindCharacterConsolidation((context, subjectIds) => characterRuntime.afterMemoryConsolidation(context, subjectIds));
     commandRegistry.register(new CharacterEvalCommand(guildConfigurationProvider, messageOriginStore, evaluationStore, characterRuntime, evaluationRequest));
   }
+  if (messageRevocationStore) for (const command of commandRegistry.getAll()) if (command instanceof MemoryCommand) command.bindRevocations(messageRevocationStore);
   if (chatConversationService) for (const command of commandRegistry.getAll()) {
     if (command instanceof MemoryCommand) command.bindConversationForget((guildId, userId) => {
       return chatConversationService.forgetConversation(guildId, userId);

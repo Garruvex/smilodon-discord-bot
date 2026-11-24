@@ -9,6 +9,7 @@ import type { GuildConfigurationProvider } from "../../../config/guild-configura
 import { isInGameChannel, type IsGameChannel } from "./game-channel-guard.js";
 import { mapWithConcurrency } from "../../../application/concurrency/map-with-concurrency.js";
 import type { CitedSource } from "../../../application/chat/guarded-conversation-context.js";
+import type { MessageRevocationStore } from "../../../application/chat/message-revocation-store.js";
 
 export interface SocialEligibility { eligible: boolean; reason: string }
 
@@ -26,6 +27,14 @@ export class SocialChatEligibility {
     this.forgottenSource = check; this.forgottenSources = batch ?? null; this.forgottenCitations = cited ?? null;
   }
   public get checksCitedSources(): boolean { return this.forgottenCitations !== null; }
+  private revocationStore: MessageRevocationStore | null = null;
+  public bindRevocations(store: MessageRevocationStore): void { this.revocationStore = store; }
+  public get checksRevocations(): boolean { return this.revocationStore !== null; }
+  // Committed revocations by message ID in one channel. Throws when the store fails; callers fail closed.
+  public async revokedMessages(guildId: string, channelId: string, messageIds: readonly string[]): Promise<readonly boolean[]> {
+    if (!this.revocationStore || !messageIds.length) return messageIds.map(() => false);
+    return this.revocationStore.revoked(messageIds.map((messageId) => ({ guildId, channelId, messageId })));
+  }
   // Forget tombstones for messages a stored proof cites, by ID, author and time, without the message.
   // With no policy bound every source counts as forgotten.
   public async citedSourcesForgotten(guildId: string, channelId: string, sources: readonly CitedSource[]): Promise<readonly boolean[]> {

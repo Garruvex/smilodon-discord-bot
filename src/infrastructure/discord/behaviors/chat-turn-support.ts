@@ -244,6 +244,9 @@ export class ChatTurnSupport {
           pending = pending.filter((id) => id < oldest);
         }
       },
+      // Revocations are keyed by message alone, so they also cover the bot's own replies.
+      ...(eligibility?.checksRevocations ? { revoked: (ids: readonly string[], signal: AbortSignal): Promise<readonly boolean[]> =>
+        signal.aborted ? Promise.reject(new Error("aborted")) : eligibility.revokedMessages(source.guildId!, source.channelId, ids) } : {}),
       // Without a citation forget policy, cited messages fall back to being re-read from Discord.
       ...(eligibility?.checksCitedSources ? { sourcesAllowed: async (cited: Parameters<NonNullable<GuardedContextPort["sourcesAllowed"]>>[0], signal: AbortSignal): Promise<readonly boolean[]> => {
         const denied = cited.map(() => false);

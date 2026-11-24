@@ -56,10 +56,14 @@ export interface GuardedContextPort {
   // fetched from Discord again; only the current conversation is. Without it, every cited message
   // is re-read and compared.
   sourcesAllowed?: (sources: readonly CitedSource[], signal: AbortSignal) => Promise<readonly boolean[]>;
+  // Committed revocations (observed Discord deletes) for messages in this channel, by ID only, so it
+  // covers bot-authored messages too. Consulted before any author rule; a failed check counts as revoked.
+  revoked?: (messageIds: readonly string[], signal: AbortSignal) => Promise<readonly boolean[]>;
   policyCurrent(): boolean;
 }
 export interface CitedSource { messageId: string; authorId: string; timestampMs: number }
 type ProofDependency = ContextProvenance["dependencies"][number];
+const backgroundOnly = (dependency: ProofDependency): boolean => dependency.projection?.kind === "background_text";
 export type GuardedResourceKey = Pick<NonNullable<ContextProvenance["resources"]>[number], "kind" | "id">;
 export type GuardedContextPhase = "assembly" | "sessions" | "memory" | "assets" | "relations" | "identities" | "validation";
 export interface GuardedContextReport {
@@ -100,6 +104,8 @@ export class GuardedConversationContext {
   private passes = 0;
   private closed = false;
   private cache = new Map<string, Promise<GuardedContextSource | null>>();
+  // Revocation answers for this phase only. validate() always asks again.
+  private revocations = new Map<string, boolean>();
   private signal = new AbortController().signal;
   private readonly evidence = new Map<string, ChannelHistoryMessage>();
   private readonly evidenceVersions = new Map<string, string>();
@@ -152,6 +158,7 @@ export class GuardedConversationContext {
     if (this.closed || !this.port.policyCurrent() || turn?.aborted) throw new SocialOutputSuppressed();
     const controller = new AbortController(); this.signal = controller.signal;
     if (!this.port.snapshotCurrent) this.cache = new Map();
+    this.revocations = new Map();
     const started = Date.now(); let cancel: (() => void) | undefined;
     let status: "completed" | "deadline" | "failed" = "failed";
     try {
@@ -166,7 +173,13 @@ export class GuardedConversationContext {
     }
   }
 
+  // The revocation check sits outside the source cache, so a warm snapshot cannot return a deleted message.
   private async read(id: string, path = new Set<string>()): Promise<GuardedContextSource | null> {
+    const source = await this.readSource(id, path);
+    return source && !await this.anyRevoked([id]) ? source : null;
+  }
+
+  private async readSource(id: string, path: Set<string>): Promise<GuardedContextSource | null> {
     if (this.closed || this.signal.aborted || path.has(id) || path.size >= guardedContextLimits.replyDepth) return null;
     const cached = this.cache.get(id); if (cached) return cached;
     if (++this.reads > guardedContextLimits.sourceReads) return null;
@@ -404,7 +417,30 @@ export class GuardedConversationContext {
     const added = dependencies.filter((dependency) => !this.evidence.has(dependency.messageId) && !this.carried.has(dependency.messageId));
     if (this.dependencyCount() + new Set(added.map((dependency) => dependency.messageId)).size > guardedContextLimits.dependencies) return false;
     for (const dependency of added) this.carried.set(dependency.messageId, dependency);
+    // A message carried only as summary text and now also used as conversation keeps the conversational
+    // entry, so a Discord delete still reaches this turn and everything derived from it.
+    for (const dependency of dependencies) {
+      const prior = this.carried.get(dependency.messageId);
+      if (prior && backgroundOnly(prior) && !backgroundOnly(dependency)) this.carried.set(dependency.messageId, dependency);
+    }
     return true;
+  }
+  // Whether any of these messages has a committed revocation. fresh skips this phase's answers.
+  private async anyRevoked(ids: readonly string[], fresh = false): Promise<boolean> {
+    if (!this.port.revoked) return false;
+    const unique = [...new Set(ids)];
+    if (!fresh && unique.some((id) => this.revocations.get(id) === true)) return true;
+    const pending = fresh ? unique : unique.filter((id) => !this.revocations.has(id));
+    if (!pending.length) return false;
+    const answers = await this.port.revoked(pending, this.signal).catch(() => null);
+    if (!answers || answers.length !== pending.length || answers.some((answer) => typeof answer !== "boolean")) return true;
+    pending.forEach((id, index) => this.revocations.set(id, answers[index]!));
+    return answers.some(Boolean);
+  }
+  // Messages this turn depends on as conversation. Data built only from daily-summary or history-scan
+  // text keeps the guild's existing retention policy and is not revoked by an observed delete.
+  private revocableIds(): string[] {
+    return [...this.evidence.keys(), ...[...this.carried.values()].filter((dependency) => !this.evidence.has(dependency.messageId) && !backgroundOnly(dependency)).map((dependency) => dependency.messageId)];
   }
   private async carriedAllowed(): Promise<boolean> {
     const carried = [...this.carried.values()].filter((dependency) => !this.evidence.has(dependency.messageId));
@@ -501,6 +537,7 @@ export class GuardedConversationContext {
       if (!actor || actor.id !== dependency.userId || actorSourceHash(actor, dependency.projection) !== dependency.representationHash) return false;
     }
     if (proof.dependencies.some((dependency) => dependency.guildId !== this.port.guildId || dependency.channelId !== this.port.channelId)) return false;
+    if (await this.anyRevoked(proof.dependencies.filter((dependency) => !backgroundOnly(dependency)).map((dependency) => dependency.messageId))) return false;
     if (this.port.sourcesAllowed) {
       // Cited messages are checked against forget tombstones and opt-outs, never fetched again.
       const allowed = await this.port.sourcesAllowed(proof.dependencies.map(({ messageId, authorId, timestampMs }) => ({ messageId, authorId, timestampMs })), this.signal);
@@ -724,6 +761,9 @@ export class GuardedConversationContext {
     const mode = this.port.snapshotCurrent ? freshness === "effect" ? "effect" : "snapshot" : "full";
     if (!this.port.snapshotCurrent && ++this.passes > guardedContextLimits.maxValidationPasses) { this.closed = true; this.port.validation?.("bounded", this.reads, mode); return false; }
     try { const valid = await this.phase(async () => {
+      // Every provider attempt and effect validates, so a revocation committed after collection stops
+      // the next one even when the snapshot below answers from its cache.
+      if (await this.anyRevoked(this.revocableIds(), true)) return false;
       if (this.port.snapshotCurrent) return await this.port.snapshotCurrent(freshness === "effect", this.signal, [...this.evidence.keys()]) &&
         (freshness !== "effect" || await this.carriedAllowed()) &&
         await this.validateResources({ resources: [...this.resources.values()] }) && this.port.policyCurrent();

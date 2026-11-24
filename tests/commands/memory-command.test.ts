@@ -14,6 +14,10 @@ import { SqliteMemoryRepository } from "../../src/infrastructure/persistence/sql
 import { SqlitePersonalMemoryExtractionQueueStore } from "../../src/infrastructure/persistence/sqlite-personal-memory-extraction-queue-store.js";
 import { DefaultMemoryEngine } from "../../src/application/memory/memory-engine.js";
 import type { MemoryEngine, MemoryRepository } from "../../src/application/memory/memory.js";
+import type { MessageRevocationStore } from "../../src/application/chat/message-revocation-store.js";
+import { memoryClaimPayload } from "../../src/application/memory/memory-claim-provenance.js";
+import { hashContent } from "../../src/application/assets/content-hash.js";
+import type { ContextProvenance } from "../../src/application/chat/context-provenance.js";
 
 function testMemoryEngine(): {
   engine: MemoryEngine;
@@ -77,6 +81,38 @@ function makeContext(options: {
 }
 
 describe("MemoryCommand", () => {
+  // A3: while cleanup of a deleted message is pending, the list view must not show what was learned from it
+  // in conversation, nor link to it. What a daily summary built is kept, as the delete policy says.
+  it("hides memories learned from a revoked message and links to revoked sources", async () => {
+    const { engine, repository } = testMemoryEngine();
+    const proof = (claim: Parameters<typeof memoryClaimPayload>[0], messageId: string, background: boolean): ContextProvenance => ({ version: 1 as const, purpose: "memory_claim" as const, coverage: "complete" as const,
+      audience: { guildId: "guild", channelId: "chat", userId: null }, outputHash: hashContent(memoryClaimPayload(claim)), unresolved: [],
+      dependencies: [{ guildId: "guild", channelId: "chat", messageId, authorId: "bob", timestampMs: 1, representationHash: "b".repeat(64),
+        ...(background ? { projection: { kind: "background_text" as const, chars: 100 } } : {}) }] });
+    const seed = (slot: string, statement: string, cited: { messageId: string; background: boolean } | null, extra: Record<string, unknown> = {}): ReturnType<MemoryRepository["ingest"]> => {
+      const claim = { guildId: "guild", kind: "preference", audience: "private", ownerUserId: "user", channelId: null,
+        isolationChannelId: null, subjectType: "member", subjectId: "user", topic: "preference", slot, statement } as const;
+      return repository.ingest({ ...claim, status: "active", source: "live", importance: 1, embedding: null, embeddingModel: null, expiresAt: null, now: 0,
+        sourceMessageId: null, sourceChannelId: null, assertedByUserId: "user",
+        ...(cited ? { contextProvenance: proof(claim, cited.messageId, cited.background) } : {}), ...extra });
+    };
+    await seed("food.fruit", "likes green apples", { messageId: "deleted", background: false });
+    await seed("food.drink", "likes tea", { messageId: "deleted", background: true });
+    await seed("food.snack", "likes crisps", null, { sourceMessageId: "111222333", sourceChannelId: "chat" });
+    const revoked = new Set(["deleted", "111222333"]);
+    const revocations = { revoked: vi.fn((keys: readonly { messageId: string }[]) => Promise.resolve(keys.map((key) => revoked.has(key.messageId)))) } as unknown as MessageRevocationStore;
+    const command = new MemoryCommand(baseStore(), new MemberProfileService(engine, null, null), engine);
+    command.bindRevocations(revocations);
+    const { context, reply } = makeContext({ subcommand: "list" });
+    await command.execute(context);
+    const [payload] = reply.mock.calls[0] as [{ embeds: EmbedBuilder[] }];
+    const text = JSON.stringify(payload.embeds.flatMap((embed) => embed.toJSON().fields ?? []));
+    expect(text).not.toContain("likes green apples");
+    expect(text).toContain("likes tea");
+    expect(text).toContain("likes crisps");
+    expect(text).not.toContain("111222333");
+  });
+
   it("lists stored memories with truncated ids", async () => {
     const { engine, repository } = testMemoryEngine();
     await seedActiveMemory(repository);

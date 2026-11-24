@@ -13,6 +13,7 @@ import { classifySimpleTurn } from "../../src/application/chat/simple-exchange.j
 import { createSqliteDatabaseConnection } from "../../src/infrastructure/database/sqlite-database.js";
 import { SqliteMemoryRepository } from "../../src/infrastructure/persistence/sqlite-memory-repository.js";
 import { SqliteMessageOriginStore } from "../../src/infrastructure/persistence/sqlite-message-origin-store.js";
+import { SqliteMessageRevocationStore } from "../../src/infrastructure/persistence/sqlite-message-revocation-store.js";
 import { freshProfile } from "../helpers/settings-fixtures.js";
 import { captureDiagnosticLogger } from "../helpers/diagnostic-logger.js";
 
@@ -21,7 +22,7 @@ afterEach(() => close.splice(0).forEach((cleanup) => cleanup()));
 function fixture(warm: boolean): {
   support: ChatTurnSupport; current: Message; old: Message; repository: SqliteMemoryRepository;
   messages: Map<string, Message>; origins: SqliteMessageOriginStore; client: EventEmitter; profile: ReturnType<typeof freshProfile>; policy: SocialChatEligibility; members: Map<string, GuildMember>; fetchMember: ReturnType<typeof vi.fn>;
-  records: ReturnType<typeof captureDiagnosticLogger>["records"];
+  records: ReturnType<typeof captureDiagnosticLogger>["records"]; revocations: SqliteMessageRevocationStore;
 } {
   const connection = createSqliteDatabaseConnection(mkdtempSync(join(tmpdir(), "guarded-discord-"))); close.push(() => connection.close());
   const repository = new SqliteMemoryRepository(connection.database); const origins = new SqliteMessageOriginStore(connection.database);
@@ -53,10 +54,47 @@ function fixture(warm: boolean): {
   };
   const old = message("old", "bob", 1000, "SECRET_OLD_SOURCE"); const current = message("current", "alice", 10_000_000, "@bot");
   const { logger, records } = captureDiagnosticLogger(); const support = new ChatTurnSupport(logger, policy, origins);
-  return { support, policy, current, old, repository, members, fetchMember, records, client, profile, messages, origins };
+  return { support, policy, current, old, repository, members, fetchMember, records, client, profile, messages, origins, revocations: new SqliteMessageRevocationStore(connection.database) };
 }
 
 describe("Discord context guard", () => {
+  // A3: the audit's reproduction. After a delete is revoked, an earlier reply that cites the deleted
+  // message is not reused, and its citation stays out of the next proof.
+  it("stops reusing an earlier reply once a message it cites is revoked, and only in that channel", async () => {
+    const { support, current, old, policy, profile, repository, messages, origins, revocations } = fixture(true);
+    policy.bindGuardedForgetPolicy(() => Promise.resolve(false), undefined, (guildId, channelId, sources) => repository.sourcesForgotten(sources.map((item) => ({
+      guildId, subjectId: item.authorId, topic: "*", slot: `source:${item.messageId}`, channelId, sourceTimestampMs: item.timestampMs }))));
+    policy.bindRevocations(revocations);
+    const prior = await GuardedConversationContext.open(support.createContextPort(current), { count: 40, budget: 12000, burstIds: [] });
+    const bot = { ...old, id: "derived", content: "DERIVED", createdTimestamp: 2000, author: { ...old.author, id: "bot", bot: true }, reference: null } as Message;
+    messages.set(bot.id, bot);
+    await origins.record({ guildId: profile.guildId, channelId: "channel", messageId: bot.id, origin: "chat", sourceMessageId: current.id,
+      contextProvenance: prior.provenance(bot.content), createdAt: bot.createdTimestamp });
+    messages.delete(old.id);
+    const open = async (): Promise<GuardedConversationContext> => GuardedConversationContext.open(support.createContextPort(current), { count: 40, budget: 12000, burstIds: [] });
+    // The same message ID revoked in another channel changes nothing here.
+    await revocations.revoke({ guildId: profile.guildId, channelId: "elsewhere", messageIds: [old.id], revokedAt: 3000 });
+    const unaffected = await open();
+    expect(unaffected.history.map((event) => event.messageId)).toContain("derived");
+    await revocations.revoke({ guildId: profile.guildId, channelId: "channel", messageIds: [old.id], revokedAt: 3000 });
+    // The lease opened before the revocation holds a warm snapshot; its next effect is still refused.
+    expect(await unaffected.validate("effect")).toBe(false);
+    const next = await open();
+    expect(next.history.map((event) => event.messageId)).not.toContain("derived");
+    expect(next.provenance("answer")?.dependencies.map((dependency) => dependency.messageId) ?? []).not.toContain(old.id);
+  });
+  it("stops reusing a revoked bot reply that Discord still returns", async () => {
+    const { support, current, old, profile, messages, origins, revocations, policy } = fixture(true);
+    policy.bindRevocations(revocations);
+    const prior = await GuardedConversationContext.open(support.createContextPort(current), { count: 40, budget: 12000, burstIds: [] });
+    const bot = { ...old, id: "answer", content: "ANSWER", createdTimestamp: 2000, author: { ...old.author, id: "bot", bot: true }, reference: null } as Message;
+    messages.set(bot.id, bot);
+    await origins.record({ guildId: profile.guildId, channelId: "channel", messageId: bot.id, origin: "chat", sourceMessageId: current.id,
+      contextProvenance: prior.provenance(bot.content), createdAt: bot.createdTimestamp });
+    await revocations.revoke({ guildId: profile.guildId, channelId: "channel", messageIds: [bot.id], revokedAt: 3000 });
+    const next = await GuardedConversationContext.open(support.createContextPort(current), { count: 40, budget: 12000, burstIds: [] });
+    expect(next.history.map((event) => event.messageId)).toEqual(["old"]);
+  });
   it.each(["channel_access", "chat_disabled"] as const)("blocks delivery authority after %s is revoked", async (kind) => {
     const { support, current, profile, client } = fixture(true);
     const context = await GuardedConversationContext.open(support.createContextPort(current), { count: 40, budget: 12000, burstIds: [] });
