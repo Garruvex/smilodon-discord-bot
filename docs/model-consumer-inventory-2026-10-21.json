@@ -72,6 +72,10 @@
   "src/scripts/replay-contextual-participation.ts": [
     "generateCharacterData"
   ],
+  "src/scripts/replay-continuity-runner.ts": [
+    "generateCharacterData",
+    "reply"
+  ],
   "src/scripts/replay-conversation-lifecycle.ts": [
     "generateCharacterData",
     "reply",

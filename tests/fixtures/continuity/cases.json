@@ -1,0 +1,1669 @@
+{
+  "version": 1,
+  "frozenAt": "2026-11-24",
+  "note": "Developer-authored synthetic multi-speaker exchanges for the Phase E continuity comparison. Labels are provisional until a person reviews them. Frozen: changing any case requires a new version and a new freeze hash.",
+  "thresholds": {
+    "anchor": {
+      "followUpScenarios": [
+        "cross_speaker_followup",
+        "long_gap",
+        "ambiguous_followup"
+      ],
+      "minUseGainPoints": 10,
+      "maxMissedIncrease": 0,
+      "maxFalseInterruptionIncrease": 1,
+      "maxP95LatencyIncreasePercent": 20
+    },
+    "direct": {
+      "maxUseLossPoints": 5,
+      "maxMissedIncrease": 0
+    }
+  },
+  "fillers": {
+    "en": {
+      "speakers": [
+        "sol",
+        "rin",
+        "beck"
+      ],
+      "chatter": [
+        "anyone else's train late today",
+        "lol the vending machine ate my coin again",
+        "I'm so sleepy after lunch",
+        "did you guys see the patch notes",
+        "my cat knocked my coffee over",
+        "it's raining again ugh",
+        "who's online for ranked later",
+        "finally finished that report",
+        "my headphones broke mid call",
+        "the new cafe downstairs is too expensive",
+        "I need a nap",
+        "brb grabbing food",
+        "this meme is so cursed",
+        "anyone tried the new boba place",
+        "my wifi keeps dropping",
+        "I spent all weekend cleaning",
+        "lowkey want hotpot tonight",
+        "my sister borrowed my charger and vanished",
+        "is the gym open on holidays",
+        "I keep forgetting to water my plants",
+        "that boss fight took me two hours",
+        "my bus driver was singing today",
+        "who wants to split a pizza",
+        "the AC in my office is freezing",
+        "I bought too many snacks again",
+        "my phone is at 3 percent",
+        "do people still use fax machines",
+        "I watched three episodes instead of sleeping",
+        "my neighbor is drilling at 8am",
+        "work was chill today for once"
+      ],
+      "asks": [
+        [
+          "<@BOT> what's a good snack for a late night",
+          "Toast with peanut butter. Low effort, actually filling."
+        ],
+        [
+          "<@BOT> rain or sun?",
+          "Rain, as long as I'm inside with tea."
+        ],
+        [
+          "<@BOT> recommend a short game",
+          "Try a roguelike, one run is like twenty minutes."
+        ],
+        [
+          "<@BOT> how do you stay awake in meetings",
+          "Water and sitting up straight. And a tiny bit of fear."
+        ],
+        [
+          "<@BOT> cats or dogs",
+          "Cats. They respect my need for silence."
+        ],
+        [
+          "<@BOT> best way to fall asleep fast",
+          "Phone away, room cold, boring podcast."
+        ]
+      ]
+    },
+    "zh-TW": {
+      "speakers": [
+        "阿哲",
+        "小雨",
+        "阿凱"
+      ],
+      "chatter": [
+        "今天捷運又誤點",
+        "販賣機又吃我的硬幣",
+        "吃完午餐好想睡",
+        "你們看到更新內容了嗎",
+        "我的貓把咖啡打翻了",
+        "又在下雨了煩",
+        "晚上誰要打排位",
+        "報告終於寫完了",
+        "耳機講到一半壞掉",
+        "樓下新開的咖啡廳好貴",
+        "我需要午睡",
+        "先去買個飯",
+        "這個梗圖太詭異了",
+        "有人喝過那家新的手搖嗎",
+        "我家網路一直斷",
+        "整個週末都在打掃",
+        "今晚好想吃火鍋",
+        "我妹借走我的充電器就消失了",
+        "健身房國定假日有開嗎",
+        "一直忘記澆花",
+        "那個王打了兩小時",
+        "今天公車司機在唱歌",
+        "有人要分一個披薩嗎",
+        "辦公室冷氣冷到爆",
+        "又買太多零食了",
+        "手機剩3%了",
+        "現在還有人在用傳真機嗎",
+        "本來要睡覺結果追了三集",
+        "鄰居早上八點在鑽牆",
+        "今天上班難得很輕鬆"
+      ],
+      "asks": [
+        [
+          "<@BOT> 半夜吃什麼比較好",
+          "吐司抹花生醬，簡單又有飽足感。"
+        ],
+        [
+          "<@BOT> 你喜歡下雨還是晴天",
+          "下雨吧，前提是我在室內喝茶。"
+        ],
+        [
+          "<@BOT> 推薦一款短一點的遊戲",
+          "玩 roguelike 吧，一局大概二十分鐘。"
+        ],
+        [
+          "<@BOT> 開會怎麼保持清醒",
+          "多喝水、坐直，再加一點點緊張感。"
+        ],
+        [
+          "<@BOT> 貓派還是狗派",
+          "貓派，牠們尊重我的安靜。"
+        ],
+        [
+          "<@BOT> 怎樣最快睡著",
+          "手機放遠、房間冷一點、聽無聊的 podcast。"
+        ]
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "en-cross-ramen",
+      "language": "en",
+      "scenario": "cross_speaker_followup",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "mira",
+          "text": "<@BOT> any good ramen spots near the station?"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "Menya Kaiko for shoyu, Ichiran if you want a booth to yourself, and the tonkotsu stall by exit 3 is the cheapest."
+        },
+        {
+          "filler": 46,
+          "askEvery": 11
+        }
+      ],
+      "final": {
+        "speaker": "theo",
+        "text": "<@BOT> wait what was the second place you told mira?",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "Ichiran"
+          ]
+        }
+      }
+    },
+    {
+      "id": "en-cross-movies",
+      "language": "en",
+      "scenario": "cross_speaker_followup",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "juno",
+          "text": "<@BOT> give me three movies for a rainy night"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "Paddington 2 if you want cozy, Arrival if you want to think, and Knives Out if you want to yell at the screen."
+        },
+        {
+          "filler": 48,
+          "askEvery": 12
+        }
+      ],
+      "final": {
+        "speaker": "kai",
+        "text": "<@BOT> the one you said for thinking, is it sad?",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "Arrival"
+          ]
+        }
+      }
+    },
+    {
+      "id": "en-cross-gift",
+      "language": "en",
+      "scenario": "cross_speaker_followup",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "lena",
+          "text": "<@BOT> I need a birthday gift idea for my brother, he likes cooking"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "Get him a carbon steel wok, or a nice Japanese petty knife if he already has one."
+        },
+        {
+          "filler": 44,
+          "askEvery": 10
+        }
+      ],
+      "final": {
+        "speaker": "theo",
+        "text": "<@BOT> how much is that knife thing you told lena about usually?",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "petty"
+          ]
+        }
+      }
+    },
+    {
+      "id": "en-longgap-budget",
+      "language": "en",
+      "scenario": "long_gap",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "mira",
+          "text": "<@BOT> which is cheapest for a weekend trip, Tainan, Hualien or Taichung?"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "Taichung is cheapest, the train is short and hostels are around 600 a night. Hualien costs the most because of the train tickets."
+        },
+        {
+          "filler": 52,
+          "askEvery": 13
+        }
+      ],
+      "final": {
+        "speaker": "mira",
+        "text": "<@BOT> ok so remind me which one costs the most again",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "Hualien"
+          ]
+        }
+      }
+    },
+    {
+      "id": "en-longgap-recipe",
+      "language": "en",
+      "scenario": "long_gap",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "kai",
+          "text": "<@BOT> how long do I boil eggs for jammy yolks"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "Six and a half minutes from boiling, then straight into ice water."
+        },
+        {
+          "filler": 50,
+          "askEvery": 12
+        }
+      ],
+      "final": {
+        "speaker": "juno",
+        "text": "<@BOT> kai said you gave him an egg timing, what was it",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "six and a half",
+            "6.5",
+            "6 and a half"
+          ]
+        }
+      }
+    },
+    {
+      "id": "en-ambiguous-window",
+      "language": "en",
+      "scenario": "ambiguous_followup",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "juno",
+          "text": "<@BOT> blue or green for my new keyboard caps?"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "Green. Blue keycaps always end up looking like an office stapler."
+        },
+        {
+          "filler": 8,
+          "askEvery": 0
+        }
+      ],
+      "final": {
+        "speaker": "lena",
+        "text": "<@BOT> why not the other one though",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "blue",
+            "stapler"
+          ]
+        }
+      }
+    },
+    {
+      "id": "en-ambiguous-gap",
+      "language": "en",
+      "scenario": "ambiguous_followup",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "theo",
+          "text": "<@BOT> should I learn guitar or piano first"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "Piano first. You can see the theory laid out on the keys, guitar hides it."
+        },
+        {
+          "filler": 47,
+          "askEvery": 11
+        }
+      ],
+      "final": {
+        "speaker": "mira",
+        "text": "<@BOT> why did you pick that one for theo?",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "piano"
+          ]
+        }
+      }
+    },
+    {
+      "id": "en-correction",
+      "language": "en",
+      "scenario": "correction",
+      "lines": [
+        {
+          "id": "s1",
+          "speaker": "lena",
+          "text": "<@BOT> my exam is on Thursday btw"
+        },
+        {
+          "id": "a1",
+          "speaker": "bot",
+          "replyTo": "s1",
+          "text": "Thursday, noted. Start the flashcards tonight."
+        },
+        {
+          "filler": 14,
+          "askEvery": 0
+        },
+        {
+          "id": "s2",
+          "speaker": "lena",
+          "text": "<@BOT> correction, they moved my exam to Monday"
+        },
+        {
+          "id": "a2",
+          "speaker": "bot",
+          "replyTo": "s2",
+          "text": "Monday then. That buys you a weekend."
+        },
+        {
+          "filler": 10,
+          "askEvery": 0
+        }
+      ],
+      "final": {
+        "speaker": "lena",
+        "text": "<@BOT> when is my exam again?",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a2",
+          "any": [
+            "Monday"
+          ]
+        },
+        "forbidden": [
+          "Thursday"
+        ]
+      }
+    },
+    {
+      "id": "en-interleaved",
+      "language": "en",
+      "scenario": "interleaved",
+      "lines": [
+        {
+          "id": "q1",
+          "speaker": "kai",
+          "text": "<@BOT> what time does the night market open?"
+        },
+        {
+          "id": "a1",
+          "speaker": "bot",
+          "replyTo": "q1",
+          "text": "Around five, but the good stalls only get going after six."
+        },
+        {
+          "id": "x1",
+          "speaker": "juno",
+          "text": "<@BOT> what's the name of that fox anime you mentioned"
+        },
+        {
+          "id": "x2",
+          "speaker": "bot",
+          "replyTo": "x1",
+          "text": "Fox Spirit Matchmaker. Start with season one."
+        },
+        {
+          "id": "k2",
+          "speaker": "kai",
+          "text": "night market it is then"
+        },
+        {
+          "id": "j2",
+          "speaker": "juno",
+          "text": "ok adding it to my list"
+        },
+        {
+          "filler": 6,
+          "askEvery": 0
+        }
+      ],
+      "final": {
+        "speaker": "juno",
+        "text": "<@BOT> is that show dubbed or subbed only?",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "x2",
+          "any": [
+            "Fox Spirit"
+          ]
+        },
+        "forbidden": [
+          "night market"
+        ]
+      }
+    },
+    {
+      "id": "en-control-mention",
+      "language": "en",
+      "scenario": "direct_mention",
+      "lines": [
+        {
+          "filler": 30,
+          "askEvery": 10
+        }
+      ],
+      "final": {
+        "speaker": "theo",
+        "text": "<@BOT> what's your favorite season?",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": null
+      }
+    },
+    {
+      "id": "en-ignore-group",
+      "language": "en",
+      "scenario": "optional_ignore",
+      "lines": [
+        {
+          "id": "g1",
+          "speaker": "mira",
+          "text": "kai did you finish the slides"
+        },
+        {
+          "id": "g2",
+          "speaker": "kai",
+          "text": "almost, I'll send them in ten"
+        },
+        {
+          "filler": 10,
+          "askEvery": 0
+        },
+        {
+          "id": "g3",
+          "speaker": "kai",
+          "text": "mira check your DMs"
+        }
+      ],
+      "final": {
+        "speaker": "mira",
+        "text": "got them, thanks kai",
+        "interaction": "group_conversation"
+      },
+      "labels": {
+        "action": "ignore",
+        "required": null
+      }
+    },
+    {
+      "id": "en-ignore-chatter",
+      "language": "en",
+      "scenario": "optional_ignore",
+      "lines": [
+        {
+          "filler": 20,
+          "askEvery": 0
+        },
+        {
+          "id": "g1",
+          "speaker": "juno",
+          "text": "lena are we still on for saturday"
+        }
+      ],
+      "final": {
+        "speaker": "lena",
+        "text": "yes! 2pm at the usual place",
+        "interaction": "group_conversation"
+      },
+      "labels": {
+        "action": "ignore",
+        "required": null
+      }
+    },
+    {
+      "id": "en-followup-implicit",
+      "language": "en",
+      "scenario": "implicit_followup",
+      "lines": [
+        {
+          "filler": 12,
+          "askEvery": 0
+        },
+        {
+          "id": "q",
+          "speaker": "kai",
+          "text": "<@BOT> is it worth buying a rice cooker if I live alone"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "Yes. A small three cup one, you'll use it way more than you think."
+        }
+      ],
+      "final": {
+        "speaker": "kai",
+        "text": "would a three cup one fit two portions though",
+        "interaction": "implicit_followup"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "three",
+            "3"
+          ]
+        }
+      }
+    },
+    {
+      "id": "en-cross-schedule",
+      "language": "en",
+      "scenario": "cross_speaker_followup",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "theo",
+          "text": "<@BOT> what are the gym's hours on weekends?"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "Saturday nine to nine, Sunday only until five."
+        },
+        {
+          "filler": 45,
+          "askEvery": 9
+        }
+      ],
+      "final": {
+        "speaker": "lena",
+        "text": "<@BOT> what time does it close on sunday, the thing you told theo",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "five",
+            "5"
+          ]
+        }
+      }
+    },
+    {
+      "id": "en-longgap-name",
+      "language": "en",
+      "scenario": "long_gap",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "juno",
+          "text": "<@BOT> help me name my new hamster, she's tiny and orange"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "Call her Kumquat. Tiny, orange, slightly chaotic."
+        },
+        {
+          "filler": 55,
+          "askEvery": 11
+        }
+      ],
+      "final": {
+        "speaker": "juno",
+        "text": "<@BOT> what was that name you gave me for the hamster",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "Kumquat"
+          ]
+        }
+      }
+    },
+    {
+      "id": "en-ambiguous-pick",
+      "language": "en",
+      "scenario": "ambiguous_followup",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "lena",
+          "text": "<@BOT> tea or coffee for an all nighter"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "Green tea. Coffee gets you a crash right at 3am."
+        },
+        {
+          "filler": 49,
+          "askEvery": 12
+        }
+      ],
+      "final": {
+        "speaker": "kai",
+        "text": "<@BOT> why not coffee like you said to lena",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "crash",
+            "3am",
+            "3 am"
+          ]
+        }
+      }
+    },
+    {
+      "id": "en-correction-place",
+      "language": "en",
+      "scenario": "correction",
+      "lines": [
+        {
+          "id": "s1",
+          "speaker": "theo",
+          "text": "<@BOT> dinner is at the thai place tonight"
+        },
+        {
+          "id": "a1",
+          "speaker": "bot",
+          "replyTo": "s1",
+          "text": "Thai, nice. Get the green curry."
+        },
+        {
+          "filler": 9,
+          "askEvery": 0
+        },
+        {
+          "id": "s2",
+          "speaker": "theo",
+          "text": "<@BOT> change of plans, we're doing korean bbq instead"
+        },
+        {
+          "id": "a2",
+          "speaker": "bot",
+          "replyTo": "s2",
+          "text": "Korean bbq beats curry anyway. Wear something you don't mind smelling like smoke."
+        },
+        {
+          "filler": 8,
+          "askEvery": 0
+        }
+      ],
+      "final": {
+        "speaker": "mira",
+        "text": "<@BOT> where is theo having dinner?",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a2",
+          "any": [
+            "korean",
+            "bbq"
+          ]
+        },
+        "forbidden": [
+          "thai place tonight"
+        ]
+      }
+    },
+    {
+      "id": "en-control-question",
+      "language": "en",
+      "scenario": "direct_mention",
+      "lines": [
+        {
+          "filler": 15,
+          "askEvery": 5
+        }
+      ],
+      "final": {
+        "speaker": "kai",
+        "text": "<@BOT> say something nice about mondays",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": null
+      }
+    },
+    {
+      "id": "zh-cross-ramen",
+      "language": "zh-TW",
+      "scenario": "cross_speaker_followup",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "小安",
+          "text": "<@BOT> 車站附近有什麼好吃的拉麵？"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "麵屋海光的醬油拉麵、想要自己一格座位就去一蘭，三號出口旁邊那攤豚骨最便宜。"
+        },
+        {
+          "filler": 46,
+          "askEvery": 11
+        }
+      ],
+      "final": {
+        "speaker": "小美",
+        "text": "<@BOT> 你跟小安說的第二家是哪家？",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "一蘭",
+            "Ichiran"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zh-cross-movies",
+      "language": "zh-TW",
+      "scenario": "cross_speaker_followup",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "小晴",
+          "text": "<@BOT> 推薦三部下雨天看的電影"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "想要溫馨就看柏靈頓熊2，想動腦就看異星入境，想對著螢幕大叫就看鋒迴路轉。"
+        },
+        {
+          "filler": 48,
+          "askEvery": 12
+        }
+      ],
+      "final": {
+        "speaker": "阿明",
+        "text": "<@BOT> 你說動腦的那部會很悲傷嗎",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "異星入境",
+            "Arrival"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zh-cross-gift",
+      "language": "zh-TW",
+      "scenario": "cross_speaker_followup",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "小美",
+          "text": "<@BOT> 我哥喜歡做菜，生日要送什麼"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "送他碳鋼炒鍋，如果他已經有了，就送一把好的日式小刀。"
+        },
+        {
+          "filler": 44,
+          "askEvery": 10
+        }
+      ],
+      "final": {
+        "speaker": "阿明",
+        "text": "<@BOT> 你跟小美推薦的那個刀大概多少錢",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "小刀",
+            "日式"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zh-longgap-budget",
+      "language": "zh-TW",
+      "scenario": "long_gap",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "小安",
+          "text": "<@BOT> 週末旅行台南、花蓮、台中哪個最便宜？"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "台中最便宜，火車很近，青旅一晚大概六百。花蓮最貴，因為火車票比較貴。"
+        },
+        {
+          "filler": 52,
+          "askEvery": 13
+        }
+      ],
+      "final": {
+        "speaker": "小安",
+        "text": "<@BOT> 再說一次哪個最貴？",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "花蓮"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zh-longgap-recipe",
+      "language": "zh-TW",
+      "scenario": "long_gap",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "阿明",
+          "text": "<@BOT> 溏心蛋要煮幾分鐘"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "水滾後煮六分半，然後馬上泡冰水。"
+        },
+        {
+          "filler": 50,
+          "askEvery": 12
+        }
+      ],
+      "final": {
+        "speaker": "小晴",
+        "text": "<@BOT> 阿明說你有跟他講煮蛋的時間，是幾分鐘",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "六分半",
+            "6分半",
+            "6.5"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zh-ambiguous-window",
+      "language": "zh-TW",
+      "scenario": "ambiguous_followup",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "小晴",
+          "text": "<@BOT> 新鍵帽要藍色還是綠色？"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "綠色。藍色鍵帽最後都會看起來像辦公室的釘書機。"
+        },
+        {
+          "filler": 8,
+          "askEvery": 0
+        }
+      ],
+      "final": {
+        "speaker": "小美",
+        "text": "<@BOT> 為什麼不選另一個",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "藍",
+            "釘書機"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zh-ambiguous-gap",
+      "language": "zh-TW",
+      "scenario": "ambiguous_followup",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "小美",
+          "text": "<@BOT> 先學吉他還是鋼琴"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "先學鋼琴。琴鍵上的樂理一目了然，吉他會把它藏起來。"
+        },
+        {
+          "filler": 47,
+          "askEvery": 11
+        }
+      ],
+      "final": {
+        "speaker": "小安",
+        "text": "<@BOT> 你幫小美選那個的原因是什麼？",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "鋼琴"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zh-correction",
+      "language": "zh-TW",
+      "scenario": "correction",
+      "lines": [
+        {
+          "id": "s1",
+          "speaker": "小晴",
+          "text": "<@BOT> 跟你說我考試在星期四"
+        },
+        {
+          "id": "a1",
+          "speaker": "bot",
+          "replyTo": "s1",
+          "text": "星期四，記住了。今晚就開始背單字卡。"
+        },
+        {
+          "filler": 14,
+          "askEvery": 0
+        },
+        {
+          "id": "s2",
+          "speaker": "小晴",
+          "text": "<@BOT> 更正，考試改到星期一了"
+        },
+        {
+          "id": "a2",
+          "speaker": "bot",
+          "replyTo": "s2",
+          "text": "那就星期一。多賺一個週末。"
+        },
+        {
+          "filler": 10,
+          "askEvery": 0
+        }
+      ],
+      "final": {
+        "speaker": "小晴",
+        "text": "<@BOT> 我考試是哪天？",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a2",
+          "any": [
+            "星期一",
+            "週一",
+            "禮拜一"
+          ]
+        },
+        "forbidden": [
+          "星期四"
+        ]
+      }
+    },
+    {
+      "id": "zh-interleaved",
+      "language": "zh-TW",
+      "scenario": "interleaved",
+      "lines": [
+        {
+          "id": "q1",
+          "speaker": "阿明",
+          "text": "<@BOT> 夜市幾點開？"
+        },
+        {
+          "id": "a1",
+          "speaker": "bot",
+          "replyTo": "q1",
+          "text": "大概五點，不過好吃的攤位六點以後才開始。"
+        },
+        {
+          "id": "x1",
+          "speaker": "小晴",
+          "text": "<@BOT> 你之前說的那部狐狸動畫叫什麼"
+        },
+        {
+          "id": "x2",
+          "speaker": "bot",
+          "replyTo": "x1",
+          "text": "狐妖小紅娘，從第一季開始看。"
+        },
+        {
+          "id": "k2",
+          "speaker": "阿明",
+          "text": "那就去夜市"
+        },
+        {
+          "id": "j2",
+          "speaker": "小晴",
+          "text": "好，加進我的清單"
+        },
+        {
+          "filler": 6,
+          "askEvery": 0
+        }
+      ],
+      "final": {
+        "speaker": "小晴",
+        "text": "<@BOT> 那部有配音版嗎還是只有字幕",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "x2",
+          "any": [
+            "狐妖",
+            "小紅娘"
+          ]
+        },
+        "forbidden": [
+          "夜市"
+        ]
+      }
+    },
+    {
+      "id": "zh-control-mention",
+      "language": "zh-TW",
+      "scenario": "direct_mention",
+      "lines": [
+        {
+          "filler": 30,
+          "askEvery": 10
+        }
+      ],
+      "final": {
+        "speaker": "阿明",
+        "text": "<@BOT> 你最喜歡哪個季節？",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": null
+      }
+    },
+    {
+      "id": "zh-ignore-group",
+      "language": "zh-TW",
+      "scenario": "optional_ignore",
+      "lines": [
+        {
+          "id": "g1",
+          "speaker": "小安",
+          "text": "阿明簡報做完了嗎"
+        },
+        {
+          "id": "g2",
+          "speaker": "阿明",
+          "text": "快好了，十分鐘後傳給你"
+        },
+        {
+          "filler": 10,
+          "askEvery": 0
+        },
+        {
+          "id": "g3",
+          "speaker": "阿明",
+          "text": "小安看一下私訊"
+        }
+      ],
+      "final": {
+        "speaker": "小安",
+        "text": "收到了，謝啦阿明",
+        "interaction": "group_conversation"
+      },
+      "labels": {
+        "action": "ignore",
+        "required": null
+      }
+    },
+    {
+      "id": "zh-ignore-chatter",
+      "language": "zh-TW",
+      "scenario": "optional_ignore",
+      "lines": [
+        {
+          "filler": 20,
+          "askEvery": 0
+        },
+        {
+          "id": "g1",
+          "speaker": "小晴",
+          "text": "小美我們星期六還是照約嗎"
+        }
+      ],
+      "final": {
+        "speaker": "小美",
+        "text": "對！下午兩點老地方",
+        "interaction": "group_conversation"
+      },
+      "labels": {
+        "action": "ignore",
+        "required": null
+      }
+    },
+    {
+      "id": "zh-followup-implicit",
+      "language": "zh-TW",
+      "scenario": "implicit_followup",
+      "lines": [
+        {
+          "filler": 12,
+          "askEvery": 0
+        },
+        {
+          "id": "q",
+          "speaker": "阿明",
+          "text": "<@BOT> 一個人住值得買電鍋嗎"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "值得。買三人份的小電鍋，你會比想像中更常用。"
+        }
+      ],
+      "final": {
+        "speaker": "阿明",
+        "text": "三人份的煮兩人份夠嗎",
+        "interaction": "implicit_followup"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "三人份",
+            "3人份"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zh-cross-schedule",
+      "language": "zh-TW",
+      "scenario": "cross_speaker_followup",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "阿明",
+          "text": "<@BOT> 健身房週末營業時間是？"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "星期六早上九點到晚上九點，星期日只開到下午五點。"
+        },
+        {
+          "filler": 45,
+          "askEvery": 9
+        }
+      ],
+      "final": {
+        "speaker": "小美",
+        "text": "<@BOT> 你跟阿明說星期日幾點關？",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "五點",
+            "5點",
+            "17"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zh-longgap-name",
+      "language": "zh-TW",
+      "scenario": "long_gap",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "小晴",
+          "text": "<@BOT> 幫我的新倉鼠取名字，她小小的、橘色的"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "叫她金桔。小小的、橘色的、有點混亂。"
+        },
+        {
+          "filler": 55,
+          "askEvery": 11
+        }
+      ],
+      "final": {
+        "speaker": "小晴",
+        "text": "<@BOT> 你幫我倉鼠取的名字是什麼來著",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "金桔"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zh-ambiguous-pick",
+      "language": "zh-TW",
+      "scenario": "ambiguous_followup",
+      "lines": [
+        {
+          "id": "q",
+          "speaker": "小美",
+          "text": "<@BOT> 熬夜喝茶還是咖啡"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "綠茶。咖啡會讓你在凌晨三點突然崩掉。"
+        },
+        {
+          "filler": 49,
+          "askEvery": 12
+        }
+      ],
+      "final": {
+        "speaker": "阿明",
+        "text": "<@BOT> 你跟小美說為什麼不要喝咖啡",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "三點",
+            "3點",
+            "崩"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zh-correction-place",
+      "language": "zh-TW",
+      "scenario": "correction",
+      "lines": [
+        {
+          "id": "s1",
+          "speaker": "阿明",
+          "text": "<@BOT> 今晚晚餐吃泰式"
+        },
+        {
+          "id": "a1",
+          "speaker": "bot",
+          "replyTo": "s1",
+          "text": "泰式不錯，點綠咖哩。"
+        },
+        {
+          "filler": 9,
+          "askEvery": 0
+        },
+        {
+          "id": "s2",
+          "speaker": "阿明",
+          "text": "<@BOT> 改計畫了，我們改吃韓式烤肉"
+        },
+        {
+          "id": "a2",
+          "speaker": "bot",
+          "replyTo": "s2",
+          "text": "韓式烤肉比咖哩好。穿件不怕沾到煙味的衣服。"
+        },
+        {
+          "filler": 8,
+          "askEvery": 0
+        }
+      ],
+      "final": {
+        "speaker": "小安",
+        "text": "<@BOT> 阿明晚餐去哪吃？",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a2",
+          "any": [
+            "韓式",
+            "烤肉"
+          ]
+        },
+        "forbidden": [
+          "泰式不錯"
+        ]
+      }
+    },
+    {
+      "id": "zh-control-question",
+      "language": "zh-TW",
+      "scenario": "direct_mention",
+      "lines": [
+        {
+          "filler": 15,
+          "askEvery": 5
+        }
+      ],
+      "final": {
+        "speaker": "小美",
+        "text": "<@BOT> 說點星期一的好話",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": null
+      }
+    },
+    {
+      "id": "en-dense-bot",
+      "language": "en",
+      "scenario": "dense_history",
+      "lines": [
+        {
+          "filler": 40,
+          "askEvery": 3
+        },
+        {
+          "id": "q",
+          "speaker": "mira",
+          "text": "<@BOT> what's the wifi password at the study room"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "It's on the whiteboard by the door, last I saw it was owl-lantern-42."
+        },
+        {
+          "filler": 18,
+          "askEvery": 3
+        }
+      ],
+      "final": {
+        "speaker": "theo",
+        "text": "<@BOT> sorry what was the study room wifi again",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "owl-lantern-42",
+            "owl lantern"
+          ]
+        }
+      }
+    },
+    {
+      "id": "en-dense-earlier",
+      "language": "en",
+      "scenario": "dense_history",
+      "lines": [
+        {
+          "filler": 36,
+          "askEvery": 2
+        },
+        {
+          "id": "q",
+          "speaker": "kai",
+          "text": "<@BOT> which bus goes to the old harbor"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "The 307. Get off at the lighthouse stop, it's faster than the 12."
+        },
+        {
+          "filler": 16,
+          "askEvery": 2
+        }
+      ],
+      "final": {
+        "speaker": "lena",
+        "text": "<@BOT> which bus number did you say for the harbor",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "307"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zh-dense-bot",
+      "language": "zh-TW",
+      "scenario": "dense_history",
+      "lines": [
+        {
+          "filler": 40,
+          "askEvery": 3
+        },
+        {
+          "id": "q",
+          "speaker": "小安",
+          "text": "<@BOT> 自習室的 wifi 密碼是什麼"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "寫在門邊的白板上，我上次看到是 owl-lantern-42。"
+        },
+        {
+          "filler": 18,
+          "askEvery": 3
+        }
+      ],
+      "final": {
+        "speaker": "小美",
+        "text": "<@BOT> 不好意思自習室 wifi 再說一次",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "owl-lantern-42",
+            "owl lantern"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zh-dense-earlier",
+      "language": "zh-TW",
+      "scenario": "dense_history",
+      "lines": [
+        {
+          "filler": 36,
+          "askEvery": 2
+        },
+        {
+          "id": "q",
+          "speaker": "阿明",
+          "text": "<@BOT> 去舊港要搭哪班公車"
+        },
+        {
+          "id": "a",
+          "speaker": "bot",
+          "replyTo": "q",
+          "text": "搭 307，在燈塔站下車，比 12 號快。"
+        },
+        {
+          "filler": 16,
+          "askEvery": 2
+        }
+      ],
+      "final": {
+        "speaker": "小晴",
+        "text": "<@BOT> 你說去舊港是搭幾號",
+        "interaction": "direct_mention"
+      },
+      "labels": {
+        "action": "reply",
+        "required": {
+          "line": "a",
+          "any": [
+            "307"
+          ]
+        }
+      }
+    }
+  ]
+}

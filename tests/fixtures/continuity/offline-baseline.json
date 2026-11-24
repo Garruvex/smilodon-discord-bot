@@ -1,0 +1,485 @@
+{
+  "sha256": "f3bcc033609cb51b614aa4d5312a76c960c035bbbc8d19c20ff2e7618f2cd22d",
+  "rows": {
+    "en-cross-ramen/current": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "en-cross-ramen/direct": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "en-cross-ramen/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 2
+    },
+    "en-cross-movies/current": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "en-cross-movies/direct": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "en-cross-movies/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 2
+    },
+    "en-cross-gift/current": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "en-cross-gift/direct": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "en-cross-gift/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 2
+    },
+    "en-longgap-budget/current": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-longgap-budget/direct": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-longgap-budget/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 2
+    },
+    "en-longgap-recipe/current": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "en-longgap-recipe/direct": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "en-longgap-recipe/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 2
+    },
+    "en-ambiguous-window/current": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-ambiguous-window/direct": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-ambiguous-window/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-ambiguous-gap/current": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "en-ambiguous-gap/direct": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "en-ambiguous-gap/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 2
+    },
+    "en-correction/current": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-correction/direct": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-correction/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-interleaved/current": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-interleaved/direct": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-interleaved/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-control-mention/current": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "en-control-mention/direct": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "en-control-mention/anchor": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "en-ignore-group/current": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "en-ignore-group/direct": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "en-ignore-group/anchor": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "en-ignore-chatter/current": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "en-ignore-chatter/direct": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "en-ignore-chatter/anchor": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "en-followup-implicit/current": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "en-followup-implicit/direct": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "en-followup-implicit/anchor": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "en-cross-schedule/current": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "en-cross-schedule/direct": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "en-cross-schedule/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 2
+    },
+    "en-longgap-name/current": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-longgap-name/direct": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-longgap-name/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 2
+    },
+    "en-ambiguous-pick/current": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "en-ambiguous-pick/direct": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "en-ambiguous-pick/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 2
+    },
+    "en-correction-place/current": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-correction-place/direct": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-correction-place/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-control-question/current": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "en-control-question/direct": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "en-control-question/anchor": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "zh-cross-ramen/current": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "zh-cross-ramen/direct": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "zh-cross-ramen/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 2
+    },
+    "zh-cross-movies/current": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "zh-cross-movies/direct": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "zh-cross-movies/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 2
+    },
+    "zh-cross-gift/current": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "zh-cross-gift/direct": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "zh-cross-gift/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 2
+    },
+    "zh-longgap-budget/current": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-longgap-budget/direct": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-longgap-budget/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 2
+    },
+    "zh-longgap-recipe/current": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "zh-longgap-recipe/direct": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "zh-longgap-recipe/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 2
+    },
+    "zh-ambiguous-window/current": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-ambiguous-window/direct": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-ambiguous-window/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-ambiguous-gap/current": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "zh-ambiguous-gap/direct": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "zh-ambiguous-gap/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 2
+    },
+    "zh-correction/current": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-correction/direct": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-correction/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-interleaved/current": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-interleaved/direct": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-interleaved/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-control-mention/current": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "zh-control-mention/direct": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "zh-control-mention/anchor": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "zh-ignore-group/current": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "zh-ignore-group/direct": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "zh-ignore-group/anchor": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "zh-ignore-chatter/current": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "zh-ignore-chatter/direct": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "zh-ignore-chatter/anchor": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "zh-followup-implicit/current": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "zh-followup-implicit/direct": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "zh-followup-implicit/anchor": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "zh-cross-schedule/current": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "zh-cross-schedule/direct": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "zh-cross-schedule/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 2
+    },
+    "zh-longgap-name/current": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-longgap-name/direct": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-longgap-name/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 2
+    },
+    "zh-ambiguous-pick/current": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "zh-ambiguous-pick/direct": {
+      "contextHasRequired": false,
+      "anchorAdded": 0
+    },
+    "zh-ambiguous-pick/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 2
+    },
+    "zh-correction-place/current": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-correction-place/direct": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-correction-place/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-control-question/current": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "zh-control-question/direct": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "zh-control-question/anchor": {
+      "contextHasRequired": null,
+      "anchorAdded": 0
+    },
+    "en-dense-bot/current": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-dense-bot/direct": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-dense-bot/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-dense-earlier/current": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-dense-earlier/direct": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "en-dense-earlier/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-dense-bot/current": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-dense-bot/direct": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-dense-bot/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-dense-earlier/current": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-dense-earlier/direct": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    },
+    "zh-dense-earlier/anchor": {
+      "contextHasRequired": true,
+      "anchorAdded": 0
+    }
+  }
+}

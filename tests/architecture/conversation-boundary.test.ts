@@ -81,7 +81,7 @@ describe("conversation execution ownership", () => {
           const imported = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter((item) => !item.isTypeOnly).map((item) => (item.propertyName ?? item.name).text) : ["*"];
           const permitted = module.endsWith("/memory-engine.js") ? relative === "application/context/guarded-memory-gateway.ts" ? ["DefaultMemoryEngine"] : ["defaultMemoryEngineLimits"] :
             relative === "bootstrap/dependencies.ts" ? ["createGuardedMemoryEngine", "observeMemoryArtifacts"] :
-            ["scripts/replay-character-conversations.ts", "scripts/replay-conversation-lifecycle.ts"].includes(relative) ? ["createGuardedMemoryEngine"] : [];
+            ["scripts/replay-character-conversations.ts", "scripts/replay-conversation-lifecycle.ts", "scripts/replay-continuity-runner.ts"].includes(relative) ? ["createGuardedMemoryEngine"] : [];
           if (imported.some((name) => !permitted.includes(name))) offenders.push(relative);
         }
         if (module.endsWith("/approved-memory-ingest.js") && !node.importClause?.isTypeOnly) {

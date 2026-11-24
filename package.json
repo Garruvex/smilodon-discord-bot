@@ -26,6 +26,7 @@
     "eval:laya": "tsx src/scripts/replay-laya-decisions.ts",
     "eval:openai-decisions": "tsx src/scripts/replay-openai-decisions.ts",
     "eval:reply": "tsx src/scripts/replay-reply-benchmark.ts",
+    "eval:continuity": "tsx src/scripts/replay-continuity.ts",
     "eval:contextual:built": "node dist/scripts/replay-contextual-participation.js",
     "eval:conversation": "tsx src/scripts/replay-conversation-lifecycle.ts",
     "eval:conversation:built": "node dist/scripts/replay-conversation-lifecycle.js",
