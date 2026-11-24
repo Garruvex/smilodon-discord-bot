@@ -30,7 +30,8 @@ if (!databaseUrl) {
     // than a fresh database — cheaper than provisioning per-test, and the
     // contract's own assertions never depend on cross-test isolation beyond
     // "no leftover rows".
-    await database.execute(sql`TRUNCATE TABLE memory_sources, memories`);
+    // CASCADE also clears tables added later that reference memories (relations and so on).
+    await database.execute(sql`TRUNCATE TABLE memory_sources, memories, memory_forget_cutoffs CASCADE`);
     return new PostgresMemoryRepository(database);
   });
 }
