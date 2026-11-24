@@ -88,7 +88,8 @@ export class ConversationModelGateway {
     if (!sessions.length || !provider?.evolvePersonaDrift) return null;
     if (await context.resource({ kind: "persona_drift", id: epoch }) !== epoch) throw new SocialOutputSuppressed();
     const currentText = previous && previous.guildId === context.scope.guildId && previous.channelId === context.scope.channelId &&
-      previous.personalitySourceHash === personalitySourceHash && previous.epoch === epoch && await context.derived(previous.contextProvenance, personaDriftPayload(previous), "character_state") ? previous.text : "";
+      previous.personalitySourceHash === personalitySourceHash && previous.epoch === epoch && await context.derived(previous.contextProvenance, personaDriftPayload(previous), "character_state",
+        { kind: "character_state", graphKind: "drift", artifactId: `persona-drift:${epoch}` }) ? previous.text : "";
     const exchanges = sessions.map((record) => ({ user: record.user.content, assistant: record.assistant.content }));
     const result = await provider.evolvePersonaDrift(currentText, exchanges,
       approveModelOperation(context, "evolvePersonaDrift", [currentText, exchanges], this.options(context)));

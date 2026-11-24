@@ -168,7 +168,8 @@ async function runGuardedChatTurnAttempt(input: GuardedChatConversationInput, de
     const selectedLore = await new RelevantPersonaLoreSelector().select({ chunks: lorePool, recentHistory,
       message: lease.current.content, replyChain: lease.replyChain, now: dependencies.now(), context: lease });
     const drift = input.personaDriftEnabled && allowsDurableWrites(mode) ? await dependencies.drift?.getScoped(input.guildId, input.channelId) : null;
-    const personaDrift = drift && drift.personalitySourceHash === personaHash && await lease.derived(drift.contextProvenance, personaDriftPayload(drift), "character_state") &&
+    const personaDrift = drift && drift.personalitySourceHash === personaHash && await lease.derived(drift.contextProvenance, personaDriftPayload(drift), "character_state",
+      { kind: "character_state", graphKind: "drift", artifactId: `persona-drift:${drift.epoch}` }) &&
       await lease.resource({ kind: "persona_drift", id: drift.epoch }) === drift.epoch ? drift.text : null;
     const replyChainSummary = await dependencies.compact(lease).catch((error: unknown) => {
       if (error instanceof SocialOutputSuppressed || input.turnSignal?.aborted) throw error;

@@ -67,7 +67,7 @@ export class PersonaDriftStore {
       if (await context.resource({ kind: "persona_drift", id: epoch }) !== epoch) return;
       const previous = await this.getScoped(guildId, channelId);
       const next = await gateway.drift(context, sessions, previous, personalitySourceHash, epoch, now);
-      if (!next || !await context.derived(next.contextProvenance, personaDriftPayload(next), "character_state") || !await context.validate()) return;
+      if (!next || !await context.derived(next.contextProvenance, personaDriftPayload(next), "character_state", "own") || !await context.validate()) return;
       const target = this.scopedPath(guildId, channelId); const temporary = `${target}.tmp`;
       await mkdir(resolve(target, ".."), { recursive: true });
       await writeFile(temporary, JSON.stringify(next), "utf8");

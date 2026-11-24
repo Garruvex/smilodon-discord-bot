@@ -701,7 +701,8 @@ export class CharacterRuntime {
           if (!port || port.guildId !== guildId || port.channelId !== activity.channelId || port.actorId !== userId) continue;
           const context = await GuardedConversationContext.open(port, { count: 0, budget: 0, burstIds: [] }).catch(() => null);
           if (!context || !(await context.memories([memory], true, now)).length ||
-              !await context.derived(schedule.contextProvenance, callbackProofPayload(memory, schedule), "character_state")) continue;
+              !await context.derived(schedule.contextProvenance, callbackProofPayload(memory, schedule), "character_state",
+                { kind: "character_state", graphKind: "callback", artifactId: memory.id })) continue;
           const schedulePayload = callbackProofPayload(memory, schedule);
           const claim = await this.callbacks.claim(memory, now, settings.modules.callbacks.maxPerDay, startOfLocalDay(now, profile.timezone)); if (!claim) continue;
           const eligible = async (fact: Memory): Promise<boolean> => {

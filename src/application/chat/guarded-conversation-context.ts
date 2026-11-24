@@ -707,11 +707,12 @@ export class GuardedConversationContext {
     return true;
   }
 
-  private async proofSourcesCurrent(proof: ContextProvenance, path = new Set<string>()): Promise<boolean> {
+  // own: the proof is this lease's own output, so its graph ancestry is the lease's and is validated with it.
+  private async proofSourcesCurrent(proof: ContextProvenance, path = new Set<string>(), own = false): Promise<boolean> {
     const actorIds = new Set([...this.admittedActorIds, ...(proof.actors ?? []).map((actor) => actor.userId)]);
     const resourceIds = new Set([...this.resources.keys(), ...(proof.resources ?? []).map((entry) => `${entry.kind}:${entry.id}`)]);
     if (actorIds.size > 100 || resourceIds.size > 32) return false;
-    if (proof.coverage !== "complete" || proof.audience.guildId !== this.port.guildId || proof.audience.channelId !== this.port.channelId ||
+    if (proof.coverage !== "complete" && !(own && graphAncestryOnly(proof)) || proof.audience.guildId !== this.port.guildId || proof.audience.channelId !== this.port.channelId ||
         proof.audience.userId !== null && proof.audience.userId !== this.port.audienceUserId || !await this.validateResources(proof)) return false;
     for (const dependency of proof.actors ?? []) {
       const actor = await this.port.actor(dependency.userId, this.signal);
@@ -842,27 +843,31 @@ export class GuardedConversationContext {
   }
 
   // graph names the artifact in the provenance graph, so its reader kind can switch to v2 on its own.
-  public async derived(value: unknown, output: string, purpose: "character_state" | "relation" | "identity_alias", graph?: GraphArtifactRef): Promise<boolean> {
+  // "own": an output this lease has just built and not yet published. Its proof may leave ancestry to the
+  // graph only when this lease holds that ancestry itself, which validate() re-checks.
+  public async derived(value: unknown, output: string, purpose: "character_state" | "relation" | "identity_alias", graph?: GraphArtifactRef | "own"): Promise<boolean> {
     return this.phase(() => this.retainDerived(value, output, purpose, graph), "memory");
   }
 
-  private async retainDerived(value: unknown, output: string, purpose: "character_state" | "relation" | "identity_alias", graph?: GraphArtifactRef): Promise<boolean> {
-      const mode = graph && this.port.graph && this.port.sourcesAllowed ? this.port.graph.mode(graph.kind) : "v1";
+  private async retainDerived(value: unknown, output: string, purpose: "character_state" | "relation" | "identity_alias", graph?: GraphArtifactRef | "own"): Promise<boolean> {
+      const own = graph === "own" && this.graphAncestry;
+      const ref = graph === "own" ? undefined : graph;
+      const mode = ref && this.port.graph && this.port.sourcesAllowed ? this.port.graph.mode(ref.kind) : "v1";
       const proof = parseContextProvenance(value);
       if (!proof || proof.purpose !== purpose || proof.outputHash !== hashContent(output) ||
-          proof.coverage !== "complete" && !(mode === "v2" && graphAncestryOnly(proof))) return false;
-      const v1 = proof.coverage === "complete" && await this.proofSourcesCurrent(proof);
+          proof.coverage !== "complete" && !((mode === "v2" || own) && graphAncestryOnly(proof))) return false;
+      const v1 = (proof.coverage === "complete" || own) && await this.proofSourcesCurrent(proof, new Set(), own);
       let viaGraph = false;
-      if (graph && mode !== "v1") {
+      if (ref && mode !== "v1") {
         // The graph decides a migrated artifact; the sources it reaches still face forget and opt-out.
-        const decision = (await this.decideArtifacts(graph.kind, graph.graphKind, [{ artifactId: graph.artifactId, outputHash: proof.outputHash, v1 }]))
-          .get(artifactKey(graph.artifactId, proof.outputHash));
+        const decision = (await this.decideArtifacts(ref.kind, ref.graphKind, [{ artifactId: ref.artifactId, outputHash: proof.outputHash, v1 }]))
+          .get(artifactKey(ref.artifactId, proof.outputHash));
         if (!decision?.admitted) return false;
         if (decision.source === "graph") {
           if (!await this.citedAllowed(decision.messages)) return false;
           viaGraph = true;
           if (!await this.retainActors(proof)) return false;
-          this.useGraphArtifact(graph.kind, graph.graphKind, graph.artifactId, proof.outputHash, decision.messages);
+          this.useGraphArtifact(ref.kind, ref.graphKind, ref.artifactId, proof.outputHash, decision.messages);
         }
       } else if (!v1) return false;
       if (viaGraph) { /* Its ancestry is a graph edge; nothing is carried. */ }
