@@ -6,7 +6,7 @@ import { z } from "zod";
 import {
   admissionFrom, type ProvenanceAdmission,
   backgroundProjectionPrefix, maxProvenanceAncestors, ProvenancePublicationRefused,
-  type ProvenanceMessageSource, type ProvenanceParent, type ProvenancePublication, type ProvenanceRevisionState,
+  type ProvenanceDescendant, type ProvenanceMessageSource, type ProvenanceParent, type ProvenancePublication, type ProvenanceRevisionState,
 } from "../../application/provenance/provenance-graph.js";
 
 export interface ParentRow { id: string; guildId: string; channelId: string; state: ProvenanceRevisionState; ordinal: number }
@@ -134,5 +134,22 @@ export function toAncestorMessages(rows: readonly unknown[], into: Map<string, P
     // A message revision always carries its author and time; one without them cannot be checked.
     const entry = { messageId: row.message_id, authorId: row.author_id ?? "", timestampMs: row.timestamp_ms ?? -1 };
     const list = into.get(row.root); if (list) list.push(entry); else into.set(row.root, [entry]);
+  }
+}
+
+// The current revisions below these Discord messages. The first edge follows revocation reach: an edge
+// that took only a message's summary text does not carry its deletion. Edges above it are all followed.
+export const currentDescendantsQuery = (guildId: string, channelId: string, messageIds: readonly string[]): SQL => sql`WITH RECURSIVE down(id) AS (
+    SELECT e.child_id FROM provenance_revisions r JOIN provenance_edges e ON e.parent_id = r.id
+      WHERE r.guild_id = ${guildId} AND r.channel_id = ${channelId} AND r.kind IN ${discordMessageKinds}
+        AND r.artifact_id IN (${sql.join(messageIds.map((id) => sql`${id}`), sql`, `)}) AND e.projection NOT LIKE ${`${backgroundProjectionPrefix}%`}
+    UNION SELECT e.child_id FROM provenance_edges e JOIN down ON e.parent_id = down.id)
+  SELECT DISTINCT r.kind AS kind, r.artifact_id AS artifact_id, r.output_hash AS output_hash FROM down
+    JOIN provenance_revisions r ON r.id = down.id JOIN provenance_current c ON c.revision_id = r.id`;
+
+const descendantRow = z.object({ kind: z.string(), artifact_id: z.string(), output_hash: z.string().nullable() });
+export function toDescendants(rows: readonly unknown[], into: Map<string, ProvenanceDescendant>): void {
+  for (const row of rows.map((value) => descendantRow.parse(value))) {
+    into.set(`${row.kind}:${row.artifact_id}`, { kind: row.kind as ProvenanceDescendant["kind"], artifactId: row.artifact_id, outputHash: row.output_hash });
   }
 }

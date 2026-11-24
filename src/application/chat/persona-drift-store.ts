@@ -1,3 +1,4 @@
+import { hashContent } from "../assets/content-hash.js";
 import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -88,6 +89,17 @@ export class PersonaDriftStore {
       const drift = await this.getScoped(guildId, channelId);
       if (!drift?.contextProvenance.dependencies.some((source) => source.channelId === channelId && ids.has(source.messageId) &&
         source.projection?.kind !== "background_text")) return 0;
+      await rm(this.scopedPath(guildId, channelId), { force: true });
+      return 1;
+    });
+  }
+
+  // Revocation cleanup for drift whose graph ancestry reaches a revoked message: deletes the channel's
+  // drift only while it is still one of these versions, on the same queue as evolution.
+  public async forgetVersions(guildId: string, channelId: string, versions: readonly { artifactId: string; outputHash: string }[]): Promise<number> {
+    return this.queue.run(guildId, async () => {
+      const drift = await this.getScoped(guildId, channelId);
+      if (!drift || !versions.some((version) => version.artifactId === `persona-drift:${drift.epoch}` && version.outputHash === hashContent(personaDriftPayload(drift)))) return 0;
       await rm(this.scopedPath(guildId, channelId), { force: true });
       return 1;
     });

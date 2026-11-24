@@ -7,10 +7,10 @@ import { z } from "zod";
 import { chunked } from "../../application/chat/message-revocation-store.js";
 import {
   ProvenancePublicationRefused,
-  type ProvenanceAdmission, type ProvenanceAncestryCheck, type ProvenanceGraphStore, type ProvenanceMessageSource, type ProvenanceParent, type ProvenancePublication, type ProvenancePublishResult, type ProvenanceRevisionKind,
+  type ProvenanceAdmission, type ProvenanceAncestryCheck, type ProvenanceDescendant, type ProvenanceGraphStore, type ProvenanceMessageSource, type ProvenanceParent, type ProvenancePublication, type ProvenancePublishResult, type ProvenanceRevisionKind,
 } from "../../application/provenance/provenance-graph.js";
 import * as schema from "../database/schema.js";
-import { ancestorCountQuery, ancestorMessagesQuery, toAncestorMessages, ancestryCountsQuery, ancestryProblemsQuery, ancestryRevokedQuery, toAdmissions, checkAncestry, checkParents, newMessageRevisions, revisionValues, uniqueParents, type ParentRow } from "./provenance-graph-shared.js";
+import { ancestorCountQuery, ancestorMessagesQuery, currentDescendantsQuery, toAncestorMessages, toDescendants, ancestryCountsQuery, ancestryProblemsQuery, ancestryRevokedQuery, toAdmissions, checkAncestry, checkParents, newMessageRevisions, revisionValues, uniqueParents, type ParentRow } from "./provenance-graph-shared.js";
 
 const countRow = z.object({ visited: z.coerce.number() });
 const problemsRow = z.object({ unpublished: z.coerce.number(), revoked: z.coerce.number() });
@@ -96,6 +96,12 @@ export class PostgresProvenanceGraphStore implements ProvenanceGraphStore {
           inArray(current.artifactId, chunk)))) found.set(row.artifactId, { revisionId: row.revisionId, outputHash: row.outputHash });
     }
     return found;
+  }
+
+  public async currentDescendants(guildId: string, channelId: string, messageIds: readonly string[]): Promise<readonly ProvenanceDescendant[]> {
+    const found = new Map<string, ProvenanceDescendant>();
+    for (const chunk of chunked([...new Set(messageIds)])) toDescendants(await this.database.execute(currentDescendantsQuery(guildId, channelId, chunk)), found);
+    return [...found.values()];
   }
 
   public async currentMany(guildId: string, channelId: string, kind: ProvenanceRevisionKind, artifactIds: readonly string[]): Promise<ReadonlyMap<string, string>> {

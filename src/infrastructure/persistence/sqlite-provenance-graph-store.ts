@@ -6,10 +6,10 @@ import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { chunked } from "../../application/chat/message-revocation-store.js";
 import {
   ProvenancePublicationRefused,
-  type ProvenanceAdmission, type ProvenanceAncestryCheck, type ProvenanceGraphStore, type ProvenanceMessageSource, type ProvenanceParent, type ProvenancePublication, type ProvenancePublishResult, type ProvenanceRevisionKind,
+  type ProvenanceAdmission, type ProvenanceAncestryCheck, type ProvenanceDescendant, type ProvenanceGraphStore, type ProvenanceMessageSource, type ProvenanceParent, type ProvenancePublication, type ProvenancePublishResult, type ProvenanceRevisionKind,
 } from "../../application/provenance/provenance-graph.js";
 import * as schema from "../database/sqlite-schema.js";
-import { ancestorCountQuery, ancestorMessagesQuery, toAncestorMessages, ancestryCountsQuery, ancestryProblemsQuery, ancestryRevokedQuery, toAdmissions, checkAncestry, checkParents, newMessageRevisions, revisionValues, uniqueParents, type ParentRow } from "./provenance-graph-shared.js";
+import { ancestorCountQuery, ancestorMessagesQuery, currentDescendantsQuery, toAncestorMessages, toDescendants, ancestryCountsQuery, ancestryProblemsQuery, ancestryRevokedQuery, toAdmissions, checkAncestry, checkParents, newMessageRevisions, revisionValues, uniqueParents, type ParentRow } from "./provenance-graph-shared.js";
 
 export class SqliteProvenanceGraphStore implements ProvenanceGraphStore {
   public constructor(private readonly database: BetterSQLite3Database<typeof schema>) {}
@@ -89,6 +89,12 @@ export class SqliteProvenanceGraphStore implements ProvenanceGraphStore {
           inArray(current.artifactId, chunk))).all()) found.set(row.artifactId, { revisionId: row.revisionId, outputHash: row.outputHash });
     }
     return Promise.resolve(found);
+  }
+
+  public currentDescendants(guildId: string, channelId: string, messageIds: readonly string[]): Promise<readonly ProvenanceDescendant[]> {
+    const found = new Map<string, ProvenanceDescendant>();
+    for (const chunk of chunked([...new Set(messageIds)])) toDescendants(this.database.all(currentDescendantsQuery(guildId, channelId, chunk)), found);
+    return Promise.resolve([...found.values()]);
   }
 
   public currentMany(guildId: string, channelId: string, kind: ProvenanceRevisionKind, artifactIds: readonly string[]): Promise<ReadonlyMap<string, string>> {

@@ -202,6 +202,21 @@ export function provenanceGraphStoreContract(label: string, create: () => Promis
       expect((await store.currentOutputs("guild", "channel", "reply_part", ["c"])).size).toBe(0);
     });
 
+    it("lists the artifacts whose current revision descends from a message, past summary-only and rebuilt versions", async () => {
+      const { store } = await create();
+      const m = await published(store, message("m")); const n = await published(store, message("n"));
+      const r1 = await published(store, reply("r1", [full(m)]));
+      await published(store, reply("c", [full(r1)], { kind: "claim", outputHash: hash("d") }));
+      await published(store, reply("x", [full(n)], { kind: "relation", outputHash: hash("e") }));
+      await published(store, reply("s", [{ revisionId: m, projection: "background_text:40", representationHash: hash("c") }], { kind: "claim", outputHash: hash("f") }));
+      const listed = async (): Promise<string[]> => (await store.currentDescendants("guild", "channel", ["m"])).map((entry) => `${entry.kind}:${entry.artifactId}:${entry.outputHash?.[0] ?? ""}`).sort();
+      expect(await listed()).toEqual(["claim:c:d", "reply_part:r1:a"]);
+      // Rebuilt from another source, the claim's current version no longer descends from m.
+      await published(store, reply("c", [full(n)], { kind: "claim", version: 2, outputHash: hash("g") }));
+      expect(await listed()).toEqual(["reply_part:r1:a"]);
+      expect(await store.currentDescendants("guild", "elsewhere", ["m"])).toEqual([]);
+    });
+
     it("rejects a candidate whose dense ancestry exceeds the traversal budget", async () => {
       const { store } = await create();
       const sources = await Promise.all(Array.from({ length: 30 }, (_value, index) => published(store, message(`m${index}`))));

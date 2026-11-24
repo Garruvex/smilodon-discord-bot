@@ -16,6 +16,7 @@ import type { MessageRevocationStore } from "../application/chat/message-revocat
 import type { ProvenanceGraphStore } from "../application/provenance/provenance-graph.js";
 import { ProvenanceShadowWriter, withProvenanceShadow } from "../application/provenance/provenance-shadow.js";
 import { ProvenanceAdmissionGate, parseProvenanceReaderModes } from "../application/provenance/provenance-admission.js";
+import { graphArtifactCleanup } from "../application/provenance/provenance-cleanup.js";
 import { emitChatDiagnostic, safeFailure } from "../application/diagnostics/chat-diagnostics.js";
 import type { ConversationEpisodeStore } from "../application/chat/conversation-episode-store.js";
 import { SocialChatEligibility } from "../infrastructure/discord/behaviors/social-chat-eligibility.js";
@@ -960,6 +961,9 @@ export function createDependencies(
     { name: "persona drift", run: (guildId, channelId, messageIds): Promise<number> => personaDriftStore.forgetCitingMessages(guildId, channelId, messageIds) },
     ...(relevanceTraceCollector ? [{ name: "relevance traces", run: (guildId: string, channelId: string, messageIds: readonly string[]): Promise<number> =>
       relevanceTraceCollector.forgetCitingMessages(guildId, channelId, messageIds) }] : []),
+    // Artifacts whose ancestry only the graph holds: their proofs cite no revoked message to find them by.
+    ...(provenanceGraphStore ? [graphArtifactCleanup({ memories: memoryRepository,
+      forgetDrift: (guildId, channelId, versions) => personaDriftStore.forgetVersions(guildId, channelId, versions) })] : []),
   ];
   if (messageRevocationStore) {
     relevanceTraceCollector?.bindRevocations(messageRevocationStore);
@@ -989,7 +993,8 @@ export function createDependencies(
     memoryEngine,
     deletedMessageMemory: new DeletedMessageMemory(memoryRepository, honoursDeletedSources),
     ...(messageRevocationStore ? { deletedMessageRevocations: new DeletedMessageRevocations({ store: messageRevocationStore, honoured: honoursDeletedSources,
-      steps: revocationCleanupSteps, logger: logger.child({ component: "deleted-messages" }) }) } : {}),
+      steps: revocationCleanupSteps, logger: logger.child({ component: "deleted-messages" }),
+      ...(provenanceGraphStore ? { descendants: (guildId: string, channelId: string, messageIds: readonly string[]) => provenanceGraphStore.currentDescendants(guildId, channelId, messageIds) } : {}) }) } : {}),
     chatConversationService,
     raidService: new RaidService(guildConfigurationProvider, logger.child({ component: "raid-guard" })),
     linkGuardService,

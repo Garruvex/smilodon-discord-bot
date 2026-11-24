@@ -75,7 +75,14 @@ export const maxProvenanceAncestors = 4096;
 // One that commits afterwards finds the new revision through the edges.
 export interface ProvenanceMessageSource { messageId: string; authorId: string; timestampMs: number }
 
+// An artifact whose current revision descends from a revoked message, with the output it is bound to.
+export interface ProvenanceDescendant { kind: ProvenanceRevisionKind; artifactId: string; outputHash: string | null }
+
 export interface ProvenanceGraphStore extends ProvenanceGraphReader {
+  // Artifacts whose current revision reaches one of these Discord messages as conversation, through any
+  // chain of revisions. Revocation cleanup removes their stored copies; an artifact whose current
+  // version was rebuilt from other sources is not listed.
+  currentDescendants(guildId: string, channelId: string, messageIds: readonly string[]): Promise<readonly ProvenanceDescendant[]>;
   publish(input: ProvenancePublication): Promise<ProvenancePublishResult>;
   // The current revision of each Discord message, publishing a first one where there is none, in one
   // transaction under the scope lock. A revoked message gets none and is left out of the result.

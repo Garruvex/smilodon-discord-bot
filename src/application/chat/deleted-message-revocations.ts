@@ -1,11 +1,14 @@
 import type { Logger } from "pino";
 import type { MessageCleanupClaim, MessageRevocationStore } from "./message-revocation-store.js";
+import type { ProvenanceDescendant } from "../provenance/provenance-graph.js";
 
 // One kind of derived data to remove for revoked messages. Steps must be idempotent: a pass can run
 // again after a crash or an expired lease, and every revocation gets a second, settle pass.
+// messageIds also holds the bot replies whose graph ancestry reaches a revoked message, so a step removes
+// what cites them too. artifacts lists every artifact whose current graph revision descends from one.
 export interface RevocationCleanupStep {
   name: string;
-  run(guildId: string, channelId: string, messageIds: readonly string[]): Promise<unknown>;
+  run(guildId: string, channelId: string, messageIds: readonly string[], artifacts?: readonly ProvenanceDescendant[]): Promise<unknown>;
 }
 
 export interface DeletedMessageRevocationsOptions {
@@ -14,6 +17,8 @@ export interface DeletedMessageRevocationsOptions {
   // cleaned up and enforced even if the setting is turned off later.
   honoured: (guildId: string) => boolean;
   steps: readonly RevocationCleanupStep[];
+  // The provenance graph's descendants of the revoked messages. A failure retries the whole pass.
+  descendants?: (guildId: string, channelId: string, messageIds: readonly string[]) => Promise<readonly ProvenanceDescendant[]>;
   logger: Logger;
   now?: () => number;
   pollMs?: number;
@@ -112,7 +117,10 @@ export class DeletedMessageRevocations {
     const { guildId, channelId } = claims[0]!; const messageIds = claims.map((claim) => claim.messageId);
     let step = "";
     try {
-      for (const entry of this.options.steps) { step = entry.name; await entry.run(guildId, channelId, messageIds); }
+      step = "graph descendants";
+      const artifacts = this.options.descendants ? await this.options.descendants(guildId, channelId, messageIds) : [];
+      const reached = [...new Set([...messageIds, ...artifacts.filter((artifact) => artifact.kind === "reply_part").map((artifact) => artifact.artifactId)])];
+      for (const entry of this.options.steps) { step = entry.name; await entry.run(guildId, channelId, reached, artifacts); }
     } catch (error) {
       this.options.logger.error({ error, guildId, channelId, messages: messageIds.length, step }, "Deleted-message cleanup failed; it will be retried");
       for (const claim of claims) {

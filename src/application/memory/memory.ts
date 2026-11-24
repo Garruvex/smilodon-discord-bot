@@ -375,6 +375,9 @@ export interface MemoryRepository {
   // Deletes memories and relations whose proof cites one of these messages, except where the
   // citation came from a background summary or scan. Returns how many rows went.
   forgetCitingMessages?(input: { guildId: string; channelId: string; messageIds: readonly string[] }): Promise<number>;
+  // Revocation cleanup for relations whose graph ancestry reaches a revoked message: deletes the
+  // channel's relations whose payload hashes to one of these. Returns relations removed.
+  forgetRelations?(input: { guildId: string; channelId: string; payloadHashes: readonly string[] }): Promise<number>;
   // Provenance for one memory, oldest first — every ingest() call records a
   // row here (see RepositoryIngestInput's own sourceMessageId/sourceChannelId/
   // assertedByUserId), but until /memory list needed to render a "view

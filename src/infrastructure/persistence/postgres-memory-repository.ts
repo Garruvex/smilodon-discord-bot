@@ -1,7 +1,8 @@
+import { hashContent } from "../../application/assets/content-hash.js";
 import { hasLegacyRelationshipExpiry } from "./memory-repository-shared.js";
 import { randomUUID } from "node:crypto";
 import { memoryClaimProof } from "../../application/memory/memory-claim-provenance.js";
-import { memoryRelationProof } from "../../application/memory/memory-relation-provenance.js";
+import { memoryRelationPayload, memoryRelationProof } from "../../application/memory/memory-relation-provenance.js";
 import type { ChannelMemoryMode } from "../../application/memory/memory-channel-policy.js";
 import { aliasQueryTokens, observedSubjectNames } from "../../application/memory/observed-subject-names.js";
 
@@ -493,6 +494,15 @@ export class PostgresMemoryRepository implements MemoryRepository {
   // See SqliteMemoryRepository.forget — same semantics (memoryId removes the
   // whole supersede chain; bulk forget also clears relations about the
   // subject and the asserter's provenance).
+  public async forgetRelations(input: { guildId: string; channelId: string; payloadHashes: readonly string[] }): Promise<number> {
+    const hashes = new Set(input.payloadHashes); if (!hashes.size) return 0;
+    const rows = await this.database.select().from(schema.memoryRelations)
+      .where(and(eq(schema.memoryRelations.guildId, input.guildId), eq(schema.memoryRelations.channelId, input.channelId)));
+    const ids = rows.filter((row) => { const payload = memoryRelationPayload(row); return payload !== null && hashes.has(hashContent(payload)); }).map((row) => row.id);
+    if (!ids.length) return 0;
+    return (await this.database.delete(schema.memoryRelations).where(and(eq(schema.memoryRelations.guildId, input.guildId), inArray(schema.memoryRelations.id, ids))).returning({ id: schema.memoryRelations.id })).length;
+  }
+
   public async forgetCitingMessages(input: { guildId: string; channelId: string; messageIds: readonly string[] }): Promise<number> {
     const ids = [...new Set(input.messageIds)];
     if (!ids.length) return 0;

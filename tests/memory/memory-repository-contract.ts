@@ -4,6 +4,8 @@
 // configured). Performance parity is explicitly not asserted here (see the
 // Plan 1 backend policy) — only that both backends enforce the same
 // authorization, isolation, and lifecycle semantics.
+import { hashContent } from "../../src/application/assets/content-hash.js";
+import { memoryRelationPayload } from "../../src/application/memory/memory-relation-provenance.js";
 import { describe, expect, it } from "vitest";
 
 import type { MemoryRepository, RelationCreateInput, RepositoryIngestInput } from "../../src/application/memory/memory.js";
@@ -458,6 +460,21 @@ export function memoryRepositoryContract(
       const predicate = canRecall(memory, context, 2_000);
       const candidates = await repository.findRecallCandidates({ ...context, now: 2_000 });
       expect(candidates.memories.some((m) => m.id === memory.id)).toBe(predicate);
+    });
+
+    it("forgetRelations: deletes only the channel's relations whose payload hashes match", async () => {
+      const repository = await createRepository();
+      const owned = relationInput({ channelId: "general", fromSubjectId: "alice", toSubjectId: "bob" });
+      const kept = relationInput({ channelId: "general", fromSubjectId: "alice", toSubjectId: "carol" });
+      const elsewhere = relationInput({ channelId: "other", fromSubjectId: "alice", toSubjectId: "bob" });
+      await repository.createRelations([owned, kept, elsewhere]);
+      const hash = (input: RelationCreateInput): string => hashContent(memoryRelationPayload(input)!);
+      expect(await repository.forgetRelations!({ guildId: "guild", channelId: "general", payloadHashes: [hash(owned), hash(elsewhere)] })).toBe(1);
+      expect(await repository.forgetRelations!({ guildId: "guild", channelId: "general", payloadHashes: [] })).toBe(0);
+      const related = async (channelId: string): Promise<string[]> => (await repository.findRelatedSubjects({ guildId: "guild", channelId, subjectIds: ["alice"], maxHops: 1 }))
+        .map((subject) => subject.subjectId).sort();
+      expect(await related("general")).toEqual(["carol"]);
+      expect(await related("other")).toEqual(["bob"]);
     });
 
     it("findRelatedSubjects: a direct relation is found at hop 1, bidirectionally", async () => {
