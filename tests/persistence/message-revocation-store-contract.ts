@@ -57,6 +57,56 @@ export function messageRevocationStoreContract(label: string, createStore: () =>
       expect(await store.revoked([])).toEqual([]);
     });
 
+    it("claims due cleanup under a lease and runs a first pass, then a settle pass", async () => {
+      const store = await createStore();
+      await store.revoke({ guildId: "guild", channelId: "channel", messageIds: ["m1", "m2"], revokedAt: 1_000 });
+      // Nothing is due before the revocation time.
+      expect(await store.claimCleanup({ now: 999, limit: 10, leaseMs: 100 })).toEqual([]);
+      const claims = await store.claimCleanup({ now: 1_000, limit: 1, leaseMs: 100 });
+      expect(claims).toEqual([{ guildId: "guild", channelId: "channel", messageId: "m1", pass: "first", attempts: 0, leaseUntil: 1_100 }]);
+      // A claimed row is not handed out again while its lease runs.
+      const second = await store.claimCleanup({ now: 1_050, limit: 10, leaseMs: 100 });
+      expect(second.map((claim) => claim.messageId)).toEqual(["m2"]);
+      expect(await store.completeCleanup(claims[0]!, { now: 1_060, settleMs: 500 })).toBe(true);
+      expect((await store.cleanupWork([claims[0]!]))[0]).toMatchObject({ state: "settling", nextAt: 1_560 });
+      // m2's lease ran out at 1,150 without completing, so it is handed out again for its first pass.
+      // m1's settle pass is not due until 1,560.
+      const [m2] = await store.claimCleanup({ now: 1_559, limit: 10, leaseMs: 100 });
+      expect(m2).toMatchObject({ messageId: "m2", pass: "first", leaseUntil: 1_659 });
+      const settle = await store.claimCleanup({ now: 1_560, limit: 10, leaseMs: 100 });
+      expect(settle.map((claim) => [claim.messageId, claim.pass])).toEqual([["m1", "settle"]]);
+      const m1 = settle[0]!;
+      expect(await store.completeCleanup(m1, { now: 1_600, settleMs: 500 })).toBe(true);
+      expect((await store.cleanupWork([m1]))[0]).toMatchObject({ state: "done" });
+      expect(await store.claimCleanup({ now: 10_000, limit: 10, leaseMs: 100 })).toEqual([{ ...m2!, leaseUntil: 10_100 }]);
+    });
+
+    it("retries failed cleanup later and recovers an abandoned claim", async () => {
+      const store = await createStore();
+      await store.revoke({ guildId: "guild", channelId: "channel", messageIds: ["m1"], revokedAt: 1_000 });
+      const [claim] = await store.claimCleanup({ now: 1_000, limit: 10, leaseMs: 100 });
+      expect(await store.retryCleanup(claim!, { retryAt: 5_000 })).toBe(true);
+      expect((await store.cleanupWork([claim!]))[0]).toMatchObject({ state: "pending", attempts: 1, nextAt: 5_000 });
+      expect(await store.claimCleanup({ now: 4_999, limit: 10, leaseMs: 100 })).toEqual([]);
+      const [retried] = await store.claimCleanup({ now: 5_000, limit: 10, leaseMs: 100 });
+      expect(retried).toMatchObject({ pass: "first", attempts: 1, leaseUntil: 5_100 });
+      // The worker that held it died. Once the lease expires another claim takes over, and the
+      // stale holder can no longer complete or retry it.
+      const [recovered] = await store.claimCleanup({ now: 5_100, limit: 10, leaseMs: 100 });
+      expect(recovered).toMatchObject({ messageId: "m1", pass: "first", leaseUntil: 5_200 });
+      expect(await store.completeCleanup(retried!, { now: 5_150, settleMs: 500 })).toBe(false);
+      expect(await store.retryCleanup(retried!, { retryAt: 9_000 })).toBe(false);
+      expect(await store.completeCleanup(recovered!, { now: 5_150, settleMs: 500 })).toBe(true);
+    });
+
+    it("hands each due row to only one of several concurrent claimers", async () => {
+      const store = await createStore();
+      await store.revoke({ guildId: "guild", channelId: "channel", messageIds: Array.from({ length: 40 }, (_unused, index) => `m${index}`), revokedAt: 1_000 });
+      const claims = (await Promise.all(Array.from({ length: 4 }, () => store.claimCleanup({ now: 2_000, limit: 15, leaseMs: 100 })))).flat();
+      expect(claims).toHaveLength(40);
+      expect(new Set(claims.map((claim) => claim.messageId)).size).toBe(40);
+    });
+
     it("serializes concurrent revocations in one channel", async () => {
       const store = await createStore();
       const results = await Promise.all(Array.from({ length: 8 }, (_unused, index) =>

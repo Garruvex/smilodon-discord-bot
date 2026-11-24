@@ -52,6 +52,17 @@ export class SessionMessageOriginStore implements MessageOriginStore {
     }
     await this.backend.invalidateContextSubject?.(guildId, userId);
   }
+  public async forgetCitingMessages(input: { guildId: string; channelId: string; messageIds: readonly string[] }): Promise<number> {
+    const ids = new Set(input.messageIds); let changed = 0;
+    for (const [key, { record }] of this.entries) {
+      if (record.guildId !== input.guildId) continue;
+      const own = record.channelId === input.channelId && ids.has(record.messageId);
+      const cites = record.contextProvenance?.dependencies.some((source) => source.channelId === input.channelId && ids.has(source.messageId) &&
+        source.projection?.kind !== "background_text");
+      if (own || cites) { this.remove(key); changed++; }
+    }
+    return changed + (await this.backend.forgetCitingMessages?.(input) ?? 0);
+  }
 }
 export function withSessionMessageOrigins(store: MessageOriginStore): SessionMessageOriginStore {
   if (store instanceof SessionMessageOriginStore) return store;

@@ -14,6 +14,11 @@ export interface MessageOriginRecord {
 
 export interface MessageOriginStore {
   invalidateContextSubject?(guildId: string, userId: string): Promise<void>;
+  /**
+   * Cleanup for revoked (deleted) messages: removes their own origin rows and clears the proof of any
+   * reply that cites one of them as conversation. Summary-only citations are kept. Returns rows changed.
+   */
+  forgetCitingMessages?(input: { guildId: string; channelId: string; messageIds: readonly string[] }): Promise<number>;
   record(input: MessageOriginRecord): Promise<void>;
   find(guildId: string, channelId: string, messageId: string): Promise<MessageOriginRecord | null>;
 }

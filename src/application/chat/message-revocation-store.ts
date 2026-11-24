@@ -22,12 +22,22 @@ export interface MessageRevocationResult {
   revision: number;
 }
 
-export type MessageCleanupState = "pending" | "claimed" | "done";
+// pending: first pass due at nextAt. claimed: a worker holds it until nextAt. settling: first pass done,
+// settle pass due at nextAt, to catch writes from turns already running at revocation. done: finished.
+export type MessageCleanupState = "pending" | "claimed" | "settling" | "done";
 
 export interface MessageCleanupWork extends MessageRevocationKey {
   state: MessageCleanupState;
   attempts: number;
   nextAt: number;
+}
+
+// A worker's lease on one row. leaseUntil doubles as the claim token: only the holder of the current
+// claim can complete or retry it, so a worker that outlived its lease cannot overwrite a newer claim.
+export interface MessageCleanupClaim extends MessageRevocationKey {
+  pass: "first" | "settle";
+  attempts: number;
+  leaseUntil: number;
 }
 
 export interface MessageRevocationStore {
@@ -40,8 +50,17 @@ export interface MessageRevocationStore {
   revoked(keys: readonly MessageRevocationKey[]): Promise<readonly boolean[]>;
   /** The channel's current revocation revision; 0 when nothing in it was revoked. */
   revision(guildId: string, channelId: string): Promise<number>;
-  /** Cleanup work queued for these keys, for inspection; the worker API arrives with durable intake. */
+  /** Cleanup work queued for these keys, for inspection. */
   cleanupWork(keys: readonly MessageRevocationKey[]): Promise<readonly (MessageCleanupWork | null)[]>;
+  /**
+   * Claims up to limit due rows: pending or settling rows whose nextAt has passed, and claimed rows
+   * whose lease expired. Each due row goes to exactly one caller. An expired claim runs its first pass again.
+   */
+  claimCleanup(input: { now: number; limit: number; leaseMs: number }): Promise<readonly MessageCleanupClaim[]>;
+  /** Finishes a pass: a first pass moves to settling, due settleMs later; a settle pass is done. False if the claim is stale. */
+  completeCleanup(claim: MessageCleanupClaim, input: { now: number; settleMs: number }): Promise<boolean>;
+  /** Puts a failed pass back for retryAt and counts the attempt. False if the claim is stale. */
+  retryCleanup(claim: MessageCleanupClaim, input: { retryAt: number }): Promise<boolean>;
 }
 
 /** Batches of keys are looked up per channel with at most this many message IDs per query. */

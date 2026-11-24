@@ -1,8 +1,8 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, lte, or } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import {
   chunked, groupRevocationKeys, revocationKey,
-  type MessageCleanupWork, type MessageRevocationInput, type MessageRevocationKey, type MessageRevocationResult, type MessageRevocationStore,
+  type MessageCleanupClaim, type MessageCleanupWork, type MessageRevocationInput, type MessageRevocationKey, type MessageRevocationResult, type MessageRevocationStore,
 } from "../../application/chat/message-revocation-store.js";
 import * as schema from "../database/sqlite-schema.js";
 
@@ -58,5 +58,41 @@ export class SqliteMessageRevocationStore implements MessageRevocationStore {
       for (const row of rows) found.set(revocationKey(row), { ...row, nextAt: row.nextAt.getTime() });
     }
     return Promise.resolve(keys.map((key) => found.get(revocationKey(key)) ?? null));
+  }
+
+  public claimCleanup(input: { now: number; limit: number; leaseMs: number }): Promise<readonly MessageCleanupClaim[]> {
+    const work = schema.messageCleanupWork; const leaseUntil = input.now + input.leaseMs;
+    // SQLite runs one write transaction at a time, so selecting and then claiming cannot hand a row out twice.
+    return Promise.resolve(this.database.transaction((transaction) => {
+      const due = transaction.select().from(work).where(and(lte(work.nextAt, new Date(input.now)),
+        or(eq(work.state, "pending"), eq(work.state, "settling"), eq(work.state, "claimed"))))
+        .orderBy(asc(work.nextAt), asc(work.guildId), asc(work.channelId), asc(work.messageId)).limit(input.limit).all();
+      for (const row of due) transaction.update(work).set({ state: "claimed", nextAt: new Date(leaseUntil) }).where(this.key(row)).run();
+      return due.map((row): MessageCleanupClaim => ({ guildId: row.guildId, channelId: row.channelId, messageId: row.messageId,
+        pass: row.state === "settling" ? "settle" : "first", attempts: row.attempts, leaseUntil }));
+    }));
+  }
+
+  public completeCleanup(claim: MessageCleanupClaim, input: { now: number; settleMs: number }): Promise<boolean> {
+    const settling = claim.pass === "first";
+    return Promise.resolve(this.database.update(schema.messageCleanupWork)
+      .set({ state: settling ? "settling" : "done", attempts: 0, nextAt: new Date(settling ? input.now + input.settleMs : input.now) })
+      .where(this.held(claim)).run().changes > 0);
+  }
+
+  public retryCleanup(claim: MessageCleanupClaim, input: { retryAt: number }): Promise<boolean> {
+    return Promise.resolve(this.database.update(schema.messageCleanupWork)
+      .set({ state: claim.pass === "first" ? "pending" : "settling", attempts: claim.attempts + 1, nextAt: new Date(input.retryAt) })
+      .where(this.held(claim)).run().changes > 0);
+  }
+
+  private key(key: MessageRevocationKey): ReturnType<typeof and> {
+    const work = schema.messageCleanupWork;
+    return and(eq(work.guildId, key.guildId), eq(work.channelId, key.channelId), eq(work.messageId, key.messageId));
+  }
+  // The row is still claimed by this holder: leaseUntil is the claim token.
+  private held(claim: MessageCleanupClaim): ReturnType<typeof and> {
+    const work = schema.messageCleanupWork;
+    return and(this.key(claim), eq(work.state, "claimed"), eq(work.nextAt, new Date(claim.leaseUntil)));
   }
 }

@@ -96,6 +96,7 @@ export class Application {
     this.dependencies.channelEditScheduler.stop();
     this.dependencies.reminderScheduler.stop();
     this.dependencies.pollService.stop();
+    this.dependencies.deletedMessageRevocations?.stop();
     // Before the client is destroyed: an in-flight campaign pass still needs Discord to finish its delivery.
     await this.dependencies.campaign.stop().catch((error: unknown) => {
       this.logger.error({ error }, "Campaign runtime failed to stop cleanly");
@@ -116,10 +117,19 @@ export class Application {
       // comment) keeps running until this resolves.
       this.dependencies.channelSummaryScheduler?.drain(),
       this.dependencies.reactionReplyScheduler?.drain(),
+      this.dependencies.deletedMessageRevocations?.drain(),
     ]).finally(() => this.rateLimitDiagnostics.stop());
   }
 
   private forgetDeletedMessages(guildId: string, channelId: string, messageIds: readonly string[]): void {
+    // Durable path: commit a revocation that readers enforce at once; the cleanup worker removes copies.
+    const revocations = this.dependencies.deletedMessageRevocations;
+    if (revocations) {
+      void revocations.intake(guildId, channelId, messageIds).catch((error: unknown) => {
+        this.logger.error({ error, guildId, channelId, messages: messageIds.length }, "Unable to record deleted messages");
+      });
+      return;
+    }
     void this.dependencies.deletedMessageMemory?.handle(guildId, channelId, messageIds).then((removed) => {
       if (removed) this.logger.info({ guildId, channelId, messages: messageIds.length, removed }, "Forgot memories learned from deleted messages");
     }).catch((error: unknown) => {
@@ -205,6 +215,8 @@ export class Application {
           this.dependencies.channelSummaryScheduler?.start();
           this.dependencies.reactionReplyScheduler?.start();
           this.dependencies.reminderScheduler.start();
+          // Picks up cleanup committed before a restart, as well as new deletes.
+          this.dependencies.deletedMessageRevocations?.start();
           // After the client is ready: recovery after a restart may need to redraw cards.
           this.dependencies.campaign.start().catch((error: unknown) => {
             this.logger.error({ error }, "Campaign runtime failed to start; /dnd games will not advance");

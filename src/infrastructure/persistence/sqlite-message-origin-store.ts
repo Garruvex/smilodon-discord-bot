@@ -1,5 +1,6 @@
 import { parseScopedContextProvenance } from "../../application/chat/context-provenance.js";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { chunked } from "../../application/chat/message-revocation-store.js";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type { MessageOriginRecord, MessageOriginStore } from "../../application/chat/message-origin-store.js";
 import * as schema from "../database/sqlite-schema.js";
@@ -18,6 +19,16 @@ export class SqliteMessageOriginStore implements MessageOriginStore {
       OR EXISTS (SELECT 1 FROM json_each(${schema.messageOrigins.contextProvenance}, '$.actors') AS actor WHERE json_extract(actor.value, '$.userId') = ${userId}))
     `)).run();
     return Promise.resolve();
+  }
+  public forgetCitingMessages(input: { guildId: string; channelId: string; messageIds: readonly string[] }): Promise<number> {
+    const origins = schema.messageOrigins; let changed = 0;
+    for (const ids of chunked([...new Set(input.messageIds)])) changed += this.database.transaction((transaction) =>
+      transaction.delete(origins).where(and(eq(origins.guildId, input.guildId), eq(origins.channelId, input.channelId), inArray(origins.messageId, ids))).run().changes +
+      transaction.update(origins).set({ contextProvenance: null }).where(and(eq(origins.guildId, input.guildId), sql`exists (
+        select 1 from json_each(case when json_type(${origins.contextProvenance}, '$.dependencies') = 'array' then json_extract(${origins.contextProvenance}, '$.dependencies') else '[]' end) as dependency
+        where json_extract(dependency.value, '$.channelId') = ${input.channelId} and json_extract(dependency.value, '$.messageId') in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
+        and coalesce(json_extract(dependency.value, '$.projection.kind'), '') <> 'background_text')`)).run().changes);
+    return Promise.resolve(changed);
   }
   public find(guildId: string, channelId: string, messageId: string): Promise<MessageOriginRecord | null> {
     const row = this.database.select().from(schema.messageOrigins).where(and(

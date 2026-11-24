@@ -1,4 +1,5 @@
 import { DeletedMessageMemory } from "../application/memory/deleted-message-memory.js";
+import { DeletedMessageRevocations, type RevocationCleanupStep } from "../application/chat/deleted-message-revocations.js";
 import { GuardedEvaluationContext } from "../application/context/guarded-evaluation-context.js";
 import { guardModelTransport } from "../application/context/guarded-model-transport.js";
 import { guardEmbeddingTransport } from "../application/context/guarded-embedding-transport.js";
@@ -291,6 +292,8 @@ export interface ApplicationDependencies {
   memoryEngine: MemoryEngine;
   // Deletes what was learned from a deleted message, per the guild's setting.
   deletedMessageMemory?: DeletedMessageMemory;
+  // Durable intake and cleanup for deletes; replaces deletedMessageMemory's direct cleanup when present.
+  deletedMessageRevocations?: DeletedMessageRevocations;
   // Null under the same condition as channelSummaryScheduler above — no
   // chat provider configured. Exposed so Application.stop() can drain its
   // fire-and-forget background writes (dedicated extraction, dropped-
@@ -914,6 +917,14 @@ export function createDependencies(
     socialEligibility, chatConversationService,
   ));
 
+  const honoursDeletedSources = (guildId: string): boolean => guildConfigurationProvider.find(guildId)?.chat.honourDeletedSources !== false;
+  // What a revoked message's cleanup removes. The session-aware origin store also clears in-memory proofs.
+  const revocationCleanupSteps: RevocationCleanupStep[] = [
+    ...(memoryRepository.forgetCitingMessages ? [{ name: "memories", run: (guildId: string, channelId: string, messageIds: readonly string[]): Promise<number> =>
+      memoryRepository.forgetCitingMessages!({ guildId, channelId, messageIds }) }] : []),
+    { name: "origins", run: (guildId, channelId, messageIds): Promise<number> => withSessionMessageOrigins(messageOriginStore).forgetCitingMessages({ guildId, channelId, messageIds }) },
+  ];
+
   return {
     campaign,
     commandRegistry,
@@ -934,7 +945,9 @@ export function createDependencies(
     reminderScheduler,
     applicationEmojiCatalog,
     memoryEngine,
-    deletedMessageMemory: new DeletedMessageMemory(memoryRepository, (guildId) => guildConfigurationProvider.find(guildId)?.chat.honourDeletedSources !== false),
+    deletedMessageMemory: new DeletedMessageMemory(memoryRepository, honoursDeletedSources),
+    ...(messageRevocationStore ? { deletedMessageRevocations: new DeletedMessageRevocations({ store: messageRevocationStore, honoured: honoursDeletedSources,
+      steps: revocationCleanupSteps, logger: logger.child({ component: "deleted-messages" }) }) } : {}),
     chatConversationService,
     raidService: new RaidService(guildConfigurationProvider, logger.child({ component: "raid-guard" })),
     linkGuardService,

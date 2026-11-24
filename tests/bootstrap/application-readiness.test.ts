@@ -1,6 +1,12 @@
 import { Events, type Client } from "discord.js";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Logger } from "pino";
 import { describe, expect, it, vi } from "vitest";
+import { createSqliteDatabaseConnection } from "../../src/infrastructure/database/sqlite-database.js";
+import { SqliteMessageRevocationStore } from "../../src/infrastructure/persistence/sqlite-message-revocation-store.js";
+import { DeletedMessageRevocations } from "../../src/application/chat/deleted-message-revocations.js";
 
 import { Application } from "../../src/bootstrap/application.js";
 import type { AdminPanelService } from "../../src/infrastructure/discord/settings/panel/admin-panel-service.js";
@@ -90,6 +96,7 @@ function stubLogger(): Logger {
 function buildApplication(options: {
   musicInitResult: "resolve" | "reject";
   controlChannelInitResult: "resolve" | "reject";
+  revocations?: unknown;
 }): {
   application: Application;
   client: Client;
@@ -98,6 +105,7 @@ function buildApplication(options: {
   commandDispatch: ReturnType<typeof vi.fn>;
   behaviorDispatch: ReturnType<typeof vi.fn>;
   excludeChatContext: ReturnType<typeof vi.fn>;
+  intake: ReturnType<typeof vi.fn>; campaignDeleted: ReturnType<typeof vi.fn>; panelDeleted: ReturnType<typeof vi.fn>; legacyHandle: ReturnType<typeof vi.fn>;
   backgroundStarts: readonly ReturnType<typeof vi.fn>[];
 } {
   const { client, emit } = createFakeClient();
@@ -131,8 +139,11 @@ function buildApplication(options: {
   } as unknown as ConstructorParameters<typeof Application>[9];
 
   const excludeChatContext = vi.fn();
+  const intake = vi.fn().mockResolvedValue(true); const campaignDeleted = vi.fn(); const panelDeleted = vi.fn(); const legacyHandle = vi.fn().mockResolvedValue(0);
   const dependencies = {
-    campaign: { handleMessagesDeleted: vi.fn() },
+    campaign: { handleMessagesDeleted: campaignDeleted },
+    deletedMessageRevocations: options.revocations ?? { intake, start: vi.fn(), stop: vi.fn(), drain: (): Promise<void> => Promise.resolve() },
+    deletedMessageMemory: { handle: legacyHandle },
     chatConversationService: { excludeInteraction: excludeChatContext, stopScheduling: vi.fn(), drain: (): Promise<void> => Promise.resolve() },
     guildConfigurationProvider: stubProvider(),
     musicPlayerGateway: {
@@ -155,7 +166,7 @@ function buildApplication(options: {
     {} as ApplicationConfiguration,
     dependencies,
     controlChannelService,
-    { initialize: vi.fn(), handleMessagesDeleted: vi.fn() } as unknown as AdminPanelService,
+    { initialize: vi.fn(), handleMessagesDeleted: panelDeleted } as unknown as AdminPanelService,
     musicPresenceService,
     birthdayAnnouncer,
     memberDepartureService,
@@ -165,7 +176,7 @@ function buildApplication(options: {
   );
 
   return {
-    application, client, emit, excludeChatContext, handleMessage, commandDispatch, behaviorDispatch,
+    application, client, emit, excludeChatContext, handleMessage, commandDispatch, behaviorDispatch, intake, campaignDeleted, panelDeleted, legacyHandle,
     backgroundStarts: [musicPresenceStart, birthdayStart, channelSummaryStart, reminderStart],
   };
 }
@@ -178,6 +189,38 @@ describe("Application readiness gating", () => {
     expect(excludeChatContext).toHaveBeenCalledWith("guild", "channel", "source");
     await emit(Events.MessageBulkDelete, new Map([["second", { ...message, id: "second" }]]), { guildId: "guild", id: "channel" });
     expect(excludeChatContext).toHaveBeenCalledWith("guild", "channel", "second");
+  });
+  // A4: both registered handlers commit a durable revocation through intake, and keep the admin
+  // panel and campaign handling. The old direct cleanup is not called when intake is wired.
+  it("records single and bulk deletes through revocation intake", async () => {
+    const { emit, intake, campaignDeleted, panelDeleted, legacyHandle } = buildApplication({ musicInitResult: "resolve", controlChannelInitResult: "resolve" });
+    await emit(Events.MessageDelete, { guildId: "guild", channelId: "channel", id: "source" });
+    expect(intake).toHaveBeenCalledWith("guild", "channel", ["source"]);
+    await emit(Events.MessageBulkDelete, new Map([["a", {}], ["b", {}]]), { guildId: "guild", id: "channel" });
+    expect(intake).toHaveBeenCalledWith("guild", "channel", ["a", "b"]);
+    expect(panelDeleted).toHaveBeenCalledTimes(2); expect(campaignDeleted).toHaveBeenCalledTimes(2);
+    expect(legacyHandle).not.toHaveBeenCalled();
+    // A delete outside a guild has nothing to revoke.
+    await emit(Events.MessageDelete, { guildId: null, channelId: "dm", id: "dm-message" });
+    expect(intake).toHaveBeenCalledTimes(2);
+  });
+  // The audit's path end to end: registered handlers, the real intake service and SQLite. Uncached
+  // delete events carry no author, and the revocation must still be on disk after a reopen with the
+  // cleanup worker never started.
+  it.each([["single", Events.MessageDelete], ["bulk", Events.MessageBulkDelete]] as const)("durably revokes a %s delete before any cleanup runs", async (_label, event): Promise<void> => {
+    const directory = mkdtempSync(join(tmpdir(), "revocation-handler-"));
+    const first = createSqliteDatabaseConnection(directory);
+    const revocations = new DeletedMessageRevocations({ store: new SqliteMessageRevocationStore(first.database), honoured: (): boolean => true, steps: [],
+      logger: stubLogger(), intakeRetryDelaysMs: [] });
+    const { emit } = buildApplication({ musicInitResult: "resolve", controlChannelInitResult: "resolve", revocations });
+    if (event === Events.MessageDelete) await emit(event, { guildId: "guild", channelId: "channel", id: "source" });
+    else await emit(event, new Map([["source", {}], ["bot-reply", {}]]), { guildId: "guild", id: "channel" });
+    first.close();
+    const reopened = createSqliteDatabaseConnection(directory);
+    const store = new SqliteMessageRevocationStore(reopened.database);
+    expect(await store.revoked([{ guildId: "guild", channelId: "channel", messageId: "source" }])).toEqual([true]);
+    expect((await store.cleanupWork([{ guildId: "guild", channelId: "channel", messageId: "source" }]))[0]?.state).toBe("pending");
+    reopened.close();
   });
   it("never becomes ready when Lavalink initialization fails", async () => {
     const { emit, commandDispatch, backgroundStarts } = buildApplication({ musicInitResult: "reject", controlChannelInitResult: "resolve" });
