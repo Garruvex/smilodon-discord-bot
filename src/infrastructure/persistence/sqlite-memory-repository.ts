@@ -161,7 +161,8 @@ export class SqliteMemoryRepository implements MemoryRepository {
   public recordForgetCutoff(input: { guildId: string; subjectId: string; topic: string; slot: string; scopeKey: string; cutoff: number }): Promise<void> {
     this.database.insert(schema.memoryForgetCutoffs).values({ ...input, cutoff: new Date(input.cutoff) }).onConflictDoUpdate({
       target: [schema.memoryForgetCutoffs.guildId, schema.memoryForgetCutoffs.subjectId, schema.memoryForgetCutoffs.topic, schema.memoryForgetCutoffs.slot, schema.memoryForgetCutoffs.scopeKey],
-      set: { cutoff: new Date(input.cutoff) },
+      // A cutoff only moves forward, so a late write with an older cutoff cannot revive forgotten sources.
+      set: { cutoff: sql`max(${schema.memoryForgetCutoffs.cutoff}, excluded.cutoff)` },
     }).run(); return Promise.resolve();
   }
 

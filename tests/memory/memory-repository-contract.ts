@@ -49,6 +49,37 @@ export function memoryRepositoryContract(
       expect(await repository.sourcesForgotten!([])).toEqual([]);
       await expect(Promise.resolve().then(() => repository.sourcesForgotten!([base, { ...base, channelId: "private" }]))).rejects.toThrow("one channel");
     });
+    // A forget cutoff only moves forward: a write that arrives late with an older cutoff must not
+    // make already-forgotten sources eligible again.
+    it("keeps the later forget cutoff when writes for the same key arrive out of order", async () => {
+      const repository = await createRepository();
+      const key = { guildId: "monotonic-forget", subjectId: "alice", topic: "*", slot: "*", scopeKey: "*" };
+      const source = { guildId: key.guildId, subjectId: "alice", topic: "food", slot: "source:a", channelId: "channel", sourceTimestampMs: 1000 };
+      await repository.recordForgetCutoff({ ...key, cutoff: 5000 });
+      await repository.recordForgetCutoff({ ...key, cutoff: 500 });
+      expect(await repository.isSourceForgotten(source)).toBe(true);
+      expect(await repository.isSourceForgotten({ ...source, sourceTimestampMs: 5000 })).toBe(true);
+      expect(await repository.isSourceForgotten({ ...source, sourceTimestampMs: 5001 })).toBe(false);
+      // A duplicate timestamp is a no-op and a later one still advances the cutoff.
+      await repository.recordForgetCutoff({ ...key, cutoff: 5000 });
+      await repository.recordForgetCutoff({ ...key, cutoff: 7000 });
+      expect(await repository.isSourceForgotten({ ...source, sourceTimestampMs: 7000 })).toBe(true);
+      // Concurrent writers converge on the greatest cutoff.
+      const racing = { ...key, subjectId: "bob" };
+      await Promise.all([9000, 300, 8000, 100].map((cutoff) => repository.recordForgetCutoff({ ...racing, cutoff })));
+      expect(await repository.isSourceForgotten({ ...source, subjectId: "bob", sourceTimestampMs: 9000 })).toBe(true);
+      expect(await repository.isSourceForgotten({ ...source, subjectId: "bob", sourceTimestampMs: 9001 })).toBe(false);
+      // Wildcard and narrower rows are independent keys: a low channel-scoped cutoff leaves the wildcard row alone.
+      const scoped = { ...key, subjectId: "carol", slot: "source:a", scopeKey: "channel" };
+      await repository.recordForgetCutoff({ ...key, subjectId: "carol", cutoff: 4000 });
+      await repository.recordForgetCutoff({ ...scoped, cutoff: 6000 });
+      await repository.recordForgetCutoff({ ...scoped, cutoff: 200 });
+      expect(await repository.sourcesForgotten!([
+        { ...source, subjectId: "carol", sourceTimestampMs: 4000 },
+        { ...source, subjectId: "carol", sourceTimestampMs: 6000 },
+        { ...source, subjectId: "carol", slot: "source:b", sourceTimestampMs: 4001 },
+      ])).toEqual([true, true, false]);
+    });
     it("conditionally updates metadata and preserves persistent callback quotas across instances", async () => {
       const repository = await createRepository();
       const fact = await repository.ingest(ingestInput());
