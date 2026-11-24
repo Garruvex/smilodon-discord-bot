@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GuardedConversationContext } from "../../src/application/chat/guarded-conversation-context.js";
 import type { EmbeddingsClient } from "../../src/application/chat/embeddings-client.js";
@@ -29,16 +29,18 @@ afterEach(() => { for (const cleanup of close.splice(0)) cleanup(); });
 const limits = { ...defaultMemoryEngineLimits, maxStatementChars: 1_000 };
 const target = "climbed kilimanjaro last spring";
 
-interface Taught { statement: string; audience?: "guild" | "private"; owner?: string }
+interface Taught { statement: string; audience?: "guild" | "private"; owner?: string; slot?: string }
+interface RecallOptions { embeddings?: EmbeddingsClient; audienceUserId?: string; maxSelectedChars?: number; logger?: { info: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn> } }
 
-async function setup(taught: readonly Taught[]): Promise<{
+// Guarded recall takes its query from the turn's own message, so the question is part of the setup.
+async function setup(taught: readonly Taught[], question = "kilimanjaro?"): Promise<{
   repository: OrderedRepository; fixture: ReturnType<typeof guardedFixture>; sourceOf: Map<string, string>;
-  recall: (options?: { embeddings?: EmbeddingsClient; audienceUserId?: string; maxSelectedChars?: number }) => Promise<{ statements: string[]; dependencies: string[] }>;
+  recall: (options?: RecallOptions) => Promise<{ statements: string[]; dependencies: string[] }>;
 }> {
   const connection = createSqliteDatabaseConnection(mkdtempSync(join(tmpdir(), "guarded-recall-ranking-"))); close.push(() => connection.close());
   const repository = new OrderedRepository(connection.database);
   const engine = new DefaultMemoryEngine(repository, null, null, limits, null, null, null, () => true);
-  const fixture = guardedFixture(guardedEvent("question", 90_000, "kilimanjaro?"));
+  const fixture = guardedFixture(guardedEvent("question", 90_000, question));
   fixture.actors.set("bob", { id: "bob", displayName: "bob", roleNames: [], kind: "human" });
   const sourceOf = new Map<string, string>();
   for (const [index, entry] of taught.entries()) {
@@ -51,16 +53,16 @@ async function setup(taught: readonly Taught[]): Promise<{
     const result = await engine.ingest(fixtureMemoryIngest({ guildId: "guild", channelId: "channel", channelMode: "shared", assertedByUserId: owner,
       sourceMessageId: event.messageId, source: "live", now: 2_000 + index, context: lease,
       proposals: [{ action: "upsert", audience: entry.audience ?? "guild", kind: "fact", ownerUserId: entry.audience === "private" ? owner : null,
-        subjectType: "member", subjectId: owner, topic: "profile", slot: `note.${index}`, statement: entry.statement, channelScoped: true }] }));
+        subjectType: "member", subjectId: owner, topic: "profile", slot: entry.slot ?? `note.${index}`, statement: entry.statement, channelScoped: true }] }));
     expect(result.ingested).toHaveLength(1);
     fixture.add(event); sourceOf.set(entry.statement, event.messageId);
   }
   repository.order = taught.map((entry) => entry.statement);
   return { repository, fixture, sourceOf, recall: async (options = {}): Promise<{ statements: string[]; dependencies: string[] }> => {
-    const recaller = new DefaultMemoryEngine(repository, options.embeddings ?? null, null, { ...limits, maxSelectedChars: options.maxSelectedChars ?? limits.maxSelectedChars }, null, null, null, () => true);
+    const recaller = new DefaultMemoryEngine(repository, options.embeddings ?? null, (options.logger ?? null) as never, { ...limits, maxSelectedChars: options.maxSelectedChars ?? limits.maxSelectedChars }, null, null, null, () => true);
     fixture.port.audienceUserId = options.audienceUserId ?? null;
     const lease = await GuardedConversationContext.open(fixture.port, { count: 0, budget: 12_000, burstIds: [] });
-    const result = await recaller.recall({ guildId: "guild", channelId: "channel", userId: "alice", message: "kilimanjaro", recentHistory: [],
+    const result = await recaller.recall({ guildId: "guild", channelId: "channel", userId: "alice", message: question, recentHistory: [],
       subjectIds: ["alice"], now: 100_000, context: lease, requireTopicalMatch: true });
     return { statements: result.memories.map((memory) => memory.statement),
       dependencies: lease.provenance("answer")?.dependencies.map((dependency) => dependency.messageId) ?? [] };
@@ -117,5 +119,62 @@ describe("guarded recall ranks before it budgets", () => {
     const { statements } = await recall({ maxSelectedChars: 1_000_000 });
     expect(statements).toHaveLength(20);
     expect(statements.reduce((sum, statement) => sum + statement.length, 0)).toBeLessThanOrEqual(3_000);
+  });
+});
+
+describe("guarded recall checks sources in batches", () => {
+  const ports = (fixture: ReturnType<typeof guardedFixture>, revoked = new Set<string>(), forgotten = new Set<string>()): { revoked: number; allowed: number } => {
+    const calls = { revoked: 0, allowed: 0 };
+    fixture.port.revoked = (ids): Promise<readonly boolean[]> => { calls.revoked++; return Promise.resolve(ids.map((id) => revoked.has(id))); };
+    fixture.port.sourcesAllowed = (cited): Promise<readonly boolean[]> => { calls.allowed++; return Promise.resolve(cited.map((item) => !forgotten.has(item.messageId))); };
+    return calls;
+  };
+
+  it("asks for revocations and cited-source checks a fixed number of times, whatever the candidate count", async () => {
+    const small = await setup([...fillers(3), { statement: target }]);
+    const smallCalls = ports(small.fixture);
+    expect((await small.recall()).statements).toEqual([target]);
+    const large = await setup([...fillers(60), { statement: target }]);
+    const largeCalls = ports(large.fixture);
+    expect((await large.recall()).statements).toEqual([target]);
+    expect(largeCalls).toEqual(smallCalls);
+    expect(largeCalls.revoked + largeCalls.allowed).toBeLessThanOrEqual(6);
+  });
+
+  it("excludes high-scoring rows whose source is revoked or forgotten", async () => {
+    const taught = [{ statement: "kilimanjaro summit at dawn" }, { statement: "kilimanjaro base camp" }, ...fillers(20), { statement: target }];
+    const { recall, fixture, sourceOf } = await setup(taught);
+    ports(fixture, new Set([sourceOf.get("kilimanjaro summit at dawn")!]), new Set([sourceOf.get("kilimanjaro base camp")!]));
+    expect((await recall()).statements).toEqual([target]);
+  });
+
+  it("fails closed when the batched revocation check fails", async () => {
+    const { recall, fixture } = await setup([{ statement: target }, ...fillers(5)]);
+    // Only checks that reach the stored claims' sources fail; the turn's own message still checks out.
+    fixture.port.revoked = (ids): Promise<readonly boolean[]> => ids.some((id) => id.startsWith("taught-"))
+      ? Promise.reject(new Error("database unavailable")) : Promise.resolve(ids.map(() => false));
+    expect((await recall()).statements).toEqual([]);
+  });
+});
+
+describe("guarded recall ranking outcomes", () => {
+  it("returns a correction, not the fact it superseded", async () => {
+    const { recall } = await setup([{ statement: "lives in paris", slot: "home.city" }, ...fillers(5), { statement: "lives in berlin", slot: "home.city" }], "who lives where?");
+    expect((await recall()).statements).toEqual(["lives in berlin"]);
+  });
+
+  it("returns nothing for an unrelated query", async () => {
+    const { recall } = await setup([...fillers(10), { statement: target }], "quantum chromodynamics?");
+    expect((await recall()).statements).toEqual([]);
+  });
+
+  it("counts authorization rejections apart from ranking misses", async () => {
+    const { recall, fixture, sourceOf } = await setup([{ statement: "kilimanjaro summit at dawn" }, ...fillers(20), { statement: target }]);
+    fixture.denied.add(sourceOf.get("kilimanjaro summit at dawn")!);
+    const logger = { info: vi.fn(), warn: vi.fn() };
+    expect((await recall({ logger })).statements).toEqual([target]);
+    const event = logger.info.mock.calls.map(([fields]) => fields as Record<string, unknown>).find((fields) => fields.event === "memory.recall.completed");
+    expect(event).toMatchObject({ fetched: 22, bounded: 0, rejectedByAuthorization: 1, missedByRanking: 20, budgeted: 0, retained: 1 });
+    expect(JSON.stringify(event)).not.toContain("kilimanjaro");
   });
 });

@@ -3,14 +3,14 @@ import { retrievalProjection } from "../context/retrieval-query.js";
 import { SocialOutputSuppressed } from "../chat/message-origin-store.js";
 import { requireApprovedMemoryIngest, requireApprovedRelationIngest } from "../context/approved-memory-ingest.js";
 import type { Logger } from "pino";
-import { safeFailure } from "../diagnostics/chat-diagnostics.js";
+import { diagnosticElapsed, emitChatDiagnostic, safeFailure } from "../diagnostics/chat-diagnostics.js";
 
 import type { MemoryConflictClassifier } from "../chat/chat-provider.js";
 import type { EmbeddingsClient } from "../chat/embeddings-client.js";
 import { authorizeClassificationClaims, authorizeRelationMembers, checkMemoryContext, memoryModelOptions, observedNamesForContext } from "./memory-context-guard.js";
 import { memoryRelationPayload } from "./memory-relation-provenance.js";
 import { memoryClaimPayload, memoryClaimProof } from "./memory-claim-provenance.js";
-import { isGuardedContext } from "../chat/guarded-conversation-context.js";
+import { isGuardedContext, maxClaimCandidates } from "../chat/guarded-conversation-context.js";
 import { allowsDurableWrites, resolveMemoryScope } from "./memory-channel-policy.js";
 import type { MemoryRelevanceTraceCollector } from "./memory-relevance-trace.js";
 import type {
@@ -256,6 +256,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
   }
 
   public async recall(input: MemoryRecallInput): Promise<MemoryContext> {
+    const started = performance.now();
     await checkMemoryContext(input.context);
     if (input.context) {
       if (input.guildId !== input.context.scope.guildId || input.channelId !== input.context.scope.channelId ||
@@ -296,7 +297,18 @@ export class DefaultMemoryEngine implements MemoryEngine {
           prioritySubjectIds: [...input.subjectIds, ...resolvedAliasIds],
           ...(input.filterSubjectIds?.length ? { subjectIds: input.filterSubjectIds } : {}),
         });
+    const fetched = candidates.memories.length;
     if (input.context) candidates = { memories: await input.context.recallEligible(candidates.memories, input.now) };
+    // Counts only, never IDs or text. Authorization rejections and ranking misses are separate, so a
+    // recall that finds nothing shows which of the two removed the candidates.
+    const counted = (selected: number, retained: number): void => {
+      if (!input.context) return;
+      const considered = Math.min(fetched, maxClaimCandidates);
+      emitChatDiagnostic(this.logger, { event: "memory.recall.completed", fetched, bounded: fetched - considered,
+        rejectedByAuthorization: considered - candidates.memories.length, missedByRanking: candidates.memories.length - selected,
+        budgeted: selected - retained, retained, durationMs: diagnosticElapsed(started) });
+    };
+    if (candidates.memories.length === 0) counted(0, 0);
     if (candidates.memories.length === 0) return input.context ? { memories: [], ...(aliasCandidates.length ? { aliasCandidates } : {}),
       ...("sources" in aliasObservation && aliasObservation.sources.length ? { aliasSources: aliasObservation.sources } : {}),
       causalChains: (await this.expandRelatedSubjects({ ...input, subjectIds: [...input.subjectIds, ...resolvedAliasIds] })).causalChains } : { memories: [], causalChains: [] };
@@ -418,6 +430,7 @@ export class DefaultMemoryEngine implements MemoryEngine {
       });
     }
     const verified = input.context ? await input.context.memories(selected, true, input.now) : selected;
+    counted(selected.length, verified.length);
     return { memories: verified, causalChains, maxSerializedChars: this.limits.maxSelectedChars, ...(aliasCandidates.length ? { aliasCandidates } : {}),
       ...("sources" in aliasObservation && aliasObservation.sources.length ? { aliasSources: aliasObservation.sources } : {}) };
   }

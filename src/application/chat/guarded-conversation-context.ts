@@ -64,6 +64,15 @@ export interface GuardedContextPort {
 export interface CitedSource { messageId: string; authorId: string; timestampMs: number }
 type ProofDependency = ContextProvenance["dependencies"][number];
 const backgroundOnly = (dependency: ProofDependency): boolean => dependency.projection?.kind === "background_text";
+// How many stored claims one memory pass inspects, in the order given.
+export const maxClaimCandidates = 128;
+const citedKey = (item: CitedSource): string => JSON.stringify([item.messageId, item.authorId, item.timestampMs]);
+// Keeps each batched check well inside SQL parameter limits.
+function chunk512<T>(items: readonly T[]): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += 512) chunks.push(items.slice(index, index + 512));
+  return chunks;
+}
 export type GuardedResourceKey = Pick<NonNullable<ContextProvenance["resources"]>[number], "kind" | "id">;
 export type GuardedContextPhase = "assembly" | "sessions" | "memory" | "assets" | "relations" | "identities" | "validation";
 export interface GuardedContextReport {
@@ -106,6 +115,8 @@ export class GuardedConversationContext {
   private cache = new Map<string, Promise<GuardedContextSource | null>>();
   // Revocation answers for this phase only. validate() always asks again.
   private revocations = new Map<string, boolean>();
+  // This phase's answers from sourcesAllowed, keyed by cited message, author and time.
+  private citedAnswers = new Map<string, boolean>();
   private signal = new AbortController().signal;
   private readonly evidence = new Map<string, ChannelHistoryMessage>();
   private readonly evidenceVersions = new Map<string, string>();
@@ -161,7 +172,7 @@ export class GuardedConversationContext {
     if (this.closed || !this.port.policyCurrent() || turn?.aborted) throw new SocialOutputSuppressed();
     const controller = new AbortController(); this.signal = controller.signal;
     if (!this.port.snapshotCurrent) this.cache = new Map();
-    this.revocations = new Map();
+    this.revocations = new Map(); this.citedAnswers = new Map();
     const started = Date.now(); let cancel: (() => void) | undefined;
     let status: "completed" | "deadline" | "failed" = "failed";
     try {
@@ -440,6 +451,42 @@ export class GuardedConversationContext {
     pending.forEach((id, index) => this.revocations.set(id, answers[index]!));
     return answers.some(Boolean);
   }
+  // Answers revocations and cited-source checks for many claims at once, so the per-claim checks that
+  // follow read this phase's memo instead of one round trip each. A failed batch leaves nothing in the
+  // memo, and the per-claim checks then ask again and fail closed on their own.
+  private async primeSourceChecks(proofs: readonly ContextProvenance[]): Promise<void> {
+    const dependencies = proofs.flatMap((proof) => proof.dependencies)
+      .filter((dependency) => dependency.guildId === this.port.guildId && dependency.channelId === this.port.channelId);
+    if (this.port.revoked) {
+      const pending = [...new Set(dependencies.filter((dependency) => !backgroundOnly(dependency)).map((dependency) => dependency.messageId))]
+        .filter((id) => !this.revocations.has(id));
+      for (const chunk of chunk512(pending)) {
+        const answers = await this.port.revoked(chunk, this.signal).catch(() => null);
+        if (!answers || answers.length !== chunk.length || answers.some((answer) => typeof answer !== "boolean")) break;
+        chunk.forEach((id, index) => this.revocations.set(id, answers[index]!));
+      }
+    }
+    if (this.port.sourcesAllowed) {
+      const pending = [...new Map(dependencies.map(({ messageId, authorId, timestampMs }) => [citedKey({ messageId, authorId, timestampMs }), { messageId, authorId, timestampMs }])).entries()]
+        .filter(([key]) => !this.citedAnswers.has(key));
+      for (const chunk of chunk512(pending)) {
+        const answers = await this.port.sourcesAllowed(chunk.map(([, cited]) => cited), this.signal).catch(() => null);
+        if (!answers || answers.length !== chunk.length) break;
+        chunk.forEach(([key], index) => this.citedAnswers.set(key, answers[index] === true));
+      }
+    }
+  }
+  // Whether every cited message passes forget tombstones and opt-outs, asking only for what this phase
+  // has not answered yet.
+  private async citedAllowed(cited: readonly CitedSource[]): Promise<boolean> {
+    const pending = [...new Map(cited.map((item) => [citedKey(item), item])).entries()].filter(([key]) => !this.citedAnswers.has(key));
+    if (pending.length) {
+      const answers = await this.port.sourcesAllowed!(pending.map(([, item]) => item), this.signal);
+      if (answers.length !== pending.length) return false;
+      pending.forEach(([key], index) => this.citedAnswers.set(key, answers[index] === true));
+    }
+    return cited.every((item) => this.citedAnswers.get(citedKey(item)) === true);
+  }
   // Messages this turn depends on as conversation. Data built only from daily-summary or history-scan
   // text keeps the guild's existing retention policy and is not revoked by an observed delete.
   private revocableIds(): string[] {
@@ -476,11 +523,12 @@ export class GuardedConversationContext {
       const allowed: Memory[] = []; let chars = 0;
       // Claim proofs usually depend on messages older than the history window.
       // Page them in together instead of one rate-limited fetch per message.
-      const dependencyIds = records.slice(0, 128).flatMap((record) => memoryClaimProof(record.contextProvenance, record)?.dependencies
+      const dependencyIds = records.slice(0, maxClaimCandidates).flatMap((record) => memoryClaimProof(record.contextProvenance, record)?.dependencies
         .filter((dependency) => dependency.guildId === this.port.guildId && dependency.channelId === this.port.channelId)
         .map((dependency) => dependency.messageId) ?? []);
       if (dependencyIds.length && !this.port.sourcesAllowed) await this.port.prepareValidation?.([...new Set(dependencyIds)], this.signal).catch(() => undefined);
-      for (const record of records.slice(0, 128)) {
+      await this.primeSourceChecks(records.slice(0, maxClaimCandidates).flatMap((record) => memoryClaimProof(record.contextProvenance, record) ?? []));
+      for (const record of records.slice(0, maxClaimCandidates)) {
         if (budget && allowed.length === 20) break;
         if (record.statement.length > 1000 || budget && chars + record.statement.length > 3000) continue;
         const proof = memoryClaimProof(record.contextProvenance, record);
@@ -550,8 +598,7 @@ export class GuardedConversationContext {
     if (await this.anyRevoked(proof.dependencies.filter((dependency) => !backgroundOnly(dependency)).map((dependency) => dependency.messageId))) return false;
     if (this.port.sourcesAllowed) {
       // Cited messages are checked against forget tombstones and opt-outs, never fetched again.
-      const allowed = await this.port.sourcesAllowed(proof.dependencies.map(({ messageId, authorId, timestampMs }) => ({ messageId, authorId, timestampMs })), this.signal);
-      return allowed.length === proof.dependencies.length && allowed.every(Boolean);
+      return this.citedAllowed(proof.dependencies.map(({ messageId, authorId, timestampMs }) => ({ messageId, authorId, timestampMs })));
     }
     for (const dependency of proof.dependencies) {
       const source = await this.read(dependency.messageId, path);
